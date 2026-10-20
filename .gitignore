@@ -13,3 +13,14 @@
 .externalNativeBuild
 .cxx
 local.properties
+.kotlin/
+
+# Signing and secrets (never commit)
+*.jks
+*.keystore
+keystore.properties
+.env
+.env.*
+
+# Claude Code per-user settings
+.claude/settings.local.json

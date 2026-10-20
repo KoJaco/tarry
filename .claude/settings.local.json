@@ -1,6 +1,0 @@
-{
-  "enabledMcpjsonServers": [
-    "playwright",
-    "chrome-devtools"
-  ]
-}
