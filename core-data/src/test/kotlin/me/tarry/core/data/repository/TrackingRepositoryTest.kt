@@ -55,7 +55,7 @@ class TrackingRepositoryTest : DbTestBase() {
         val r = repo()
         val id = r.saveOverride(
             ManualOverride(
-                type = ManualOverrideType.START, start = 1,
+                type = ManualOverrideType.START, start = 1, zoneId = "UTC",
                 endMode = ManualOverrideEndMode.UNTIL_STOPPED, active = true,
             ),
         )

@@ -75,6 +75,7 @@ data class ExcludedRange(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val start: Long,
     val end: Long,
+    val zoneId: String,
     val updatedAt: Long,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )
@@ -84,6 +85,7 @@ data class Gap(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
     val start: Long,
     val end: Long,
+    val zoneId: String,
     val cause: GapCause,
     val sessionId: Long? = null,
     val updatedAt: Long,

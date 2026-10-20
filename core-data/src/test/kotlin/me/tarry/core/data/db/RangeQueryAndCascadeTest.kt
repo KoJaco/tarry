@@ -36,7 +36,7 @@ class RangeQueryAndCascadeTest : DbTestBase() {
     )
 
     private fun gap(id: String, start: Long, end: Long, deleted: Boolean = false) = Gap(
-        id = id, start = start, end = end, cause = GapCause.NO_FIX, updatedAt = 0, deleted = deleted,
+        id = id, start = start, end = end, zoneId = "UTC", cause = GapCause.NO_FIX, updatedAt = 0, deleted = deleted,
     )
 
     // Inserted out of order on purpose. "early" and "deleted" share a start; only "early" may appear.

@@ -203,9 +203,10 @@ class EntityRoundTripTest : DbTestBase() {
 
     @Test
     fun excludedRange() = runTest {
-        val r = ExcludedRange(id = "e1", start = 10, end = 20, updatedAt = 5, deleted = true)
+        val r = ExcludedRange(id = "e1", start = 10, end = 20, zoneId = "Australia/Sydney", updatedAt = 5, deleted = true)
         db.excludedRangeDao().upsert(r)
         assertThat(db.excludedRangeDao().getById("e1")).isEqualTo(r)
+        assertThat(db.excludedRangeDao().getById("e1")!!.zoneId).isEqualTo("Australia/Sydney")
     }
 
     @Test
@@ -213,12 +214,15 @@ class EntityRoundTripTest : DbTestBase() {
         val dao = db.gapDao()
         val gaps = GapCause.entries.mapIndexed { i, cause ->
             Gap(
-                id = "g$i", start = 1, end = 2, cause = cause,
+                id = "g$i", start = 1, end = 2, zoneId = "Australia/Sydney", cause = cause,
                 sessionId = if (i % 2 == 0) 42L else null, updatedAt = 1, deleted = i == 0,
             )
         }
         dao.upsertAll(gaps)
-        gaps.forEach { assertThat(dao.getById(it.id)).isEqualTo(it) }
+        gaps.forEach {
+            assertThat(dao.getById(it.id)).isEqualTo(it)
+            assertThat(dao.getById(it.id)!!.zoneId).isEqualTo("Australia/Sydney")
+        }
         assertThat(gaps).hasSize(6)
     }
 
@@ -243,8 +247,8 @@ class EntityRoundTripTest : DbTestBase() {
     @Test
     fun manualOverride_openAndClosed() = runTest {
         val dao = db.manualOverrideDao()
-        val closed = ManualOverride(type = ManualOverrideType.PAUSE, start = 1, end = 5, endMode = ManualOverrideEndMode.DURATION, active = false)
-        val open = ManualOverride(type = ManualOverrideType.START, start = 10, endMode = ManualOverrideEndMode.UNTIL_STOPPED, active = true)
+        val closed = ManualOverride(type = ManualOverrideType.PAUSE, start = 1, end = 5, zoneId = "Australia/Sydney", endMode = ManualOverrideEndMode.DURATION, active = false)
+        val open = ManualOverride(type = ManualOverrideType.START, start = 10, zoneId = "Australia/Perth", endMode = ManualOverrideEndMode.UNTIL_STOPPED, active = true)
         val closedId = dao.upsert(closed)
         val openId = dao.upsert(open)
 
@@ -252,6 +256,8 @@ class EntityRoundTripTest : DbTestBase() {
         val readOpen = dao.getById(openId)!!
         assertThat(readOpen).isEqualTo(open.copy(id = openId))
         assertThat(readOpen.end).isNull()
+        assertThat(dao.getById(closedId)!!.zoneId).isEqualTo("Australia/Sydney")
+        assertThat(readOpen.zoneId).isEqualTo("Australia/Perth")
     }
 
     @Test

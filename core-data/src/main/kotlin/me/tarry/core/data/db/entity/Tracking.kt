@@ -53,6 +53,7 @@ data class ManualOverride(
     val type: ManualOverrideType,
     val start: Long,
     val end: Long? = null,
+    val zoneId: String,
     val endMode: ManualOverrideEndMode,
     val active: Boolean,
 )
