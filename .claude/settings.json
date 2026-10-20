@@ -4,6 +4,10 @@
       "Read",
       "Glob",
       "Grep",
+      "Bash(./gradlew.bat:*)",
+      "Bash(adb devices:*)",
+      "Bash(adb logcat:*)",
+      "Bash(adb install:*)",
       "Bash(pnpm install:*)",
       "Bash(pnpm test:*)",
       "Bash(pnpm lint:*)",
@@ -37,6 +41,8 @@
       "Bash(neonctl branches create:*)"
     ],
     "ask": [
+      "Bash(adb shell pm clear:*)",
+      "Bash(gh release create:*)",
       "Bash(git push:*)",
       "Bash(gh pr create:*)",
       "Bash(gh pr merge:*)",
