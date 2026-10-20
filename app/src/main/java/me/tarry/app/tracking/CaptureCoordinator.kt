@@ -45,6 +45,7 @@ class CaptureCoordinator @Inject constructor(
     @param:CaptureScope private val scope: CoroutineScope,
 ) {
     private val mutex = Mutex()
+    @Volatile
     private var session: TrackingSession? = null
     private var machine: CaptureModeMachine? = null
     private var filter = PingFilter(config)

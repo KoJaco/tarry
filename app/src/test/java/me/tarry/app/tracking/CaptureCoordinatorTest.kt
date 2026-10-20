@@ -62,7 +62,7 @@ class CaptureCoordinatorTest {
         )
         timelineRepo = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
-        health = HealthGapRecorder(store, timelineRepo, alerts, clock, config)
+        health = HealthGapRecorder(store, timelineRepo, alerts, clock, config, windows)
         coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, activityClient, geofence, permissions, windows,
             health, clock, captureScope,
@@ -320,9 +320,13 @@ class CaptureCoordinatorTest {
 
     @Test
     fun beginFailingAfterTheSessionOpenedRollsBackInsteadOfLeavingASessionWithoutAMachine() = runBlocking {
+        var removeAttempts = 0
         val failingGeofence = object : GeofenceClient {
             override suspend fun addStayGeofence(lat: Double, lng: Double, radiusM: Float) = Unit
-            override suspend fun remove() = throw IllegalStateException("geofence api down")
+            override suspend fun remove() {
+                removeAttempts++
+                throw IllegalStateException("geofence api down")
+            }
         }
         val c = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, activityClient, failingGeofence, permissions, windows,
@@ -335,6 +339,9 @@ class CaptureCoordinatorTest {
         assertThat(c.isActive).isFalse()
         assertThat(trackingRepo.openSession()).isNull()
         assertThat(trackingRepo.sessionsInRange(0, Long.MAX_VALUE).single().endReason).isEqualTo(SessionEndReason.KILLED)
+        // Once from the start step that failed, once from the rollback.
+        assertThat(removeAttempts).isEqualTo(2)
+        assertThat(activityClient.unregisterCalls).isEqualTo(1)
         assertThat(store.current().activeSessionId).isNull()
     }
 

@@ -80,7 +80,13 @@ class HealthCheckWorkerTest {
         )
         timeline = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
-        health = HealthGapRecorder(store, timeline, alerts, clock, config)
+        health = HealthGapRecorder(
+            store, timeline, alerts, clock, config,
+            EffectiveScheduleWindowChecker(
+                ScheduleInputsProvider(ScheduleRepository(db.scheduleDao()), trackingRepo, store, config, clock),
+                EffectiveScheduleCalculator(config), clock,
+            ),
+        )
         wire(object : LocationClient {
             override fun updates(params: LocationRequestParams): Flow<List<Fix>> = FakeLocationClient().updates(params)
         })
@@ -467,5 +473,67 @@ class HealthCheckWorkerTest {
 
         assertThat(store.current().attentionCause).isEqualTo(AttentionCause.LOCATION_OFF)
         assertThat(store.current().openHealthGapId).isNotNull()
+    }
+
+    private fun assertNoNightAndNoOverlap() = runBlocking<Unit> {
+        val all = gaps().sortedBy { it.start }
+        for (g in all) {
+            val nightStart = mondayAt(17).toEpochMilli()
+            val nightEnd = tuesdayAt(7).toEpochMilli()
+            assertThat(g.end <= nightStart || g.start >= nightEnd).isTrue()
+        }
+        for ((a, b) in all.zipWithNext()) assertThat(b.start).isAtLeast(a.end)
+    }
+
+    @Test
+    fun healthCheckRunningBeforeCrashRecoveryAfterRebootDoesNotDoubleCountOrCoverTheNight() = runBlocking<Unit> {
+        clock.now = mondayAt(14, 30).toEpochMilli()
+        store.setLastHeartbeat(clock.now)
+        preconditions.value = Preconditions(locationEnabled = false)
+        runWorker()
+        clock.now = mondayAt(14, 45).toEpochMilli()
+        runWorker()
+        seedCrashedSession(mondayAt(14, 45))
+        preconditions.value = Preconditions()
+        clock.now = tuesdayAt(8).toEpochMilli()
+
+        // The worker wins the race against BOOT_COMPLETED's recovery.
+        checker.check()
+        controller.recoverCrashedSession()
+
+        assertNoNightAndNoOverlap()
+        assertThat(gaps().sortedBy { it.start }.map { Triple(it.cause, it.start, it.end) }).containsExactly(
+            Triple(GapCause.LOCATION_OFF, mondayAt(14, 30).toEpochMilli(), mondayAt(17).toEpochMilli()),
+            Triple(GapCause.SERVICE_KILLED, tuesdayAt(7).toEpochMilli(), tuesdayAt(8).toEpochMilli()),
+        ).inOrder()
+    }
+
+    @Test
+    fun workerOutsideTheWindowAfterRebootDoesNotCloseMondaysGapAtThreeAm() = runBlocking<Unit> {
+        clock.now = mondayAt(14, 30).toEpochMilli()
+        store.setLastHeartbeat(clock.now)
+        preconditions.value = Preconditions(locationEnabled = false)
+        runWorker()
+        clock.now = mondayAt(14, 45).toEpochMilli()
+        runWorker()
+        clock.now = tuesdayAt(3).toEpochMilli()
+
+        runWorker()
+
+        assertNoNightAndNoOverlap()
+        assertThat(gaps().single().end).isEqualTo(mondayAt(17).toEpochMilli())
+    }
+
+    @Test
+    fun clearResolvedReportsADifferentIssueInsteadOfJustClearing() = runBlocking<Unit> {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        preconditions.value = Preconditions(exactAlarms = false)
+        runWorker()
+        preconditions.value = Preconditions(backgroundLocation = false)
+
+        checker.clearResolved()
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
+        assertThat(alerts.posted.last()).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
     }
 }

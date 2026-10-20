@@ -77,7 +77,7 @@ class TrackingControllerTest {
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val calculator = EffectiveScheduleCalculator(config)
         timelineRepo = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
-        health = HealthGapRecorder(store, timelineRepo, alerts, clock, config)
+        health = HealthGapRecorder(store, timelineRepo, alerts, clock, config, EffectiveScheduleWindowChecker(inputs, calculator, clock))
         coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo,
             store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), permissions,
@@ -384,12 +384,17 @@ class TrackingControllerTest {
 
     @Test
     fun serviceStartWhoseBeginFailsStopsTheServiceAndRecordsTheOutage() = runBlocking {
+        var removeAttempts = 0
+        val activity = FakeActivityClient()
         val failingGeofence = object : GeofenceClient {
             override suspend fun addStayGeofence(lat: Double, lng: Double, radiusM: Float) = Unit
-            override suspend fun remove() = throw IllegalStateException("geofence api down")
+            override suspend fun remove() {
+                removeAttempts++
+                throw IllegalStateException("geofence api down")
+            }
         }
         val failingCoordinator = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, FakeLocationClient(), FakeActivityClient(), failingGeofence,
+            config, trackingRepo, timelineRepo, store, FakeLocationClient(), activity, failingGeofence,
             permissions, FakeWindowChecker(), health, clock, captureScope,
         )
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
@@ -401,6 +406,8 @@ class TrackingControllerTest {
         c.onServiceStarted(SessionTrigger.SCHEDULE)
 
         assertThat(launcher.stopCalls).isGreaterThan(0)
+        assertThat(removeAttempts).isEqualTo(2)
+        assertThat(activity.unregisterCalls).isEqualTo(1)
         assertThat(store.current().attentionCause).isEqualTo(AttentionCause.SERVICE_NOT_RUNNING)
         assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE).single().cause)
             .isEqualTo(me.tarry.core.data.model.GapCause.SERVICE_KILLED)
@@ -420,5 +427,20 @@ class TrackingControllerTest {
         assertThat(coordinator.isActive).isTrue()
         assertThat(launcher.stopCalls).isEqualTo(stopsBefore)
         assertThat(store.current().attentionCause).isNull()
+    }
+
+    @Test
+    fun resumeFailingAfterAPauseStartsTheGapAtTheResumeNotOverCapturedOrPausedTime() = runBlocking {
+        clock.now = mondayAt(7).toEpochMilli()
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(10).toEpochMilli()
+        controller.pause(PauseKind.PAUSE_1H)
+        clock.now = mondayAt(11).toEpochMilli()
+        launcher.denyStart = true
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE).single().start).isEqualTo(mondayAt(11).toEpochMilli())
     }
 }

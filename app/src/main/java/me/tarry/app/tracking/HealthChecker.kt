@@ -62,12 +62,22 @@ class HealthChecker @Inject constructor(
      */
     suspend fun clearResolved() {
         val stored = recorder.attentionOnlyCause() ?: return
+        // Same ordering as check(): recovery first, then the decision.
+        controller.recoverCrashedSession()
         val issue = issueFor(snapshots.capture().health)
-        if (issue == null || issue.cause != stored) recorder.recoverCause(stored)
+        when {
+            issue == null -> recorder.recoverCause(stored)
+            // A different problem now applies: report it exactly as a periodic check would.
+            issue.cause != stored -> check()
+        }
     }
 
     /** Returns the outage found, or null if healthy. */
     suspend fun check(): HealthIssue? {
+        // After a reboot the worker can run before BOOT_COMPLETED's recovery: close the dead session (and its Gap)
+        // first, so the open health Gap is settled before anything is reported or recovered. No lock is held here,
+        // so the order controller -> coordinator -> recorder holds.
+        controller.recoverCrashedSession()
         val health = snapshots.capture().health
         // Outside a window only standing configuration problems count, and they never open a Gap (ADR 0003).
         val issue = issueFor(health)

@@ -170,7 +170,7 @@ class TrackingController @Inject constructor(
             launcher.stop()
             health.reportOutage(
                 HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED),
-                effective.activeSince?.toEpochMilli(),
+                outageNotBefore(effective),
             )
         }
     }
@@ -269,7 +269,19 @@ class TrackingController @Inject constructor(
             StartFailure.FGS_NOT_ALLOWED -> HealthIssue(AttentionCause.EXACT_ALARM_DENIED, GapCause.SERVICE_KILLED)
             StartFailure.SECURITY -> HealthIssue(coordinator.locationPermissionFailureCause(), GapCause.PERMISSION_LOST)
         }
-        health.reportOutage(issue, effective.activeSince?.toEpochMilli())
+        health.reportOutage(issue, outageNotBefore(effective))
+    }
+
+    /**
+     * Earliest time an outage may be dated from: the start of the active stretch, but never over time that was
+     * captured (last session end) or deliberately paused (end of the last manual override). Now if unknown.
+     */
+    private suspend fun outageNotBefore(effective: EffectiveSchedule): Long {
+        val now = clock.nowMs()
+        val since = effective.activeSince?.toEpochMilli() ?: return now
+        val lastSessionEnd = trackingRepo.sessionsInRange(since, now).mapNotNull { it.end }.filter { it <= now }.maxOrNull()
+        val lastOverrideEnd = trackingRepo.overridesInRange(since, now).mapNotNull { it.end }.filter { it <= now }.maxOrNull()
+        return maxOf(since, lastSessionEnd ?: since, lastOverrideEnd ?: since)
     }
 
     /** Deactivates active overrides (of [type], or all if null), ending them now. */

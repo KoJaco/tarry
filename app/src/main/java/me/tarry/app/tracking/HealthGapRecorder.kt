@@ -4,6 +4,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.tarry.core.data.db.entity.Gap
 import me.tarry.core.data.repository.TimelineRepository
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,6 +36,7 @@ class HealthGapRecorder @Inject constructor(
     private val notifier: HealthAlertNotifier,
     private val clock: TrackingClock,
     private val config: TrackingConfig,
+    private val windowChecker: ScheduleWindowChecker,
 ) {
     private val mutex = Mutex()
 
@@ -62,7 +64,7 @@ class HealthGapRecorder @Inject constructor(
         }
         // The cause changed (or the id is stale): close the old Gap and start a new one.
         if (open != null) {
-            val closeAt = if (continuous) maxOf(open.start, now) else open.end
+            val closeAt = if (continuous) clampedEnd(open, now) else open.end
             timelineRepo.saveGap(open.copy(end = closeAt, updatedAt = now))
         }
         val start = (status.lastHeartbeatMs ?: notBeforeMs ?: now).coerceAtLeast(notBeforeMs ?: 0L).coerceAtMost(now)
@@ -89,8 +91,18 @@ class HealthGapRecorder @Inject constructor(
 
     private suspend fun closeGapLocked(endMs: Long) {
         val id = statusStore.current().openHealthGapId ?: return
-        timelineRepo.gap(id)?.let { timelineRepo.saveGap(it.copy(end = maxOf(endMs, it.start), updatedAt = clock.nowMs())) }
+        timelineRepo.gap(id)?.let { timelineRepo.saveGap(it.copy(end = clampedEnd(it, endMs), updatedAt = clock.nowMs())) }
         statusStore.setOpenHealthGapId(null)
+    }
+
+    /**
+     * Where an open Gap may end when closed at [endMs]: never past the end of the active interval that contains its
+     * current end, so closing it later (a worker after a reboot, at 03:00) cannot stretch it over inactive time.
+     */
+    private suspend fun clampedEnd(open: Gap, endMs: Long): Long {
+        if (endMs <= open.end) return maxOf(endMs, open.start)
+        val first = windowChecker.activeIntervals(Instant.ofEpochMilli(open.end), Instant.ofEpochMilli(endMs)).firstOrNull()
+        return if (first != null && first.start.toEpochMilli() <= open.end) minOf(endMs, first.end.toEpochMilli()) else open.end
     }
 
     /** The current cause if it is attention-only (no Gap open), else null. */
@@ -116,7 +128,9 @@ class HealthGapRecorder @Inject constructor(
         val open = timelineRepo.gap(id)
         statusStore.setOpenHealthGapId(null)
         val first = intervals.firstOrNull()
-        if (open == null || first == null || first.start.toEpochMilli() > open.end + config.gapMergeToleranceMs) {
+        if (open == null || first == null || first.start.toEpochMilli() > open.end + config.gapMergeToleranceMs ||
+            first.end.toEpochMilli() < open.start - config.gapMergeToleranceMs
+        ) {
             return@withLock intervals
         }
         timelineRepo.saveGap(
@@ -150,7 +164,7 @@ class HealthGapRecorder @Inject constructor(
         if (status.openHealthGapId == null && status.attentionCause == null) return
         status.openHealthGapId?.let { id ->
             timelineRepo.gap(id)?.let { open ->
-                timelineRepo.saveGap(open.copy(end = maxOf(endMs, open.start), updatedAt = clock.nowMs()))
+                timelineRepo.saveGap(open.copy(end = clampedEnd(open, endMs), updatedAt = clock.nowMs()))
             }
         }
         statusStore.setOpenHealthGapId(null)

@@ -54,7 +54,7 @@ class HealthGapRecorderTest {
             .build()
         timeline = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
-        recorder = HealthGapRecorder(store, timeline, alerts, clock, config)
+        recorder = HealthGapRecorder(store, timeline, alerts, clock, config, FakeWindowChecker())
     }
 
     @After
@@ -276,8 +276,7 @@ class HealthGapRecorderTest {
 
     @Test
     fun uncaughtExceptionInTheCaptureScopeIsLoggedAndRecordedAsAnOutageNotACrash() = runBlocking<Unit> {
-        store.setActiveSessionId(1)
-        val scope = createCaptureScope({ recorder }, { store }, Dispatchers.Unconfined)
+        val scope = createCaptureScope({ recorder }, { true }, Dispatchers.Unconfined)
         scope.launch { throw IllegalStateException("boom") }
         withTimeout(5_000) { while (alerts.posted.isEmpty()) delay(10) }
 
@@ -330,7 +329,7 @@ class HealthGapRecorderTest {
 
     @Test
     fun uncaughtExceptionWithNoOpenSessionIsOnlyLogged() = runBlocking<Unit> {
-        val scope = createCaptureScope({ recorder }, { store }, Dispatchers.Unconfined)
+        val scope = createCaptureScope({ recorder }, { false }, Dispatchers.Unconfined)
         scope.launch { throw IllegalStateException("state repository blew up") }
         delay(300)
 

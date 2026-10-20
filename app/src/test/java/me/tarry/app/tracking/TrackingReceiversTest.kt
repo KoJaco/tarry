@@ -71,7 +71,7 @@ class TrackingReceiversTest {
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val calculator = EffectiveScheduleCalculator(config)
         val timelineRepo = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
-        val health = HealthGapRecorder(store, timelineRepo, FakeAlertNotifier(), clock, config)
+        val health = HealthGapRecorder(store, timelineRepo, FakeAlertNotifier(), clock, config, EffectiveScheduleWindowChecker(inputs, calculator, clock))
         val coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo,
             store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakePermissions(),

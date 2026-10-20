@@ -16,6 +16,7 @@ import me.tarry.app.tracking.HealthGapRecorder
 import me.tarry.app.tracking.createCaptureScope
 import me.tarry.app.tracking.PreconditionChecker
 import me.tarry.app.tracking.AndroidServiceLauncher
+import me.tarry.app.tracking.CaptureCoordinator
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.GeofenceClient
 import me.tarry.app.tracking.LocationClient
@@ -31,7 +32,6 @@ import me.tarry.app.tracking.ScheduleWindowChecker
 import me.tarry.app.tracking.ServiceLauncher
 import me.tarry.app.tracking.SystemTrackingClock
 import me.tarry.app.tracking.TrackingClock
-import me.tarry.app.tracking.TrackingStatusStore
 import javax.inject.Singleton
 
 @Module
@@ -75,7 +75,7 @@ abstract class TrackingModule {
         @Provides
         @Singleton
         @CaptureScope
-        fun provideCaptureScope(recorder: dagger.Lazy<HealthGapRecorder>, status: dagger.Lazy<TrackingStatusStore>): CoroutineScope =
-            createCaptureScope({ recorder.get() }, { status.get() })
+        fun provideCaptureScope(recorder: dagger.Lazy<HealthGapRecorder>, coordinator: dagger.Lazy<CaptureCoordinator>): CoroutineScope =
+            createCaptureScope({ recorder.get() }, { coordinator.get().isActive })
     }
 }

@@ -14,13 +14,13 @@ import me.tarry.core.data.model.GapCause
 /**
  * Builds the [CaptureScope]: one thread keeps fix batches, activity events and geofence exits in arrival order.
  * An uncaught exception in a capture coroutine is logged (no crash SDKs) rather than crashing the process. It is
- * recorded as an outage only while a session is open: the scope is also shared with state and UI work, whose
+ * recorded as an outage only while a session is live in this process: the scope is also shared with state and UI work, whose
  * failures are not capture outages.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun createCaptureScope(
     recorder: () -> HealthGapRecorder,
-    status: () -> TrackingStatusStore,
+    hasSession: () -> Boolean,
     dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ): CoroutineScope {
     lateinit var scope: CoroutineScope
@@ -28,7 +28,7 @@ internal fun createCaptureScope(
         Log.e(TAG, "Uncaught error in capture scope", e)
         scope.launch {
             try {
-                if (status().current().activeSessionId != null) {
+                if (hasSession()) {
                     recorder().reportOutage(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED))
                 }
             } catch (c: CancellationException) {
