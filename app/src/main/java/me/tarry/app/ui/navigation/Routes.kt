@@ -1,0 +1,21 @@
+package me.tarry.app.ui.navigation
+
+import androidx.navigation3.runtime.NavKey
+import kotlinx.serialization.Serializable
+
+@Serializable
+data object TimelineRoute : NavKey
+
+@Serializable
+data object SettingsRoute : NavKey
+
+/**
+ * Bottom-bar navigation between top-level routes. Timeline is the root: selecting it
+ * pops back to [TimelineRoute]; selecting another route leaves exactly [Timeline, route].
+ */
+fun MutableList<NavKey>.navigateTopLevel(route: NavKey) {
+    if (lastOrNull() == route) return
+    clear()
+    add(TimelineRoute)
+    if (route != TimelineRoute) add(route)
+}
