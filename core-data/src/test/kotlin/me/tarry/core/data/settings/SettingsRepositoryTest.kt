@@ -1,9 +1,10 @@
 package me.tarry.core.data.settings
 
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -21,7 +22,7 @@ class SettingsRepositoryTest {
     /** Fresh DataStore file per call; its scope is a child of backgroundScope so it dies with the test. */
     private fun TestScope.repo(): SettingsRepository {
         val scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
-        val store = PreferenceDataStoreFactory.create(scope = scope) {
+        val store = createSettingsDataStore(scope) {
             tmp.newFile("settings-${UUID.randomUUID()}.preferences_pb")
         }
         return SettingsRepository(store)
@@ -136,5 +137,43 @@ class SettingsRepositoryTest {
         assertThat(r.settings.first().theme).isEqualTo(ThemeMode.DARK)
         r.setTheme(ThemeMode.LIGHT)
         assertThat(r.settings.first().theme).isEqualTo(ThemeMode.LIGHT)
+    }
+
+    private fun TestScope.newScope() =
+        CoroutineScope(backgroundScope.coroutineContext + Job(backgroundScope.coroutineContext[Job]) + UnconfinedTestDispatcher(testScheduler))
+
+    @Test
+    fun corruptFile_fallsBackToDefaults_andSettersStillWork() = runTest {
+        val file = tmp.newFile("corrupt.preferences_pb")
+        file.writeBytes(byteArrayOf(0x7f, 0x01, 0x02, 0x03, 0x55, 0x66.toByte(), 0xff.toByte()))
+        val r = SettingsRepository(createSettingsDataStore(newScope()) { file })
+        assertThat(r.settings.first()).isEqualTo(Settings())
+        r.setTheme(ThemeMode.DARK)
+        assertThat(r.settings.first().theme).isEqualTo(ThemeMode.DARK)
+    }
+
+    @Test
+    fun values_persistAcrossDataStoreInstances() = runTest {
+        val file = tmp.newFile("persist.preferences_pb")
+        val scope1 = newScope()
+        val r1 = SettingsRepository(createSettingsDataStore(scope1) { file })
+        r1.setRoundingIncrementMin(15)
+        r1.setRoundingMode(RoundingMode.UP)
+        r1.setMinBillableMinutes(20)
+        r1.setRoundDailyTotalPerJob(true)
+        r1.setTravelAttribution(TravelAttribution.entries.last())
+        r1.setRawPingRetentionDays(null)
+        r1.setReviewReminderEnabled(true)
+        r1.setReviewReminderMinuteOfDay(600)
+        r1.setTheme(ThemeMode.DARK)
+        val expected = r1.settings.first()
+        scope1.cancel()
+
+        val r2 = SettingsRepository(createSettingsDataStore(newScope()) { file })
+        val actual = r2.settings.first()
+        assertThat(actual).isEqualTo(expected)
+        assertThat(actual.rawPingRetentionDays).isNull()
+        assertThat(actual.roundingIncrementMin).isEqualTo(15)
+        assertThat(actual.theme).isEqualTo(ThemeMode.DARK)
     }
 }

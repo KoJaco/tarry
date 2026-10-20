@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
@@ -21,6 +22,7 @@ class SettingsRepository @Inject constructor(
     val settings: Flow<Settings> = dataStore.data
         .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
         .map { it.toSettings() }
+        .distinctUntilChanged()
 
     suspend fun setRoundingIncrementMin(minutes: Int) {
         require(minutes in Settings.ALLOWED_ROUNDING_INCREMENTS) { "Invalid rounding increment: $minutes" }

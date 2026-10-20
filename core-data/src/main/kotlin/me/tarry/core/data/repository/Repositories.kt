@@ -42,18 +42,21 @@ class TrackingRepository @Inject constructor(
     private val overrides: ManualOverrideDao,
     private val checkpoints: SegmentationCheckpointDao,
 ) {
-    suspend fun saveSession(session: TrackingSession): Long = sessions.upsert(session)
+    suspend fun saveSession(session: TrackingSession): Long =
+        sessions.upsert(session).let { if (it == -1L) session.id else it }
     suspend fun session(id: Long): TrackingSession? = sessions.getById(id)
     suspend fun sessionsInRange(from: Long, to: Long) = sessions.getInRange(from, to)
     suspend fun openSession(): TrackingSession? = sessions.getOpenSession()
 
-    suspend fun savePing(ping: LocationPing): Long = pings.upsert(ping)
+    suspend fun savePing(ping: LocationPing): Long =
+        pings.upsert(ping).let { if (it == -1L) ping.id else it }
     suspend fun savePings(list: List<LocationPing>) = pings.upsertAll(list)
     suspend fun pingsInRange(from: Long, to: Long) = pings.getInRange(from, to)
     suspend fun pingsForSession(sessionId: Long) = pings.getBySession(sessionId)
     suspend fun purgePingsBefore(before: Long): Int = pings.deleteOlderThan(before)
 
-    suspend fun saveOverride(override: ManualOverride): Long = overrides.upsert(override)
+    suspend fun saveOverride(override: ManualOverride): Long =
+        overrides.upsert(override).let { if (it == -1L) override.id else it }
     suspend fun overridesInRange(from: Long, to: Long) = overrides.getInRange(from, to)
     fun observeActiveOverrides(): Flow<List<ManualOverride>> = overrides.observeActive()
 

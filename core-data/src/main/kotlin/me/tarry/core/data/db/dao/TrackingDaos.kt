@@ -11,7 +11,7 @@ import me.tarry.core.data.db.entity.TrackingSession
 
 @Dao
 interface TrackingSessionDao {
-    /** Returns the row id (new or existing). */
+    /** Returns the new row id on insert, or -1 when the upsert fell back to an update. */
     @Upsert suspend fun upsert(session: TrackingSession): Long
 
     @Query("SELECT * FROM tracking_session WHERE id = :id")
@@ -26,6 +26,7 @@ interface TrackingSessionDao {
 
 @Dao
 interface LocationPingDao {
+    /** Returns the new row id on insert, or -1 when the upsert fell back to an update. */
     @Upsert suspend fun upsert(ping: LocationPing): Long
 
     @Upsert suspend fun upsertAll(pings: List<LocationPing>)
@@ -45,6 +46,7 @@ interface LocationPingDao {
 
 @Dao
 interface ManualOverrideDao {
+    /** Returns the new row id on insert, or -1 when the upsert fell back to an update. */
     @Upsert suspend fun upsert(override: ManualOverride): Long
 
     @Query("SELECT * FROM manual_override WHERE id = :id")

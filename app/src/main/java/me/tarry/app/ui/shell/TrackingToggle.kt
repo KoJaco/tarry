@@ -74,7 +74,7 @@ fun TrackingToggle(
     }
     val outline = state == TrackingState.IDLE || state == TrackingState.ATTENTION
 
-    // Outer box leaves room for the pulse ring to grow without clipping the layout.
+    // The pulse ring may be clipped by the bar Surface until phase 3 styling.
     Box(modifier = modifier.size(ToggleSize), contentAlignment = Alignment.Center) {
         if (state == TrackingState.TRACKING) {
             PulseRing(color = colors.primary)
