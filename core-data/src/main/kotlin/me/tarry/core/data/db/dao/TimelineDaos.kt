@@ -22,8 +22,8 @@ interface VisitDao {
     @Query("SELECT * FROM visit WHERE id = :id")
     suspend fun getById(id: String): Visit?
 
-    /** Rows overlapping [from, to), including deleted ones (for sync/segmentation bookkeeping). */
-    @Query("SELECT * FROM visit WHERE start < :to AND `end` > :from ORDER BY start")
+    /** Non-deleted rows overlapping [from, to). */
+    @Query("SELECT * FROM visit WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
     suspend fun getInRange(from: Long, to: Long): List<Visit>
 
     @Query("SELECT * FROM visit WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
@@ -47,7 +47,7 @@ interface TripDao {
     @Query("SELECT * FROM trip WHERE id = :id")
     suspend fun getById(id: String): Trip?
 
-    @Query("SELECT * FROM trip WHERE start < :to AND `end` > :from ORDER BY start")
+    @Query("SELECT * FROM trip WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
     suspend fun getInRange(from: Long, to: Long): List<Trip>
 
     @Query("SELECT * FROM trip WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
@@ -71,7 +71,7 @@ interface GapDao {
     @Query("SELECT * FROM gap WHERE id = :id")
     suspend fun getById(id: String): Gap?
 
-    @Query("SELECT * FROM gap WHERE start < :to AND `end` > :from ORDER BY start")
+    @Query("SELECT * FROM gap WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
     suspend fun getInRange(from: Long, to: Long): List<Gap>
 
     @Query("SELECT * FROM gap WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
