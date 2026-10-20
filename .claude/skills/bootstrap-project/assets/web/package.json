@@ -1,0 +1,16 @@
+{
+  "name": "app",
+  "private": true,
+  "packageManager": "pnpm@12.11.2",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "typecheck": "pnpm --filter web typecheck",
+    "test": "pnpm --filter web test",
+    "e2e": "pnpm --filter web e2e"
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}

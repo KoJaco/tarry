@@ -1,0 +1,18 @@
+# One extended-regex pattern per line. Comments on their own lines only.
+# --- destructive filesystem / git ---
+rm[[:space:]]+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r)[[:space:]]+(/|~|\$HOME)
+git[[:space:]]+push[[:space:]].*(--force|[[:space:]]-f([[:space:]]|$))
+git[[:space:]]+push[[:space:]]+[a-z0-9_.-]+[[:space:]]+(main|master)
+git[[:space:]]+reset[[:space:]]+--hard[[:space:]]+origin
+# --- production targeting ---
+(--env|-e)[[:space:]]+(prod|production)
+--profile[[:space:]]+[a-z0-9_-]*prod
+(NEON_PROD|PROD_DATABASE_URL|DATABASE_URL_PROD|SUPABASE_PROD)
+neonctl[[:space:]]+(projects|branches)[[:space:]]+delete.*(main|production|prod)
+# --- destructive SQL ---
+(DROP|TRUNCATE)[[:space:]]+(DATABASE|SCHEMA|TABLE)
+DELETE[[:space:]]+FROM[[:space:]]+[a-z_."]+[[:space:]]*;?[[:space:]]*$
+# --- supply chain / bypasses ---
+curl[^|]*\|[[:space:]]*(ba)?sh
+wget[^|]*\|[[:space:]]*(ba)?sh
+dangerously-skip-permissions

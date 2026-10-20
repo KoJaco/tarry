@@ -1,0 +1,25 @@
+// Copy to web/wrangler.jsonc. Next.js via OpenNext shown; for React Router v7 see the comments.
+// Staging is the default environment agents deploy to; production deploys run only from CI.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "app-web",
+  "compatibility_date": "2025-01-01", // set to the date you scaffold
+  "compatibility_flags": ["nodejs_compat"],
+  // Next.js (OpenNext):
+  "main": ".open-next/worker.js",
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  // React Router v7: "main": "./workers/app.ts", "assets": { "directory": "./build/client" },
+  "observability": { "enabled": true },
+  "env": {
+    "staging": {
+      "name": "app-web-staging",
+      "vars": { "API_BASE_URL": "https://api.staging.example.com" }
+      // "r2_buckets": [{ "binding": "FILES", "bucket_name": "app-files-staging" }]
+    },
+    "production": {
+      "name": "app-web",
+      "vars": { "API_BASE_URL": "https://api.example.com" }
+      // "r2_buckets": [{ "binding": "FILES", "bucket_name": "app-files" }]
+    }
+  }
+}
