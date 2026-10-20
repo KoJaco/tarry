@@ -24,3 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Tarry"
 include(":app")
+include(":segmentation")
+include(":core-data")
