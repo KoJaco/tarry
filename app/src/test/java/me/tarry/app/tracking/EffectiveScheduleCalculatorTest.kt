@@ -216,4 +216,60 @@ class EffectiveScheduleCalculatorTest {
         assertThat(next).isEqualTo(at(5, 7))
         assertThat(next.atZone(sydney).hour).isEqualTo(7)
     }
+
+    private val sundayDay = (14..33).fold(Schedule.EMPTY) { s, slot -> s.set(DayOfWeek.SUNDAY, slot, true) }
+
+    @Test
+    fun sevenToFiveWindowOnSpringForwardSundayIsTenHoursWithCorrectTransitions() {
+        // 2026-10-04: the 02:00 jump is before 07:00, so the window is a full 10 h but starts at +11.
+        val inputs = ScheduleInputs(sundayDay)
+        val before = calc(inputs, at(4, 6, 59))
+        assertThat(before.isActive).isFalse()
+        assertThat(before.nextTransition).isEqualTo(at(4, 7))
+        val inside = calc(inputs, at(4, 12))
+        assertThat(inside.currentWindow).isEqualTo(WindowBounds(at(4, 7), at(4, 17)))
+        assertThat(Duration.between(at(4, 7), at(4, 17))).isEqualTo(Duration.ofHours(10))
+        assertThat(inside.nextTransition).isEqualTo(at(4, 17))
+        assertThat(at(4, 7).atZone(sydney).offset.totalSeconds).isEqualTo(11 * 3600)
+        // From the prior Sunday evening the next start is 07:00 local on the transition day.
+        assertThat(calc(inputs, at(3, 12)).nextTransition).isEqualTo(at(4, 7))
+    }
+
+    @Test
+    fun sevenToFiveWindowOnFallBackSundayIsTenHoursWithCorrectTransitions() {
+        // 2026-04-05: the 03:00 -> 02:00 repeat is before 07:00, so the window is a full 10 h starting at +10.
+        val inputs = ScheduleInputs(sundayDay)
+        val inside = calc(inputs, at(5, 12, month = 4))
+        assertThat(inside.currentWindow).isEqualTo(WindowBounds(at(5, 7, month = 4), at(5, 17, month = 4)))
+        assertThat(Duration.between(at(5, 7, month = 4), at(5, 17, month = 4))).isEqualTo(Duration.ofHours(10))
+        assertThat(inside.nextTransition).isEqualTo(at(5, 17, month = 4))
+        assertThat(at(5, 7, month = 4).atZone(sydney).offset.totalSeconds).isEqualTo(10 * 3600)
+        assertThat(calc(inputs, at(4, 12, month = 4)).nextTransition).isEqualTo(at(5, 7, month = 4))
+        // After the window the next one is a week away, still at 07:00 local.
+        assertThat(calc(inputs, at(5, 18, month = 4)).nextTransition).isEqualTo(at(12, 7, month = 4))
+    }
+
+    @Test
+    fun fridayWindowEndAndWeekendSkipAreCorrectAcrossBothDstChanges() {
+        // Oct 2026: Fri the 2nd is +10, Mon the 5th is +11. Apr 2026: Fri the 3rd is +11, Mon the 6th is +10.
+        assertThat(calc(template, at(2, 10)).nextTransition).isEqualTo(at(2, 17))
+        assertThat(calc(template, at(3, 12)).nextTransition).isEqualTo(at(5, 7))
+        assertThat(calc(template, at(3, 10, month = 4)).nextTransition).isEqualTo(at(3, 17, month = 4))
+        assertThat(calc(template, at(4, 12, month = 4)).nextTransition).isEqualTo(at(6, 7, month = 4))
+    }
+
+    @Test
+    fun overrideWeekBoundaryIsMondayBasedSoSundayStaysInThePreviousWeek() {
+        // Override only for the week starting Mon 2026-10-19: Sunday 25th is still that week, Monday 26th is not.
+        val week = Schedule.EMPTY.set(DayOfWeek.SUNDAY, 20, true)
+        val inputs = template.copy(weekOverrides = mapOf(LocalDate.of(2026, 10, 19) to week))
+
+        assertThat(calc(inputs, at(25, 10, 15)).isActive).isTrue()
+        assertThat(calc(inputs, at(26, 10)).isActive).isTrue() // back to the template
+        assertThat(calc(inputs, at(26, 6)).isActive).isFalse()
+        // Saturday night of the template week jumps over the override Sunday window, not to Monday.
+        assertThat(calc(inputs, at(24, 12)).nextTransition).isEqualTo(at(25, 10))
+        // After the override window ends, the next transition is the template's Monday start.
+        assertThat(calc(inputs, at(25, 12)).nextTransition).isEqualTo(at(26, 7))
+    }
 }

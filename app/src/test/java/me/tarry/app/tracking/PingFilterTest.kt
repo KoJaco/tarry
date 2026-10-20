@@ -71,4 +71,35 @@ class PingFilterTest {
         assertThat(filter.lastAccepted).isNull()
         assertThat(filter.offer(fixAt(1_000, northM = 5000.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
     }
+
+    @Test
+    fun speedJustUnderTheLimitIsAcceptedAndJustOverIsDropped() {
+        filter.offer(fixAt(0), CaptureMode.MOVING)
+        // 690 m in 10 s = 69 m/s (under 70), 720 m = 72 m/s (over).
+        assertThat(filter.offer(fixAt(10_000, northM = 720.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_SPEED)
+        assertThat(filter.offer(fixAt(10_000, northM = 690.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+    }
+
+    @Test
+    fun olderFixThanLastAcceptedIsDropped() {
+        filter.offer(fixAt(5_000), CaptureMode.MOVING)
+        assertThat(filter.offer(fixAt(4_000, northM = 5.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_SPEED)
+    }
+
+    @Test
+    fun poorAccuracyIsReportedBeforeSpeedAndDoesNotMoveLastAccepted() {
+        val first = fixAt(0)
+        filter.offer(first, CaptureMode.MOVING)
+        val bad = fixAt(10_000, northM = 5_000.0, accuracyM = config.maxAccuracyM + 1)
+        assertThat(filter.offer(bad, CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_ACCURACY)
+        assertThat(filter.lastAccepted).isEqualTo(first)
+    }
+
+    @Test
+    fun jitterBoundaryIsInclusiveOfTheAccuracyRadius() {
+        filter.offer(fixAt(0), CaptureMode.STATIONARY)
+        // 9 m away with 10 m accuracy is inside the circle; 11 m is outside.
+        assertThat(filter.offer(fixAt(1_000, northM = 9.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
+        assertThat(filter.offer(fixAt(2_000, northM = 11.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.ACCEPT)
+    }
 }
