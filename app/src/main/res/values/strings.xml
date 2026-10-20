@@ -24,5 +24,8 @@
     <string name="settings_off">Off</string>
     <string name="settings_forever">Forever</string>
     <string name="settings_minutes_value">%1$d min</string>
-    <string name="settings_days_value">%1$d days</string>
+    <plurals name="settings_days_value">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
 </resources>

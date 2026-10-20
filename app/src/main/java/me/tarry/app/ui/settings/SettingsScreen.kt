@@ -13,6 +13,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -46,7 +47,7 @@ fun SettingsContent(settings: Settings?, modifier: Modifier = Modifier) {
             stringResource(R.string.settings_round_daily_total) to if (s.roundDailyTotalPerJob) on else off,
             stringResource(R.string.settings_travel_attribution) to s.travelAttribution.name,
             stringResource(R.string.settings_ping_retention) to
-                (s.rawPingRetentionDays?.let { stringResource(R.string.settings_days_value, it) }
+                (s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
                     ?: stringResource(R.string.settings_forever)),
             stringResource(R.string.settings_review_reminder) to if (s.reviewReminderEnabled) on else off,
             stringResource(R.string.settings_review_reminder_time) to
