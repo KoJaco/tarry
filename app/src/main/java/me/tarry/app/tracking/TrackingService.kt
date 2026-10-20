@@ -15,7 +15,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -93,7 +92,7 @@ class TrackingService : Service() {
     private fun fail(failure: StartFailure, startId: Int): Int {
         try {
             runBlocking { withTimeout(config.startFailurePersistTimeoutMs) { controller.onStartFailure(failure) } }
-        } catch (e: TimeoutCancellationException) {
+        } catch (e: Exception) {
             Log.w(TAG, "Start failure not persisted in time; finishing in the background", e)
             captureScope.launch { controller.onStartFailure(failure) }
         }

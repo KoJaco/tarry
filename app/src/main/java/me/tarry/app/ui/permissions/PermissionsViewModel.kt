@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import me.tarry.app.tracking.HealthChecker
 import me.tarry.app.tracking.TrackingStateRepository
 import javax.inject.Inject
 
@@ -16,6 +18,7 @@ import javax.inject.Inject
 class PermissionsViewModel @Inject constructor(
     private val checker: PermissionChecker,
     private val trackingState: TrackingStateRepository,
+    private val healthChecker: HealthChecker,
 ) : ViewModel() {
     private val snapshot = MutableStateFlow(checker.check())
     private val skipped = MutableStateFlow<Set<PermissionStep>>(emptySet())
@@ -33,6 +36,10 @@ class PermissionsViewModel @Inject constructor(
     fun refresh() {
         snapshot.value = checker.check()
         trackingState.refresh()
+        viewModelScope.launch {
+            healthChecker.clearResolved()
+            trackingState.refresh()
+        }
     }
 
     fun skip(step: PermissionStep) {

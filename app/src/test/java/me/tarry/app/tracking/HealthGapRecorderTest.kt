@@ -26,6 +26,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
@@ -183,18 +184,24 @@ class HealthGapRecorderTest {
     }
 
     @Test
-    fun extendOpenGapMovesTheEndAndLowersTheStartOfTheOpenGapOnly() = runBlocking<Unit> {
-        assertThat(recorder.extendOpenGap(clock.now - 1_000, clock.now + 5)).isFalse()
+    fun adoptOpenGapExtendsOnlyThroughATouchingFirstIntervalAndClearsTheId() = runBlocking<Unit> {
+        fun iv(a: Long, b: Long) = WindowBounds(Instant.ofEpochMilli(a), Instant.ofEpochMilli(b))
+        store.setLastHeartbeat(clock.now - 1_000)
         recorder.reportOutage(noFine)
-        assertThat(recorder.extendOpenGap(clock.now - 1_000, clock.now + 5)).isTrue()
+        val open = gaps().single()
 
+        val rest = recorder.adoptOpenGap(listOf(iv(clock.now, clock.now + 5_000), iv(clock.now + 90_000_000, clock.now + 91_000_000)))
+
+        assertThat(rest).containsExactly(iv(clock.now + 90_000_000, clock.now + 91_000_000))
         val gap = gaps().single()
-        assertThat(gap.start).isEqualTo(clock.now - 1_000)
-        assertThat(gap.end).isEqualTo(clock.now + 5)
-
-        // A later start never shrinks the Gap.
-        recorder.extendOpenGap(clock.now + 1, clock.now + 10)
-        assertThat(gaps().single().start).isEqualTo(clock.now - 1_000)
+        assertThat(gap.id).isEqualTo(open.id)
+        assertThat(gap.end).isEqualTo(clock.now + 5_000)
+        assertThat(store.current().openHealthGapId).isNull()
+        // Not touching: nothing is merged and the id is still cleared.
+        recorder.reportOutage(killed)
+        val untouched = recorder.adoptOpenGap(listOf(iv(clock.now + 50_000_000, clock.now + 51_000_000)))
+        assertThat(untouched).hasSize(1)
+        assertThat(store.current().openHealthGapId).isNull()
     }
 
     @Test
@@ -208,9 +215,9 @@ class HealthGapRecorderTest {
     fun concurrentReportsAndRecoveriesKeepASingleGapAndConsistentState() = runBlocking<Unit> {
         store.setLastHeartbeat(clock.now - 300_000)
         // Without serialisation every caller sees "no open Gap" and writes its own.
-        (1..20).map { i ->
+        (1..20).map {
             async(Dispatchers.Default) {
-                if (i % 5 == 0) recorder.extendOpenGap(clock.now - 300_000, clock.now) else recorder.reportOutage(noFine)
+                recorder.reportOutage(noFine)
             }
         }.awaitAll()
 
@@ -269,7 +276,8 @@ class HealthGapRecorderTest {
 
     @Test
     fun uncaughtExceptionInTheCaptureScopeIsLoggedAndRecordedAsAnOutageNotACrash() = runBlocking<Unit> {
-        val scope = createCaptureScope({ recorder }, Dispatchers.Unconfined)
+        store.setActiveSessionId(1)
+        val scope = createCaptureScope({ recorder }, { store }, Dispatchers.Unconfined)
         scope.launch { throw IllegalStateException("boom") }
         withTimeout(5_000) { while (alerts.posted.isEmpty()) delay(10) }
 
@@ -281,10 +289,75 @@ class HealthGapRecorderTest {
     @Test
     fun aCancelledPlayServicesTaskIsAFailureNotCoroutineCancellation() = runBlocking<Unit> {
         val result = async(Dispatchers.Unconfined) { runCatching { com.google.android.gms.tasks.Tasks.forCanceled<Unit>().awaitDone() } }
-        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
 
         val failure = withTimeout(5_000) { result.await() }.exceptionOrNull()
         assertThat(failure).isInstanceOf(TaskCancelledException::class.java)
         assertThat(failure).isNotInstanceOf(kotlinx.coroutines.CancellationException::class.java)
+    }
+
+    @Test
+    fun anAttentionOnlyReportClosesAnAlreadyOpenGapAtNow() = runBlocking<Unit> {
+        store.setLastHeartbeat(clock.now - 300_000)
+        recorder.reportOutage(noFine)
+        clock.now += 120_000
+
+        recorder.reportOutage(noBackground.copy(recordGap = false))
+
+        assertThat(gaps().single().end).isEqualTo(clock.now)
+        assertThat(store.current().openHealthGapId).isNull()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
+        assertThat(alerts.posted.last()).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
+    }
+
+    @Test
+    fun anOutageIsNotStretchedAcrossAnInactiveDiscontinuity() = runBlocking<Unit> {
+        val day = 24 * 3_600_000L
+        val firstStretchStart = clock.now - 3_600_000
+        recorder.reportOutage(noFine, notBeforeMs = firstStretchStart)
+        val first = gaps().single()
+        // Next day's window: the earlier stretch ended long ago.
+        clock.now += day
+        store.setLastHeartbeat(clock.now - 600_000)
+        recorder.reportOutage(noFine, notBeforeMs = clock.now - 3_600_000)
+
+        val all = gaps().sortedBy { it.start }
+        assertThat(all).hasSize(2)
+        assertThat(all[0].id).isEqualTo(first.id)
+        assertThat(all[0].end).isEqualTo(first.end)
+        assertThat(all[1].start).isEqualTo(clock.now - 600_000)
+        assertThat(store.current().openHealthGapId).isEqualTo(all[1].id)
+    }
+
+    @Test
+    fun uncaughtExceptionWithNoOpenSessionIsOnlyLogged() = runBlocking<Unit> {
+        val scope = createCaptureScope({ recorder }, { store }, Dispatchers.Unconfined)
+        scope.launch { throw IllegalStateException("state repository blew up") }
+        delay(300)
+
+        assertThat(gaps()).isEmpty()
+        assertThat(alerts.posted).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
+        scope.cancel()
+    }
+
+    @Test
+    fun aThrowingOutageReportCannotLoopThroughTheHandler() = runBlocking<Unit> {
+        var reports = 0
+        val scope = createCaptureScope({ recorder }, { reports++; throw AssertionError("status store down") }, Dispatchers.Unconfined)
+        scope.launch { throw IllegalStateException("boom") }
+        delay(300)
+
+        assertThat(reports).isEqualTo(1)
+        scope.cancel()
+    }
+
+    @Test
+    fun attentionOnlyCauseIsReportedOnlyWhileNoGapIsOpen() = runBlocking<Unit> {
+        assertThat(recorder.attentionOnlyCause()).isNull()
+        recorder.reportAttention(AttentionCause.NO_FINE_LOCATION)
+        assertThat(recorder.attentionOnlyCause()).isEqualTo(AttentionCause.NO_FINE_LOCATION)
+        recorder.recover()
+        recorder.reportOutage(noFine)
+        assertThat(recorder.attentionOnlyCause()).isNull()
     }
 }

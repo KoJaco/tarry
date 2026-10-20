@@ -40,14 +40,19 @@ class HealthGapRecorder @Inject constructor(
 
     /** [notBeforeMs] bounds the Gap start so a stale heartbeat from before the active stretch is not used. */
     suspend fun reportOutage(issue: HealthIssue, notBeforeMs: Long? = null) = mutex.withLock {
+        val now = clock.nowMs()
         if (!issue.recordGap) {
+            // Nothing is being lost any more: an already-open Gap ends here.
+            closeGapLocked(now)
             reportAttentionLocked(issue.cause)
             return@withLock
         }
-        val now = clock.nowMs()
         val status = statusStore.current()
         val open = status.openHealthGapId?.let { timelineRepo.gap(it) }
-        if (open != null && open.cause == issue.gapCause) {
+        // An open Gap whose last extension predates the current active stretch belongs to an earlier stretch:
+        // extending it would stretch it across the inactive time in between.
+        val continuous = open != null && (notBeforeMs == null || open.end >= notBeforeMs)
+        if (open != null && continuous && open.cause == issue.gapCause) {
             timelineRepo.saveGap(open.copy(end = maxOf(open.end, now), updatedAt = now))
             if (status.attentionCause != issue.cause) {
                 statusStore.setAttentionCause(issue.cause)
@@ -56,7 +61,10 @@ class HealthGapRecorder @Inject constructor(
             return@withLock
         }
         // The cause changed (or the id is stale): close the old Gap and start a new one.
-        if (open != null) timelineRepo.saveGap(open.copy(end = maxOf(open.start, now), updatedAt = now))
+        if (open != null) {
+            val closeAt = if (continuous) maxOf(open.start, now) else open.end
+            timelineRepo.saveGap(open.copy(end = closeAt, updatedAt = now))
+        }
         val start = (status.lastHeartbeatMs ?: notBeforeMs ?: now).coerceAtLeast(notBeforeMs ?: 0L).coerceAtMost(now)
         val near = timelineRepo.gapsInRange(start - config.gapMergeToleranceMs, now + 1)
             .filter { it.id != open?.id }
@@ -79,6 +87,18 @@ class HealthGapRecorder @Inject constructor(
      */
     suspend fun reportAttention(cause: AttentionCause) = mutex.withLock { reportAttentionLocked(cause) }
 
+    private suspend fun closeGapLocked(endMs: Long) {
+        val id = statusStore.current().openHealthGapId ?: return
+        timelineRepo.gap(id)?.let { timelineRepo.saveGap(it.copy(end = maxOf(endMs, it.start), updatedAt = clock.nowMs())) }
+        statusStore.setOpenHealthGapId(null)
+    }
+
+    /** The current cause if it is attention-only (no Gap open), else null. */
+    suspend fun attentionOnlyCause(): AttentionCause? = mutex.withLock {
+        val status = statusStore.current()
+        if (status.openHealthGapId == null) status.attentionCause else null
+    }
+
     private suspend fun reportAttentionLocked(cause: AttentionCause) {
         if (statusStore.current().attentionCause == cause) return
         statusStore.setAttentionCause(cause)
@@ -86,15 +106,27 @@ class HealthGapRecorder @Inject constructor(
     }
 
     /**
-     * Extends the open health Gap to cover [fromMs, untilMs] (start only ever moves earlier). Returns false if no Gap
-     * is open. Used by crash recovery.
+     * Crash recovery: [intervals] are the active stretches the dead time covered. The open health Gap (which started
+     * at the last heartbeat) is extended only through the first interval if that touches it, capped at that
+     * interval's end, and is then closed (the id is cleared; the process that owned it is gone). Returns the
+     * intervals still to be recorded by the caller.
      */
-    suspend fun extendOpenGap(fromMs: Long, untilMs: Long): Boolean = mutex.withLock {
-        val open = statusStore.current().openHealthGapId?.let { timelineRepo.gap(it) } ?: return@withLock false
+    suspend fun adoptOpenGap(intervals: List<WindowBounds>): List<WindowBounds> = mutex.withLock {
+        val id = statusStore.current().openHealthGapId ?: return@withLock intervals
+        val open = timelineRepo.gap(id)
+        statusStore.setOpenHealthGapId(null)
+        val first = intervals.firstOrNull()
+        if (open == null || first == null || first.start.toEpochMilli() > open.end + config.gapMergeToleranceMs) {
+            return@withLock intervals
+        }
         timelineRepo.saveGap(
-            open.copy(start = minOf(open.start, fromMs), end = maxOf(open.end, untilMs), updatedAt = clock.nowMs()),
+            open.copy(
+                start = minOf(open.start, first.start.toEpochMilli()),
+                end = maxOf(open.end, first.end.toEpochMilli()),
+                updatedAt = clock.nowMs(),
+            ),
         )
-        true
+        intervals.drop(1)
     }
 
     /** Capture works again (or no longer should): ends the Gap at [endMs] and clears the cause and alert. */

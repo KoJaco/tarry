@@ -417,4 +417,55 @@ class HealthCheckWorkerTest {
 
         assertThat(fake.requests).hasSize(1)
     }
+
+    @Test
+    fun openHealthGapIsExtendedOnlyThroughTheTouchingIntervalNotAcrossTheNight() = runBlocking<Unit> {
+        clock.now = mondayAt(14, 30).toEpochMilli()
+        store.setLastHeartbeat(clock.now)
+        preconditions.value = Preconditions(locationEnabled = false)
+        runWorker()
+        clock.now = mondayAt(14, 45).toEpochMilli()
+        runWorker()
+        seedCrashedSession(mondayAt(14, 45))
+        preconditions.value = Preconditions()
+        clock.now = tuesdayAt(8).toEpochMilli()
+
+        controller.recoverCrashedSession()
+
+        val all = gaps().sortedBy { it.start }
+        assertThat(all.map { Triple(it.cause, it.start, it.end) }).containsExactly(
+            Triple(GapCause.LOCATION_OFF, mondayAt(14, 30).toEpochMilli(), mondayAt(17).toEpochMilli()),
+            Triple(GapCause.SERVICE_KILLED, tuesdayAt(7).toEpochMilli(), tuesdayAt(8).toEpochMilli()),
+        ).inOrder()
+        assertThat(store.current().openHealthGapId).isNull()
+    }
+
+    @Test
+    fun clearResolvedClearsAnAttentionOnlyCauseOnceTheConditionIsFixed() = runBlocking<Unit> {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        preconditions.value = Preconditions(exactAlarms = false)
+        runWorker()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.EXACT_ALARM_DENIED)
+
+        checker.clearResolved()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.EXACT_ALARM_DENIED)
+
+        preconditions.value = Preconditions()
+        checker.clearResolved()
+
+        assertThat(store.current().attentionCause).isNull()
+        assertThat(alerts.clearCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun clearResolvedLeavesAGapBackedCauseToTheRecovery() = runBlocking<Unit> {
+        preconditions.value = Preconditions(locationEnabled = false)
+        runWorker()
+        preconditions.value = Preconditions()
+
+        checker.clearResolved()
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.LOCATION_OFF)
+        assertThat(store.current().openHealthGapId).isNotNull()
+    }
 }

@@ -1,9 +1,13 @@
 package me.tarry.app.tracking
 
 import com.google.android.gms.tasks.Task
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+
+private val listenerExecutor = Dispatchers.Default.asExecutor()
 
 /**
  * Suspends until a Play Services [Task] completes; avoids a dependency on coroutines-play-services.
@@ -11,9 +15,10 @@ import kotlin.coroutines.resumeWithException
  */
 internal suspend fun Task<*>.awaitDone() {
     suspendCancellableCoroutine { c ->
-        addOnSuccessListener { c.resume(Unit) }
-        addOnFailureListener { c.resumeWithException(it) }
-        addOnCanceledListener { c.resumeWithException(TaskCancelledException()) }
+        // Off the main thread: a caller blocking the main thread (TrackingService.fail) must not wait on its own looper.
+        addOnSuccessListener(listenerExecutor) { c.resume(Unit) }
+        addOnFailureListener(listenerExecutor) { c.resumeWithException(it) }
+        addOnCanceledListener(listenerExecutor) { c.resumeWithException(TaskCancelledException()) }
     }
 }
 

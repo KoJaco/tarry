@@ -58,10 +58,13 @@ class CaptureCoordinator @Inject constructor(
      * start/stop entry point. Without it (plain coordinator tests) the session is just ended here.
      */
     @Volatile
-    var failureListener: (suspend (HealthIssue) -> Unit)? = null
+    var failureListener: (suspend (sessionId: Long, issue: HealthIssue) -> Unit)? = null
 
     /** True while a session is open in this process. */
     val isActive: Boolean get() = session != null
+
+    /** The id of the open session, or null. */
+    val activeSessionId: Long? get() = session?.id
 
     /**
      * Opens a session for [trigger]. A no-op if one is already running. A stale open session from a
@@ -94,6 +97,9 @@ class CaptureCoordinator @Inject constructor(
             withContext(NonCancellable) {
                 trackingRepo.saveSession(opened.copy(end = clock.nowMs(), endReason = SessionEndReason.KILLED))
                 statusStore.clearSessionState()
+                // Best effort: whatever the machine registered before failing must not outlive the session.
+                runCatching { geofenceClient.remove() }
+                runCatching { activityClient.unregister() }
             }
             throw t
         }
@@ -215,6 +221,7 @@ class CaptureCoordinator @Inject constructor(
 
     private fun startLocation(params: LocationRequestParams) {
         lastLocationParams = params
+        val sessionId = session?.id
         val previous = locationJob
         locationJob = scope.launch {
             try {
@@ -225,7 +232,7 @@ class CaptureCoordinator @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: SecurityException) {
-                scope.launch { onPermissionLost() }
+                scope.launch { onPermissionLost(sessionId) }
             } catch (e: Exception) {
                 // Rule 6: record the outage now (Gap, ATTENTION and alert) rather than waiting for the heartbeat check.
                 health.reportOutage(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED))
@@ -234,12 +241,14 @@ class CaptureCoordinator @Inject constructor(
         previous?.cancel()
     }
 
-    private suspend fun onPermissionLost() {
+    private suspend fun onPermissionLost(sessionId: Long?) {
+        // A new session may have started since this request died: it is not ours to stop.
+        if (sessionId == null || session?.id != sessionId) return
         val issue = HealthIssue(permissionCause(), GapCause.PERMISSION_LOST)
         val listener = failureListener
         if (listener != null) {
             // The controller reports the outage, then ends the session and stops the service (no zombie FGS).
-            listener(issue)
+            listener(sessionId, issue)
         } else {
             // Reported before end(), which clears the heartbeat the Gap starts from.
             health.reportOutage(issue)
@@ -264,11 +273,8 @@ class CaptureCoordinator @Inject constructor(
         } else {
             emptyList()
         }
-        // An open health Gap already covers the latest outage (it started at the last heartbeat): extend it
-        // instead of writing a second, overlapping Gap.
-        val last = active.lastOrNull()
-        val extended = last != null && health.extendOpenGap(last.start.toEpochMilli(), last.end.toEpochMilli())
-        for (interval in if (extended) active.dropLast(1) else active) {
+        // An open health Gap (started at the last heartbeat) absorbs the interval that touches it; the rest are ours.
+        for (interval in health.adoptOpenGap(active)) {
             timelineRepo.saveGap(
                 Gap(
                     start = interval.start.toEpochMilli(),

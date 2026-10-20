@@ -373,12 +373,52 @@ class TrackingControllerTest {
         coordinator.begin(SessionTrigger.SCHEDULE)
         val stopsBefore = launcher.stopCalls
 
-        controller.onCaptureFailed(HealthIssue(AttentionCause.NO_FINE_LOCATION, me.tarry.core.data.model.GapCause.PERMISSION_LOST))
+        controller.onCaptureFailed(coordinator.activeSessionId!!, HealthIssue(AttentionCause.NO_FINE_LOCATION, me.tarry.core.data.model.GapCause.PERMISSION_LOST))
 
         assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.PERMISSION_LOST)
         assertThat(launcher.stopCalls).isGreaterThan(stopsBefore)
         assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_FINE_LOCATION)
         assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE).single().cause)
             .isEqualTo(me.tarry.core.data.model.GapCause.PERMISSION_LOST)
+    }
+
+    @Test
+    fun serviceStartWhoseBeginFailsStopsTheServiceAndRecordsTheOutage() = runBlocking {
+        val failingGeofence = object : GeofenceClient {
+            override suspend fun addStayGeofence(lat: Double, lng: Double, radiusM: Float) = Unit
+            override suspend fun remove() = throw IllegalStateException("geofence api down")
+        }
+        val failingCoordinator = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, store, FakeLocationClient(), FakeActivityClient(), failingGeofence,
+            permissions, FakeWindowChecker(), health, clock, captureScope,
+        )
+        val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
+        val c = TrackingController(
+            failingCoordinator, launcher, store, trackingRepo, inputs, EffectiveScheduleCalculator(config), alarms,
+            segmentation, health, clock, config,
+        )
+
+        c.onServiceStarted(SessionTrigger.SCHEDULE)
+
+        assertThat(launcher.stopCalls).isGreaterThan(0)
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.SERVICE_NOT_RUNNING)
+        assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE).single().cause)
+            .isEqualTo(me.tarry.core.data.model.GapCause.SERVICE_KILLED)
+    }
+
+    @Test
+    fun captureFailureOfAnEarlierSessionDoesNotStopANewOne() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        val staleId = coordinator.activeSessionId!!
+        coordinator.end(SessionEndReason.SCHEDULE_END)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        val stopsBefore = launcher.stopCalls
+
+        controller.onCaptureFailed(staleId, HealthIssue(AttentionCause.NO_FINE_LOCATION, me.tarry.core.data.model.GapCause.PERMISSION_LOST))
+
+        assertThat(coordinator.isActive).isTrue()
+        assertThat(launcher.stopCalls).isEqualTo(stopsBefore)
+        assertThat(store.current().attentionCause).isNull()
     }
 }

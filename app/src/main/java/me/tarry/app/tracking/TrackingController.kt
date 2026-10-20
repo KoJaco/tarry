@@ -1,5 +1,6 @@
 package me.tarry.app.tracking
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -155,7 +156,23 @@ class TrackingController @Inject constructor(
      * controller lock, so a stop that arrived first leaves no open session without a running service.
      */
     suspend fun onServiceStarted(trigger: SessionTrigger) = mutex.withLock {
-        if (effectiveNow().isActive) coordinator.begin(trigger) else launcher.stop()
+        val effective = effectiveNow()
+        if (!effective.isActive) {
+            launcher.stop()
+            return@withLock
+        }
+        try {
+            coordinator.begin(trigger)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The service is in the foreground but there is no session (begin rolled back): stop it and say so.
+            launcher.stop()
+            health.reportOutage(
+                HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED),
+                effective.activeSince?.toEpochMilli(),
+            )
+        }
     }
 
     /** Closes a session left open by a dead process (KILLED, plus a Gap when inside a window). */
@@ -165,7 +182,8 @@ class TrackingController @Inject constructor(
      * A capture failure that must also stop the service (permission lost mid-session): report the outage while
      * the heartbeat is still set (it is the Gap start), then end the session and stop the service.
      */
-    suspend fun onCaptureFailed(issue: HealthIssue) = mutex.withLock {
+    suspend fun onCaptureFailed(sessionId: Long, issue: HealthIssue) = mutex.withLock {
+        if (coordinator.activeSessionId != sessionId) return@withLock
         health.reportOutage(issue)
         stopCapture(SessionEndReason.PERMISSION_LOST)
     }

@@ -386,7 +386,7 @@ class CaptureCoordinatorTest {
             config, trackingRepo, timelineRepo, store, denied, activityClient, geofence, permissions, windows,
             health, clock, captureScope,
         )
-        c.failureListener = { seen += it }
+        c.failureListener = { _, issue -> seen += issue }
         c.begin(SessionTrigger.SCHEDULE)
         kotlinx.coroutines.withTimeout(5_000) { while (seen.isEmpty()) kotlinx.coroutines.delay(10) }
 

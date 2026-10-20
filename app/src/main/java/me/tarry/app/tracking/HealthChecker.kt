@@ -53,11 +53,24 @@ class HealthChecker @Inject constructor(
     private val recorder: HealthGapRecorder,
     private val controller: TrackingController,
 ) {
+    private fun issueFor(health: HealthSnapshot): HealthIssue? =
+        if (health.shouldRun) evaluator.evaluate(health) else evaluator.standingIssue(health.preconditions)
+
+    /**
+     * Clears an attention-only cause (no Gap behind it) that no longer applies, so the toggle and alert update when the
+     * user fixes a setting instead of waiting for the next periodic check.
+     */
+    suspend fun clearResolved() {
+        val stored = recorder.attentionOnlyCause() ?: return
+        val issue = issueFor(snapshots.capture().health)
+        if (issue == null || issue.cause != stored) recorder.recoverCause(stored)
+    }
+
     /** Returns the outage found, or null if healthy. */
     suspend fun check(): HealthIssue? {
         val health = snapshots.capture().health
         // Outside a window only standing configuration problems count, and they never open a Gap (ADR 0003).
-        val issue = if (health.shouldRun) evaluator.evaluate(health) else evaluator.standingIssue(health.preconditions)
+        val issue = issueFor(health)
         if (issue == null) {
             recorder.recover(health.nowMs)
             return null

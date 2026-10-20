@@ -1,6 +1,7 @@
 package me.tarry.app.tracking
 
 import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -12,12 +13,14 @@ import me.tarry.core.data.model.GapCause
 
 /**
  * Builds the [CaptureScope]: one thread keeps fix batches, activity events and geofence exits in arrival order.
- * An uncaught exception in a capture coroutine is logged (no crash SDKs) and recorded as an outage rather than
- * crashing the process; the health check then restarts capture.
+ * An uncaught exception in a capture coroutine is logged (no crash SDKs) rather than crashing the process. It is
+ * recorded as an outage only while a session is open: the scope is also shared with state and UI work, whose
+ * failures are not capture outages.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 internal fun createCaptureScope(
     recorder: () -> HealthGapRecorder,
+    status: () -> TrackingStatusStore,
     dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1),
 ): CoroutineScope {
     lateinit var scope: CoroutineScope
@@ -25,8 +28,13 @@ internal fun createCaptureScope(
         Log.e(TAG, "Uncaught error in capture scope", e)
         scope.launch {
             try {
-                recorder().reportOutage(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED))
-            } catch (inner: Exception) {
+                if (status().current().activeSessionId != null) {
+                    recorder().reportOutage(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED))
+                }
+            } catch (c: CancellationException) {
+                throw c
+            } catch (inner: Throwable) {
+                // Logged only: reporting must never feed back into this handler.
                 Log.e(TAG, "Could not record the capture outage", inner)
             }
         }
