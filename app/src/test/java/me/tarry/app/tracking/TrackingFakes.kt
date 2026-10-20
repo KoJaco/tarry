@@ -87,3 +87,21 @@ class FakeLauncher(var denyStart: Boolean = false) : ServiceLauncher {
         stopCalls++
     }
 }
+
+class FakePreconditions(var value: Preconditions = Preconditions()) : PreconditionChecker {
+    override fun check() = value
+}
+
+class FakeAlertNotifier : HealthAlertNotifier {
+    val posted: MutableList<AttentionCause> = java.util.concurrent.CopyOnWriteArrayList()
+    var clearCalls = 0
+        private set
+
+    override fun post(cause: AttentionCause) {
+        posted += cause
+    }
+
+    override fun clear() {
+        clearCalls++
+    }
+}

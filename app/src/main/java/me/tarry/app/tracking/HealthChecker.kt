@@ -1,0 +1,67 @@
+package me.tarry.app.tracking
+
+import me.tarry.core.data.model.ManualOverrideType
+import java.time.Instant
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/** Builds the inputs for the health evaluator and the state reducer from live data. */
+@Singleton
+class TrackingSnapshotProvider @Inject constructor(
+    private val inputsProvider: ScheduleInputsProvider,
+    private val calculator: EffectiveScheduleCalculator,
+    private val statusStore: TrackingStatusStore,
+    private val preconditions: PreconditionChecker,
+    private val coordinator: CaptureCoordinator,
+    private val clock: TrackingClock,
+) {
+    suspend fun capture(): TrackingStateInputs {
+        val now = Instant.ofEpochMilli(clock.nowMs())
+        val zone = clock.zone()
+        val effective = calculator.calculate(inputsProvider.inputs(now, now, zone), now, zone)
+        val status = statusStore.current()
+        val pause = effective.winningOverride?.takeIf { it.type == ManualOverrideType.PAUSE }
+        return TrackingStateInputs(
+            health = HealthSnapshot(
+                nowMs = now.toEpochMilli(),
+                shouldRun = effective.isActive,
+                shouldRunSinceMs = effective.activeSince?.toEpochMilli(),
+                serviceRunning = coordinator.isActive,
+                lastHeartbeatMs = status.lastHeartbeatMs,
+                captureMode = status.captureMode,
+                alarmDegraded = status.alarmDegraded,
+                preconditions = preconditions.check(),
+            ),
+            pauseEndMode = pause?.endMode,
+            pausedUntil = effective.pausedUntil,
+            storedCause = status.attentionCause,
+        )
+    }
+}
+
+/**
+ * One health check (the logic behind [HealthCheckWorker]). Inside a window with an outage it records the cause,
+ * opens or extends the Gap, posts the alert and asks the controller to reconcile. Healthy, or outside a window,
+ * it closes any open Gap. The reconcile runs as SYSTEM: a worker is not exempt from background FGS-start limits,
+ * so a restart goes through the short alarm (ADR 0003).
+ */
+@Singleton
+class HealthChecker @Inject constructor(
+    private val snapshots: TrackingSnapshotProvider,
+    private val evaluator: HealthEvaluator,
+    private val recorder: HealthGapRecorder,
+    private val controller: TrackingController,
+) {
+    /** Returns the outage found, or null if healthy. */
+    suspend fun check(): HealthIssue? {
+        val health = snapshots.capture().health
+        val issue = evaluator.evaluate(health)
+        if (issue == null) {
+            recorder.recover(health.nowMs)
+            return null
+        }
+        recorder.reportOutage(issue, health.shouldRunSinceMs)
+        controller.reconcile(ReconcileSource.SYSTEM)
+        return issue
+    }
+}

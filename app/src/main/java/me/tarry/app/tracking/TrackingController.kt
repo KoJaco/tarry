@@ -1,15 +1,12 @@
 package me.tarry.app.tracking
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.tarry.app.BuildConfig
 import me.tarry.core.data.db.entity.ManualOverride
 import me.tarry.core.data.model.ActivityType
+import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.core.data.model.ManualOverrideType
 import me.tarry.core.data.model.SessionEndReason
@@ -75,6 +72,7 @@ class TrackingController @Inject constructor(
     private val calculator: EffectiveScheduleCalculator,
     private val alarmScheduler: ScheduleAlarmScheduler,
     private val segmentationTrigger: SegmentationTrigger,
+    private val health: HealthGapRecorder,
     private val clock: TrackingClock,
     private val config: TrackingConfig,
 ) {
@@ -173,12 +171,6 @@ class TrackingController @Inject constructor(
         }
     }
 
-    /** What the toggle sheet shows besides the state; re-emits when status or overrides change. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    fun observeDetails(): Flow<TrackingDetails> =
-        combine(statusStore.status, trackingRepo.observeActiveOverrides()) { status, _ -> status.attentionCause }
-            .mapLatest { cause -> TrackingDetails(cause, effectiveNow().pausedUntil) }
-
     private suspend fun effectiveNow(): EffectiveSchedule {
         val now = Instant.ofEpochMilli(clock.nowMs())
         val zone = clock.zone()
@@ -211,6 +203,8 @@ class TrackingController @Inject constructor(
             stopCapture(if (paused) SessionEndReason.USER_PAUSE else SessionEndReason.SCHEDULE_END)
             if (!paused) segmentationTrigger.onWindowEnd()
         }
+        // Not supposed to run (window ended, paused, stopped): any open outage ends here.
+        if (!effective.isActive) health.recover(now.toEpochMilli())
         rearm(if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition)
     }
 
@@ -233,12 +227,15 @@ class TrackingController @Inject constructor(
     }
 
     private suspend fun onStartFailureLocked(failure: StartFailure) {
-        when (failure) {
-            StartFailure.FGS_NOT_ALLOWED -> statusStore.setAttentionCause(AttentionCause.EXACT_ALARM_DENIED)
-            StartFailure.SECURITY -> coordinator.recordLocationPermissionFailure()
-        }
-        // TODO(2a-T8): open the matching health Gap (PERMISSION_LOST / SERVICE_KILLED) and post the alert notification.
         launcher.stop()
+        val effective = effectiveNow()
+        // A stale start (window already over, paused) is not an outage.
+        if (!effective.isActive) return
+        val issue = when (failure) {
+            StartFailure.FGS_NOT_ALLOWED -> HealthIssue(AttentionCause.EXACT_ALARM_DENIED, GapCause.SERVICE_KILLED)
+            StartFailure.SECURITY -> HealthIssue(coordinator.locationPermissionFailureCause(), GapCause.PERMISSION_LOST)
+        }
+        health.reportOutage(issue, effective.activeSince?.toEpochMilli())
     }
 
     /** Deactivates active overrides (of [type], or all if null), ending them now. */

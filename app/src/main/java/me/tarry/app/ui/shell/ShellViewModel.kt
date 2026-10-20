@@ -1,12 +1,9 @@
 package me.tarry.app.ui.shell
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.PauseKind
@@ -28,8 +25,7 @@ class ShellViewModel @Inject constructor(
 ) : ViewModel() {
     val trackingState: StateFlow<TrackingState> = repository.state
 
-    val trackingDetails: StateFlow<TrackingDetails> = controller.observeDetails()
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), TrackingDetails())
+    val trackingDetails: StateFlow<TrackingDetails> = repository.details
 
     val startDurationsMin: List<Int> = config.manualStartDurationsMin
 
@@ -47,9 +43,5 @@ class ShellViewModel @Inject constructor(
 
     fun stop() {
         captureScope.launch { controller.stop() }
-    }
-
-    private companion object {
-        const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
     }
 }

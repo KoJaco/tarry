@@ -28,7 +28,8 @@ data class TrackingStatus(
     val captureMode: CaptureMode? = null,
     val activeSessionId: Long? = null,
     val attentionCause: AttentionCause? = null,
-    val openHealthGapId: Long? = null,
+    /** Id (UUID) of the open health Gap. */
+    val openHealthGapId: String? = null,
     /** Debug-only test window start (epoch ms), consumed by the schedule calculator. */
     val debugTestWindowStartMs: Long? = null,
     /** True when the last alarm was armed inexact because exact alarms are not allowed (ADR 0003). */
@@ -66,7 +67,7 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setCaptureMode(mode: CaptureMode?) = set(CAPTURE_MODE, mode?.name)
     suspend fun setActiveSessionId(id: Long?) = set(ACTIVE_SESSION, id)
     suspend fun setAttentionCause(cause: AttentionCause?) = set(ATTENTION_CAUSE, cause?.name)
-    suspend fun setOpenHealthGapId(id: Long?) = set(OPEN_GAP, id)
+    suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
     suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
 
@@ -88,7 +89,7 @@ class TrackingStatusStore @Inject constructor(
         val CAPTURE_MODE = stringPreferencesKey("capture_mode")
         val ACTIVE_SESSION = longPreferencesKey("active_session_id")
         val ATTENTION_CAUSE = stringPreferencesKey("attention_cause")
-        val OPEN_GAP = longPreferencesKey("open_health_gap_id")
+        val OPEN_GAP = stringPreferencesKey("open_health_gap_uuid")
         val TEST_WINDOW_START = longPreferencesKey("debug_test_window_start_ms")
         val ALARM_DEGRADED = booleanPreferencesKey("alarm_degraded")
     }

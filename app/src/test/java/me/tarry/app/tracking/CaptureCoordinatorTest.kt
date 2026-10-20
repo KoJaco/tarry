@@ -48,6 +48,8 @@ class CaptureCoordinatorTest {
     private val permissions = FakePermissions()
     private val windows = FakeWindowChecker()
     private val clock = FakeClock()
+    private val alerts = FakeAlertNotifier()
+    private lateinit var health: HealthGapRecorder
     private lateinit var coordinator: CaptureCoordinator
 
     @Before
@@ -60,9 +62,10 @@ class CaptureCoordinatorTest {
         )
         timelineRepo = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
+        health = HealthGapRecorder(store, timelineRepo, alerts, clock, config)
         coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, activityClient, geofence, permissions, windows,
-            clock, captureScope,
+            health, clock, captureScope,
         )
     }
 
@@ -156,7 +159,7 @@ class CaptureCoordinatorTest {
     fun noActivityRecognitionFallsBackToDistanceGating() = runBlocking {
         val noAr = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, FakeActivityClient(available = false), geofence,
-            permissions, windows, clock, captureScope,
+            permissions, windows, health, clock, captureScope,
         )
         noAr.begin(SessionTrigger.SCHEDULE)
         noAr.onFixes(listOf(fix(0)))

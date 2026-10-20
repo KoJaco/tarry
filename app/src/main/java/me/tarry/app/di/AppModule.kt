@@ -13,7 +13,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import me.tarry.app.tracking.IdleTrackingStateRepository
+import me.tarry.app.tracking.DefaultTrackingStateRepository
 import me.tarry.app.tracking.TrackingConfig
 import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.tracking.TrackingStatusDataStore
@@ -25,7 +25,7 @@ import javax.inject.Singleton
 abstract class AppModule {
     @Binds
     @Singleton
-    abstract fun bindTrackingStateRepository(impl: IdleTrackingStateRepository): TrackingStateRepository
+    abstract fun bindTrackingStateRepository(impl: DefaultTrackingStateRepository): TrackingStateRepository
 
     companion object {
         @Provides

@@ -12,6 +12,10 @@ import kotlinx.coroutines.SupervisorJob
 import me.tarry.app.tracking.ActivityTransitionClient
 import me.tarry.app.tracking.EffectiveScheduleWindowChecker
 import me.tarry.app.tracking.AndroidLocationPermissionChecker
+import me.tarry.app.tracking.AndroidHealthAlertNotifier
+import me.tarry.app.tracking.AndroidPreconditionChecker
+import me.tarry.app.tracking.HealthAlertNotifier
+import me.tarry.app.tracking.PreconditionChecker
 import me.tarry.app.tracking.AndroidServiceLauncher
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.GeofenceClient
@@ -47,6 +51,12 @@ abstract class TrackingModule {
 
     @Binds
     abstract fun bindPermissionChecker(impl: AndroidLocationPermissionChecker): LocationPermissionChecker
+
+    @Binds
+    abstract fun bindPreconditionChecker(impl: AndroidPreconditionChecker): PreconditionChecker
+
+    @Binds
+    abstract fun bindHealthAlertNotifier(impl: AndroidHealthAlertNotifier): HealthAlertNotifier
 
     @Binds
     abstract fun bindClock(impl: SystemTrackingClock): TrackingClock

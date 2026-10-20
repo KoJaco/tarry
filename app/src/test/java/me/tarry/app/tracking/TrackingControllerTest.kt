@@ -48,11 +48,14 @@ class TrackingControllerTest {
     private lateinit var db: TarryDatabase
     private lateinit var trackingRepo: TrackingRepository
     private lateinit var scheduleRepo: ScheduleRepository
+    private lateinit var timelineRepo: TimelineRepository
+    private lateinit var health: HealthGapRecorder
     private lateinit var store: TrackingStatusStore
     private val permissions = FakePermissions()
     private val launcher = FakeLauncher()
     private val alarms = FakeAlarmScheduler()
     private val segmentation = FakeSegmentationTrigger()
+    private val alerts = FakeAlertNotifier()
     private val clock = FakeClock(now = mondayAt(10).toEpochMilli(), zone = sydney)
     private lateinit var coordinator: CaptureCoordinator
     private lateinit var controller: TrackingController
@@ -73,13 +76,15 @@ class TrackingControllerTest {
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val calculator = EffectiveScheduleCalculator(config)
+        timelineRepo = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
+        health = HealthGapRecorder(store, timelineRepo, alerts, clock, config)
         coordinator = CaptureCoordinator(
-            config, trackingRepo, TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao()),
+            config, trackingRepo, timelineRepo,
             store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), permissions,
-            EffectiveScheduleWindowChecker(inputs, calculator, clock), clock, captureScope,
+            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
-            coordinator, launcher, store, trackingRepo, inputs, calculator, alarms, segmentation, clock, config,
+            coordinator, launcher, store, trackingRepo, inputs, calculator, alarms, segmentation, health, clock, config,
         )
     }
 

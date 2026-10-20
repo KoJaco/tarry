@@ -48,6 +48,14 @@ data class EffectiveSchedule(
     val manuallyStarted: Boolean
         get() = isActive && currentWindow == null && winningOverride?.type == ManualOverrideType.START
 
+    /** When the current active stretch began: the later of the window start and a manual START; null if not active. */
+    val activeSince: Instant?
+        get() {
+            if (!isActive) return null
+            val manualStart = winningOverride?.takeIf { it.type == ManualOverrideType.START }?.start?.let(Instant::ofEpochMilli)
+            return listOfNotNull(currentWindow?.start, manualStart).maxOrNull()
+        }
+
     /** The resume time when a manual PAUSE is in force; null if not paused or the pause is open-ended. */
     val pausedUntil: Instant?
         get() = if (winningOverride?.type == ManualOverrideType.PAUSE) winningOverrideEnd else null

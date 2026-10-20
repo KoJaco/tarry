@@ -25,6 +25,10 @@ data class TrackingConfig(
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,
+    /** How long a due session may take to appear before "service not running" is reported. */
+    val serviceStartGraceMs: Long = 2 * 60_000L,
+    /** Health Gaps of the same cause closer together than this are merged into one. */
+    val gapMergeToleranceMs: Long = 60_000L,
     // Schedule engine.
     /** How far back and ahead the calculator builds windows when looking for the next transition. */
     val scheduleLookBackDays: Long = 1L,

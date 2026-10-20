@@ -31,14 +31,14 @@ class TrackingStatusStoreTest {
         s.setCaptureMode(CaptureMode.STATIONARY)
         s.setActiveSessionId(7L)
         s.setAttentionCause(AttentionCause.LOCATION_OFF)
-        s.setOpenHealthGapId(9L)
+        s.setOpenHealthGapId("gap-9")
         s.setDebugTestWindowStart(555L)
         assertThat(s.current()).isEqualTo(
-            TrackingStatus(123L, CaptureMode.STATIONARY, 7L, AttentionCause.LOCATION_OFF, 9L, 555L),
+            TrackingStatus(123L, CaptureMode.STATIONARY, 7L, AttentionCause.LOCATION_OFF, "gap-9", 555L),
         )
         s.clearSessionState()
         s.setAttentionCause(null)
-        assertThat(s.current()).isEqualTo(TrackingStatus(openHealthGapId = 9L, debugTestWindowStartMs = 555L))
+        assertThat(s.current()).isEqualTo(TrackingStatus(openHealthGapId = "gap-9", debugTestWindowStartMs = 555L))
     }
 
     @Test

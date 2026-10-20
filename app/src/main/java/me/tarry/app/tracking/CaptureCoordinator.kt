@@ -40,6 +40,7 @@ class CaptureCoordinator @Inject constructor(
     private val geofenceClient: GeofenceClient,
     private val permissions: LocationPermissionChecker,
     private val windowChecker: ScheduleWindowChecker,
+    private val health: HealthGapRecorder,
     private val clock: TrackingClock,
     @param:CaptureScope private val scope: CoroutineScope,
 ) {
@@ -70,8 +71,8 @@ class CaptureCoordinator @Inject constructor(
         filter = PingFilter(config)
         statusStore.setActiveSessionId(opened.id)
         statusStore.setLastHeartbeat(now)
-        // Tracking is working again; T8's health check re-raises anything still broken.
-        statusStore.setAttentionCause(null)
+        // The service is up, so the outage (if any) is over; the health check re-raises anything still broken.
+        health.recover(now)
         val m = CaptureModeMachine(config, activityRecognitionAvailable = activityClient.register())
         machine = m
         apply(m.start())
@@ -97,10 +98,8 @@ class CaptureCoordinator @Inject constructor(
      */
     suspend fun recoverCrashedSession() = mutex.withLock { recoverLocked() }
 
-    /** Sets the ATTENTION cause for a failed `location` FGS start (missing fine or background location). */
-    suspend fun recordLocationPermissionFailure() {
-        statusStore.setAttentionCause(permissionCause())
-    }
+    /** The ATTENTION cause for a failed `location` FGS start (missing fine or background location). */
+    fun locationPermissionFailureCause(): AttentionCause = permissionCause()
 
     suspend fun onFixes(fixes: List<Fix>) = mutex.withLock {
         val open = session ?: return@withLock
@@ -129,7 +128,11 @@ class CaptureCoordinator @Inject constructor(
         }
         if (accepted.isNotEmpty()) trackingRepo.savePings(accepted)
         // Every fix or batch counts as a heartbeat, even when all were filtered out.
-        if (latest != Long.MIN_VALUE) statusStore.setLastHeartbeat(latest)
+        if (latest != Long.MIN_VALUE) {
+            statusStore.setLastHeartbeat(latest)
+            // A fix arrived, so any open outage (for example NO_FIX) is over.
+            health.recover(latest)
+        }
     }
 
     suspend fun onActivity(type: ActivityType) = mutex.withLock {
@@ -186,8 +189,8 @@ class CaptureCoordinator @Inject constructor(
     }
 
     private suspend fun onPermissionLost() {
-        statusStore.setAttentionCause(permissionCause())
-        // TODO(2a-T8): open a PERMISSION_LOST health Gap and post the alert notification.
+        // Reported before end(), which clears the heartbeat the Gap starts from.
+        health.reportOutage(HealthIssue(permissionCause(), GapCause.PERMISSION_LOST))
         end(SessionEndReason.PERMISSION_LOST)
     }
 
@@ -204,16 +207,20 @@ class CaptureCoordinator @Inject constructor(
         if (now > closedAt &&
             windowChecker.isInsideWindow(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(now))
         ) {
-            timelineRepo.saveGap(
-                Gap(
-                    start = closedAt,
-                    end = now,
-                    zoneId = clock.zone().id,
-                    cause = GapCause.SERVICE_KILLED,
-                    sessionId = open.id,
-                    updatedAt = now,
-                ),
-            )
+            // An open health Gap already covers this outage (it started at the last heartbeat): extend it
+            // instead of writing a second, overlapping Gap.
+            if (!health.extendOpenGap(now)) {
+                timelineRepo.saveGap(
+                    Gap(
+                        start = closedAt,
+                        end = now,
+                        zoneId = clock.zone().id,
+                        cause = GapCause.SERVICE_KILLED,
+                        sessionId = open.id,
+                        updatedAt = now,
+                    ),
+                )
+            }
         }
         statusStore.clearSessionState()
         // A dead process can leave its stay geofence and activity registration behind.
