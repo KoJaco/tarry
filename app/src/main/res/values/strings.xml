@@ -49,6 +49,48 @@
     <string name="tracking_attention_exact_alarm_denied">Exact alarms are not allowed, so tracking cannot start on its own.</string>
     <string name="tracking_attention_unknown">Tracking needs attention.</string>
 
+    <string name="permissions_title">Permissions</string>
+    <string name="permissions_intro">Tarry records your location during your work hours so you can label visits and trips later. Everything stays on this phone.</string>
+    <string name="permissions_required_note">Required for scheduled tracking</string>
+    <string name="permissions_status_granted">Granted</string>
+    <string name="permissions_status_not_granted">Not granted</string>
+    <string name="permissions_status_skipped">Skipped</string>
+    <string name="permissions_status_locked">Waiting for the previous step</string>
+    <string name="permissions_action_allow">Allow</string>
+    <string name="permissions_action_open_settings">Open settings</string>
+    <string name="permissions_action_skip">Skip</string>
+    <string name="permissions_action_done">Done</string>
+    <string name="permissions_action_allow_description">Allow %1$s</string>
+    <string name="permissions_action_skip_description">Skip %1$s</string>
+    <string name="permissions_status_description">%1$s: %2$s</string>
+    <string name="permissions_missing_required">Scheduled tracking will not start until the steps marked as required are granted.</string>
+
+    <string name="permissions_step_location">Precise location</string>
+    <string name="permissions_step_location_body">Lets Tarry record where you are while tracking. Allow precise location while using the app.</string>
+    <string name="permissions_step_location_degraded">Without precise location nothing can be recorded.</string>
+    <string name="permissions_step_background">Location all the time</string>
+    <string name="permissions_step_background_body">Lets Tarry start recording at the beginning of your work hours without you opening the app. Choose \"Allow all the time\".</string>
+    <string name="permissions_step_background_degraded">Without it, scheduled tracking cannot start by itself.</string>
+    <string name="permissions_step_activity">Physical activity</string>
+    <string name="permissions_step_activity_body">Lets Tarry notice when you stop or start moving, which saves battery.</string>
+    <string name="permissions_step_activity_degraded">Without it, Tarry relies on distance only and uses more battery.</string>
+    <string name="permissions_step_notifications">Notifications</string>
+    <string name="permissions_step_notifications_body">Shows the tracking status and alerts you if tracking stops unexpectedly.</string>
+    <string name="permissions_step_notifications_degraded">Without it, you may not notice that tracking stopped.</string>
+    <string name="permissions_step_exact_alarms">Exact alarms</string>
+    <string name="permissions_step_exact_alarms_body">Lets Tarry start and stop tracking at the exact start and end of your work hours.</string>
+    <string name="permissions_step_exact_alarms_degraded">Without it, tracking may start late or not at all.</string>
+    <string name="permissions_step_battery">Battery optimisation</string>
+    <string name="permissions_step_battery_body">Stops the system from putting Tarry to sleep while it records.</string>
+    <string name="permissions_step_battery_degraded">Without it, the system may pause tracking to save battery.</string>
+
+    <string name="permissions_disclosure_title">Location all the time</string>
+    <string name="permissions_disclosure_body">Tarry collects your phone\'s location (latitude, longitude, accuracy and speed) in the background during the work hours you schedule, even when the app is closed. It uses this to work out where you stopped and how you travelled, so you can label visits and trips for invoicing.\n\nThis data is stored only on this phone. It is never uploaded or shared. You can export it yourself at any time.\n\nNext, choose \"Allow all the time\" in the system settings.</string>
+    <string name="permissions_disclosure_continue">Continue</string>
+    <string name="permissions_disclosure_cancel">Not now</string>
+
+    <string name="settings_permissions">Permissions</string>
+
     <string name="settings_rounding_increment">Rounding increment</string>
     <string name="settings_rounding_mode">Rounding mode</string>
     <string name="settings_min_billable">Minimum billable time</string>

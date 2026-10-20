@@ -181,8 +181,8 @@ class CaptureCoordinator @Inject constructor(
             } catch (e: SecurityException) {
                 scope.launch { onPermissionLost() }
             } catch (e: Exception) {
-                // Heartbeat goes stale and T8 reports it; surface the cause now rather than staying silent.
-                statusStore.setAttentionCause(AttentionCause.SERVICE_NOT_RUNNING)
+                // Rule 6: record the outage now (Gap, ATTENTION and alert) rather than waiting for the heartbeat check.
+                health.reportOutage(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED))
             }
         }
         previous?.cancel()

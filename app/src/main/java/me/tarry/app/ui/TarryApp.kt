@@ -3,6 +3,7 @@ package me.tarry.app.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,9 +25,11 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.navigation.PermissionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
+import me.tarry.app.ui.permissions.PermissionsScreen
 import me.tarry.app.ui.settings.SettingsScreen
 import me.tarry.app.ui.shell.ShellViewModel
 import me.tarry.app.ui.shell.TarryBottomBar
@@ -40,13 +43,24 @@ fun TarryApp(shellViewModel: ShellViewModel = hiltViewModel()) {
     val trackingDetails by shellViewModel.trackingDetails.collectAsStateWithLifecycle()
     var sheetVisible by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
+    val openPermissions = { if (backStack.lastOrNull() != PermissionsRoute) backStack.add(PermissionsRoute) }
+    var initialChecked by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (!initialChecked) {
+            initialChecked = true
+            if (shellViewModel.needsInitialPermissions()) openPermissions()
+        }
+    }
     TarryAppContent(
         trackingState = trackingState,
         backStack = backStack,
         onNavigate = { backStack.navigateTopLevel(it) },
         onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
         onToggleClick = { sheetVisible = true },
-        settingsContent = { SettingsScreen() },
+        settingsContent = { SettingsScreen(onOpenPermissions = { openPermissions() }) },
+        permissionsContent = {
+            PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
+        },
     )
     if (sheetVisible) {
         val openAppSettings = { context.startActivity(appSettingsIntent(context)) }
@@ -60,8 +74,7 @@ fun TarryApp(shellViewModel: ShellViewModel = hiltViewModel()) {
                 onResume = shellViewModel::resume,
                 onStop = shellViewModel::stop,
                 onOpenLocationSettings = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
-                // TODO(2a-T9): navigate to PermissionsRoute instead.
-                onOpenPermissionsScreen = openAppSettings,
+                onOpenPermissionsScreen = { openPermissions() },
                 onOpenAppSettings = openAppSettings,
             ),
             onDismiss = { sheetVisible = false },
@@ -81,15 +94,17 @@ fun TarryAppContent(
     onBack: () -> Unit,
     onToggleClick: () -> Unit,
     settingsContent: @Composable () -> Unit,
+    permissionsContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute }
     Scaffold(
         modifier = modifier,
         bottomBar = {
             TarryBottomBar(
                 trackingState = trackingState,
-                timelineSelected = backStack.lastOrNull() != SettingsRoute,
-                settingsSelected = backStack.lastOrNull() == SettingsRoute,
+                timelineSelected = topLevel != SettingsRoute,
+                settingsSelected = topLevel == SettingsRoute,
                 onTimelineClick = { onNavigate(TimelineRoute) },
                 onSettingsClick = { onNavigate(SettingsRoute) },
                 onToggleClick = onToggleClick,
@@ -107,6 +122,7 @@ fun TarryAppContent(
             entryProvider = entryProvider {
                 entry<TimelineRoute> { TimelineScreen() }
                 entry<SettingsRoute> { settingsContent() }
+                entry<PermissionsRoute> { permissionsContent() }
             },
         )
     }

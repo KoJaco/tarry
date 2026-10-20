@@ -169,6 +169,29 @@ class CaptureCoordinatorTest {
     }
 
     @Test
+    fun locationUpdatesFailingWithGenericExceptionRecordsOutageGapAndAlert() = runBlocking {
+        val failing = object : LocationClient {
+            override fun updates(params: LocationRequestParams) =
+                kotlinx.coroutines.flow.flow<List<Fix>> { throw IllegalStateException("boom") }
+        }
+        val c = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, store, failing, activityClient, geofence, permissions, windows,
+            health, clock, captureScope,
+        )
+        c.begin(SessionTrigger.SCHEDULE)
+        // The outage is reported from the capture scope, so wait for it.
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (alerts.posted.isEmpty()) kotlinx.coroutines.delay(10)
+        }
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.SERVICE_NOT_RUNNING)
+        assertThat(alerts.posted).containsExactly(AttentionCause.SERVICE_NOT_RUNNING)
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.cause).isEqualTo(GapCause.SERVICE_KILLED)
+        assertThat(store.current().openHealthGapId).isEqualTo(gap.id)
+    }
+
+    @Test
     fun endClosesSessionAndTearsDown() = runBlocking {
         coordinator.begin(SessionTrigger.SCHEDULE)
         clock.now += 60_000
