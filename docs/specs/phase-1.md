@@ -41,11 +41,11 @@ Conventions: UUIDs stored as `String` (generated with `UUID.randomUUID()`), time
 | `TagGroup` | id, name, colorArgb, sortOrder, updatedAt, deleted | |
 | `Tag` | id, groupId, name, sortOrder, archived=false, updatedAt, deleted | groupId |
 | `VisitTag`, `TripTag` | (visitId/tripId, tagId) composite PK | tagId |
-| `ExcludedRange` | id, start, end, updatedAt, deleted | start |
-| `Gap` | id, start, end, cause (TRACKING_STOPPED, SERVICE_KILLED, PERMISSION_LOST, LOCATION_OFF, NO_FIX, NO_SESSION), sessionId?, updatedAt, deleted | start |
+| `ExcludedRange` | id, start, end, zoneId, updatedAt, deleted | start |
+| `Gap` | id, start, end, zoneId, cause (TRACKING_STOPPED, SERVICE_KILLED, PERMISSION_LOST, LOCATION_OFF, NO_FIX, NO_SESSION), sessionId?, updatedAt, deleted | start |
 | `ScheduleTemplate` | id Int = 0 (single row), slots ByteArray (336 bits = 42 bytes, Monday 00:00 first), updatedAt | |
 | `ScheduleOverride` | weekStart String (ISO Monday, PK), slots ByteArray, updatedAt | |
-| `ManualOverride` | id Long auto, type (START, PAUSE), start, end?, endMode (UNTIL_STOPPED, END_OF_DAY, DURATION, NEXT_WINDOW), active Boolean | active |
+| `ManualOverride` | id Long auto, type (START, PAUSE), start, end?, zoneId, endMode (UNTIL_STOPPED, END_OF_DAY, DURATION, NEXT_WINDOW), active Boolean | active |
 | `SegmentationCheckpoint` | id Int = 0, processedUntil Long | |
 
 - `TarryDatabase` at version 1, `exportSchema = true`, no destructive fallback.
@@ -84,7 +84,7 @@ Conventions: UUIDs stored as `String` (generated with `UUID.randomUUID()`), time
 
 ## Acceptance criteria
 - `./gradlew.bat assembleDebug testDebugUnitTest :segmentation:test lintDebug` passes locally and in CI.
-- `core-data/schemas/me.tarry.core.data.TarryDatabase/1.json` is committed and contains all 18 tables.
+- `core-data/schemas/me.tarry.core.data.db.TarryDatabase/1.json` is committed and contains all 17 tables.
 - The app installs on the Pixel 10 (`installDebug`), opens on Timeline, shows the three-part bottom bar with an IDLE toggle, and Settings shows the default settings.
 - `adb shell dumpsys package me.tarry.app | grep -i allowBackup` reports backup disabled, and the declared permissions are listed.
 - `:segmentation` has no Android imports (`grep -r "import android" segmentation/` is empty).
