@@ -38,6 +38,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- THROWAWAY: phase 2a T1 spike. -->
+        <receiver android:name=".spike.SpikeArmReceiver" android:exported="true" />
+        <receiver android:name=".spike.SpikeAlarmReceiver" android:exported="false" />
+        <service
+            android:name=".spike.SpikeLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
 
 </manifest>
