@@ -90,6 +90,47 @@
     <string name="permissions_disclosure_cancel">Not now</string>
 
     <string name="settings_permissions">Permissions</string>
+    <string name="settings_sessions">Sessions</string>
+
+    <string name="sessions_title">Sessions</string>
+    <string name="sessions_empty">No sessions recorded yet</string>
+    <string name="sessions_test_window">Start test window</string>
+    <string name="sessions_test_window_hint">Starts a 10 minute tracking window in about 2 minutes (debug builds only).</string>
+    <string name="sessions_row_title">%1$s to %2$s</string>
+    <string name="sessions_row_open">in progress</string>
+    <string name="sessions_row_detail">%1$s, %2$s</string>
+    <plurals name="sessions_row_pings">
+        <item quantity="one">%1$d ping</item>
+        <item quantity="other">%1$d pings</item>
+    </plurals>
+    <string name="sessions_trigger_schedule">Scheduled</string>
+    <string name="sessions_trigger_manual">Manual</string>
+    <string name="sessions_end_reason_none">Still open</string>
+    <string name="sessions_end_schedule_end">Window ended</string>
+    <string name="sessions_end_user_stop">Stopped</string>
+    <string name="sessions_end_user_pause">Paused</string>
+    <string name="sessions_end_killed">Killed</string>
+    <string name="sessions_end_permission_lost">Permission lost</string>
+    <string name="sessions_export_gpx">GPX</string>
+    <string name="sessions_export_csv">CSV</string>
+    <string name="sessions_export_gpx_description">Export GPX for session %1$d</string>
+    <string name="sessions_export_csv_description">Export CSV for session %1$d</string>
+    <string name="sessions_export_range_title">Export a date range</string>
+    <string name="sessions_export_range_from">From %1$s</string>
+    <string name="sessions_export_range_to">To %1$s</string>
+    <string name="sessions_export_range_from_description">Choose the first day, currently %1$s</string>
+    <string name="sessions_export_range_to_description">Choose the last day, currently %1$s</string>
+    <string name="sessions_export_range_gpx">Range as GPX</string>
+    <string name="sessions_export_range_csv">Range as CSV</string>
+    <string name="sessions_date_picker_ok">OK</string>
+    <string name="sessions_date_picker_cancel">Cancel</string>
+    <plurals name="sessions_export_done">
+        <item quantity="one">Exported %1$d ping</item>
+        <item quantity="other">Exported %1$d pings</item>
+    </plurals>
+    <string name="sessions_export_failed">Export failed</string>
+    <string name="sessions_export_privacy">Raw location leaves the phone only through the file you choose to save.</string>
+
 
     <string name="settings_rounding_increment">Rounding increment</string>
     <string name="settings_rounding_mode">Rounding mode</string>

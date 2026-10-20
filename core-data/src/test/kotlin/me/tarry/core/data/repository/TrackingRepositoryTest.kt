@@ -1,6 +1,7 @@
 package me.tarry.core.data.repository
 
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import me.tarry.core.data.db.DbTestBase
 import me.tarry.core.data.db.entity.LocationPing
@@ -48,6 +49,27 @@ class TrackingRepositoryTest : DbTestBase() {
         val updatedId = r.savePing(original.copy(accuracyM = 9f))
         assertThat(updatedId).isEqualTo(id)
         assertThat(db.locationPingDao().getById(id)!!.accuracyM).isEqualTo(9f)
+    }
+
+    @Test
+    fun sessionsAreListedNewestFirstWithPingCounts() = runTest {
+        val r = repo()
+        val older = r.saveSession(TrackingSession(start = 10, zoneId = "UTC", trigger = SessionTrigger.SCHEDULE))
+        val newer = r.saveSession(TrackingSession(start = 20, zoneId = "UTC", trigger = SessionTrigger.MANUAL))
+        val empty = r.saveSession(TrackingSession(start = 30, zoneId = "UTC", trigger = SessionTrigger.MANUAL))
+        for ((i, sid) in listOf(older, newer, newer).withIndex()) {
+            r.savePing(
+                LocationPing(
+                    timestamp = 100L + i, zoneId = "UTC", lat = 1.0, lng = 2.0, accuracyM = 5f,
+                    source = PingSource.FUSED, sessionId = sid,
+                ),
+            )
+        }
+
+        assertThat(r.observeSessions().first().map { it.id }).containsExactly(empty, newer, older).inOrder()
+        val counts = r.observePingCounts().first()
+        assertThat(counts).containsExactly(older, 1, newer, 2)
+        assertThat(counts[empty]).isNull()
     }
 
     @Test

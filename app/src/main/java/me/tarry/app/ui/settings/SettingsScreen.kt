@@ -29,11 +29,12 @@ import me.tarry.core.data.settings.Settings
 @Composable
 fun SettingsScreen(
     onOpenPermissions: () -> Unit,
+    onOpenSessions: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    SettingsContent(settings, onOpenPermissions, modifier)
+    SettingsContent(settings, onOpenPermissions, onOpenSessions, modifier)
 }
 
 /** Stateless, read-only list of the current settings. */
@@ -41,6 +42,7 @@ fun SettingsScreen(
 fun SettingsContent(
     settings: Settings?,
     onOpenPermissions: () -> Unit = {},
+    onOpenSessions: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val on = stringResource(R.string.settings_on)
@@ -72,6 +74,7 @@ fun SettingsContent(
             modifier = Modifier.padding(16.dp),
         )
         ClickableRow(stringResource(R.string.settings_permissions), onOpenPermissions)
+        ClickableRow(stringResource(R.string.settings_sessions), onOpenSessions)
         LazyColumn {
             items(rows) { (label, value) -> SettingRow(label, value) }
         }

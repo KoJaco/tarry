@@ -26,10 +26,12 @@ import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.navigation.PermissionsRoute
+import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.permissions.PermissionsScreen
+import me.tarry.app.ui.sessions.SessionsScreen
 import me.tarry.app.ui.settings.SettingsScreen
 import me.tarry.app.ui.shell.ShellViewModel
 import me.tarry.app.ui.shell.TarryBottomBar
@@ -57,10 +59,16 @@ fun TarryApp(shellViewModel: ShellViewModel = hiltViewModel()) {
         onNavigate = { backStack.navigateTopLevel(it) },
         onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
         onToggleClick = { sheetVisible = true },
-        settingsContent = { SettingsScreen(onOpenPermissions = { openPermissions() }) },
+        settingsContent = {
+            SettingsScreen(
+                onOpenPermissions = { openPermissions() },
+                onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
+            )
+        },
         permissionsContent = {
             PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
         },
+        sessionsContent = { SessionsScreen() },
     )
     if (sheetVisible) {
         val openAppSettings = { context.startActivity(appSettingsIntent(context)) }
@@ -95,6 +103,7 @@ fun TarryAppContent(
     onToggleClick: () -> Unit,
     settingsContent: @Composable () -> Unit,
     permissionsContent: @Composable () -> Unit = {},
+    sessionsContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute }
@@ -123,6 +132,7 @@ fun TarryAppContent(
                 entry<TimelineRoute> { TimelineScreen() }
                 entry<SettingsRoute> { settingsContent() }
                 entry<PermissionsRoute> { permissionsContent() }
+                entry<SessionsRoute> { sessionsContent() }
             },
         )
     }
