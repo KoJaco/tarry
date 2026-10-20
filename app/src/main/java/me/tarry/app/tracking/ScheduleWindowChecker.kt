@@ -1,14 +1,21 @@
 package me.tarry.app.tracking
 
 import java.time.Instant
+import javax.inject.Inject
 
-/** Answers whether any part of [from, to] lies inside an active schedule window. */
+/** Answers whether capture should have been running at any point in [from, to]. */
 interface ScheduleWindowChecker {
-    fun isInsideWindow(from: Instant, to: Instant): Boolean
+    suspend fun isInsideWindow(from: Instant, to: Instant): Boolean
 }
 
-/** Provisional binding until the schedule calculator exists. */
-// TODO(2a-T6): replace with a checker backed by EffectiveScheduleCalculator.
-class AlwaysInsideWindowChecker @javax.inject.Inject constructor() : ScheduleWindowChecker {
-    override fun isInsideWindow(from: Instant, to: Instant): Boolean = true
+/** Backed by the stored schedule, week overrides, manual overrides and the debug test window. */
+class EffectiveScheduleWindowChecker @Inject constructor(
+    private val inputsProvider: ScheduleInputsProvider,
+    private val calculator: EffectiveScheduleCalculator,
+    private val clock: TrackingClock,
+) : ScheduleWindowChecker {
+    override suspend fun isInsideWindow(from: Instant, to: Instant): Boolean {
+        val zone = clock.zone()
+        return calculator.intersectsActive(inputsProvider.inputs(from, to, zone), from, to, zone)
+    }
 }

@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
@@ -28,8 +29,10 @@ data class TrackingStatus(
     val activeSessionId: Long? = null,
     val attentionCause: AttentionCause? = null,
     val openHealthGapId: Long? = null,
-    /** Debug-only test window start (epoch ms), consumed by the schedule calculator (T6). */
+    /** Debug-only test window start (epoch ms), consumed by the schedule calculator. */
     val debugTestWindowStartMs: Long? = null,
+    /** True when the last alarm was armed inexact because exact alarms are not allowed (ADR 0003). */
+    val alarmDegraded: Boolean = false,
 )
 
 /** `tracking_status` DataStore configuration; a corrupt file is replaced by defaults. */
@@ -53,6 +56,7 @@ class TrackingStatusStore @Inject constructor(
             attentionCause = p[ATTENTION_CAUSE].toEnumOrNull<AttentionCause>(),
             openHealthGapId = p[OPEN_GAP],
             debugTestWindowStartMs = p[TEST_WINDOW_START],
+            alarmDegraded = p[ALARM_DEGRADED] ?: false,
         )
     }
 
@@ -64,6 +68,7 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setAttentionCause(cause: AttentionCause?) = set(ATTENTION_CAUSE, cause?.name)
     suspend fun setOpenHealthGapId(id: Long?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
+    suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
 
     /** Clears per-session runtime state (heartbeat, mode, session id). Attention, gap and test window are kept. */
     suspend fun clearSessionState() {
@@ -85,6 +90,7 @@ class TrackingStatusStore @Inject constructor(
         val ATTENTION_CAUSE = stringPreferencesKey("attention_cause")
         val OPEN_GAP = longPreferencesKey("open_health_gap_id")
         val TEST_WINDOW_START = longPreferencesKey("debug_test_window_start_ms")
+        val ALARM_DEGRADED = booleanPreferencesKey("alarm_degraded")
     }
 }
 

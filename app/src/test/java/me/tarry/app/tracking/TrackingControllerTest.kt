@@ -3,17 +3,23 @@ package me.tarry.app.tracking
 import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
-import com.google.common.truth.Truth.assertThat
 import com.google.android.gms.location.DetectedActivity
+import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.tarry.core.data.db.TarryDatabase
+import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.ActivityType
+import me.tarry.core.data.model.ManualOverrideEndMode
+import me.tarry.core.data.model.ManualOverrideType
+import me.tarry.core.data.model.Schedule
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.repository.ScheduleRepository
 import me.tarry.core.data.repository.TimelineRepository
 import me.tarry.core.data.repository.TrackingRepository
 import org.junit.After
@@ -24,6 +30,9 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35])
@@ -31,16 +40,26 @@ class TrackingControllerTest {
     @get:Rule
     val folder = TemporaryFolder()
 
+    private val config = TrackingConfig()
+    private val sydney = ZoneId.of("Australia/Sydney")
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val captureScope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
 
     private lateinit var db: TarryDatabase
     private lateinit var trackingRepo: TrackingRepository
+    private lateinit var scheduleRepo: ScheduleRepository
     private lateinit var store: TrackingStatusStore
     private val permissions = FakePermissions()
     private val launcher = FakeLauncher()
+    private val alarms = FakeAlarmScheduler()
+    private val segmentation = FakeSegmentationTrigger()
+    private val clock = FakeClock(now = mondayAt(10).toEpochMilli(), zone = sydney)
     private lateinit var coordinator: CaptureCoordinator
     private lateinit var controller: TrackingController
+
+    /** 2026-10-19 is a Monday; the preset is active 07:00-17:00. */
+    private fun mondayAt(hour: Int, minute: Int = 0, day: Int = 19): Instant =
+        ZonedDateTime.of(2026, 10, day, hour, minute, 0, 0, sydney).toInstant()
 
     @Before
     fun setUp() {
@@ -50,13 +69,18 @@ class TrackingControllerTest {
         trackingRepo = TrackingRepository(
             db.trackingSessionDao(), db.locationPingDao(), db.manualOverrideDao(), db.segmentationCheckpointDao(),
         )
+        scheduleRepo = ScheduleRepository(db.scheduleDao())
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
+        val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
+        val calculator = EffectiveScheduleCalculator(config)
         coordinator = CaptureCoordinator(
-            TrackingConfig(), trackingRepo, TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao()),
-            store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), permissions, FakeWindowChecker(),
-            FakeClock(), captureScope,
+            config, trackingRepo, TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao()),
+            store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), permissions,
+            EffectiveScheduleWindowChecker(inputs, calculator, clock), clock, captureScope,
         )
-        controller = TrackingController(coordinator, launcher, store)
+        controller = TrackingController(
+            coordinator, launcher, store, trackingRepo, inputs, calculator, alarms, segmentation, clock, config,
+        )
     }
 
     @After
@@ -66,21 +90,203 @@ class TrackingControllerTest {
         db.close()
     }
 
-    @Test
-    fun startCaptureLaunchesServiceWithTrigger() = runBlocking {
-        controller.startCapture(SessionTrigger.MANUAL)
+    private suspend fun sessions() = trackingRepo.sessionsInRange(0, Long.MAX_VALUE)
 
-        assertThat(launcher.started).containsExactly(SessionTrigger.MANUAL)
+    private suspend fun overrides() = trackingRepo.overridesInRange(0, Long.MAX_VALUE)
+
+    @Test
+    fun reconcileSeedsTheMonFriPreset() = runBlocking {
+        controller.reconcile()
+
+        assertThat(scheduleRepo.template()).isEqualTo(Schedule.MON_FRI_7_TO_17)
+    }
+
+    @Test
+    fun reconcileInsideWindowStartsScheduledServiceAndArmsWindowEnd() = runBlocking {
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17))
+    }
+
+    @Test
+    fun reconcileOutsideWindowDoesNotStartAndArmsNextWindow() = runBlocking {
+        clock.now = mondayAt(18).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun systemReconcileDefersTheStartToAShortAlarm() = runBlocking {
+        controller.reconcile(ReconcileSource.SYSTEM)
+
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(Instant.ofEpochMilli(clock.now + config.deferredStartDelayMs))
+    }
+
+    @Test
+    fun deniedBackgroundStartSurfacesAsExactAlarmDenied() = runBlocking {
+        launcher.denyStart = true
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.EXACT_ALARM_DENIED)
+        assertThat(launcher.stopCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun inexactAlarmSetsDegradedFlagAndExactClearsIt() = runBlocking {
+        alarms.exact = false
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(store.current().alarmDegraded).isTrue()
+
+        store.setAttentionCause(AttentionCause.EXACT_ALARM_DENIED)
+        alarms.exact = true
+        controller.reconcile(ReconcileSource.SYSTEM)
+        assertThat(store.current().alarmDegraded).isFalse()
         assertThat(store.current().attentionCause).isNull()
     }
 
     @Test
-    fun deniedBackgroundStartRecordsExactAlarmDenied() = runBlocking {
-        launcher.denyStart = true
-        controller.startCapture(SessionTrigger.SCHEDULE)
+    fun windowEndClosesSessionAndCallsSegmentationTrigger() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
 
-        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.EXACT_ALARM_DENIED)
-        assertThat(launcher.stopCalls).isEqualTo(1)
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun reconcileRecoversASessionLeftOpenByADeadProcess() = runBlocking {
+        val start = mondayAt(9).toEpochMilli()
+        trackingRepo.saveSession(TrackingSession(start = start, zoneId = sydney.id, trigger = SessionTrigger.SCHEDULE))
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.KILLED)
+    }
+
+    @Test
+    fun manualStartOutsideWindowLaunchesManualTriggerAndPersistsOverride() = runBlocking {
+        clock.now = mondayAt(20).toEpochMilli()
+        controller.start(ManualOverrideEndMode.UNTIL_STOPPED)
+
+        assertThat(launcher.started).containsExactly(SessionTrigger.MANUAL)
+        val row = overrides().single()
+        assertThat(row.type).isEqualTo(ManualOverrideType.START)
+        assertThat(row.active).isTrue()
+    }
+
+    @Test
+    fun manualStartDurationStoresEndAndArmsAlarmThere() = runBlocking {
+        clock.now = mondayAt(20).toEpochMilli()
+        controller.start(ManualOverrideEndMode.DURATION, durationMin = 60)
+
+        assertThat(overrides().single().end).isEqualTo(mondayAt(21).toEpochMilli())
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(21))
+    }
+
+    @Test
+    fun pauseEndsSessionAsUserPauseAndRearmsForTheResume() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        controller.pause(PauseKind.PAUSE_1H)
+
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.USER_PAUSE)
+        val pause = overrides().single()
+        assertThat(pause.type).isEqualTo(ManualOverrideType.PAUSE)
+        assertThat(pause.end).isEqualTo(mondayAt(11).toEpochMilli())
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(11))
+    }
+
+    @Test
+    fun pauseExpiryAtTheAlarmRestartsCaptureAndDeactivatesTheRow() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.pause(PauseKind.PAUSE_30M)
+        launcher.started.clear()
+
+        clock.now = mondayAt(10, 30).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+        assertThat(trackingRepo.observeActiveOverrides().first()).isEmpty()
+    }
+
+    @Test
+    fun resumeEndsThePauseImmediately() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.pause(PauseKind.UNTIL_NEXT_WINDOW)
+        launcher.started.clear()
+
+        controller.resume()
+
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+        assertThat(trackingRepo.observeActiveOverrides().first()).isEmpty()
+    }
+
+    @Test
+    fun stopEndsSessionAndSuppressesTheWindowUntilTheNextOne() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        launcher.started.clear()
+
+        controller.stop()
+
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.USER_STOP)
+        val suppress = overrides().single()
+        assertThat(suppress.type).isEqualTo(ManualOverrideType.PAUSE)
+        assertThat(suppress.endMode).isEqualTo(ManualOverrideEndMode.UNTIL_STOPPED)
+        assertThat(suppress.end).isEqualTo(mondayAt(7, day = 20).toEpochMilli())
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+
+        clock.now = mondayAt(7, day = 20).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+        Unit
+    }
+
+    @Test
+    fun stopOfAManualStartOutsideWindowAddsNoSuppression() = runBlocking {
+        clock.now = mondayAt(20).toEpochMilli()
+        controller.start(ManualOverrideEndMode.UNTIL_STOPPED)
+        coordinator.begin(SessionTrigger.MANUAL)
+
+        controller.stop()
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(overrides().single().active).isFalse()
+        assertThat(trackingRepo.observeActiveOverrides().first()).isEmpty()
+    }
+
+    @Test
+    fun stopArrivingBeforeServiceBeginLeavesNoOpenSession() = runBlocking {
+        controller.start(ManualOverrideEndMode.UNTIL_STOPPED)
+        controller.stop()
+
+        // The service's queued start now reaches the controller.
+        val stopsBefore = launcher.stopCalls
+        controller.onServiceStarted(SessionTrigger.MANUAL)
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(launcher.stopCalls).isGreaterThan(stopsBefore)
+    }
+
+    @Test
+    fun serviceStartInsideAnActiveStateBeginsTheSession() = runBlocking {
+        controller.reconcile()
+        controller.onServiceStarted(SessionTrigger.SCHEDULE)
+
+        assertThat(trackingRepo.openSession()).isNotNull()
     }
 
     @Test
@@ -100,30 +306,21 @@ class TrackingControllerTest {
     }
 
     @Test
-    fun stopCaptureClosesSessionAndStopsService() = runBlocking {
-        coordinator.begin(SessionTrigger.SCHEDULE)
-        controller.stopCapture(SessionEndReason.USER_STOP)
+    fun debugTestWindowStartsSoonAndArmsTheAlarmForIt() = runBlocking {
+        clock.now = mondayAt(20).toEpochMilli()
+        controller.startDebugTestWindow()
 
-        assertThat(trackingRepo.openSession()).isNull()
-        assertThat(trackingRepo.sessionsInRange(0, Long.MAX_VALUE).single().endReason)
-            .isEqualTo(SessionEndReason.USER_STOP)
-        assertThat(launcher.stopCalls).isEqualTo(1)
-    }
-
-    @Test
-    fun pause1hCurrentlyEndsSessionAsUserPause() = runBlocking {
-        coordinator.begin(SessionTrigger.SCHEDULE)
-        controller.pause1h()
-
-        assertThat(trackingRepo.sessionsInRange(0, Long.MAX_VALUE).single().endReason)
-            .isEqualTo(SessionEndReason.USER_PAUSE)
+        val expected = Instant.ofEpochMilli(clock.now + config.debugTestWindowDelayMs)
+        assertThat(store.current().debugTestWindowStartMs).isEqualTo(expected.toEpochMilli())
+        assertThat(alarms.armed.last()).isEqualTo(expected)
     }
 
     @Test
     fun activityEventsReachTheMachineAndGetSavedOnPings() = runBlocking {
+        controller.reconcile()
         coordinator.begin(SessionTrigger.SCHEDULE)
         controller.onActivity(ActivityType.IN_VEHICLE)
-        coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, 1_000_000_001L)))
+        coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, clock.now + 1)))
 
         val ping = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id).single()
         assertThat(ping.activity).isEqualTo(ActivityType.IN_VEHICLE)

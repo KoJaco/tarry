@@ -10,7 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import me.tarry.app.tracking.ActivityTransitionClient
-import me.tarry.app.tracking.AlwaysInsideWindowChecker
+import me.tarry.app.tracking.EffectiveScheduleWindowChecker
 import me.tarry.app.tracking.AndroidLocationPermissionChecker
 import me.tarry.app.tracking.AndroidServiceLauncher
 import me.tarry.app.tracking.CaptureScope
@@ -20,6 +20,10 @@ import me.tarry.app.tracking.LocationPermissionChecker
 import me.tarry.app.tracking.PlayActivityTransitionClient
 import me.tarry.app.tracking.PlayGeofenceClient
 import me.tarry.app.tracking.PlayLocationClient
+import me.tarry.app.tracking.NoOpSegmentationTrigger
+import me.tarry.app.tracking.AndroidScheduleAlarmScheduler
+import me.tarry.app.tracking.ScheduleAlarmScheduler
+import me.tarry.app.tracking.SegmentationTrigger
 import me.tarry.app.tracking.ScheduleWindowChecker
 import me.tarry.app.tracking.ServiceLauncher
 import me.tarry.app.tracking.SystemTrackingClock
@@ -47,9 +51,14 @@ abstract class TrackingModule {
     @Binds
     abstract fun bindClock(impl: SystemTrackingClock): TrackingClock
 
-    // TODO(2a-T6): bind the schedule-backed checker instead.
     @Binds
-    abstract fun bindWindowChecker(impl: AlwaysInsideWindowChecker): ScheduleWindowChecker
+    abstract fun bindWindowChecker(impl: EffectiveScheduleWindowChecker): ScheduleWindowChecker
+
+    @Binds
+    abstract fun bindAlarmScheduler(impl: AndroidScheduleAlarmScheduler): ScheduleAlarmScheduler
+
+    @Binds
+    abstract fun bindSegmentationTrigger(impl: NoOpSegmentationTrigger): SegmentationTrigger
 
     companion object {
         /** One thread keeps fix batches, activity events and geofence exits in arrival order. */

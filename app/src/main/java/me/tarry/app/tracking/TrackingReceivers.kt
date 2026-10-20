@@ -1,5 +1,6 @@
 package me.tarry.app.tracking
 
+import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -10,7 +11,6 @@ import com.google.android.gms.location.GeofencingEvent
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import me.tarry.core.data.model.SessionEndReason
 import javax.inject.Inject
 
 /** Runs [block] off the main thread while keeping the receiver alive. */
@@ -65,8 +65,44 @@ class TrackingActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            TrackingIntents.ACTION_PAUSE_1H -> runAsync(scope) { controller.pause1h() }
-            TrackingIntents.ACTION_STOP -> runAsync(scope) { controller.stopCapture(SessionEndReason.USER_STOP) }
+            TrackingIntents.ACTION_PAUSE_1H -> runAsync(scope) { controller.pause(PauseKind.PAUSE_1H) }
+            TrackingIntents.ACTION_STOP -> runAsync(scope) { controller.stop() }
+        }
+    }
+}
+
+/** The schedule alarm (non-exported): a window edge or a deferred start. ADR 0003: this is the FGS-start exemption path. */
+@AndroidEntryPoint
+class ScheduleAlarmReceiver : BroadcastReceiver() {
+    @Inject lateinit var controller: TrackingController
+
+    @Inject @CaptureScope lateinit var scope: CoroutineScope
+
+    override fun onReceive(context: Context, intent: Intent) {
+        runAsync(scope) { controller.reconcile(ReconcileSource.ALARM) }
+    }
+}
+
+/**
+ * Re-arms after anything that invalidates the alarm: boot, app update, clock or zone change, or a change
+ * to the exact-alarm permission. System broadcasts reach non-exported receivers, so this stays non-exported.
+ * It never starts the service directly (boot-completed receivers may not start a location FGS);
+ * [ReconcileSource.SYSTEM] defers a start to an alarm.
+ */
+@AndroidEntryPoint
+class ScheduleRearmReceiver : BroadcastReceiver() {
+    @Inject lateinit var controller: TrackingController
+
+    @Inject @CaptureScope lateinit var scope: CoroutineScope
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED,
+            -> runAsync(scope) { controller.reconcile(ReconcileSource.SYSTEM) }
         }
     }
 }

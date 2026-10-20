@@ -67,7 +67,7 @@ class FakeClock(var now: Long = 1_000_000_000L, var zone: ZoneId = ZoneId.of("Au
 class FakeWindowChecker(var inside: Boolean = true) : ScheduleWindowChecker {
     val calls = mutableListOf<Pair<Instant, Instant>>()
 
-    override fun isInsideWindow(from: Instant, to: Instant): Boolean {
+    override suspend fun isInsideWindow(from: Instant, to: Instant): Boolean {
         calls += from to to
         return inside
     }

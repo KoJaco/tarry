@@ -65,7 +65,7 @@ class TrackingService : Service() {
                     .collect { notifications.update(it) }
             }
         }
-        captureScope.launch { coordinator.begin(trigger) }
+        captureScope.launch { controller.onServiceStarted(trigger) }
         return START_NOT_STICKY
     }
 

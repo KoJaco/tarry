@@ -18,6 +18,35 @@
     <string name="tracking_action_pause_1h">Pause 1 h</string>
     <string name="tracking_action_stop">Stop</string>
 
+    <string name="tracking_sheet_idle_title">Start tracking</string>
+    <string name="tracking_sheet_start_until_stopped">Until I stop</string>
+    <string name="tracking_sheet_start_end_of_day">Until end of day</string>
+    <string name="tracking_sheet_start_minutes">For %1$d min</string>
+    <plurals name="tracking_sheet_start_hours">
+        <item quantity="one">For %1$d hour</item>
+        <item quantity="other">For %1$d hours</item>
+    </plurals>
+    <string name="tracking_sheet_tracking_title">Tracking</string>
+    <string name="tracking_sheet_pause_30m">Pause 30 min</string>
+    <string name="tracking_sheet_pause_1h">Pause 1 h</string>
+    <string name="tracking_sheet_pause_next_window">Pause until next window</string>
+    <string name="tracking_sheet_stop">Stop</string>
+    <string name="tracking_sheet_paused_title">Paused</string>
+    <string name="tracking_sheet_paused_until">Resumes at %1$s</string>
+    <string name="tracking_sheet_paused_open_ended">Paused until you resume</string>
+    <string name="tracking_sheet_resume">Resume now</string>
+    <string name="tracking_sheet_attention_title">Tracking needs attention</string>
+    <string name="tracking_sheet_fix_open_location_settings">Open location settings</string>
+    <string name="tracking_sheet_fix_open_permissions">Fix permissions</string>
+    <string name="tracking_sheet_fix_open_app_settings">Open app settings</string>
+    <string name="tracking_attention_no_fine_location">Precise location permission is missing.</string>
+    <string name="tracking_attention_no_background_location">Location access is not set to \"Allow all the time\".</string>
+    <string name="tracking_attention_location_off">Location is turned off on this phone.</string>
+    <string name="tracking_attention_service_not_running">Tracking should be running but is not.</string>
+    <string name="tracking_attention_no_fix_while_moving">No location fixes are arriving while you move.</string>
+    <string name="tracking_attention_exact_alarm_denied">Exact alarms are not allowed, so tracking cannot start on its own.</string>
+    <string name="tracking_attention_unknown">Tracking needs attention.</string>
+
     <string name="settings_rounding_increment">Rounding increment</string>
     <string name="settings_rounding_mode">Rounding mode</string>
     <string name="settings_min_billable">Minimum billable time</string>

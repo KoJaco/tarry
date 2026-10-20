@@ -18,6 +18,7 @@ internal object TrackingIntents {
     private const val REQ_PAUSE = 3
     private const val REQ_STOP = 4
     private const val REQ_OPEN_APP = 5
+    private const val REQ_SCHEDULE_ALARM = 6
 
     fun activityTransitions(context: Context): PendingIntent = PendingIntent.getBroadcast(
         context,
@@ -31,6 +32,13 @@ internal object TrackingIntents {
         REQ_GEOFENCE,
         Intent(context, GeofenceExitReceiver::class.java),
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+    )
+
+    fun scheduleAlarm(context: Context): PendingIntent = PendingIntent.getBroadcast(
+        context,
+        REQ_SCHEDULE_ALARM,
+        Intent(context, ScheduleAlarmReceiver::class.java),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
 
     fun pause1h(context: Context): PendingIntent = action(context, REQ_PAUSE, ACTION_PAUSE_1H)

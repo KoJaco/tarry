@@ -25,4 +25,17 @@ data class TrackingConfig(
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,
+    // Schedule engine.
+    /** How far back and ahead the calculator builds windows when looking for the next transition. */
+    val scheduleLookBackDays: Long = 1L,
+    val scheduleLookAheadDays: Long = 9L,
+    /** Delay of the one-shot alarm that starts capture after boot or app start (ADR 0003: background FGS starts need an alarm). */
+    val deferredStartDelayMs: Long = 5_000L,
+    // Manual controls.
+    val pauseShortMin: Long = 30L,
+    val pauseLongMin: Long = 60L,
+    val manualStartDurationsMin: List<Int> = listOf(60, 120, 240),
+    // Debug-only test window: starts [debugTestWindowDelayMs] after the request and lasts [debugTestWindowLengthMs].
+    val debugTestWindowDelayMs: Long = 2 * 60_000L,
+    val debugTestWindowLengthMs: Long = 10 * 60_000L,
 )
