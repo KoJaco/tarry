@@ -11,6 +11,13 @@
     <string name="tracking_state_paused">Paused</string>
     <string name="tracking_state_attention">Attention</string>
 
+    <string name="tracking_channel_name">Tracking status</string>
+    <string name="tracking_notification_title">Tarry is tracking</string>
+    <string name="tracking_notification_moving">Recording while you move</string>
+    <string name="tracking_notification_stationary">Waiting at your current location</string>
+    <string name="tracking_action_pause_1h">Pause 1 h</string>
+    <string name="tracking_action_stop">Stop</string>
+
     <string name="settings_rounding_increment">Rounding increment</string>
     <string name="settings_rounding_mode">Rounding mode</string>
     <string name="settings_min_billable">Minimum billable time</string>

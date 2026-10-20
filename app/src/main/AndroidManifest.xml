@@ -38,6 +38,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".tracking.TrackingService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <receiver
+            android:name=".tracking.ActivityTransitionReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".tracking.GeofenceExitReceiver"
+            android:exported="false" />
+        <receiver
+            android:name=".tracking.TrackingActionReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>
