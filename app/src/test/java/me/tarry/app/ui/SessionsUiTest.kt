@@ -26,7 +26,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = android.app.Application::class)
 class SessionsUiTest {
     @get:Rule
     val composeRule = createComposeRule()

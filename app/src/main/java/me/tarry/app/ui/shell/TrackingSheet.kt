@@ -40,7 +40,7 @@ data class TrackingSheetActions(
     val onResume: () -> Unit,
     val onStop: () -> Unit,
     val onOpenLocationSettings: () -> Unit,
-    /** Permission causes. TODO(2a-T9): navigate to PermissionsRoute; until then the shell opens app settings. */
+    /** Permission causes: the shell navigates to the permissions screen. */
     val onOpenPermissionsScreen: () -> Unit,
     val onOpenAppSettings: () -> Unit,
 )

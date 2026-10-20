@@ -21,8 +21,12 @@ data class HealthSnapshot(
     val preconditions: Preconditions,
 )
 
-/** An outage: why tracking should run but is not, and the [GapCause] its Gap row carries. */
-data class HealthIssue(val cause: AttentionCause, val gapCause: GapCause)
+/**
+ * An outage: why tracking should run but is not, and the [GapCause] its Gap row carries.
+ * [recordGap] false means ATTENTION and an alert only: no capture time is being lost (the service is running with
+ * fresh fixes, or no window is active), so no Gap is written.
+ */
+data class HealthIssue(val cause: AttentionCause, val gapCause: GapCause, val recordGap: Boolean = true)
 
 /**
  * Pure decision logic shared by [HealthChecker] (the worker) and [TrackingStateReducer].
@@ -42,10 +46,17 @@ class HealthEvaluator @Inject constructor(private val config: TrackingConfig) {
     fun evaluate(s: HealthSnapshot): HealthIssue? {
         if (!s.shouldRun) return null
         val p = s.preconditions
-        permissionIssue(p)?.let { return it }
-        if (!p.locationEnabled) return HealthIssue(AttentionCause.LOCATION_OFF, GapCause.LOCATION_OFF)
-        if (!p.exactAlarms || (s.alarmDegraded && !s.serviceRunning)) return EXACT_ALARM_ISSUE
         val since = s.shouldRunSinceMs ?: s.nowMs
+        val precondition = permissionIssue(p) ?: when {
+            !p.locationEnabled -> HealthIssue(AttentionCause.LOCATION_OFF, GapCause.LOCATION_OFF)
+            !p.exactAlarms || (s.alarmDegraded && !s.serviceRunning) -> EXACT_ALARM_ISSUE
+            else -> null
+        }
+        if (precondition != null) {
+            // Fixes are still arriving: a warning, not lost capture time, so no Gap.
+            val fresh = s.serviceRunning && s.nowMs - (s.lastHeartbeatMs ?: since) <= config.noHeartbeatThresholdMs
+            return if (fresh) precondition.copy(recordGap = false) else precondition
+        }
         if (!s.serviceRunning) {
             return if (s.nowMs - since > config.serviceStartGraceMs) SERVICE_ISSUE else null
         }
@@ -61,7 +72,7 @@ class HealthEvaluator @Inject constructor(private val config: TrackingConfig) {
 
     /** Configuration problems that matter even outside a window, so they surface before the window starts (ADR 0003). */
     fun standingIssue(p: Preconditions): HealthIssue? =
-        permissionIssue(p) ?: if (!p.exactAlarms) EXACT_ALARM_ISSUE else null
+        (permissionIssue(p) ?: if (!p.exactAlarms) EXACT_ALARM_ISSUE else null)?.copy(recordGap = false)
 
     private fun permissionIssue(p: Preconditions): HealthIssue? = when {
         !p.fineLocation -> HealthIssue(AttentionCause.NO_FINE_LOCATION, GapCause.PERMISSION_LOST)

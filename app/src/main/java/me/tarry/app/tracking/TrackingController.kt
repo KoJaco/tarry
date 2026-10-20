@@ -12,6 +12,7 @@ import me.tarry.core.data.model.ManualOverrideType
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.repository.TrackingRepository
+import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import javax.inject.Inject
@@ -78,6 +79,10 @@ class TrackingController @Inject constructor(
 ) {
     private val mutex = Mutex()
 
+    init {
+        coordinator.failureListener = ::onCaptureFailed
+    }
+
     /**
      * Makes the running state match the effective schedule, then re-arms the single alarm. Also closes a
      * session left open by a dead process. At a scheduled window end it calls [SegmentationTrigger].
@@ -129,15 +134,16 @@ class TrackingController @Inject constructor(
         val inputs = inputsProvider.inputs(nowInstant, nowInstant, zone)
         if (calculator.calculate(inputs, nowInstant, zone).isActive) {
             // Inside a scheduled window: suppress it until the next one starts.
+            // No window within the look-ahead: still bound the stop, so it cannot suppress the schedule forever.
             val untilNext = calculator.resolveEnd(
                 inputs,
                 override(ManualOverrideType.PAUSE, ManualOverrideEndMode.NEXT_WINDOW, now, null),
                 zone,
                 nowInstant,
-            )
+            ) ?: nowInstant.plus(Duration.ofDays(config.scheduleLookAheadDays))
             deactivateActive(ManualOverrideType.PAUSE, now)
             trackingRepo.saveOverride(
-                override(ManualOverrideType.PAUSE, ManualOverrideEndMode.UNTIL_STOPPED, now, untilNext?.toEpochMilli()),
+                override(ManualOverrideType.PAUSE, ManualOverrideEndMode.UNTIL_STOPPED, now, untilNext.toEpochMilli()),
             )
         }
         stopCapture(SessionEndReason.USER_STOP)
@@ -154,6 +160,15 @@ class TrackingController @Inject constructor(
 
     /** Closes a session left open by a dead process (KILLED, plus a Gap when inside a window). */
     suspend fun recoverCrashedSession() = mutex.withLock { coordinator.recoverCrashedSession() }
+
+    /**
+     * A capture failure that must also stop the service (permission lost mid-session): report the outage while
+     * the heartbeat is still set (it is the Gap start), then end the session and stop the service.
+     */
+    suspend fun onCaptureFailed(issue: HealthIssue) = mutex.withLock {
+        health.reportOutage(issue)
+        stopCapture(SessionEndReason.PERMISSION_LOST)
+    }
 
     /** Called by the service when the OS refused to run the location FGS. */
     suspend fun onStartFailure(failure: StartFailure) = mutex.withLock { onStartFailureLocked(failure) }
@@ -180,9 +195,7 @@ class TrackingController @Inject constructor(
     private suspend fun reconcileLocked(source: ReconcileSource) {
         coordinator.recoverCrashedSession()
         // Exact alarms are allowed again: drop the stale cause; a start that fails again re-raises it.
-        if (alarmScheduler.canScheduleExact() && statusStore.current().attentionCause == AttentionCause.EXACT_ALARM_DENIED) {
-            statusStore.setAttentionCause(null)
-        }
+        if (alarmScheduler.canScheduleExact()) health.recoverCause(AttentionCause.EXACT_ALARM_DENIED)
         val now = Instant.ofEpochMilli(clock.nowMs())
         val zone = clock.zone()
         val inputs = inputsProvider.inputs(now, now, zone)
@@ -197,6 +210,9 @@ class TrackingController @Inject constructor(
                 } else {
                     startService(if (effective.manuallyStarted) SessionTrigger.MANUAL else SessionTrigger.SCHEDULE)
                 }
+            } else {
+                // A location request that died on a non-security error is retried here.
+                coordinator.ensureLocationUpdates()
             }
         } else if (coordinator.isActive) {
             val paused = effective.winningOverride?.type == ManualOverrideType.PAUSE
@@ -204,7 +220,7 @@ class TrackingController @Inject constructor(
             if (!paused) segmentationTrigger.onWindowEnd()
         }
         // Not supposed to run (window ended, paused, stopped): any open outage ends here.
-        if (!effective.isActive) health.recover(now.toEpochMilli())
+        if (!effective.isActive) health.closeOutage(now.toEpochMilli())
         rearm(if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition)
     }
 

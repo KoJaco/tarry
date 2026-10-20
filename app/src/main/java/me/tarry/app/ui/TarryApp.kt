@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -81,7 +82,13 @@ fun TarryApp(shellViewModel: ShellViewModel = hiltViewModel()) {
                 onPause = shellViewModel::pause,
                 onResume = shellViewModel::resume,
                 onStop = shellViewModel::stop,
-                onOpenLocationSettings = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
+                onOpenLocationSettings = {
+                    try {
+                        context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
+                    } catch (_: ActivityNotFoundException) {
+                        openAppSettings()
+                    }
+                },
                 onOpenPermissionsScreen = { openPermissions() },
                 onOpenAppSettings = openAppSettings,
             ),

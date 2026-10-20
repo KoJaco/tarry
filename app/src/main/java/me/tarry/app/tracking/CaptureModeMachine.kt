@@ -7,7 +7,6 @@ import me.tarry.core.data.model.PingSource
 data class LocationRequestParams(
     val priority: LocationPriority,
     val intervalMs: Long,
-    val minDisplacementM: Float,
     val maxUpdateDelayMs: Long,
 )
 
@@ -86,7 +85,7 @@ class CaptureModeMachine(
         return if (mode == CaptureMode.STATIONARY) enterMoving() else step()
     }
 
-    /** [fix] must already have been accepted by [PingFilter]. */
+    /** [fix] must already have passed [PingFilter]: accepted, or only held back from saving by the displacement gate. */
     fun onAcceptedFix(fix: Fix): MachineStep {
         lastFix = fix
         if (mode == CaptureMode.STATIONARY) {
@@ -130,7 +129,6 @@ class CaptureModeMachine(
                     LocationRequestParams(
                         priority = config.stationaryPriority,
                         intervalMs = config.stationaryFixIntervalMs,
-                        minDisplacementM = 0f,
                         maxUpdateDelayMs = 0L,
                     ),
                 ),
@@ -151,7 +149,6 @@ class CaptureModeMachine(
         LocationRequestParams(
             priority = config.movingPriority,
             intervalMs = config.movingIntervalMs,
-            minDisplacementM = config.movingMinDisplacementM,
             maxUpdateDelayMs = config.movingMaxUpdateDelayMs,
         ),
     )

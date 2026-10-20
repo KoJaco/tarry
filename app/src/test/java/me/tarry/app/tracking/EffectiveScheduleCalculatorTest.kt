@@ -272,4 +272,25 @@ class EffectiveScheduleCalculatorTest {
         // After the override window ends, the next transition is the template's Monday start.
         assertThat(calc(inputs, at(25, 12)).nextTransition).isEqualTo(at(26, 7))
     }
+
+    @Test
+    fun activeIntervalsClipToTheRangeAndSkipInactiveTime() {
+        // Monday 15:00 to Tuesday 06:50: only 15:00-17:00 was active, the night was not.
+        assertThat(calculator.activeIntervals(template, at(19, 15), at(20, 6, 50), sydney))
+            .containsExactly(WindowBounds(at(19, 15), at(19, 17)))
+        // Back inside a later window: the active tail of both windows, clipped at the end.
+        assertThat(calculator.activeIntervals(template, at(19, 15), at(20, 10), sydney))
+            .containsExactly(WindowBounds(at(19, 15), at(19, 17)), WindowBounds(at(20, 7), at(20, 10)))
+        // Entirely outside, or empty range.
+        assertThat(calculator.activeIntervals(template, at(19, 18), at(20, 6), sydney)).isEmpty()
+        assertThat(calculator.activeIntervals(template, at(19, 10), at(19, 10), sydney)).isEmpty()
+    }
+
+    @Test
+    fun activeIntervalsMergeAdjacentActiveStretches() {
+        val manual = override(ManualOverrideType.START, ManualOverrideEndMode.UNTIL_STOPPED, at(19, 16))
+        val inputs = template.copy(manualOverrides = listOf(manual))
+        assertThat(calculator.activeIntervals(inputs, at(19, 15), at(19, 20), sydney))
+            .containsExactly(WindowBounds(at(19, 15), at(19, 20)))
+    }
 }

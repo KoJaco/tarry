@@ -41,7 +41,7 @@ import java.time.ZonedDateTime
 
 /** The worker with fakes, plus the health wiring it drives (gaps, alerts, crash recovery) on a real in-memory DB. */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = android.app.Application::class)
 class HealthCheckWorkerTest {
     @get:Rule
     val folder = TemporaryFolder()
@@ -172,17 +172,6 @@ class HealthCheckWorkerTest {
     }
 
     @Test
-    fun outsideTheWindowNothingIsReported() = runBlocking<Unit> {
-        clock.now = mondayAt(20).toEpochMilli()
-        preconditions.value = Preconditions(fineLocation = false)
-
-        runWorker()
-
-        assertThat(gaps()).isEmpty()
-        assertThat(alerts.posted).isEmpty()
-    }
-
-    @Test
     fun laterChecksExtendTheGapAndRecoveryClosesIt() = runBlocking<Unit> {
         preconditions.value = Preconditions(locationEnabled = false)
         runWorker()
@@ -295,5 +284,137 @@ class HealthCheckWorkerTest {
         assertThat(alerts.posted).containsExactly(AttentionCause.NO_FINE_LOCATION)
         withTimeout(5_000) { while (trackingRepo.openSession() != null) delay(10) }
         assertThat(trackingRepo.sessionsInRange(0, Long.MAX_VALUE).single().endReason).isEqualTo(SessionEndReason.PERMISSION_LOST)
+        // The service is stopped through the launcher, not left running without a session.
+        assertThat(launcher.stopCalls).isGreaterThan(0)
+    }
+
+    private fun tuesdayAt(hour: Int, minute: Int = 0): Instant =
+        ZonedDateTime.of(2026, 10, 20, hour, minute, 0, 0, sydney).toInstant()
+
+    private suspend fun seedCrashedSession(lastPing: Instant): Long {
+        val id = trackingRepo.saveSession(
+            TrackingSession(start = lastPing.toEpochMilli() - 3_600_000, zoneId = sydney.id, trigger = SessionTrigger.SCHEDULE),
+        )
+        trackingRepo.savePing(
+            LocationPing(
+                timestamp = lastPing.toEpochMilli(), zoneId = sydney.id, lat = -33.0, lng = 151.0, accuracyM = 10f,
+                source = PingSource.FUSED, sessionId = id,
+            ),
+        )
+        return id
+    }
+
+    @Test
+    fun batteryDyingAt1500AndBootingAt0650NextDayLosesOnlyTheRemainingWindow() = runBlocking<Unit> {
+        seedCrashedSession(mondayAt(15))
+        clock.now = tuesdayAt(6, 50).toEpochMilli()
+
+        controller.recoverCrashedSession()
+
+        val gap = gaps().single()
+        assertThat(gap.cause).isEqualTo(GapCause.SERVICE_KILLED)
+        assertThat(gap.start).isEqualTo(mondayAt(15).toEpochMilli())
+        assertThat(gap.end).isEqualTo(mondayAt(17).toEpochMilli())
+    }
+
+    @Test
+    fun bootingInsideALaterWindowLosesEachActiveStretchOnly() = runBlocking<Unit> {
+        seedCrashedSession(mondayAt(15))
+        clock.now = tuesdayAt(10).toEpochMilli()
+
+        controller.recoverCrashedSession()
+
+        assertThat(gaps().sortedBy { it.start }.map { it.start to it.end }).containsExactly(
+            mondayAt(15).toEpochMilli() to mondayAt(17).toEpochMilli(),
+            tuesdayAt(7).toEpochMilli() to tuesdayAt(10).toEpochMilli(),
+        ).inOrder()
+    }
+
+    @Test
+    fun missingPreconditionWhileCapturingWithFreshFixesIsAttentionAndOneAlertWithNoGapOrChurn() = runBlocking<Unit> {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        preconditions.value = Preconditions(backgroundLocation = false)
+
+        runWorker()
+        coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, clock.now + 1_000)))
+        clock.now += 15 * 60_000L
+        coordinator.onFixes(listOf(Fix(-33.001, 151.0, 10f, clock.now)))
+        runWorker()
+
+        assertThat(gaps()).isEmpty()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
+        assertThat(alerts.posted).containsExactly(AttentionCause.NO_BACKGROUND_LOCATION)
+        assertThat(alerts.clearCalls).isEqualTo(0)
+        // Capture is fine, so no restart is attempted.
+        assertThat(launcher.started).isEmpty()
+    }
+
+    @Test
+    fun resolvingAnAttentionOnlyPreconditionClearsItOnTheNextCheck() = runBlocking<Unit> {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        preconditions.value = Preconditions(exactAlarms = false)
+        runWorker()
+        preconditions.value = Preconditions()
+
+        runWorker()
+
+        assertThat(store.current().attentionCause).isNull()
+        assertThat(alerts.clearCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun standingIssueOutsideTheWindowSetsAttentionAndAlertsOncePerCauseWithoutAGap() = runBlocking<Unit> {
+        clock.now = mondayAt(20).toEpochMilli()
+        preconditions.value = Preconditions(fineLocation = false)
+
+        runWorker()
+        clock.now += 15 * 60_000L
+        runWorker()
+
+        assertThat(gaps()).isEmpty()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_FINE_LOCATION)
+        assertThat(alerts.posted).containsExactly(AttentionCause.NO_FINE_LOCATION)
+        assertThat(launcher.started).isEmpty()
+
+        preconditions.value = Preconditions(exactAlarms = false)
+        runWorker()
+        assertThat(alerts.posted).containsExactly(AttentionCause.NO_FINE_LOCATION, AttentionCause.EXACT_ALARM_DENIED)
+        assertThat(gaps()).isEmpty()
+    }
+
+    @Test
+    fun grantingExactAlarmsClosesTheGapAndClearsTheAlertThroughTheRecorder() = runBlocking<Unit> {
+        launcher.denyStart = true
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(store.current().openHealthGapId).isNotNull()
+        launcher.denyStart = false
+        clock.now += 60_000
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(store.current().attentionCause).isNull()
+        assertThat(store.current().openHealthGapId).isNull()
+        assertThat(gaps().single().end).isEqualTo(clock.now)
+        assertThat(alerts.clearCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun locationUpdatesDeadAfterAGenericFailureAreRetriedByTheNextReconcile() = runBlocking<Unit> {
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val fake = FakeLocationClient()
+        wire(object : LocationClient {
+            override fun updates(params: LocationRequestParams): Flow<List<Fix>> =
+                if (calls.getAndIncrement() == 0) flow { throw IllegalStateException("boom") } else fake.updates(params)
+        })
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        withTimeout(5_000) { while (alerts.posted.isEmpty()) delay(10) }
+        withTimeout(5_000) {
+            while (calls.get() < 2) {
+                controller.reconcile(ReconcileSource.SYSTEM)
+                delay(10)
+            }
+        }
+
+        assertThat(fake.requests).hasSize(1)
     }
 }

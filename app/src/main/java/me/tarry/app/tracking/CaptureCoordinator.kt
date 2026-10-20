@@ -51,6 +51,14 @@ class CaptureCoordinator @Inject constructor(
     private var activity: ActivityType? = null
     private var manualStartPending = false
     private var locationJob: Job? = null
+    private var lastLocationParams: LocationRequestParams? = null
+
+    /**
+     * Set by [TrackingController] so a capture failure that must also stop the service goes through the single
+     * start/stop entry point. Without it (plain coordinator tests) the session is just ended here.
+     */
+    @Volatile
+    var failureListener: (suspend (HealthIssue) -> Unit)? = null
 
     /** True while a session is open in this process. */
     val isActive: Boolean get() = session != null
@@ -71,11 +79,33 @@ class CaptureCoordinator @Inject constructor(
         filter = PingFilter(config)
         statusStore.setActiveSessionId(opened.id)
         statusStore.setLastHeartbeat(now)
-        // The service is up, so the outage (if any) is over; the health check re-raises anything still broken.
-        health.recover(now)
-        val m = CaptureModeMachine(config, activityRecognitionAvailable = activityClient.register())
-        machine = m
-        apply(m.start())
+        try {
+            // The service is up, so the outage (if any) is over; the health check re-raises anything still broken.
+            health.closeOutage(now)
+            val m = CaptureModeMachine(config, activityRecognitionAvailable = registerActivity())
+            machine = m
+            apply(m.start())
+        } catch (t: Throwable) {
+            // Never leave a session open without a machine: fixes would be ignored while the heartbeat looks alive.
+            session = null
+            machine = null
+            locationJob?.cancel()
+            locationJob = null
+            withContext(NonCancellable) {
+                trackingRepo.saveSession(opened.copy(end = clock.nowMs(), endReason = SessionEndReason.KILLED))
+                statusStore.clearSessionState()
+            }
+            throw t
+        }
+    }
+
+    /** Activity Recognition is optional: any failure means distance-only gating. */
+    private suspend fun registerActivity(): Boolean = try {
+        activityClient.register()
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        false
     }
 
     /** Closes the session with [reason] and tears down location, geofence and activity updates. */
@@ -108,7 +138,13 @@ class CaptureCoordinator @Inject constructor(
         var latest = Long.MIN_VALUE
         for (fix in fixes.sortedBy { it.timeMs }) {
             latest = maxOf(latest, fix.timeMs)
-            if (!filter.offer(fix, m.mode).accepted) continue
+            val decision = filter.offer(fix, m.mode)
+            if (decision == FilterDecision.DROP_DISPLACEMENT) {
+                // Not saved, but the machine still needs it (stationary rule); every delivered fix is a heartbeat.
+                apply(m.onAcceptedFix(fix))
+                continue
+            }
+            if (!decision.accepted) continue
             val machineSource = m.takeNextPingSource()
             val source = if (manualStartPending) PingSource.MANUAL_START else machineSource
             manualStartPending = false
@@ -130,8 +166,8 @@ class CaptureCoordinator @Inject constructor(
         // Every fix or batch counts as a heartbeat, even when all were filtered out.
         if (latest != Long.MIN_VALUE) {
             statusStore.setLastHeartbeat(latest)
-            // A fix arrived, so any open outage (for example NO_FIX) is over.
-            health.recover(latest)
+            // A fix arrived, so any open outage (for example NO_FIX) is over. Attention-only causes stay.
+            health.closeOutage(latest)
         }
     }
 
@@ -168,7 +204,17 @@ class CaptureCoordinator @Inject constructor(
         }
     }
 
+    /**
+     * Restarts location updates if the request died (a non-security failure ended the collector) while a session is
+     * open. Called by every reconcile and health check, so an open session is never left without updates.
+     */
+    suspend fun ensureLocationUpdates() = mutex.withLock {
+        if (session == null || locationJob?.isActive == true) return@withLock
+        lastLocationParams?.let(::startLocation)
+    }
+
     private fun startLocation(params: LocationRequestParams) {
+        lastLocationParams = params
         val previous = locationJob
         locationJob = scope.launch {
             try {
@@ -189,9 +235,16 @@ class CaptureCoordinator @Inject constructor(
     }
 
     private suspend fun onPermissionLost() {
-        // Reported before end(), which clears the heartbeat the Gap starts from.
-        health.reportOutage(HealthIssue(permissionCause(), GapCause.PERMISSION_LOST))
-        end(SessionEndReason.PERMISSION_LOST)
+        val issue = HealthIssue(permissionCause(), GapCause.PERMISSION_LOST)
+        val listener = failureListener
+        if (listener != null) {
+            // The controller reports the outage, then ends the session and stops the service (no zombie FGS).
+            listener(issue)
+        } else {
+            // Reported before end(), which clears the heartbeat the Gap starts from.
+            health.reportOutage(issue)
+            end(SessionEndReason.PERMISSION_LOST)
+        }
     }
 
     private fun permissionCause(): AttentionCause =
@@ -204,23 +257,28 @@ class CaptureCoordinator @Inject constructor(
         val lastPing = trackingRepo.pingsForSession(open.id).lastOrNull()?.timestamp ?: open.start
         val closedAt = minOf(lastPing, now)
         trackingRepo.saveSession(open.copy(end = closedAt, endReason = SessionEndReason.KILLED))
-        if (now > closedAt &&
-            windowChecker.isInsideWindow(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(now))
-        ) {
-            // An open health Gap already covers this outage (it started at the last heartbeat): extend it
-            // instead of writing a second, overlapping Gap.
-            if (!health.extendOpenGap(now)) {
-                timelineRepo.saveGap(
-                    Gap(
-                        start = closedAt,
-                        end = now,
-                        zoneId = clock.zone().id,
-                        cause = GapCause.SERVICE_KILLED,
-                        sessionId = open.id,
-                        updatedAt = now,
-                    ),
-                )
-            }
+        // The dead time counts only where capture should have been running: a phone that died at 15:00 and
+        // booted at 06:50 next day lost 15:00-17:00, not the night.
+        val active = if (now > closedAt) {
+            windowChecker.activeIntervals(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(now))
+        } else {
+            emptyList()
+        }
+        // An open health Gap already covers the latest outage (it started at the last heartbeat): extend it
+        // instead of writing a second, overlapping Gap.
+        val last = active.lastOrNull()
+        val extended = last != null && health.extendOpenGap(last.start.toEpochMilli(), last.end.toEpochMilli())
+        for (interval in if (extended) active.dropLast(1) else active) {
+            timelineRepo.saveGap(
+                Gap(
+                    start = interval.start.toEpochMilli(),
+                    end = interval.end.toEpochMilli(),
+                    zoneId = clock.zone().id,
+                    cause = GapCause.SERVICE_KILLED,
+                    sessionId = open.id,
+                    updatedAt = now,
+                ),
+            )
         }
         statusStore.clearSessionState()
         // A dead process can leave its stay geofence and activity registration behind.

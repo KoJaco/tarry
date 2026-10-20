@@ -35,7 +35,7 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = android.app.Application::class)
 class TrackingControllerTest {
     @get:Rule
     val folder = TemporaryFolder()
@@ -339,5 +339,46 @@ class TrackingControllerTest {
         assertThat(detectedActivityToType(DetectedActivity.ON_BICYCLE)).isEqualTo(ActivityType.ON_BICYCLE)
         assertThat(detectedActivityToType(DetectedActivity.IN_VEHICLE)).isEqualTo(ActivityType.IN_VEHICLE)
         assertThat(detectedActivityToType(DetectedActivity.TILTING)).isEqualTo(ActivityType.UNKNOWN)
+    }
+
+    @Test
+    fun stopWithNoNextWindowWithinTheLookAheadIsBoundedNotPermanent() = runBlocking {
+        val short = TrackingConfig(scheduleLookAheadDays = 3)
+        val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, short, clock)
+        val shortController = TrackingController(
+            coordinator, launcher, store, trackingRepo, inputs, EffectiveScheduleCalculator(short), alarms, segmentation,
+            health, clock, short,
+        )
+        // Monday-only schedule: the next window is a week away, beyond the 3-day look-ahead.
+        var mondayOnly = Schedule.EMPTY
+        for (slot in 14..33) mondayOnly = mondayOnly.set(java.time.DayOfWeek.MONDAY, slot, true)
+        scheduleRepo.saveTemplate(mondayOnly, clock.now)
+        shortController.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        shortController.stop()
+
+        val suppress = overrides().single()
+        assertThat(suppress.end).isEqualTo(clock.now + 3 * 24 * 60 * 60_000L)
+
+        // Once the bound passes, the suppression is lifted by the next reconcile.
+        clock.now = mondayAt(10, day = 22).toEpochMilli() + 1
+        shortController.reconcile(ReconcileSource.ALARM)
+        assertThat(trackingRepo.observeActiveOverrides().first()).isEmpty()
+    }
+
+    @Test
+    fun captureFailureReportsTheOutageThenEndsTheSessionAndStopsTheService() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        val stopsBefore = launcher.stopCalls
+
+        controller.onCaptureFailed(HealthIssue(AttentionCause.NO_FINE_LOCATION, me.tarry.core.data.model.GapCause.PERMISSION_LOST))
+
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.PERMISSION_LOST)
+        assertThat(launcher.stopCalls).isGreaterThan(stopsBefore)
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_FINE_LOCATION)
+        assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE).single().cause)
+            .isEqualTo(me.tarry.core.data.model.GapCause.PERMISSION_LOST)
     }
 }

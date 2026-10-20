@@ -46,19 +46,19 @@ class HealthLogicTest {
 
     @Test
     fun missingFineLocationIsPermissionLost() {
-        val issue = evaluator.evaluate(snapshot(pre = Preconditions(fineLocation = false, backgroundLocation = false)))
+        val issue = evaluator.evaluate(snapshot(running = false, pre = Preconditions(fineLocation = false, backgroundLocation = false)))
         assertThat(issue).isEqualTo(HealthIssue(AttentionCause.NO_FINE_LOCATION, GapCause.PERMISSION_LOST))
     }
 
     @Test
     fun missingBackgroundLocationIsPermissionLost() {
-        val issue = evaluator.evaluate(snapshot(pre = Preconditions(backgroundLocation = false)))
+        val issue = evaluator.evaluate(snapshot(running = false, pre = Preconditions(backgroundLocation = false)))
         assertThat(issue).isEqualTo(HealthIssue(AttentionCause.NO_BACKGROUND_LOCATION, GapCause.PERMISSION_LOST))
     }
 
     @Test
     fun locationServicesOffIsLocationOff() {
-        val issue = evaluator.evaluate(snapshot(pre = Preconditions(locationEnabled = false)))
+        val issue = evaluator.evaluate(snapshot(running = false, pre = Preconditions(locationEnabled = false)))
         assertThat(issue).isEqualTo(HealthIssue(AttentionCause.LOCATION_OFF, GapCause.LOCATION_OFF))
     }
 
@@ -210,5 +210,27 @@ class HealthLogicTest {
     fun locationOffOutsideTheScheduleIsNotAttention() {
         val h = snapshot(shouldRun = false, running = false, pre = Preconditions(locationEnabled = false))
         assertThat(reduce(h).state).isEqualTo(TrackingState.IDLE)
+    }
+
+    @Test
+    fun missingPreconditionWhileRunningWithFreshFixesIsAttentionOnly() {
+        val issue = evaluator.evaluate(snapshot(pre = Preconditions(backgroundLocation = false)))
+        assertThat(issue?.cause).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
+        assertThat(issue?.recordGap).isFalse()
+        assertThat(evaluator.evaluate(snapshot(pre = Preconditions(exactAlarms = false)))?.recordGap).isFalse()
+    }
+
+    @Test
+    fun missingPreconditionWithoutFreshFixesOrServiceRecordsAGap() {
+        val stale = snapshot(heartbeat = now - config.noHeartbeatThresholdMs - 1, pre = Preconditions(backgroundLocation = false))
+        assertThat(evaluator.evaluate(stale)?.recordGap).isTrue()
+        val notRunning = snapshot(running = false, pre = Preconditions(backgroundLocation = false))
+        assertThat(evaluator.evaluate(notRunning)?.recordGap).isTrue()
+    }
+
+    @Test
+    fun standingIssuesNeverRecordAGap() {
+        assertThat(evaluator.standingIssue(Preconditions(fineLocation = false))?.recordGap).isFalse()
+        assertThat(evaluator.standingIssue(Preconditions(exactAlarms = false))?.recordGap).isFalse()
     }
 }

@@ -41,8 +41,9 @@ class TrackingSnapshotProvider @Inject constructor(
 
 /**
  * One health check (the logic behind [HealthCheckWorker]). Inside a window with an outage it records the cause,
- * opens or extends the Gap, posts the alert and asks the controller to reconcile. Healthy, or outside a window,
- * it closes any open Gap. The reconcile runs as SYSTEM: a worker is not exempt from background FGS-start limits,
+ * opens or extends the Gap, posts the alert and asks the controller to reconcile. A precondition problem while
+ * fixes still arrive, or a standing problem outside a window, is ATTENTION and one alert only (no Gap). Healthy
+ * it clears everything. The reconcile runs as SYSTEM: a worker is not exempt from background FGS-start limits,
  * so a restart goes through the short alarm (ADR 0003).
  */
 @Singleton
@@ -55,13 +56,15 @@ class HealthChecker @Inject constructor(
     /** Returns the outage found, or null if healthy. */
     suspend fun check(): HealthIssue? {
         val health = snapshots.capture().health
-        val issue = evaluator.evaluate(health)
+        // Outside a window only standing configuration problems count, and they never open a Gap (ADR 0003).
+        val issue = if (health.shouldRun) evaluator.evaluate(health) else evaluator.standingIssue(health.preconditions)
         if (issue == null) {
             recorder.recover(health.nowMs)
             return null
         }
         recorder.reportOutage(issue, health.shouldRunSinceMs)
-        controller.reconcile(ReconcileSource.SYSTEM)
+        // A warning-only issue loses no capture time, so there is nothing to restart.
+        if (issue.recordGap) controller.reconcile(ReconcileSource.SYSTEM)
         return issue
     }
 }

@@ -29,7 +29,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = android.app.Application::class)
 class CaptureCoordinatorTest {
     @get:Rule
     val folder = TemporaryFolder()
@@ -156,19 +156,6 @@ class CaptureCoordinatorTest {
     }
 
     @Test
-    fun noActivityRecognitionFallsBackToDistanceGating() = runBlocking {
-        val noAr = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, location, FakeActivityClient(available = false), geofence,
-            permissions, windows, health, clock, captureScope,
-        )
-        noAr.begin(SessionTrigger.SCHEDULE)
-        noAr.onFixes(listOf(fix(0)))
-        noAr.onFixes(listOf(fix(config.stationaryEntryDurationMs + 1_000, lat = -33.00001)))
-
-        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
-    }
-
-    @Test
     fun locationUpdatesFailingWithGenericExceptionRecordsOutageGapAndAlert() = runBlocking {
         val failing = object : LocationClient {
             override fun updates(params: LocationRequestParams) =
@@ -280,5 +267,148 @@ class CaptureCoordinatorTest {
 
         assertThat(trackingRepo.openSession()).isNotNull()
         assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE)).isEmpty()
+    }
+
+    @Test
+    fun noActivityRecognitionSubDisplacementFixesStillDriveHeartbeatAndStationaryRule() = runBlocking {
+        // Fused now delivers every fix (no request-level distance filter), so a stationary phone is still heard.
+        val noAr = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, store, location, FakeActivityClient(available = false), geofence,
+            permissions, windows, health, clock, captureScope,
+        )
+        noAr.begin(SessionTrigger.SCHEDULE)
+        var offset = 0L
+        var lastTime = 0L
+        while (offset <= config.stationaryEntryDurationMs + config.movingIntervalMs) {
+            // About half a metre of drift per fix.
+            noAr.onFixes(listOf(fix(offset, lat = -33.0 + offset / 20_000 * 0.000005)))
+            lastTime = clock.now + offset
+            offset += config.movingIntervalMs
+        }
+
+        assertThat(store.current().lastHeartbeatMs).isEqualTo(lastTime)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)).hasSize(1)
+        assertThat(location.requests.last().intervalMs).isEqualTo(config.stationaryFixIntervalMs)
+    }
+
+    @Test
+    fun movingFixBeyondTheDisplacementIsSavedFromTheLastSavedPing() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        // 0.0001 deg of latitude is about 11 m; 0.0003 is about 33 m from the first.
+        coordinator.onFixes(listOf(fix(0), fix(20_000, lat = -33.0001), fix(40_000, lat = -33.0003)))
+
+        val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
+        assertThat(pings.map { it.timestamp }).containsExactly(clock.now, clock.now + 40_000).inOrder()
+    }
+
+    @Test
+    fun beginWithActivityRecognitionFailingFallsBackToDistanceGating() = runBlocking {
+        val throwing = object : ActivityTransitionClient {
+            override suspend fun register(): Boolean = throw IllegalStateException("task cancelled")
+            override suspend fun unregister() = Unit
+        }
+        val c = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, store, location, throwing, geofence, permissions, windows, health, clock,
+            captureScope,
+        )
+        c.begin(SessionTrigger.SCHEDULE)
+
+        assertThat(c.isActive).isTrue()
+        assertThat(location.requests).hasSize(1)
+    }
+
+    @Test
+    fun beginFailingAfterTheSessionOpenedRollsBackInsteadOfLeavingASessionWithoutAMachine() = runBlocking {
+        val failingGeofence = object : GeofenceClient {
+            override suspend fun addStayGeofence(lat: Double, lng: Double, radiusM: Float) = Unit
+            override suspend fun remove() = throw IllegalStateException("geofence api down")
+        }
+        val c = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, store, location, activityClient, failingGeofence, permissions, windows,
+            health, clock, captureScope,
+        )
+
+        val thrown = runCatching { c.begin(SessionTrigger.SCHEDULE) }.exceptionOrNull()
+
+        assertThat(thrown).isInstanceOf(IllegalStateException::class.java)
+        assertThat(c.isActive).isFalse()
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(trackingRepo.sessionsInRange(0, Long.MAX_VALUE).single().endReason).isEqualTo(SessionEndReason.KILLED)
+        assertThat(store.current().activeSessionId).isNull()
+    }
+
+    @Test
+    fun locationUpdatesDeadAfterAGenericFailureAreRestartedByEnsureLocationUpdates() = runBlocking {
+        val calls = java.util.concurrent.atomic.AtomicInteger()
+        val flaky = object : LocationClient {
+            override fun updates(params: LocationRequestParams) =
+                if (calls.getAndIncrement() == 0) {
+                    kotlinx.coroutines.flow.flow<List<Fix>> { throw IllegalStateException("boom") }
+                } else {
+                    location.updates(params)
+                }
+        }
+        val c = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, store, flaky, activityClient, geofence, permissions, windows,
+            health, clock, captureScope,
+        )
+        c.begin(SessionTrigger.SCHEDULE)
+        kotlinx.coroutines.withTimeout(5_000) {
+            while (calls.get() < 2) {
+                c.ensureLocationUpdates()
+                kotlinx.coroutines.delay(10)
+            }
+        }
+
+        assertThat(location.requests).hasSize(1)
+        assertThat(location.requests.single().intervalMs).isEqualTo(config.movingIntervalMs)
+        // A live request is left alone.
+        c.ensureLocationUpdates()
+        assertThat(calls.get()).isEqualTo(2)
+    }
+
+    @Test
+    fun ensureLocationUpdatesWithoutASessionDoesNothing() = runBlocking {
+        coordinator.ensureLocationUpdates()
+
+        assertThat(location.requests).isEmpty()
+    }
+
+    @Test
+    fun permissionLostMidSessionGoesThroughTheFailureListenerWhenSet() = runBlocking {
+        val seen = java.util.concurrent.CopyOnWriteArrayList<HealthIssue>()
+        val denied = object : LocationClient {
+            override fun updates(params: LocationRequestParams) =
+                kotlinx.coroutines.flow.flow<List<Fix>> { throw SecurityException("revoked") }
+        }
+        val c = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, store, denied, activityClient, geofence, permissions, windows,
+            health, clock, captureScope,
+        )
+        c.failureListener = { seen += it }
+        c.begin(SessionTrigger.SCHEDULE)
+        kotlinx.coroutines.withTimeout(5_000) { while (seen.isEmpty()) kotlinx.coroutines.delay(10) }
+
+        assertThat(seen.single().gapCause).isEqualTo(GapCause.PERMISSION_LOST)
+        // Ending the session and stopping the service is the listener's job (the controller).
+        assertThat(c.isActive).isTrue()
+    }
+
+    @Test
+    fun recoveryClipsTheGapToTheActiveIntervals() = runBlocking {
+        val lastPing = clock.now - 1_800_000
+        windows.intervals = listOf(
+            WindowBounds(java.time.Instant.ofEpochMilli(lastPing), java.time.Instant.ofEpochMilli(lastPing + 600_000)),
+            WindowBounds(java.time.Instant.ofEpochMilli(clock.now - 300_000), java.time.Instant.ofEpochMilli(clock.now)),
+        )
+        seedOpenSession(lastPing)
+
+        coordinator.recoverCrashedSession()
+
+        val gaps = timelineRepo.gapsInRange(0, Long.MAX_VALUE).sortedBy { it.start }
+        assertThat(gaps.map { it.start to it.end }).containsExactly(
+            lastPing to lastPing + 600_000, clock.now - 300_000 to clock.now,
+        ).inOrder()
     }
 }

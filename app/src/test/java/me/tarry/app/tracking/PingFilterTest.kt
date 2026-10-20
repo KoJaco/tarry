@@ -50,11 +50,13 @@ class PingFilterTest {
     }
 
     @Test
-    fun jitterInsideAccuracyCircleDroppedOnlyWhenStationary() {
+    fun jitterInsideAccuracyCircleIsTheStationaryRuleAndMovingUsesTheDisplacementGate() {
         filter.offer(fixAt(0), CaptureMode.STATIONARY)
         val jittery = fixAt(60_000, northM = 8.0, accuracyM = 15f)
         assertThat(filter.offer(jittery, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
-        assertThat(filter.offer(jittery, CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(jittery, CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
+        val moved = fixAt(60_000, northM = 30.0, accuracyM = 15f)
+        assertThat(filter.offer(moved, CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
@@ -101,5 +103,24 @@ class PingFilterTest {
         // 9 m away with 10 m accuracy is inside the circle; 11 m is outside.
         assertThat(filter.offer(fixAt(1_000, northM = 9.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
         assertThat(filter.offer(fixAt(2_000, northM = 11.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.ACCEPT)
+    }
+
+    @Test
+    fun movingDisplacementGateCountsFromTheLastSavedPingNotTheLastDroppedFix() {
+        val first = fixAt(0)
+        filter.offer(first, CaptureMode.MOVING)
+        // Each step is 10 m (< 25 m): dropped, and the reference stays at the first fix.
+        assertThat(filter.offer(fixAt(20_000, northM = 10.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
+        assertThat(filter.offer(fixAt(40_000, northM = 20.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
+        assertThat(filter.lastAccepted).isEqualTo(first)
+        // 30 m from the saved ping (not 10 m from the previous fix) is accepted.
+        assertThat(filter.offer(fixAt(60_000, northM = 30.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+    }
+
+    @Test
+    fun displacementGateDoesNotApplyToTheFirstFixOrStationary() {
+        assertThat(filter.offer(fixAt(0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+        // Stationary fixes outside the accuracy circle are saved even when under 25 m.
+        assertThat(filter.offer(fixAt(300_000, northM = 15.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.ACCEPT)
     }
 }

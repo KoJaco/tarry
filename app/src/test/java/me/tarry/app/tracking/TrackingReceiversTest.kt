@@ -38,7 +38,7 @@ import java.time.ZonedDateTime
  * directly and handed a real [TrackingController] wired to fakes and an in-memory DB.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = android.app.Application::class)
 class TrackingReceiversTest {
     @get:Rule
     val folder = TemporaryFolder()

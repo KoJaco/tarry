@@ -28,7 +28,6 @@ class PlayLocationClient @Inject constructor(
             }
         }
         val request = LocationRequest.Builder(params.priority.toPlayPriority(), params.intervalMs)
-            .setMinUpdateDistanceMeters(params.minDisplacementM)
             .apply { if (params.maxUpdateDelayMs > 0) setMaxUpdateDelayMillis(params.maxUpdateDelayMs) }
             .build()
         // A missing permission throws SecurityException here or fails the task; both reach the collector.

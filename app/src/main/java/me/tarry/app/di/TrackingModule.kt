@@ -6,15 +6,14 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import me.tarry.app.tracking.ActivityTransitionClient
 import me.tarry.app.tracking.EffectiveScheduleWindowChecker
 import me.tarry.app.tracking.AndroidLocationPermissionChecker
 import me.tarry.app.tracking.AndroidHealthAlertNotifier
 import me.tarry.app.tracking.AndroidPreconditionChecker
 import me.tarry.app.tracking.HealthAlertNotifier
+import me.tarry.app.tracking.HealthGapRecorder
+import me.tarry.app.tracking.createCaptureScope
 import me.tarry.app.tracking.PreconditionChecker
 import me.tarry.app.tracking.AndroidServiceLauncher
 import me.tarry.app.tracking.CaptureScope
@@ -71,12 +70,11 @@ abstract class TrackingModule {
     abstract fun bindSegmentationTrigger(impl: NoOpSegmentationTrigger): SegmentationTrigger
 
     companion object {
-        /** One thread keeps fix batches, activity events and geofence exits in arrival order. */
-        @OptIn(ExperimentalCoroutinesApi::class)
+        /** See [createCaptureScope]. Lazy recorder avoids a construction cycle. */
         @Provides
         @Singleton
         @CaptureScope
-        fun provideCaptureScope(): CoroutineScope =
-            CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+        fun provideCaptureScope(recorder: dagger.Lazy<HealthGapRecorder>): CoroutineScope =
+            createCaptureScope({ recorder.get() })
     }
 }

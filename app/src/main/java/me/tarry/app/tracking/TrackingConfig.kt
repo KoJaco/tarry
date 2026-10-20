@@ -35,6 +35,8 @@ data class TrackingConfig(
     val scheduleLookAheadDays: Long = 9L,
     /** Delay of the one-shot alarm that starts capture after boot or app start (ADR 0003: background FGS starts need an alarm). */
     val deferredStartDelayMs: Long = 5_000L,
+    /** Upper bound for persisting a failed foreground start before the service stops itself (must stay well under the ANR limit). */
+    val startFailurePersistTimeoutMs: Long = 3_000L,
     // Manual controls.
     val pauseShortMin: Long = 30L,
     val pauseLongMin: Long = 60L,

@@ -19,7 +19,6 @@ class CaptureModeMachineTest {
         val request = step.effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
         assertThat(request.priority).isEqualTo(config.movingPriority)
         assertThat(request.intervalMs).isEqualTo(config.movingIntervalMs)
-        assertThat(request.minDisplacementM).isEqualTo(config.movingMinDisplacementM)
         assertThat(request.maxUpdateDelayMs).isEqualTo(config.movingMaxUpdateDelayMs)
     }
 

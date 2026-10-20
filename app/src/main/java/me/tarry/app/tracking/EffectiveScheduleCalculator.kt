@@ -90,6 +90,27 @@ class EffectiveScheduleCalculator @Inject constructor(private val config: Tracki
         return tl.edges().any { it > from && it < to && tl.stateAt(it).active }
     }
 
+    /**
+     * The sub-intervals of [from, to] during which capture should have been active, ascending, non-overlapping
+     * and clipped to [from, to]. Empty when [to] is not after [from] or nothing was active.
+     */
+    fun activeIntervals(inputs: ScheduleInputs, from: Instant, to: Instant, zone: ZoneId): List<WindowBounds> {
+        if (to <= from) return emptyList()
+        val tl = Timeline(inputs, from, to, zone)
+        val points = listOf(from) + tl.edges().filter { it > from && it < to } + to
+        val out = ArrayList<WindowBounds>()
+        for (i in 0 until points.size - 1) {
+            if (!tl.stateAt(points[i]).active) continue
+            val tail = out.lastOrNull()
+            if (tail != null && tail.end == points[i]) {
+                out[out.lastIndex] = WindowBounds(tail.start, points[i + 1])
+            } else {
+                out += WindowBounds(points[i], points[i + 1])
+            }
+        }
+        return out
+    }
+
     /** When [override] ends: its stored `end`, else resolved from its end mode; null if open-ended. */
     fun resolveEnd(inputs: ScheduleInputs, override: ManualOverride, zone: ZoneId, at: Instant): Instant? =
         Timeline(inputs, minOf(at, Instant.ofEpochMilli(override.start)), at, zone).endOf(override)

@@ -14,7 +14,7 @@ import org.robolectric.shadows.ShadowAlarmManager
 import java.time.Instant
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [35], application = android.app.Application::class)
 class AndroidScheduleAlarmSchedulerTest {
     private lateinit var context: Context
     private lateinit var alarmManager: AlarmManager
