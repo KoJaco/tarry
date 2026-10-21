@@ -11,11 +11,28 @@
     <string name="timeline_duration_h_min">%1$d h %2$d min</string>
     <string name="timeline_duration_h">%1$d h</string>
     <string name="timeline_duration_min">%1$d min</string>
+    <string name="timeline_duration_less_than_min">&lt;1 min</string>
+    <string name="timeline_range_continues">(continues)</string>
+    <string name="timeline_range_from_previous_day">(from previous day)</string>
+    <string name="timeline_spoken_range">from %1$s to %2$s</string>
+    <string name="timeline_spoken_less_than_min">less than a minute</string>
+    <plurals name="timeline_spoken_hours">
+        <item quantity="one">%1$d hour</item>
+        <item quantity="other">%1$d hours</item>
+    </plurals>
+    <plurals name="timeline_spoken_minutes">
+        <item quantity="one">%1$d minute</item>
+        <item quantity="other">%1$d minutes</item>
+    </plurals>
+    <string name="timeline_visit_description">Visit at %1$s, %2$s, %3$s</string>
+    <string name="timeline_trip_description">Trip by %1$s, %2$s, %3$s</string>
+    <string name="timeline_gap_description">Tracking gap, %1$s, %2$s</string>
+    <string name="timeline_loading">Loading</string>
     <string name="timeline_distance_m">%1$d m</string>
     <string name="timeline_distance_km">%1$.1f km</string>
     <string name="timeline_mode_vehicle">Vehicle</string>
     <string name="timeline_mode_walk">Walk</string>
-    <string name="timeline_mode_unknown">Unknown</string>
+    <string name="timeline_mode_unknown">Unknown mode</string>
     <string name="timeline_gap_no_session">No tracking session</string>
     <string name="timeline_gap_no_fix">No location fix</string>
     <string name="timeline_gap_tracking_stopped">Tracking stopped</string>
@@ -113,6 +130,9 @@
     <string name="sessions_title">Sessions</string>
     <string name="sessions_empty">No sessions recorded yet</string>
     <string name="sessions_run_segmentation">Run segmentation now</string>
+    <string name="sessions_segmentation_running">Segmentation running…</string>
+    <string name="sessions_segmentation_last_success">Last segmentation: %1$s</string>
+    <string name="sessions_segmentation_failed">Segmentation failed at %1$s: %2$s</string>
     <string name="sessions_test_window">Start test window</string>
     <string name="sessions_test_window_hint">Starts a 10 minute tracking window in about 2 minutes (debug builds only).</string>
     <string name="sessions_row_title">%1$s to %2$s</string>

@@ -63,10 +63,10 @@ class TimelineViewModelTest {
     private fun at(date: LocalDate, hour: Int, minute: Int = 0): Long =
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private fun viewModel(date: LocalDate = day) = TimelineViewModel(timeline, places, zone, date)
+    private fun viewModel(today: () -> LocalDate = { day }) = TimelineViewModel(timeline, places, zone, today)
 
     private fun TimelineViewModel.awaitItems(predicate: (List<TimelineItem>) -> Boolean): List<TimelineItem> =
-        runBlocking { withTimeout(10_000) { items.first(predicate) } }
+        runBlocking { withTimeout(10_000) { items.first { it != null && predicate(it) } } }.orEmpty()
 
     private fun visit(id: String, start: Long, end: Long, placeId: String?) = Visit(
         id = id, placeId = placeId, start = start, end = end, zoneId = zone.id,
@@ -134,5 +134,61 @@ class TimelineViewModelTest {
         val (nFrom, nTo) = dayBounds(day, zone)
         assertThat(nTo - nFrom).isEqualTo(24 * 60 * 60 * 1000L)
         assertThat(nFrom).isEqualTo(at(day, 0))
+    }
+
+    @Test
+    fun itemsAreNullWhileLoadingThenEmptyListForAnEmptyDay() = runBlocking {
+        val vm = viewModel()
+        assertThat(vm.items.value).isNull()
+        val loaded = withTimeout(10_000) { vm.items.first { it != null } }
+        assertThat(loaded).isEmpty()
+    }
+
+    @Test
+    fun sameStartSortsGapThenVisitThenTrip() = runBlocking {
+        val s = at(day, 10)
+        timeline.saveTrip(Trip(id = "t", start = s, end = at(day, 11), zoneId = zone.id, distanceM = 1f, mode = TripMode.WALK, updatedAt = 0))
+        timeline.saveVisit(visit("v", s, at(day, 11), null))
+        timeline.saveGap(Gap(id = "g", start = s, end = at(day, 11), zoneId = zone.id, cause = GapCause.NO_FIX, updatedAt = 0))
+        timeline.saveVisit(visit("early", at(day, 9), at(day, 9, 30), null))
+
+        val result = viewModel().awaitItems { it.size == 4 }
+
+        assertThat(result.map { it.id }).containsExactly("early", "g", "v", "t").inOrder()
+    }
+
+    @Test
+    fun rolloverMovesSelectionWhenFollowingToday() {
+        var now = day
+        val vm = viewModel { now }
+        now = day.plusDays(1)
+
+        vm.refreshToday()
+
+        assertThat(vm.today.value).isEqualTo(day.plusDays(1))
+        assertThat(vm.selectedDate.value).isEqualTo(day.plusDays(1))
+    }
+
+    @Test
+    fun rolloverKeepsADayTheUserNavigatedTo() {
+        var now = day
+        val vm = viewModel { now }
+        vm.previousDay()
+        now = day.plusDays(1)
+
+        vm.refreshToday()
+
+        assertThat(vm.today.value).isEqualTo(day.plusDays(1))
+        assertThat(vm.selectedDate.value).isEqualTo(day.minusDays(1))
+    }
+
+    @Test
+    fun nextDayStopsAtToday() {
+        val vm = viewModel()
+        vm.nextDay()
+        assertThat(vm.selectedDate.value).isEqualTo(day)
+        vm.previousDay()
+        vm.nextDay()
+        assertThat(vm.selectedDate.value).isEqualTo(day)
     }
 }

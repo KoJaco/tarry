@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import me.tarry.core.data.db.entity.Place
@@ -32,6 +34,8 @@ sealed interface TimelineItem {
         override val start: Long,
         override val end: Long,
         val placeLabel: String?,
+        /** True when [placeLabel] is only the raw coordinates, so it should be spoken as an unknown place. */
+        val labelIsCoordinates: Boolean = false,
     ) : TimelineItem
 
     data class Trip(
@@ -64,46 +68,83 @@ fun Place.displayLabel(): String =
         ?: address?.takeIf { it.isNotBlank() }
         ?: String.format(Locale.US, "%.5f, %.5f", centroidLat, centroidLng)
 
+/** True when [displayLabel] would fall back to raw coordinates. */
+fun Place.labelIsCoordinates(): Boolean = name.isNullOrBlank() && address.isNullOrBlank()
+
+/** gap < visit < trip when rows start at the same time. */
+private fun TimelineItem.typeOrder(): Int = when (this) {
+    is TimelineItem.Gap -> 0
+    is TimelineItem.Visit -> 1
+    is TimelineItem.Trip -> 2
+}
+
+private val RowOrder = compareBy<TimelineItem>({ it.start }, { it.typeOrder() })
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TimelineViewModel internal constructor(
     timeline: TimelineRepository,
     places: PlaceRepository,
     zone: ZoneId,
-    initialDate: LocalDate,
+    private val todayProvider: () -> LocalDate,
 ) : ViewModel() {
     @Inject
     constructor(timeline: TimelineRepository, places: PlaceRepository) :
-        this(timeline, places, ZoneId.systemDefault(), LocalDate.now(ZoneId.systemDefault()))
+        this(timeline, places, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) })
 
-    private val _selectedDate = MutableStateFlow(initialDate)
+    private val _today = MutableStateFlow(todayProvider())
+
+    /** The current date; changes only through [refreshToday]. The selected date can never be after it. */
+    val today: StateFlow<LocalDate> = _today
+
+    private val _selectedDate = MutableStateFlow(_today.value)
     val selectedDate: StateFlow<LocalDate> = _selectedDate
 
-    val items: StateFlow<List<TimelineItem>> = _selectedDate
+    /** Null until the first emission for the selected date (loading); an empty list is a loaded, empty day. */
+    val items: StateFlow<List<TimelineItem>?> = _selectedDate
         .flatMapLatest { date ->
             val (from, to) = dayBounds(date, zone)
-            combine(
-                timeline.observeVisits(from, to),
-                timeline.observeTrips(from, to),
-                timeline.observeGaps(from, to),
-                places.observeAll(),
-            ) { visits, trips, gaps, allPlaces ->
-                val byId = allPlaces.associateBy { it.id }
-                val rows: List<TimelineItem> =
-                    visits.map { TimelineItem.Visit(it.id, it.start, it.end, it.placeId?.let(byId::get)?.displayLabel()) } +
-                        trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
-                        gaps.map { TimelineItem.Gap(it.id, it.start, it.end, it.cause) }
-                rows.sortedBy { it.start }
+            flow {
+                emit(null)
+                emitAll(
+                    combine(
+                        timeline.observeVisits(from, to),
+                        timeline.observeTrips(from, to),
+                        timeline.observeGaps(from, to),
+                        places.observeAll(),
+                    ) { visits, trips, gaps, allPlaces ->
+                        val byId = allPlaces.associateBy { it.id }
+                        val rows: List<TimelineItem> = visits.map {
+                            val place = it.placeId?.let(byId::get)
+                            TimelineItem.Visit(it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false)
+                        } +
+                            trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
+                            gaps.map { TimelineItem.Gap(it.id, it.start, it.end, it.cause) }
+                        rows.sortedWith(RowOrder)
+                    },
+                )
             }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
+
+    /**
+     * Re-derives today (call on resume). If the user was looking at the old today, the selection follows to the new
+     * one; a day they navigated to stays.
+     */
+    fun refreshToday() {
+        val now = todayProvider()
+        val old = _today.value
+        if (now == old) return
+        _today.value = now
+        if (_selectedDate.value == old) _selectedDate.value = now
+    }
 
     fun previousDay() {
         _selectedDate.value = _selectedDate.value.minusDays(1)
     }
 
     fun nextDay() {
-        _selectedDate.value = _selectedDate.value.plusDays(1)
+        if (_selectedDate.value < _today.value) _selectedDate.value = _selectedDate.value.plusDays(1)
     }
 
     private companion object {
