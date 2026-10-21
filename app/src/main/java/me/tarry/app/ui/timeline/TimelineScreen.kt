@@ -1,27 +1,24 @@
 package me.tarry.app.ui.timeline
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
-import me.tarry.app.R
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+/** Hilt-wired day list. */
 @Composable
-fun TimelineScreen(modifier: Modifier = Modifier) {
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            text = stringResource(R.string.nav_timeline),
-            style = MaterialTheme.typography.headlineMedium,
-        )
-        Text(
-            text = stringResource(R.string.timeline_empty),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.padding(top = 16.dp),
-        )
-    }
+fun TimelineScreen(
+    modifier: Modifier = Modifier,
+    viewModel: TimelineViewModel = hiltViewModel(),
+) {
+    val date by viewModel.selectedDate.collectAsStateWithLifecycle()
+    val items by viewModel.items.collectAsStateWithLifecycle()
+    TimelineContent(
+        date = date,
+        items = items,
+        onPreviousDay = viewModel::previousDay,
+        onNextDay = viewModel::nextDay,
+        modifier = modifier,
+    )
 }
