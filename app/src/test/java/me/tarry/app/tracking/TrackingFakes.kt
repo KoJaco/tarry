@@ -20,13 +20,17 @@ class FakeLocationClient : LocationClient {
     }
 }
 
-class FakeActivityClient(private val available: Boolean = true) : ActivityTransitionClient {
+class FakeActivityClient(var available: Boolean = true) : ActivityTransitionClient {
+    var registerCalls = 0
+        private set
+
     var registered = false
         private set
     var unregisterCalls = 0
         private set
 
     override suspend fun register(): Boolean {
+        registerCalls++
         registered = available
         return available
     }
@@ -107,4 +111,8 @@ class FakeAlertNotifier : HealthAlertNotifier {
     override fun clear() {
         clearCalls++
     }
+}
+
+class FakeStayRadius(var radiusM: Float = 100f) : StayRadiusSource {
+    override suspend fun stayRadiusM() = radiusM
 }

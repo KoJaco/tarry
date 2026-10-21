@@ -38,6 +38,7 @@ class CaptureCoordinator @Inject constructor(
     private val locationClient: LocationClient,
     private val activityClient: ActivityTransitionClient,
     private val geofenceClient: GeofenceClient,
+    private val stayRadius: StayRadiusSource,
     private val permissions: LocationPermissionChecker,
     private val windowChecker: ScheduleWindowChecker,
     private val health: HealthGapRecorder,
@@ -51,6 +52,7 @@ class CaptureCoordinator @Inject constructor(
     private var filter = PingFilter(config)
     private var activity: ActivityType? = null
     private var manualStartPending = false
+    private var activityRegistered = false
     private var locationJob: Job? = null
     private var lastLocationParams: LocationRequestParams? = null
 
@@ -86,13 +88,16 @@ class CaptureCoordinator @Inject constructor(
         try {
             // The service is up, so the outage (if any) is over; the health check re-raises anything still broken.
             health.closeOutage(now)
-            val m = CaptureModeMachine(config, activityRecognitionAvailable = registerActivity())
+            activityRegistered = registerActivity()
+            val m = CaptureModeMachine(config, activityRecognitionAvailable = activityRegistered)
+            m.stayRadiusM = stayRadius.stayRadiusM()
             machine = m
             apply(m.start())
         } catch (t: Throwable) {
             // Never leave a session open without a machine: fixes would be ignored while the heartbeat looks alive.
             session = null
             machine = null
+            activityRegistered = false
             locationJob?.cancel()
             locationJob = null
             withContext(NonCancellable) {
@@ -120,6 +125,7 @@ class CaptureCoordinator @Inject constructor(
         val open = session ?: return@withLock
         session = null
         machine = null
+        activityRegistered = false
         locationJob?.cancel()
         locationJob = null
         trackingRepo.saveSession(open.copy(end = clock.nowMs(), endReason = reason))
@@ -141,6 +147,7 @@ class CaptureCoordinator @Inject constructor(
     suspend fun onFixes(fixes: List<Fix>) = mutex.withLock {
         val open = session ?: return@withLock
         val m = machine ?: return@withLock
+        m.stayRadiusM = stayRadius.stayRadiusM()
         val accepted = ArrayList<LocationPing>()
         var latest = Long.MIN_VALUE
         for (fix in fixes.sortedBy { it.timeMs }) {
@@ -149,9 +156,13 @@ class CaptureCoordinator @Inject constructor(
             if (decision == FilterDecision.DROP_DISPLACEMENT) {
                 // Not saved, but the machine still needs it (stationary rule); every delivered fix is a heartbeat.
                 apply(m.onAcceptedFix(fix))
+                // A GEOFENCE_EXIT tag is for the fix that is saved; this one is not, so the tag is not carried forward.
+                m.discardPendingSource()
                 continue
             }
             if (!decision.accepted) continue
+            // Step first: a safety-net exit triggered by this very fix tags it GEOFENCE_EXIT.
+            apply(m.onAcceptedFix(fix))
             val machineSource = m.takeNextPingSource()
             val source = if (manualStartPending) PingSource.MANUAL_START else machineSource
             manualStartPending = false
@@ -167,7 +178,6 @@ class CaptureCoordinator @Inject constructor(
                 source = source,
                 sessionId = open.id,
             )
-            apply(m.onAcceptedFix(fix))
         }
         if (accepted.isNotEmpty()) trackingRepo.savePings(accepted)
         // Every fix or batch counts as a heartbeat, even when all were filtered out.
@@ -180,6 +190,7 @@ class CaptureCoordinator @Inject constructor(
 
     suspend fun onActivity(type: ActivityType) = mutex.withLock {
         val m = machine ?: return@withLock
+        m.stayRadiusM = stayRadius.stayRadiusM()
         activity = type
         apply(m.onActivity(type))
     }
@@ -212,11 +223,17 @@ class CaptureCoordinator @Inject constructor(
     }
 
     /**
-     * Restarts location updates if the request died (a non-security failure ended the collector) while a session is
-     * open. Called by every reconcile and health check, so an open session is never left without updates.
+     * Keeps an open session fully armed: restarts location updates if the request died (a non-security failure
+     * ended the collector) and retries Activity Recognition if it is not registered. Called by every reconcile and
+     * health check. AR stays optional, so a failed retry is silent.
      */
-    suspend fun ensureLocationUpdates() = mutex.withLock {
-        if (session == null || locationJob?.isActive == true) return@withLock
+    suspend fun ensureCapture() = mutex.withLock {
+        if (session == null) return@withLock
+        if (!activityRegistered && registerActivity()) {
+            activityRegistered = true
+            machine?.onActivityRecognitionAvailable()
+        }
+        if (locationJob?.isActive == true) return@withLock
         lastLocationParams?.let(::startLocation)
     }
 

@@ -10,10 +10,9 @@ data class TrackingConfig(
     // STATIONARY entry rule: no movement beyond [stationaryEntryRadiusM] for [stationaryEntryDurationMs].
     val stationaryEntryRadiusM: Float = 50f,
     val stationaryEntryDurationMs: Long = 3 * 60_000L,
-    // STATIONARY location request.
+    // STATIONARY location request. The stay geofence radius is a user setting (Settings.stayGeofenceRadiusM).
     val stationaryPriority: LocationPriority = LocationPriority.LOW_POWER,
-    val stationaryFixIntervalMs: Long = 5 * 60_000L,
-    val stayGeofenceRadiusM: Float = 150f,
+    val stationaryFixIntervalMs: Long = 3 * 60_000L,
     // MOVING location request.
     val movingPriority: LocationPriority = LocationPriority.BALANCED,
     val movingIntervalMs: Long = 20_000L,

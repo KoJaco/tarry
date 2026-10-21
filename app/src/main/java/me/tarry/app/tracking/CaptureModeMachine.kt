@@ -31,8 +31,16 @@ data class MachineStep(val mode: CaptureMode, val effects: List<CaptureEffect>)
  */
 class CaptureModeMachine(
     private val config: TrackingConfig,
-    private val activityRecognitionAvailable: Boolean = true,
+    activityRecognitionAvailable: Boolean = true,
 ) {
+    private var activityRecognitionAvailable = activityRecognitionAvailable
+
+    /**
+     * Radius of the stay geofence created at the next STATIONARY entry (set by the coordinator from the user setting).
+     * A stop that is already active keeps the radius it was created with.
+     */
+    var stayRadiusM: Float = DEFAULT_STAY_RADIUS_M
+
     var mode: CaptureMode = CaptureMode.MOVING
         private set
 
@@ -40,6 +48,7 @@ class CaptureModeMachine(
     private var anchor: Fix? = null
     private var lastFix: Fix? = null
     private var geofenceCentre: Fix? = null
+    private var geofenceRadiusM: Float = DEFAULT_STAY_RADIUS_M
     private var stillPending = false
     private var nextSource = PingSource.FUSED
 
@@ -57,6 +66,16 @@ class CaptureModeMachine(
 
     /** Source for the next saved ping: GEOFENCE_EXIT once after an exit, otherwise FUSED. */
     fun takeNextPingSource(): PingSource = nextSource.also { nextSource = PingSource.FUSED }
+
+    /** Drops a pending GEOFENCE_EXIT tag (the fix it was meant for is not saved). */
+    fun discardPendingSource() {
+        nextSource = PingSource.FUSED
+    }
+
+    /** Activity Recognition registered after the session began: STILL/moving transitions now take effect. */
+    fun onActivityRecognitionAvailable() {
+        activityRecognitionAvailable = true
+    }
 
     fun onActivity(type: ActivityType): MachineStep {
         if (!activityRecognitionAvailable) return step()
@@ -91,7 +110,8 @@ class CaptureModeMachine(
         if (mode == CaptureMode.STATIONARY) {
             val centre = geofenceCentre
             // Safety net if the geofence exit event is late or lost.
-            return if (centre != null && fix.distanceTo(centre) > config.stayGeofenceRadiusM) {
+            return if (centre != null && fix.distanceTo(centre) > geofenceRadiusM) {
+                nextSource = PingSource.GEOFENCE_EXIT
                 enterMoving()
             } else {
                 step()
@@ -122,6 +142,7 @@ class CaptureModeMachine(
         stillPending = false
         anchor = null
         geofenceCentre = at
+        geofenceRadiusM = stayRadiusM
         return MachineStep(
             mode,
             listOf(
@@ -132,7 +153,7 @@ class CaptureModeMachine(
                         maxUpdateDelayMs = 0L,
                     ),
                 ),
-                CaptureEffect.AddStayGeofence(at.lat, at.lng, config.stayGeofenceRadiusM),
+                CaptureEffect.AddStayGeofence(at.lat, at.lng, geofenceRadiusM),
             ),
         )
     }
@@ -156,6 +177,7 @@ class CaptureModeMachine(
     private fun step() = MachineStep(mode, emptyList())
 
     private companion object {
+        const val DEFAULT_STAY_RADIUS_M = 100f
         val MOVING_ACTIVITIES = setOf(ActivityType.WALKING, ActivityType.IN_VEHICLE, ActivityType.ON_BICYCLE)
     }
 }
