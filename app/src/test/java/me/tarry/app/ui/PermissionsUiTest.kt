@@ -6,6 +6,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.permissions.PermissionStep
@@ -101,6 +102,19 @@ class PermissionsUiTest {
     }
 
     @Test
+    fun grantedPermissionOffersChangeAndNotGrant() {
+        val changed = mutableListOf<PermissionStep>()
+        val ui = buildPermissionsUiState(PermissionSnapshot(fineLocation = true), emptySet())
+        composeRule.setContent { PermissionsContent(ui, noop.copy(onChange = { changed += it })) }
+
+        composeRule.onNodeWithTag("permission_grant_LOCATION").assertDoesNotExist()
+        composeRule.onNodeWithTag("permission_change_LOCATION").performScrollTo().performClick()
+        composeRule.onNodeWithTag("permission_change_BACKGROUND_LOCATION").assertDoesNotExist()
+
+        assertThat(changed).containsExactly(PermissionStep.LOCATION)
+    }
+
+    @Test
     fun tappingGrantAndSkipInvokesActions() {
         val granted = mutableListOf<PermissionStep>()
         val skipped = mutableListOf<PermissionStep>()
@@ -108,8 +122,8 @@ class PermissionsUiTest {
         composeRule.setContent {
             PermissionsContent(ui, noop.copy(onGrant = { granted += it }, onSkip = { skipped += it }))
         }
-        composeRule.onNodeWithTag("permission_grant_BACKGROUND_LOCATION").performClick()
-        composeRule.onNodeWithTag("permission_skip_BACKGROUND_LOCATION").performClick()
+        composeRule.onNodeWithTag("permission_grant_BACKGROUND_LOCATION").performScrollTo().performClick()
+        composeRule.onNodeWithTag("permission_skip_BACKGROUND_LOCATION").performScrollTo().performClick()
 
         assertThat(granted).containsExactly(PermissionStep.BACKGROUND_LOCATION)
         assertThat(skipped).containsExactly(PermissionStep.BACKGROUND_LOCATION)

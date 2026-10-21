@@ -8,7 +8,7 @@
 3. Work through T1 → T7 in order, one subagent per task as the spec names it. Commit per task. Run the reviewer before opening the PR.
 
 ## Goal (one paragraph)
-Replace the stock purple M3 theme with Tarry's design system and restyle every existing screen. The palette is warm paper, ink and apricot. Type is Instrument Serif over Inter. Surfaces are flat cards and pills. There is a full-width bottom bar with three equal pill slots, and a calendar-style day canvas drawn to scale. No behaviour, data or schema changes. Phases 3–8 then build only on these tokens and components.
+Replace the stock purple M3 theme with Tarry's design system and restyle every existing screen. The palette is warm paper, ink and apricot. Type is Nunito over Nunito Sans. Surfaces are flat cards and pills. There is a full-width bottom bar with three equal pill slots, and a calendar-style day canvas drawn to scale. No behaviour, data or schema changes. Phases 3–8 then build only on these tokens and components.
 
 ## Where the project is (2026-10-21)
 - **Merged:** phases 0, 1, 2a (capture, PR #4), the 2a dogfood fixes (PR #5) and 2b (segmentation, PR #6). PR #7 (docs: status, this spec, tokens, this handoff) is open or just merged.

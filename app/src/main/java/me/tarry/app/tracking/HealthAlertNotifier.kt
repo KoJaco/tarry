@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Context
 import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import me.tarry.app.R
 import javax.inject.Inject
@@ -29,6 +30,7 @@ class AndroidHealthAlertNotifier @Inject constructor(
         val text = context.getString(cause.messageRes())
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_tracking)
+            .setColor(ContextCompat.getColor(context, R.color.tarry_accent))
             .setContentTitle(context.getString(R.string.tracking_alert_title))
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))

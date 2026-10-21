@@ -57,13 +57,13 @@ class TarryAppShellTest {
         setShell()
         timelineTab.assertIsDisplayed()
         settingsTab.assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Tracking: Idle").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Tracking: off").assertIsDisplayed()
     }
 
     @Test
     fun opensOnTimeline() {
         setShell()
-        composeRule.onNodeWithText("No visits yet").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing yet today").assertIsDisplayed()
         composeRule.onNodeWithText("Rounding increment").assertDoesNotExist()
         timelineTab.assertIsSelected()
     }
@@ -72,12 +72,12 @@ class TarryAppShellTest {
     fun tappingSettings_showsSettings_thenTimelineReturns() {
         setShell()
         settingsTab.performClick()
-        composeRule.onNodeWithText("Rounding increment").assertIsDisplayed()
-        composeRule.onNodeWithText("No visits yet").assertDoesNotExist()
+        composeRule.onNodeWithText("Stop radius").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing yet today").assertDoesNotExist()
         settingsTab.assertIsSelected()
 
         timelineTab.performClick()
-        composeRule.onNodeWithText("No visits yet").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing yet today").assertIsDisplayed()
         composeRule.onNodeWithText("Rounding increment").assertDoesNotExist()
         timelineTab.assertIsSelected()
     }
@@ -86,20 +86,20 @@ class TarryAppShellTest {
     fun tappingToggle_invokesCallback_withoutNavigating() {
         var clicks = 0
         setShell(onToggle = { clicks++ })
-        composeRule.onNodeWithContentDescription("Tracking: Idle").performClick()
+        composeRule.onNodeWithContentDescription("Tracking: off").performClick()
         composeRule.runOnIdle { assertEqualsInt(1, clicks) }
-        composeRule.onNodeWithText("No visits yet").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing yet today").assertIsDisplayed()
     }
 
     @Test
-    fun toggle_contentDescription_idle() = assertToggleDescription(TrackingState.IDLE, "Tracking: Idle")
+    fun toggle_contentDescription_idle() = assertToggleDescription(TrackingState.IDLE, "Tracking: off")
 
     @Test
-    fun toggle_contentDescription_paused() = assertToggleDescription(TrackingState.PAUSED, "Tracking: Paused")
+    fun toggle_contentDescription_paused() = assertToggleDescription(TrackingState.PAUSED, "Tracking: paused")
 
     @Test
     fun toggle_contentDescription_attention() =
-        assertToggleDescription(TrackingState.ATTENTION, "Tracking: Attention")
+        assertToggleDescription(TrackingState.ATTENTION, "Tracking: needs attention")
 
     private fun assertToggleDescription(state: TrackingState, label: String) {
         composeRule.setContent { TrackingToggle(state = state, onClick = {}) }
@@ -111,13 +111,13 @@ class TarryAppShellTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent { TrackingToggle(state = TrackingState.TRACKING, onClick = {}) }
         composeRule.mainClock.advanceTimeBy(500)
-        composeRule.onNode(hasContentDescription("Tracking: Tracking")).assertIsDisplayed()
+        composeRule.onNode(hasContentDescription("Tracking: on")).assertIsDisplayed()
     }
 
     @Test
     fun toggle_touchTarget_isAtLeast48dp() {
         composeRule.setContent { TrackingToggle(state = TrackingState.IDLE, onClick = {}) }
-        composeRule.onNodeWithContentDescription("Tracking: Idle")
+        composeRule.onNodeWithContentDescription("Tracking: off")
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
     }

@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.settings.SettingsContent
 import me.tarry.core.data.settings.Settings
+import me.tarry.core.data.settings.ThemeMode
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,9 +28,14 @@ class SettingsUiTest {
     val composeRule = createComposeRule()
 
     private val selected = mutableListOf<Int>()
+    private val themes = mutableListOf<ThemeMode>()
 
-    private fun show(radius: Int = 100) = composeRule.setContent {
-        SettingsContent(Settings(stayGeofenceRadiusM = radius), onStayRadiusSelected = { selected += it })
+    private fun show(radius: Int = 100, theme: ThemeMode = ThemeMode.SYSTEM) = composeRule.setContent {
+        SettingsContent(
+            Settings(stayGeofenceRadiusM = radius, theme = theme),
+            onStayRadiusSelected = { selected += it },
+            onThemeSelected = { themes += it },
+        )
     }
 
     @Test
@@ -62,5 +68,25 @@ class SettingsUiTest {
 
         assertThat(selected).containsExactly(200)
         composeRule.onNodeWithText("How far you must move", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun themeRowShowsCurrentValueAndListsThreeOptions() {
+        show(theme = ThemeMode.LIGHT)
+        composeRule.onNodeWithText("Theme").performClick()
+        composeRule.onAllNodes(radioOption).assertCountEquals(3)
+        composeRule.onNode(option("System")).assertExists()
+        composeRule.onNode(option("Light")).assertIsSelected()
+        composeRule.onNode(option("Dark")).assertExists()
+    }
+
+    @Test
+    fun selectingDarkCallsBackAndClosesTheSheet() {
+        show()
+        composeRule.onNodeWithText("Theme").performClick()
+        composeRule.onNode(option("Dark")).performClick()
+
+        assertThat(themes).containsExactly(ThemeMode.DARK)
+        composeRule.onAllNodes(radioOption).assertCountEquals(0)
     }
 }

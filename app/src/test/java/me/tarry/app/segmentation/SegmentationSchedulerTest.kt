@@ -15,6 +15,7 @@ import androidx.work.testing.WorkManagerTestInitHelper
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import me.tarry.app.tracking.TrackingConfig
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -37,6 +38,13 @@ class SegmentationSchedulerTest {
         WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setWorkerFactory(HangingWorkerFactory).build())
         workManager = WorkManager.getInstance(context)
         scheduler = SegmentationScheduler(context, config)
+    }
+
+    @After
+    fun tearDown() {
+        // Hanging workers are still running; cancel and wait so no WorkManager future is left to be failed by the GC finalizer
+        // after Robolectric has closed the work database (that leaked an uncaught coroutine exception into later Compose tests).
+        workManager.cancelAllWork().result.get()
     }
 
     private fun infos(name: String): List<WorkInfo> = workManager.getWorkInfosForUniqueWork(name).get()

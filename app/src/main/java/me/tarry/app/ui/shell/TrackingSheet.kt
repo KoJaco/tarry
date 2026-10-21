@@ -1,12 +1,22 @@
 package me.tarry.app.ui.shell
 
 import android.text.format.DateFormat
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -14,24 +24,23 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.tracking.AttentionCause
 import me.tarry.app.tracking.PauseKind
 import me.tarry.app.tracking.TrackingDetails
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.ManualOverrideEndMode
 import java.time.Instant
 import java.util.Date
 
 private const val MINUTES_PER_HOUR = 60
-private val SheetRowMinHeight = 48.dp
 
 /** What the sheet can ask for. The shell wires these to the controller and to system settings. */
 data class TrackingSheetActions(
@@ -45,7 +54,7 @@ data class TrackingSheetActions(
     val onOpenAppSettings: () -> Unit,
 )
 
-/** Minimal per-state bottom sheet opened by the toggle. Phase 6 polishes it. */
+/** Per-state bottom sheet opened by the toggle: container-radius top corners, pill action buttons. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TrackingSheet(
@@ -55,7 +64,11 @@ fun TrackingSheet(
     actions: TrackingSheetActions,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
+        containerColor = TarryTheme.colors.paper,
+    ) {
         TrackingSheetContent(state, details, startDurationsMin, actions, onDismiss)
     }
 }
@@ -74,51 +87,52 @@ fun TrackingSheetContent(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = TarryTheme.space.gutter)
+            .padding(bottom = TarryTheme.space.l),
+        verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
     ) {
         when (state) {
             TrackingState.IDLE -> {
                 SheetTitle(R.string.tracking_sheet_idle_title)
-                SheetRow(stringResource(R.string.tracking_sheet_start_until_stopped), onDone) {
+                SheetRow(stringResource(R.string.tracking_sheet_start_until_stopped), onDone, R.drawable.ic_play_arrow) {
                     actions.onStart(ManualOverrideEndMode.UNTIL_STOPPED, null)
                 }
-                SheetRow(stringResource(R.string.tracking_sheet_start_end_of_day), onDone) {
+                SheetRow(stringResource(R.string.tracking_sheet_start_end_of_day), onDone, R.drawable.ic_play_arrow) {
                     actions.onStart(ManualOverrideEndMode.END_OF_DAY, null)
                 }
                 for (minutes in startDurationsMin) {
-                    SheetRow(durationLabel(minutes), onDone) {
+                    SheetRow(durationLabel(minutes), onDone, R.drawable.ic_play_arrow) {
                         actions.onStart(ManualOverrideEndMode.DURATION, minutes)
                     }
                 }
             }
             TrackingState.TRACKING -> {
                 SheetTitle(R.string.tracking_sheet_tracking_title)
-                SheetRow(stringResource(R.string.tracking_sheet_pause_30m), onDone) { actions.onPause(PauseKind.PAUSE_30M) }
-                SheetRow(stringResource(R.string.tracking_sheet_pause_1h), onDone) { actions.onPause(PauseKind.PAUSE_1H) }
-                SheetRow(stringResource(R.string.tracking_sheet_pause_next_window), onDone) {
+                SheetRow(stringResource(R.string.tracking_sheet_pause_30m), onDone, R.drawable.ic_pause) { actions.onPause(PauseKind.PAUSE_30M) }
+                SheetRow(stringResource(R.string.tracking_sheet_pause_1h), onDone, R.drawable.ic_pause) { actions.onPause(PauseKind.PAUSE_1H) }
+                SheetRow(stringResource(R.string.tracking_sheet_pause_next_window), onDone, R.drawable.ic_pause) {
                     actions.onPause(PauseKind.UNTIL_NEXT_WINDOW)
                 }
-                SheetRow(stringResource(R.string.tracking_sheet_stop), onDone) { actions.onStop() }
+                SheetRow(stringResource(R.string.tracking_sheet_stop), onDone, R.drawable.ic_stop) { actions.onStop() }
             }
             TrackingState.PAUSED -> {
                 SheetTitle(R.string.tracking_sheet_paused_title)
                 Text(
                     text = pausedText(details.pausedUntil),
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 24.dp),
+                    color = TarryTheme.colors.muted,
                 )
-                SheetRow(stringResource(R.string.tracking_sheet_resume), onDone) { actions.onResume() }
+                SheetRow(stringResource(R.string.tracking_sheet_resume), onDone, R.drawable.ic_play_arrow) { actions.onResume() }
             }
             TrackingState.ATTENTION -> {
                 SheetTitle(R.string.tracking_sheet_attention_title)
                 Text(
                     text = stringResource(details.attentionCause.messageRes()),
                     style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(horizontal = 24.dp),
+                    color = TarryTheme.colors.muted,
                 )
                 val fix = details.attentionCause.fix(actions)
-                SheetRow(stringResource(fix.labelRes), onDone) { fix.action() }
+                SheetRow(stringResource(fix.labelRes), onDone, R.drawable.ic_settings) { fix.action() }
             }
         }
     }
@@ -128,25 +142,38 @@ fun TrackingSheetContent(
 private fun SheetTitle(titleRes: Int) {
     Text(
         text = stringResource(titleRes),
-        style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        style = MaterialTheme.typography.titleLarge,
+        color = TarryTheme.colors.ink,
     )
 }
 
 @Composable
-private fun SheetRow(label: String, onDone: () -> Unit, onClick: () -> Unit) {
+private fun SheetRow(label: String, onDone: () -> Unit, @DrawableRes icon: Int, onClick: () -> Unit) {
+    val colors = TarryTheme.colors
+    val space = TarryTheme.space
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = SheetRowMinHeight)
+            .clip(TarryTheme.shapes.card)
             .clickable(role = Role.Button) {
                 onClick()
                 onDone()
             }
-            .padding(horizontal = 24.dp),
+            .background(colors.card)
+            .heightIn(min = 56.dp)
+            .padding(horizontal = space.m, vertical = space.s),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(space.m),
     ) {
-        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+        Box(
+            modifier = Modifier.size(40.dp).clip(CircleShape).background(colors.inset),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painter = painterResource(icon), contentDescription = null, tint = colors.ink, modifier = Modifier.size(24.dp))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.titleSmall, color = colors.ink)
+        }
     }
 }
 

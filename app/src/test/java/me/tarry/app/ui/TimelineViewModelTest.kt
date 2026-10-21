@@ -23,6 +23,8 @@ import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
+import me.tarry.core.data.db.entity.Job
+import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.PlaceRepository
 import me.tarry.core.data.repository.TimelineRepository
 import org.junit.After
@@ -43,6 +45,7 @@ class TimelineViewModelTest {
     private lateinit var db: TarryDatabase
     private lateinit var timeline: TimelineRepository
     private lateinit var places: PlaceRepository
+    private lateinit var jobs: JobRepository
 
     @Before
     fun setUp() {
@@ -52,6 +55,7 @@ class TimelineViewModelTest {
             .build()
         timeline = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         places = PlaceRepository(db.placeDao())
+        jobs = JobRepository(db.jobDao())
     }
 
     @After
@@ -63,13 +67,13 @@ class TimelineViewModelTest {
     private fun at(date: LocalDate, hour: Int, minute: Int = 0): Long =
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private fun viewModel(today: () -> LocalDate = { day }) = TimelineViewModel(timeline, places, zone, today)
+    private fun viewModel(today: () -> LocalDate = { day }) = TimelineViewModel(timeline, places, jobs, zone, today)
 
     private fun TimelineViewModel.awaitItems(predicate: (List<TimelineItem>) -> Boolean): List<TimelineItem> =
         runBlocking { withTimeout(10_000) { items.first { it != null && predicate(it) } } }.orEmpty()
 
-    private fun visit(id: String, start: Long, end: Long, placeId: String?) = Visit(
-        id = id, placeId = placeId, start = start, end = end, zoneId = zone.id,
+    private fun visit(id: String, start: Long, end: Long, placeId: String?, jobId: String? = null) = Visit(
+        id = id, placeId = placeId, jobId = jobId, start = start, end = end, zoneId = zone.id,
         origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0,
     )
 
@@ -109,6 +113,42 @@ class TimelineViewModelTest {
         assertThat(labels).containsExactly(
             "Office", "2 Main St", "-33.86514, 151.20990", "-33.86514, 151.20990", null,
         ).inOrder()
+    }
+
+    @Test
+    fun visitWithJobGetsJobNameAndColour() = runBlocking {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), null, jobId = "j"))
+
+        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
+
+        assertThat(v.jobName).isEqualTo("Acme")
+        assertThat(v.jobColorArgb).isEqualTo(0xFF112233.toInt())
+        assertThat(v.jobId).isEqualTo("j")
+    }
+
+    @Test
+    fun visitWithoutJobHasNullJobFields() = runBlocking {
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), null))
+
+        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
+
+        assertThat(v.jobName).isNull()
+        assertThat(v.jobColorArgb).isNull()
+        assertThat(v.jobId).isNull()
+    }
+
+    @Test
+    fun unknownOrDeletedJobGivesNullJobFields() = runBlocking {
+        jobs.save(Job(id = "gone", name = "Old", colorArgb = 1, updatedAt = 0, deleted = true))
+        timeline.saveVisit(visit("v1", at(day, 9), at(day, 10), null, jobId = "gone"))
+        timeline.saveVisit(visit("v2", at(day, 10), at(day, 11), null, jobId = "missing"))
+
+        val result = viewModel().awaitItems { it.size == 2 }.map { it as TimelineItem.Visit }
+
+        assertThat(result.map { it.jobName }).containsExactly(null, null).inOrder()
+        assertThat(result.map { it.jobColorArgb }).containsExactly(null, null).inOrder()
+        assertThat(result.map { it.jobId }).containsExactly(null, null).inOrder()
     }
 
     @Test
@@ -180,6 +220,15 @@ class TimelineViewModelTest {
 
         assertThat(vm.today.value).isEqualTo(day.plusDays(1))
         assertThat(vm.selectedDate.value).isEqualTo(day.minusDays(1))
+    }
+
+    @Test
+    fun selectDateJumpsAndClampsToToday() {
+        val vm = viewModel()
+        vm.selectDate(day.minusDays(10))
+        assertThat(vm.selectedDate.value).isEqualTo(day.minusDays(10))
+        vm.selectDate(day.plusDays(3))
+        assertThat(vm.selectedDate.value).isEqualTo(day)
     }
 
     @Test

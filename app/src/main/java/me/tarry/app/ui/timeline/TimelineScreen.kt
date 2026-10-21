@@ -24,7 +24,8 @@ fun TimelineScreen(
         items = items,
         onPreviousDay = viewModel::previousDay,
         onNextDay = viewModel::nextDay,
-        nextEnabled = date < today,
+        today = today,
+        onSelectDate = viewModel::selectDate,
         modifier = modifier,
     )
 }

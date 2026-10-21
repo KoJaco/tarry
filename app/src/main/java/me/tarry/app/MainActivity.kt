@@ -1,12 +1,23 @@
 package me.tarry.app
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.toArgb
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import me.tarry.core.data.settings.SettingsRepository
+import me.tarry.core.data.settings.ThemeMode
+import me.tarry.app.ui.theme.DarkTarryColors
+import me.tarry.app.ui.theme.LightTarryColors
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.HealthChecker
@@ -14,11 +25,13 @@ import me.tarry.app.tracking.ReconcileSource
 import me.tarry.app.tracking.TrackingController
 import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.ui.TarryApp
-import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.TarryRoot
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var settingsRepository: SettingsRepository
+
     @Inject lateinit var trackingState: TrackingStateRepository
 
     @Inject lateinit var controller: TrackingController
@@ -33,10 +46,29 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            TarryTheme {
+            val themeFlow = remember { settingsRepository.settings.map { it.theme } }
+            // Null until the stored theme loads: TarryRoot composes nothing (the paper window background shows).
+            val mode by themeFlow.collectAsStateWithLifecycle<ThemeMode?>(initialValue = null)
+            TarryRoot(themeMode = mode, onDarkChanged = ::styleSystemBars) {
                 TarryApp()
             }
         }
+    }
+
+    private fun styleSystemBars(darkTheme: Boolean) {
+        val scrim = (if (darkTheme) DarkTarryColors else LightTarryColors).paper.toArgb()
+        enableEdgeToEdge(
+            statusBarStyle = if (darkTheme) {
+                SystemBarStyle.dark(Color.TRANSPARENT)
+            } else {
+                SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+            },
+            navigationBarStyle = if (darkTheme) {
+                SystemBarStyle.dark(scrim)
+            } else {
+                SystemBarStyle.light(scrim, scrim)
+            },
+        )
     }
 
     override fun onStart() {
