@@ -227,7 +227,7 @@ class SegmentationRunner @Inject constructor(
             val existing = match[i]?.let { candidates[it] }
             if (existing != null) {
                 // An origin outside the input comes back null: keep the stored one while the trip still starts at the same time.
-                val keptFrom = if (fromVisit == null && existing.start == trip.range.startMs) existing.fromVisitId else fromVisit
+                val keptFrom = fromVisit ?: existing.fromVisitId?.takeIf { existing.start == trip.range.startMs && visitDao.getById(it)?.deleted == false }
                 val updated = existing.copy(
                     start = trip.range.startMs, end = trip.range.endMs, fromVisitId = keptFrom, toVisitId = toVisit,
                     distanceM = trip.distanceM.toFloat(), mode = trip.mode.toEntity(),

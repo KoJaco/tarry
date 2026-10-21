@@ -6,7 +6,9 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import java.time.Instant
 import kotlinx.coroutines.CancellationException
+import me.tarry.app.tracking.ScheduleWindowChecker
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.app.tracking.TrackingStatusStore
 import me.tarry.core.data.db.dao.TrackingSessionDao
@@ -15,7 +17,7 @@ import me.tarry.core.data.db.dao.TrackingSessionDao
  * Runs one segmentation pass. Retries a failed pass up to [MAX_RETRIES] times, then gives up until the next trigger
  * and records the failure in [TrackingStatusStore] so the Sessions screen can show it (rule 6).
  *
- * A periodic run that finds no open session cancels the periodic work after its pass: capture ended by a path that
+ * A periodic run that finds no open session and no active window cancels the periodic work after its pass: capture ended by a path that
  * never called the trigger (crash recovery, for example) must not leave it running.
  */
 @HiltWorker
@@ -27,6 +29,7 @@ class SegmentationWorker @AssistedInject constructor(
     private val scheduler: SegmentationScheduler,
     private val statusStore: TrackingStatusStore,
     private val sessionDao: TrackingSessionDao,
+    private val windowChecker: ScheduleWindowChecker,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         try {
@@ -50,7 +53,10 @@ class SegmentationWorker @AssistedInject constructor(
         }
 
     private suspend fun stopPeriodicIfCaptureEnded() {
-        if (SegmentationScheduler.TAG_PERIODIC in tags && sessionDao.getOpenSession() == null) scheduler.stopPeriodic()
+        if (SegmentationScheduler.TAG_PERIODIC !in tags || sessionDao.getOpenSession() != null) return
+        // A window that is starting has no session yet (the service inserts it a moment later): keep the work then.
+        val now = Instant.ofEpochMilli(clock.nowMs())
+        if (windowChecker.activeIntervals(now, now.plusMillis(1)).isEmpty()) scheduler.stopPeriodic()
     }
 
     companion object {

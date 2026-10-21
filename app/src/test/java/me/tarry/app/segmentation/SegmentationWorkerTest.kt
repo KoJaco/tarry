@@ -36,6 +36,7 @@ import org.robolectric.annotation.Config
 class SegmentationWorkerTest {
     private lateinit var db: TarryDatabase
     private lateinit var runner: SegmentationRunner
+    private val windowChecker = FakeWindowChecker(inside = false)
     private lateinit var statusStore: TrackingStatusStore
     private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO + kotlinx.coroutines.SupervisorJob())
 
@@ -70,7 +71,7 @@ class SegmentationWorkerTest {
                 override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) =
                     SegmentationWorker(
                         appContext, workerParameters, runner, FakeClock(now = 1_700_000_000_000L),
-                        SegmentationScheduler(appContext, TrackingConfig()), statusStore, db.trackingSessionDao(),
+                        SegmentationScheduler(appContext, TrackingConfig()), statusStore, db.trackingSessionDao(), windowChecker,
                     )
             })
             .build()
@@ -146,6 +147,16 @@ class SegmentationWorkerTest {
         SegmentationScheduler(ApplicationProvider.getApplicationContext(), TrackingConfig()).startPeriodic()
 
         work(0).startWork().get()
+
+        assertThat(periodicState()).isNotEqualTo(WorkInfo.State.CANCELLED)
+    }
+
+    @Test
+    fun periodicRunKeepsRunningWhenAWindowIsActiveButNoSessionExistsYet() = runBlocking<Unit> {
+        windowChecker.inside = true
+        SegmentationScheduler(ApplicationProvider.getApplicationContext(), TrackingConfig()).startPeriodic()
+
+        work(0, listOf(SegmentationScheduler.TAG_PERIODIC)).startWork().get()
 
         assertThat(periodicState()).isNotEqualTo(WorkInfo.State.CANCELLED)
     }

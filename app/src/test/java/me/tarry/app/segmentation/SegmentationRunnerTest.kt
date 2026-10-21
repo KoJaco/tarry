@@ -175,6 +175,35 @@ class SegmentationRunnerTest {
     }
 
     @Test
+    fun tripDoesNotKeepAnOriginVisitThatThisRunSoftDeleted() = runBlocking<Unit> {
+        val siteC = -34.2000 to 151.6000
+        sessionId = db.trackingSessionDao().upsert(
+            TrackingSession(start = t0 - minute, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE),
+        )
+        val pings = mutableListOf<LocationPing>()
+        for (k in 0..10) pings += ping(t0 + k * 3 * minute, siteA)
+        for (j in 1..44) {
+            val f = j / 45.0
+            pings += ping(
+                t0 + (30 + j) * minute,
+                (siteA.first + (siteC.first - siteA.first) * f) to (siteA.second + (siteC.second - siteA.second) * f),
+            )
+        }
+        pings += (75..100 step 3).map { ping(t0 + it * minute, siteC) }
+        db.locationPingDao().upsertAll(pings)
+        runner.run(t0 + 101 * minute)
+        val origin = trips().single().fromVisitId!!
+
+        // The origin stay's pings go away, so the next run no longer detects that visit.
+        db.locationPingDao().deleteOlderThan(t0 + 30 * minute)
+        db.locationPingDao().upsertAll((103..115 step 3).map { ping(t0 + it * minute, siteC) })
+        runner.run(t0 + 117 * minute)
+
+        assertThat(db.visitDao().getById(origin)!!.deleted).isTrue()
+        assertThat(trips().single().fromVisitId).isNotEqualTo(origin)
+    }
+
+    @Test
     fun frozenVisitIsUntouchedAndNothingOverlapsIt() = runBlocking<Unit> {
         insertTwoSiteDay()
         val frozen = Visit(
