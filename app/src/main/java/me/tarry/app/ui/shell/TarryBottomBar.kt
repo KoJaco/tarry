@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -66,7 +69,7 @@ private val TopBorder = 1.dp
 private val IconBackingWidth = 64.dp
 private val IconBackingHeight = 32.dp
 private val IconLabelGap = 6.dp
-private const val GlideMillis = 200
+private const val GlideMillis = 350
 private val EmphasizedEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 /**
@@ -151,7 +154,7 @@ fun TarryBottomBar(
 
 /**
  * The single `accentSoft` backing behind the selected icon. It is composed only while a nav item is selected, so it
- * appears in place (no glide from a stale position) and then glides on selection changes: 200 ms, emphasized easing.
+ * appears in place (no glide from a stale position) and then glides on selection changes: 350 ms, emphasized easing.
  */
 @Composable
 private fun IconBackingIndicator(x: Float, y: Float) {
@@ -195,11 +198,21 @@ private fun NavItem(
 ) {
     val colors = TarryTheme.colors
     val tint = if (selected) colors.ink else colors.muted
+    val haptics = LocalHapticFeedback.current
     Column(
         modifier = Modifier
             .heightIn(min = 48.dp)
             .clip(TarryTheme.shapes.pill)
-            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .selectable(
+                selected = selected,
+                role = Role.Tab,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {
+                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                    onClick()
+                },
+            )
             .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,

@@ -2,6 +2,9 @@ package me.tarry.app.ui.components
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -133,6 +136,25 @@ class ShellComponentsTest {
         composeRule.onNode(hasText("Settings") and isSelectable()).assertIsSelected()
     }
 
+    @Test
+    fun bottomBar_navTap_performsHaptic_andInvokesClick() {
+        val performed = mutableListOf<HapticFeedbackType>()
+        val fake = object : HapticFeedback {
+            override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+                performed += hapticFeedbackType
+            }
+        }
+        var clicks = 0
+        composeRule.setContent {
+            CompositionLocalProvider(LocalHapticFeedback provides fake) {
+                TarryBottomBar(TrackingState.IDLE, true, false, {}, { clicks++ }, {})
+            }
+        }
+        composeRule.onNode(hasText("Settings") and isSelectable()).performClick()
+        assertThat(clicks).isEqualTo(1)
+        assertThat(performed).containsExactly(HapticFeedbackType.SegmentTick)
+    }
+
     private fun indicatorCentreX(): Float =
         composeRule.onNodeWithTag(BottomBarTags.Indicator).getUnclippedBoundsInRoot().let { (it.left + it.width / 2).value }
 
@@ -185,7 +207,11 @@ class ShellComponentsTest {
         // Mid-glide: moving right, but still short of the Settings slot.
         assertThat(first).isGreaterThan(start)
         assertThat(slotRange(BottomBarTags.SettingsSlot).contains(first)).isFalse()
+        // Still gliding well into the 350 ms animation (200 ms in), then settled after it ends.
+        composeRule.mainClock.advanceTimeBy(184)
+        val midway = indicatorCentreX()
         composeRule.mainClock.advanceTimeBy(400)
+        assertThat(midway).isLessThan(indicatorCentreX())
         assertThat(slotRange(BottomBarTags.SettingsSlot).contains(indicatorCentreX())).isTrue()
     }
 
