@@ -1,6 +1,7 @@
 package me.tarry.app.ui.components
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -117,6 +118,86 @@ class ShellComponentsTest {
         }
         composeRule.onNode(hasText("Timeline") and isSelectable()).assertIsNotSelected()
         composeRule.onNode(hasText("Settings") and isSelectable()).assertIsSelected()
+    }
+
+    private fun indicatorCentreX(): Float =
+        composeRule.onNodeWithTag(BottomBarTags.Indicator).getUnclippedBoundsInRoot().let { (it.left + it.width / 2).value }
+
+    private fun slotRange(tag: String): ClosedFloatingPointRange<Float> =
+        composeRule.onNodeWithTag(tag).getUnclippedBoundsInRoot().let { it.left.value..it.right.value }
+
+    private fun setBar(reduced: Boolean, selection: androidx.compose.runtime.MutableState<Boolean>) {
+        composeRule.setContent {
+            CompositionLocalProvider(LocalMotionPreferences provides MotionPreferences { reduced }) {
+                TarryBottomBar(TrackingState.IDLE, selection.value, !selection.value, {}, {}, {})
+            }
+        }
+    }
+
+    @Test
+    fun bottomBar_indicator_sitsInSelectedSlot_andIsIconSized() {
+        val timeline = mutableStateOf(true)
+        setBar(reduced = false, selection = timeline)
+        composeRule.waitForIdle()
+        assertThat(slotRange(BottomBarTags.TimelineSlot).contains(indicatorCentreX())).isTrue()
+        val bounds = composeRule.onNodeWithTag(BottomBarTags.Indicator).getUnclippedBoundsInRoot()
+        assertThat(bounds.width.value).isEqualTo(56f)
+        assertThat(bounds.height.value).isEqualTo(32f)
+
+        composeRule.runOnUiThread { timeline.value = false }
+        composeRule.waitForIdle()
+        assertThat(slotRange(BottomBarTags.SettingsSlot).contains(indicatorCentreX())).isTrue()
+        assertThat(slotRange(BottomBarTags.TimelineSlot).contains(indicatorCentreX())).isFalse()
+    }
+
+    /** Flips the selection to Settings with the clock paused and returns the first indicator x that differs from [start]. */
+    private fun firstMovedCentreX(timeline: androidx.compose.runtime.MutableState<Boolean>, start: Float): Float {
+        composeRule.runOnUiThread { timeline.value = false }
+        repeat(30) {
+            composeRule.mainClock.advanceTimeBy(16)
+            val x = indicatorCentreX()
+            if (x != start) return x
+        }
+        error("indicator never moved")
+    }
+
+    @Test
+    fun bottomBar_indicator_glidesWhenMotionAllowed() {
+        val timeline = mutableStateOf(true)
+        setBar(reduced = false, selection = timeline)
+        composeRule.waitForIdle()
+        composeRule.mainClock.autoAdvance = false
+        val start = indicatorCentreX()
+        val first = firstMovedCentreX(timeline, start)
+        // Mid-glide: moving right, but still short of the Settings slot.
+        assertThat(first).isGreaterThan(start)
+        assertThat(slotRange(BottomBarTags.SettingsSlot).contains(first)).isFalse()
+        composeRule.mainClock.advanceTimeBy(400)
+        assertThat(slotRange(BottomBarTags.SettingsSlot).contains(indicatorCentreX())).isTrue()
+    }
+
+    @Test
+    fun bottomBar_indicator_jumpsWhenReducedMotion() {
+        val timeline = mutableStateOf(true)
+        setBar(reduced = true, selection = timeline)
+        composeRule.waitForIdle()
+        composeRule.mainClock.autoAdvance = false
+        val start = indicatorCentreX()
+        // The very first change is already the final position: no in-between frames.
+        val first = firstMovedCentreX(timeline, start)
+        assertThat(slotRange(BottomBarTags.SettingsSlot).contains(first)).isTrue()
+        val settled = first
+        composeRule.mainClock.advanceTimeBy(400)
+        assertThat(indicatorCentreX()).isEqualTo(settled)
+    }
+
+    @Test
+    fun bottomBar_indicator_hiddenWhenNeitherSelected() {
+        composeRule.setContent {
+            TarryBottomBar(TrackingState.IDLE, timelineSelected = false, settingsSelected = false, {}, {}, {})
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(BottomBarTags.Indicator).assertDoesNotExist()
     }
 
 }
