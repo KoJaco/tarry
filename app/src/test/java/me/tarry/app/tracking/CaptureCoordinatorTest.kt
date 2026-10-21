@@ -505,4 +505,71 @@ class CaptureCoordinatorTest {
             lastPing to lastPing + 600_000, clock.now - 300_000 to clock.now,
         ).inOrder()
     }
+
+    /** Begin, one saved fix, STILL: STATIONARY with the last saved ping at +1 s. */
+    private suspend fun stationary() {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+    }
+
+    private suspend fun savedPings() = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
+
+    @Test
+    fun leavingStationaryByActivitySavesTheLastJitterFixAsAFusedPing() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(60_000, lat = -33.00003), fix(120_000, lat = -33.00004)))
+        assertThat(savedPings()).hasSize(1)
+
+        coordinator.onActivity(ActivityType.WALKING)
+
+        val pings = savedPings()
+        assertThat(pings.map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 120_000).inOrder()
+        assertThat(pings.last().source).isEqualTo(PingSource.FUSED)
+        assertThat(pings.last().zoneId).isEqualTo("Australia/Sydney")
+    }
+
+    @Test
+    fun safetyNetSavesTheDeparturePingBeforeTheExitTaggedTriggeringFix() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
+
+        val pings = savedPings()
+        assertThat(pings.map { it.timestamp })
+            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000).inOrder()
+        assertThat(pings.map { it.source })
+            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+    }
+
+    @Test
+    fun geofenceExitSavesTheDeparturePingAndStillTagsTheNextFix() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        coordinator.onGeofenceExit()
+        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
+
+        assertThat(savedPings().map { it.source })
+            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+    }
+
+    @Test
+    fun noDeparturePingWhenTheLastDeliveredFixWasAlreadySaved() = runBlocking {
+        stationary()
+        coordinator.onActivity(ActivityType.WALKING)
+
+        assertThat(savedPings()).hasSize(1)
+    }
+
+    @Test
+    fun keepaliveSaveClearsTheRememberedFix() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(60_000, lat = -33.00003)))
+        coordinator.onFixes(listOf(fix(1_000 + config.stationaryKeepaliveMs, lat = -33.00004)))
+        assertThat(savedPings()).hasSize(2)
+
+        coordinator.onActivity(ActivityType.WALKING)
+
+        assertThat(savedPings()).hasSize(2)
+    }
 }

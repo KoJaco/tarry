@@ -70,3 +70,7 @@ Fix what the first dogfood export showed (session 2, 2026-10-21, 43 pings over o
 ## Known risks / questions
 - `TrackingReceiversTest` uses fragile reflection; do not touch it unless it breaks.
 - Commit on `fix/phase-2a-dogfood` with conventional messages ending `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Do not commit `.idea/*`, `.gitignore` or `tmp/`.
+
+## Addendum: stationary keepalive and departure ping (owner-approved)
+- `TrackingConfig.stationaryKeepaliveMs = 10 min`. In STATIONARY, `PingFilter` accepts a would-be DROP_JITTER fix once that long has passed since the last saved ping (accuracy and speed rules still apply first). Without it a long stay saved almost no pings and 2b would read the silence as a NO_FIX gap.
+- Departure ping: `CaptureCoordinator` remembers the latest jitter-dropped STATIONARY fix and clears it whenever a fix is saved. When a step moves STATIONARY to MOVING (activity, geofence exit, safety net) it saves that fix as FUSED, if newer than the last saved ping, before the triggering fix. It does not consume the GEOFENCE_EXIT tag.

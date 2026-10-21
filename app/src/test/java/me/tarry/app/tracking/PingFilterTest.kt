@@ -123,4 +123,27 @@ class PingFilterTest {
         // Stationary fixes outside the accuracy circle are saved even when under 25 m.
         assertThat(filter.offer(fixAt(300_000, northM = 15.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.ACCEPT)
     }
+
+    @Test
+    fun stationaryJitterIsDroppedInsideTheKeepaliveAndAcceptedAtOrAfterIt() {
+        filter.offer(fixAt(0), CaptureMode.STATIONARY)
+        val keepalive = config.stationaryKeepaliveMs
+        assertThat(filter.offer(fixAt(keepalive - 1, northM = 3.0), CaptureMode.STATIONARY))
+            .isEqualTo(FilterDecision.DROP_JITTER)
+        assertThat(filter.offer(fixAt(keepalive, northM = 3.0), CaptureMode.STATIONARY))
+            .isEqualTo(FilterDecision.ACCEPT)
+        // The keepalive counts from the last saved ping.
+        assertThat(filter.offer(fixAt(keepalive + 1_000, northM = 3.0), CaptureMode.STATIONARY))
+            .isEqualTo(FilterDecision.DROP_JITTER)
+    }
+
+    @Test
+    fun keepaliveDoesNotBypassAccuracyAndMovingIsUnaffected() {
+        filter.offer(fixAt(0), CaptureMode.STATIONARY)
+        val late = config.stationaryKeepaliveMs + 1
+        assertThat(filter.offer(fixAt(late, accuracyM = config.maxAccuracyM + 1), CaptureMode.STATIONARY))
+            .isEqualTo(FilterDecision.DROP_ACCURACY)
+        assertThat(filter.offer(fixAt(late, northM = 3.0), CaptureMode.MOVING))
+            .isEqualTo(FilterDecision.DROP_DISPLACEMENT)
+    }
 }
