@@ -119,6 +119,25 @@ class DayCanvasTest {
     }
 
     @Test
+    fun gapInsideAVisitIsABandNotASeparateNode() {
+        show(
+            listOf(
+                TimelineItem.Visit("v", at(9), at(11), "Marina"),
+                TimelineItem.Gap("g", at(10), at(10, 2), GapCause.SERVICE_KILLED),
+            ),
+        )
+        composeRule.onNodeWithTag("timeline_row_v").assert(
+            SemanticsMatcher("one inner band") { it.config[InnerGapHatchKey] == 1 },
+        )
+        composeRule.onNodeWithTag("timeline_row_v").assert(
+            SemanticsMatcher("not tracked in description") {
+                it.config[SemanticsProperties.ContentDescription].single().contains("includes 2 minutes not tracked")
+            },
+        )
+        composeRule.onNodeWithTag("timeline_row_g").assertDoesNotExist()
+    }
+
+    @Test
     fun visitsAreNotHatched() {
         show(listOf(TimelineItem.Visit("v", at(9), at(11), "A")))
         composeRule.onNodeWithTag("timeline_row_v")

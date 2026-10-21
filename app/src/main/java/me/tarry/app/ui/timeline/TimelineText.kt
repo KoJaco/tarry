@@ -73,8 +73,21 @@ internal fun spokenDescription(
     dayEnd: Long,
     zone: ZoneId,
     folded: List<TimelineItem.Trip> = emptyList(),
+    innerGaps: List<InnerGap> = emptyList(),
 ): String {
     val t = clampedTimes(item, dayStart, dayEnd, zone)
+    val notTracked = if (innerGaps.isEmpty()) {
+        null
+    } else {
+        // Each gap clamped to the visit and the day, like the band drawn for it.
+        val ms = innerGaps.sumOf { minOf(it.gap.end, t.end) - maxOf(it.gap.start, t.start) }.coerceAtLeast(0)
+        val minutes = (ms / 60_000L).toInt()
+        if (minutes < 1) {
+            stringResource(R.string.timeline_includes_not_tracked_short)
+        } else {
+            pluralStringResource(R.plurals.timeline_includes_not_tracked, minutes, minutes)
+        }
+    }
     val base = when (item) {
         is TimelineItem.Visit -> {
             val place = if (item.labelIsCoordinates) {
@@ -100,7 +113,7 @@ internal fun spokenDescription(
             stringResource(item.cause.labelRes()),
             t.spokenRange,
         )
-    }
+    }.let { if (notTracked != null) "$it, $notTracked" else it }
     if (folded.isEmpty()) return base
     val extras = folded.map { stringResource(R.string.timeline_folded_trip, spokenDescription(it, dayStart, dayEnd, zone)) }
     return (listOf(base) + extras).joinToString(". ")

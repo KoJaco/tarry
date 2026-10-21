@@ -23,6 +23,11 @@
         <item quantity="one">%1$d minute</item>
         <item quantity="other">%1$d minutes</item>
     </plurals>
+    <plurals name="timeline_includes_not_tracked">
+        <item quantity="one">includes %1$d minute not tracked</item>
+        <item quantity="other">includes %1$d minutes not tracked</item>
+    </plurals>
+    <string name="timeline_includes_not_tracked_short">includes less than a minute not tracked</string>
     <string name="timeline_visit_description">Visit at %1$s, %2$s, %3$s</string>
     <string name="timeline_trip_description">Trip by %1$s, %2$s, %3$s</string>
     <string name="timeline_gap_description">Tracking gap, %1$s, %2$s</string>

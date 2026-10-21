@@ -334,6 +334,74 @@ class DayLayoutTest {
         assertThat(b.topDp - (a.topDp + a.heightDp)).isAtLeast(gapDp - eps)
     }
 
+    private fun atS(h: Int, m: Int, s: Int, date: LocalDate, z: ZoneId): Long =
+        LocalDateTime.of(date, java.time.LocalTime.of(h, m, s)).atZone(z).toInstant().toEpochMilli()
+
+    @Test
+    fun deviceCase_gapInsideVisitIsInner_andNowLineFollowsPlacedItems() {
+        val date = LocalDate.of(2026, 10, 21)
+        val b = dayBounds(date, sydney)
+        val v = visit("v", atS(19, 55, 45, date, sydney), atS(20, 12, 45, date, sydney))
+        val g = gap("g", atS(20, 7, 45, date, sydney), atS(20, 8, 35, date, sydney))
+        val now = atS(20, 14, 21, date, sydney)
+        val prev = visit("p", atS(18, 0, 0, date, sydney), atS(19, 30, 0, date, sydney))
+        val l = layout(listOf(prev, v, g), now = now, z = sydney, b = b)
+        assertThat(l.blocks.map { it.item.id }).containsExactly("p", "v").inOrder()
+        val pv = l.blocks.first { it.item.id == "v" }
+        assertThat(pv.heightDp).isWithin(eps).of(maxOf(17f * 72f / 60, 28f))
+        assertThat(pv.innerGaps).hasSize(1)
+        assertThat(pv.innerGaps[0].gap.id).isEqualTo("g")
+        assertThat(pv.innerGaps[0].offsetDp).isWithin(0.1f).of(12f / 17f * pv.heightDp)
+        val nowDp = l.nowDp!!
+        l.ordered().forEach { p ->
+            assertThat(p.topDp).isAtMost(nowDp)
+            assertThat(p.topDp + p.heightDp).isAtMost(nowDp + 0.1f)
+        }
+    }
+
+    @Test
+    fun longVisitWithFourInnerGapsKeepsItsProportionalHeight() {
+        val v = visit("v", at(14, 17), at(16, 43))
+        val gaps = listOf(at(14, 30) to at(14, 31), at(15, 0) to at(15, 2), at(15, 20) to at(15, 21), at(16, 10) to at(16, 12))
+            .mapIndexed { i, (s, e) -> gap("g$i", s, e) }
+        val l = layout(listOf(v) + gaps)
+        assertThat(l.blocks).hasSize(1)
+        assertThat(l.blocks[0].heightDp).isWithin(eps).of(146 * 72f / 60)
+        val offs = l.blocks[0].innerGaps.map { it.offsetDp }
+        assertThat(offs).hasSize(4)
+        assertThat(offs).isInStrictOrder()
+        l.blocks[0].innerGaps.forEach {
+            assertThat(it.heightDp).isAtLeast(3f - eps)
+            assertThat(it.offsetDp + it.heightDp).isAtMost(l.blocks[0].heightDp + eps)
+        }
+    }
+
+    @Test
+    fun gapOverlappingNoVisitStaysABlock() {
+        val l = layout(listOf(visit("v", at(9, 0), at(10, 0)), gap("g", at(10, 30), at(11, 0))))
+        assertThat(l.blocks.map { it.item.id }).containsExactly("v", "g").inOrder()
+        assertThat(l.blocks.all { it.innerGaps.isEmpty() }).isTrue()
+    }
+
+    @Test
+    fun partialOverlapIsInnerOnlyWhenAtLeastHalfInsideTheVisit() {
+        // 10 min gap, 6 min inside (60 %) -> inner; 4 min inside (40 %) -> block.
+        val inner = layout(listOf(visit("v", at(9, 0), at(10, 0)), gap("g", at(9, 54), at(10, 4))))
+        assertThat(inner.blocks).hasSize(1)
+        assertThat(inner.blocks[0].innerGaps).hasSize(1)
+        val outer = layout(listOf(visit("v", at(9, 0), at(10, 0)), gap("g", at(9, 56), at(10, 6))))
+        assertThat(outer.blocks.map { it.item.id }).containsExactly("v", "g").inOrder()
+        assertThat(outer.blocks[0].innerGaps).isEmpty()
+    }
+
+    @Test
+    fun nowLineSitsInsideAnOngoingVisit() {
+        val n = layout(listOf(visit("v", at(9, 0), at(10, 0))), now = at(9, 30))
+        assertThat(n.nowDp!!).isWithin(eps).of(36f)
+        assertThat(n.nowDp!!).isAtLeast(n.blocks[0].topDp)
+        assertThat(n.nowDp!!).isAtMost(n.blocks[0].topDp + n.blocks[0].heightDp)
+    }
+
     @Test
     fun gapNeverShrinksABlockBelowTheMinimum_theNextIsPushedInstead() {
         // 10 min = 12 dp true height, so the minimum (28) applies; the next starts at its true end (12 dp).

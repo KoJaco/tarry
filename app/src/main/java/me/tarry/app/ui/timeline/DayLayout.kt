@@ -15,6 +15,8 @@ data class DayLayoutParams(
     val tripRowDp: Float = 24f,
     /** Minimum vertical space between consecutive items, so adjacent blocks never touch. Not font-scaled. */
     val itemGapDp: Float = 4f,
+    /** Minimum height of an outage band drawn inside a visit. Not font-scaled. */
+    val innerGapMinDp: Float = 3f,
     /** Used only when there are no items and no window. */
     val emptyDayStartHour: Int = 7,
     val emptyDayEndHour: Int = 17,
@@ -27,13 +29,20 @@ sealed interface Placed {
     val heightDp: Float
 }
 
-/** A visit or gap. [foldedTrips] are trips that had no room of their own and are summarised in this visit. */
+/** A health gap drawn as a band inside a visit. [offsetDp] is relative to the block top. */
+data class InnerGap(val gap: TimelineItem.Gap, val offsetDp: Float, val heightDp: Float)
+
+/**
+ * A visit or gap. [foldedTrips] are trips that had no room of their own and are summarised in this visit.
+ * [innerGaps] are outages that fall inside this visit (see [layoutDay]).
+ */
 data class PlacedBlock(
     val item: TimelineItem,
     override val topDp: Float,
     override val heightDp: Float,
     val compact: Boolean,
     val foldedTrips: List<TimelineItem.Trip>,
+    val innerGaps: List<InnerGap> = emptyList(),
 ) : Placed
 
 data class PlacedTrip(
@@ -72,6 +81,14 @@ private fun ceilHour(ms: Long, zone: ZoneId): Long {
 /**
  * Lays [items] out on a day canvas. Scale, minimum block height and trip rows all grow with max(1, [fontScale]).
  *
+ * Inner gaps: segmentation bridges short outages, so a gap can overlap a visit in time. Each gap is assigned to the
+ * visit it overlaps most (clamped to the day); if that overlap is at least half of the gap's duration it is an inner
+ * gap of that visit (a band inside the block, not a block of its own). A gap sticking out of the visit by more than
+ * half its length stays an ordinary block. Gaps overlapping no visit are ordinary blocks.
+ *
+ * Now-line: placed on the proportional position, but never above the proportional point of any placed block or trip
+ * that started before now, so everything that started is at or above the line.
+ *
  * [window] (the schedule window) is accepted but nothing passes it yet: it is deferred to phase 6, when the schedule
  * window is exposed to the UI.
  */
@@ -92,10 +109,25 @@ fun layoutDay(
 
     // Clamp to the day, drop empties, stable sort by start.
     data class Clamped(val item: TimelineItem, val start: Long, val end: Long)
-    val clamped = items
+    val allClamped = items
         .map { Clamped(it, it.start.coerceIn(dayStart, dayEnd), it.end.coerceIn(dayStart, dayEnd)) }
         .filter { it.end > it.start }
         .sortedBy { it.start }
+
+    // Partition gaps: inner gaps of a visit are not placed as blocks.
+    val visitsC = allClamped.filter { it.item is TimelineItem.Visit }
+    val innerByVisit = HashMap<TimelineItem, MutableList<Clamped>>()
+    val innerSet = HashSet<Clamped>()
+    for (g in allClamped) {
+        if (g.item !is TimelineItem.Gap) continue
+        val best = visitsC.maxByOrNull { minOf(it.end, g.end) - maxOf(it.start, g.start) } ?: continue
+        val overlap = minOf(best.end, g.end) - maxOf(best.start, g.start)
+        if (overlap > 0 && overlap * 2 >= g.end - g.start) {
+            innerByVisit.getOrPut(best.item) { mutableListOf() } += g
+            innerSet += g
+        }
+    }
+    val clamped = allClamped.filter { it !in innerSet }
 
     val isToday = now >= dayStart && now < dayEnd
     val win = window?.let { it.first.coerceIn(dayStart, dayEnd) to it.second.coerceIn(dayStart, dayEnd) }
@@ -158,12 +190,25 @@ fun layoutDay(
         return if (room >= trueHeight) trueHeight else maxOf(room, minBlock)
     }
 
+    fun innerGapsOf(c: Clamped, height: Float): List<InnerGap> {
+        val list = innerByVisit[c.item] ?: return emptyList()
+        val dur = (c.end - c.start).toFloat()
+        return list.sortedBy { it.start }.map { g ->
+            val gs = maxOf(g.start, c.start)
+            val ge = minOf(g.end, c.end)
+            val h = minOf(maxOf((ge - gs) / dur * height, params.innerGapMinDp), height)
+            val off = ((gs - c.start) / dur * height).coerceIn(0f, height - h)
+            InnerGap(g.item as TimelineItem.Gap, off, h)
+        }
+    }
+
     fun block(c: Clamped, top: Float, nextStart: Long?, folded: List<TimelineItem.Trip>) = PlacedBlock(
         item = c.item,
         topDp = top,
         heightDp = blockHeight(c, top, nextStart),
         compact = c.end - c.start < compactUnderMs,
         foldedTrips = folded,
+        innerGaps = innerGapsOf(c, blockHeight(c, top, nextStart)),
     )
 
     val blocks = mutableListOf<PlacedBlock>()
@@ -227,6 +272,7 @@ fun layoutDay(
                 heightDp = heights[i],
                 compact = c.end - c.start < compactUnderMs,
                 foldedTrips = folded[i].toList(),
+                innerGaps = innerGapsOf(c, heights[i]),
             )
         }
     }
@@ -235,12 +281,23 @@ fun layoutDay(
         blocks.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
         trips.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
     )
-    val nowDp = if (isToday && now >= canvasStart && now <= canvasEnd) dp(canvasStart, now) else null
+    var nowDp: Float? = if (isToday && now >= canvasStart && now <= canvasEnd) dp(canvasStart, now) else null
+    if (nowDp != null) {
+        fun reach(item: TimelineItem, top: Float, height: Float): Float? {
+            val s = item.start.coerceIn(dayStart, dayEnd)
+            val e = item.end.coerceIn(dayStart, dayEnd)
+            if (e <= s || s > now) return null
+            return top + height * ((now - s).toFloat() / (e - s)).coerceIn(0f, 1f)
+        }
+        val reaches = blocks.mapNotNull { reach(it.item, it.topDp, it.heightDp) } +
+            trips.mapNotNull { reach(it.trip, it.topDp, it.heightDp) }
+        nowDp = maxOf(nowDp, reaches.maxOrNull() ?: nowDp)
+    }
 
     return DayLayout(
         canvasStart = canvasStart,
         canvasEnd = canvasEnd,
-        heightDp = maxOf(dp(canvasStart, canvasEnd), lastBottom),
+        heightDp = maxOf(dp(canvasStart, canvasEnd), lastBottom, nowDp ?: 0f),
         scale = scale,
         hourMarks = marks,
         blocks = blocks,

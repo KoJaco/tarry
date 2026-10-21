@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -86,6 +87,10 @@ private object DayCanvasDefaults {
     val GapPaddingV = 4.dp
     val GapIconSize = 20.dp
     val TripIconSize = 16.dp
+    val InnerGapIconSize = 14.dp
+
+    /** An inner gap band shows its icon and text from this height (per unit of font scale). */
+    const val InnerGapTextMinDp = 20f
 
     /** Line heights of `titleMedium`, `bodyMedium` and `labelMedium`, to work out how many lines fit in a block. */
     const val TitleLineDp = 22f
@@ -186,7 +191,7 @@ fun DayCanvas(
                     .height(placed.heightDp.dp)
                 when (placed) {
                     is PlacedBlock -> {
-                        val description = spokenDescription(placed.item, dayStart, dayEnd, zone, placed.foldedTrips)
+                        val description = spokenDescription(placed.item, dayStart, dayEnd, zone, placed.foldedTrips, placed.innerGaps)
                         val times = clampedTimes(placed.item, dayStart, dayEnd, zone)
                         when (val item = placed.item) {
                             is TimelineItem.Visit -> VisitBlock(item, placed, times, description, index, fontScale, position)
@@ -237,7 +242,7 @@ private fun VisitBlock(
     } else {
         Modifier.clip(shape).background(container).dashedBorder(c.outline, shape)
     }
-    Column(
+    Box(
         modifier = modifier
             .then(look)
             .semantics(mergeDescendants = true) {
@@ -245,8 +250,13 @@ private fun VisitBlock(
                 traversalIndex = index.toFloat()
                 blockColor = container
                 blockDashed = job == null
+                if (placed.innerGaps.isNotEmpty()) innerGapHatch = placed.innerGaps.size
             }
-            .testTag("timeline_row_${visit.id}")
+            .testTag("timeline_row_${visit.id}"),
+    ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
             .padding(horizontal = TarryTheme.space.m, vertical = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV),
         verticalArrangement = Arrangement.Center,
     ) {
@@ -287,6 +297,48 @@ private fun VisitBlock(
                         .padding(horizontal = TarryTheme.space.m, vertical = DayCanvasDefaults.ChipPaddingV),
                 )
             }
+        }
+    }
+    placed.innerGaps.forEach { InnerGapBand(it, fontScale) }
+    }
+}
+
+/** An outage inside a visit: a full-width hatched band with a thin alert edge top and bottom. Decorative for a11y. */
+@Composable
+private fun InnerGapBand(inner: InnerGap, fontScale: Float) {
+    val c = TarryTheme.colors
+    val showText = inner.heightDp >= DayCanvasDefaults.InnerGapTextMinDp * fontScale
+    Row(
+        modifier = Modifier
+            .offset(y = inner.offsetDp.dp)
+            .fillMaxWidth()
+            .height(inner.heightDp.dp)
+            .background(c.alertSoft)
+            .hatch(c.alert.copy(alpha = DayCanvasDefaults.HatchAlpha))
+            .drawBehind {
+                val edge = DayCanvasDefaults.RuleWidth.toPx()
+                drawLine(c.alert, Offset(0f, edge / 2), Offset(size.width, edge / 2), strokeWidth = edge)
+                drawLine(c.alert, Offset(0f, size.height - edge / 2), Offset(size.width, size.height - edge / 2), strokeWidth = edge)
+            }
+            .clearAndSetSemantics {}
+            .padding(horizontal = TarryTheme.space.m),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+    ) {
+        if (showText) {
+            Icon(
+                painter = painterResource(R.drawable.ic_warning),
+                contentDescription = null,
+                tint = c.alert,
+                modifier = Modifier.size(DayCanvasDefaults.InnerGapIconSize),
+            )
+            Text(
+                text = stringResource(R.string.timeline_gap_row, stringResource(inner.gap.cause.labelRes())),
+                style = MaterialTheme.typography.bodySmall,
+                color = c.onAlertSoft,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

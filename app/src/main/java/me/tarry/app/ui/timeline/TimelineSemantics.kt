@@ -12,6 +12,10 @@ var SemanticsPropertyReceiver.blockColor: Color by BlockColorKey
 val BlockDashedKey = SemanticsPropertyKey<Boolean>("TimelineBlockDashed")
 var SemanticsPropertyReceiver.blockDashed: Boolean by BlockDashedKey
 
+/** Number of outage bands drawn inside a visit block. For tests. */
+val InnerGapHatchKey = SemanticsPropertyKey<Int>("TimelineInnerGapHatch")
+var SemanticsPropertyReceiver.innerGapHatch: Int by InnerGapHatchKey
+
 /** Set on a gap block that draws the diagonal hatch. For tests. */
 val GapHatchKey = SemanticsPropertyKey<Boolean>("TimelineGapHatch")
 var SemanticsPropertyReceiver.gapHatch: Boolean by GapHatchKey
