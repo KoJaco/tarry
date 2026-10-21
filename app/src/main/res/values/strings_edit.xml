@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Edit drawer (phase 3). -->
+    <string name="edit_drawer_title_new_visit">New visit</string>
+    <string name="edit_header_range">%1$s · %2$s</string>
+    <string name="edit_header_range_distance">%1$s · %2$s · %3$s</string>
+
+    <string name="edit_section_job">Job</string>
+    <string name="edit_section_tags">Tags</string>
+    <string name="edit_section_billable">Billable</string>
+    <string name="edit_section_notes">Notes</string>
+    <string name="edit_section_time">Time</string>
+    <string name="edit_section_attribution">Attribution</string>
+
+    <string name="edit_job_row_title">Job</string>
+    <string name="edit_job_none">No job</string>
+    <string name="edit_job_from_place">From place: %1$s</string>
+    <string name="edit_job_picker_title">Choose a job</string>
+    <string name="edit_job_new">New job…</string>
+    <string name="edit_job_new_title">New job</string>
+    <string name="edit_job_name_label">Job name</string>
+
+    <string name="edit_attribution_row_title">Attributed to</string>
+    <string name="edit_attribution_none">Unattributed</string>
+    <string name="edit_attribution_picker_title">Attribute this trip to</string>
+
+    <string name="edit_tags_from_place">From place</string>
+    <string name="edit_tags_empty">No tags yet. Add one to start labelling.</string>
+    <string name="edit_tag_new">New tag</string>
+    <string name="edit_tag_new_title">New tag</string>
+    <string name="edit_tag_name_label">Tag name</string>
+
+    <string name="edit_billable_title">Billable</string>
+    <string name="edit_billable_from_place_yes">From place: billable</string>
+    <string name="edit_billable_from_place_no">From place: not billable</string>
+
+    <string name="edit_notes_label">Notes</string>
+    <string name="edit_set_default">Set as default for this place</string>
+    <string name="edit_set_default_hint">New visits here start with this job, billable state and tags.</string>
+
+    <string name="edit_time_trim_start">Trim start</string>
+    <string name="edit_time_trim_end">Trim end</string>
+    <string name="edit_time_split">Split at…</string>
+    <string name="edit_time_merge_previous">Merge with previous</string>
+    <string name="edit_time_merge_next">Merge with next</string>
+    <string name="edit_time_change_place">Change place</string>
+    <string name="edit_time_picker_trim_start">Start time</string>
+    <string name="edit_time_picker_trim_end">End time</string>
+    <string name="edit_time_picker_split">Split at</string>
+    <string name="edit_time_ok">OK</string>
+    <string name="edit_time_cancel">Cancel</string>
+
+    <string name="edit_place_picker_title">Change place</string>
+    <string name="edit_place_search_label">Search places</string>
+    <string name="edit_place_none_found">No matching places</string>
+
+    <string name="edit_delete">Delete visit</string>
+    <string name="edit_reset">Reset to detected</string>
+    <string name="edit_reset_confirm_title">Reset to detected?</string>
+    <string name="edit_reset_confirm_body">This clears the job, tags, billable state and notes, and lets Tarry detect this visit again.</string>
+    <string name="edit_reset_confirm_action">Reset</string>
+
+    <string name="edit_trip_add_stop">Add a stop during this trip</string>
+
+    <string name="edit_dialog_save">Save</string>
+    <string name="edit_dialog_cancel">Cancel</string>
+
+    <string name="edit_error_overlap">That would overlap another visit.</string>
+    <string name="edit_error_empty_range">The times need to leave this visit at least a moment long, and a split has to fall inside it.</string>
+    <string name="edit_error_not_found">There is nothing to do that with, for example no visit to merge with.</string>
+    <string name="edit_error_blank_name">Enter a name first.</string>
+
+    <string name="edit_undo_trimmed">Visit trimmed</string>
+    <string name="edit_undo_split">Visit split</string>
+    <string name="edit_undo_merged">Visits merged</string>
+    <string name="edit_undo_place_changed">Place changed</string>
+    <string name="edit_undo_deleted">Visit deleted</string>
+    <string name="edit_undo_reset">Visit reset</string>
+</resources>
