@@ -34,7 +34,6 @@ const val SettingsGroupDividerTag = "settings_group_divider"
 /** Builder for the rows of a [SettingsGroup]. */
 class SettingsGroupScope internal constructor() {
     internal val rows = mutableListOf<@Composable () -> Unit>()
-    internal val insets = mutableListOf<Boolean>()
 
     /**
      * One row. Tappable (Role.Button, with a chevron) when [onClick] is set, otherwise read-only. [subtitle] is a
@@ -47,14 +46,12 @@ class SettingsGroupScope internal constructor() {
         subtitle: String? = null,
         value: String? = null,
     ) {
-        insets += icon != null
         rows += { GroupedSettingsRow(title, onClick, icon, subtitle, value) }
     }
 }
 
 /**
- * Settings rows on ONE `card` surface, separated by 1 dp `line` dividers inset to the text start and running to the
- * right edge. The default for a settings group; the standalone [SettingsRow] stays for rows that aren't a group.
+ * Settings rows on ONE `card` surface, separated by 1 dp `divider` rules running edge to edge (no inset). The default for a settings group; the standalone [SettingsRow] stays for rows that aren't a group.
  */
 @Composable
 fun SettingsGroup(modifier: Modifier = Modifier, content: SettingsGroupScope.() -> Unit) {
@@ -63,22 +60,15 @@ fun SettingsGroup(modifier: Modifier = Modifier, content: SettingsGroupScope.() 
         scope.rows.forEachIndexed { index, row ->
             if (index > 0) {
                 HorizontalDivider(
-                    modifier = Modifier
-                        .padding(start = dividerInset(hasIcon = scope.insets[index]))
-                        .testTag(SettingsGroupDividerTag),
+                    modifier = Modifier.testTag(SettingsGroupDividerTag),
                     thickness = 1.dp,
-                    color = TarryTheme.colors.line,
+                    color = TarryTheme.colors.divider,
                 )
             }
             row()
         }
     }
 }
-
-/** Left edge of the text: the row padding, plus the icon and its gap when the row has one. */
-@Composable
-private fun dividerInset(hasIcon: Boolean) =
-    TarryTheme.space.l + if (hasIcon) GroupedIconSize + TarryTheme.space.l else 0.dp
 
 @Composable
 private fun GroupedSettingsRow(

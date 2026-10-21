@@ -106,11 +106,13 @@ class ComponentsTest {
             dividers[i].assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsActions.OnClick))
             dividers[i].assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsActions.RequestFocus))
         }
-        // Inset to the text start: row padding 16 + icon 24 + gap 16 = 56 dp for an icon row, 16 dp without.
-        dividers[0].assertLeftPositionInRootIsEqualTo(56.dp)
-        // The divider runs to the right edge of the card.
+        // Edge to edge: no inset on either side, for icon and non-icon rows alike.
         val card = composeRule.onRoot().getUnclippedBoundsInRoot()
-        assertThat(dividers[0].getUnclippedBoundsInRoot().right).isEqualTo(card.right)
+        for (i in 0..1) {
+            val bounds = dividers[i].getUnclippedBoundsInRoot()
+            assertThat(bounds.left).isEqualTo(card.left)
+            assertThat(bounds.right).isEqualTo(card.right)
+        }
     }
 
     @Test

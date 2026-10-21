@@ -22,7 +22,8 @@ Code uses these names through `TarryTheme.colors` (an extended colour object), m
 | `onInk` | `#F3EFE8` | `#14120F` | Text and icons on `ink` |
 | `muted` | `#655E54` | `#A9A193` | Secondary text, time labels, unselected nav |
 | `faint` | `#C2BAAE` | `#5E574D` | Disabled control fills and outlines (decorative, never text; disabled labels use `muted`) |
-| `line` | `#DDD5C8` | `#3A352E` | Hour lines, dividers, timeline rail |
+| `line` | `#DDD5C8` | `#3A352E` | Borders outside surfaces (the bottom bar's top border) |
+| `divider` | `line` at 80 % | `line` at 80 % | Dividers and hour rules inside surfaces (grouped settings, the timeline canvas card, its rail) |
 | `outline` | `#8F877B` | `#7A7266` | Input borders, the dashed outline of a visit that needs review (3:1 UI contrast) |
 | `accent` | `#F2B064` | `#F2B064` | Apricot: tracking toggle, now-line, needs-review chip fill |
 | `onAccent` | `#1B1813` | `#1B1813` | Text and icons on `accent` (white on apricot fails contrast) |
@@ -135,6 +136,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 
 ## Motion
 - **Standard transitions:** 200 ms, M3 emphasized easing. The day change slides 24 dp and fades.
+- **Bottom bar backing glide:** 350 ms, emphasized easing `cubic-bezier(0.2, 0, 0, 1)`; snaps under reduced motion.
 - **Tracking pulse:** the `pulse` ring scales 1.0 → 1.35 and fades out over 1.6 s, looping, only while TRACKING.
 - **Reduced motion:** if the system animator duration scale is 0 (or the user turns animations off), the ring is static at 1.15 and there are no slides.
 
@@ -146,7 +148,8 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 - **Nav items** are an icon over a `labelMedium` label, with 6 dp between them. Labels are always shown (no icon-only nav). Only the icon is backed, never the whole item.
   - Selected: a subtle `accentSoft` backing behind the icon only (64 × 32 dp, fully rounded `pill`), with the icon and label in `ink`. `inset` was too faint on `paper` in the light theme (about 1.1:1); `accentSoft` reads as a soft tint in both themes without the weight of an `ink` fill.
   - Unselected: the icon and label in `muted`, with no backing.
-  - When the selection changes, the backing glides across to the new item (200 ms, emphasized easing). With reduced motion it jumps.
+  - When the selection changes, the backing glides across to the new item (350 ms, emphasized easing `cubic-bezier(0.2, 0, 0, 1)`). With reduced motion it jumps.
+  - Nav items have **no ripple or press background**; feedback is a light haptic (`SegmentTick`) on tap. The touch target (at least 48 dp) and semantics are unchanged.
 - **The centre slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
   - The label may wrap between words but never inside one. In a one-third slot at large font scales it shrinks a step at a time until no word is split.
 
@@ -167,7 +170,7 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - below, a **week strip**: 7 equal day cells (56 dp, `block` radius). The selected day is an `ink` fill with `onInk` text, future days are `muted`, and today is marked by an `accent` dot.
 - **Summary card** (`card`, `container` radius): "Tracked today" (`bodyMedium` `muted`), the total in `headlineLarge`, a needs-review chip (`accentSoft`) and a "3 visits · 1 trip · 1 gap" caption.
 - **Day canvas** (a `card` container, `card` radius):
-  - A left time column, at least 44 dp wide (the canvas card has 8 dp of side padding), that grows to fit its widest hour label or the now-pill at large font sizes, with hour labels (`bodySmall` `muted`) and `line` hour rules across the canvas. All times follow the system 24-hour setting: hour labels are "HH" or the locale's "h a", block and now-pill times the locale's "H:mm" or "h:mm a".
+  - A left time column, at least 44 dp wide (the canvas card has 8 dp of side padding), that grows to fit its widest hour label or the now-pill at large font sizes, with hour labels (`bodySmall` `muted`) and `divider` hour rules across the canvas. All times follow the system 24-hour setting: hour labels are "HH" or the locale's "h a", block and now-pill times the locale's "H:mm" or "h:mm a".
   - **The scale** is 72 dp per hour × max(1, fontScale), so text keeps fitting at large font sizes. The canvas starts at the earlier of the first item or the window start, rounded down to the hour, and ends at the later of now or the last item.
   - **Visits** are blocks at their true start and height, inset 4 dp from the rail:
     - job colour container, border and text (above); with no job, `card` with a dashed `outline`;
@@ -184,10 +187,10 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - At font scale 2.0 the canvas still scales, and the header and week strip wrap.
 
 ### Lists and settings rows
-- **Grouped settings surfaces are the default** for a settings group (Tracking, Appearance, Billing), built with `SettingsGroup { row(...) }`: ONE `card` surface (`card` radius) holding all the rows, separated by 1 dp `line` dividers.
+- **Grouped settings surfaces are the default** for a settings group (Tracking, Appearance, Billing), built with `SettingsGroup { row(...) }`: ONE `card` surface (`card` radius) holding all the rows, separated by 1 dp `divider` rules.
   - A row has a plain 24 dp `ink` leading icon (no icon circle), a `titleSmall` title with an optional `muted` `bodyMedium` subtitle under it, and a chevron on the right when it is tappable (Role.Button, merged semantics). Read-only rows (Billing) show a `muted` value on the right and no chevron.
   - Rows are at least 64 dp tall, with 16 dp side padding and 12 dp vertical padding.
-  - The divider is inset from the left to the text start (16 dp, plus 24 dp icon and 16 dp gap when the row has an icon) and runs to the right edge. Dividers are not focusable.
+  - Dividers run edge to edge across the surface, with no left (or right) inset. They are not focusable.
 - **Standalone rows** (`SettingsRow`, `SettingsValueRow`, `SettingsSwitchRow`): used only where rows aren't a group. A row is a `card` pill (`card` radius), at least 56 dp tall, with a 40 dp `inset` icon circle on the left, the title (`titleSmall`), an optional value (`bodyMedium` `muted`) and a chevron or a switch on the right. Standalone rows are separate cards with 8 dp gaps and no dividers.
 - Section headers use `labelSmall` `muted`.
 - **Permissions:** one card per permission, with 12 dp between cards:

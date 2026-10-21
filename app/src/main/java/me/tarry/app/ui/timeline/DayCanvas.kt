@@ -154,9 +154,9 @@ fun DayCanvas(
                         // No rule at the very top edge: hour rules only separate hours.
                         if (mark.topDp <= 0f) return@forEach
                         val y = mark.topDp.dp.toPx()
-                        drawLine(c.line, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
+                        drawLine(c.divider, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
                     }
-                    drawLine(c.line, Offset(railX, 0f), Offset(railX, size.height), strokeWidth = stroke)
+                    drawLine(c.divider, Offset(railX, 0f), Offset(railX, size.height), strokeWidth = stroke)
                 }
                 .semantics { isTraversalGroup = true },
         ) {
