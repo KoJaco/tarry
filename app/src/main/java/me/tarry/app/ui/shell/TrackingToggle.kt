@@ -10,7 +10,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -31,17 +30,10 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.theme.TarryTheme
 
 private val ToggleSize = 64.dp
 private val BadgeSize = 14.dp
-
-// TODO(phase 3): replace with design token
-private object PausedAmber {
-    val containerLight = Color(0xFFFFB300)
-    val containerDark = Color(0xFFFFCA28)
-    val contentLight = Color(0xFF3E2723)
-    val contentDark = Color(0xFF3E2723)
-}
 
 /** Large circular tracking toggle. Renders [state]; tapping calls [onClick]. */
 @Composable
@@ -51,7 +43,7 @@ fun TrackingToggle(
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val dark = isSystemInDarkTheme()
+    val tarry = TarryTheme.colors
     val stateLabel = stringResource(state.labelRes())
     val description = stringResource(R.string.tracking_toggle_description, stateLabel)
 
@@ -63,8 +55,8 @@ fun TrackingToggle(
             content = colors.onPrimary
         }
         TrackingState.PAUSED -> {
-            container = if (dark) PausedAmber.containerDark else PausedAmber.containerLight
-            content = if (dark) PausedAmber.contentDark else PausedAmber.contentLight
+            container = tarry.inset
+            content = tarry.accentStrong
         }
         TrackingState.IDLE, TrackingState.ATTENTION -> {
             container = colors.surface
