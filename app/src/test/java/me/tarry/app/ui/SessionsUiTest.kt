@@ -1,6 +1,9 @@
 package me.tarry.app.ui
 
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -11,7 +14,9 @@ import com.google.common.truth.Truth.assertThat
 import me.tarry.app.export.ExportFormat
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.export.suggestedFileName
+import me.tarry.app.tracking.SegmentationError
 import me.tarry.app.ui.sessions.ExportResult
+import me.tarry.app.ui.sessions.SegmentationUi
 import me.tarry.app.ui.sessions.SessionListItem
 import me.tarry.app.ui.sessions.SessionsActions
 import me.tarry.app.ui.sessions.SessionsContent
@@ -33,7 +38,8 @@ class SessionsUiTest {
 
     private val exports = mutableListOf<ExportRequest>()
     private var testWindowTaps = 0
-    private val actions = SessionsActions({ exports += it }, { testWindowTaps++ }, {})
+    private var segmentationRuns = 0
+    private val actions = SessionsActions({ exports += it }, { testWindowTaps++ }, {}, { segmentationRuns++ })
     private val session = SessionListItem(
         id = 7, start = 1_700_000_000_000, end = 1_700_000_600_000, zoneId = "Australia/Sydney",
         trigger = SessionTrigger.SCHEDULE, endReason = SessionEndReason.SCHEDULE_END, pingCount = 42,
@@ -72,6 +78,14 @@ class SessionsUiTest {
         composeRule.setContent { SessionsContent(emptyList(), true, null, actions) }
         composeRule.onNodeWithTag("sessions_test_window").performClick()
         assertThat(testWindowTaps).isEqualTo(1)
+    }
+
+    @Test
+    fun runSegmentationButtonInvokesActionAndMeetsTouchTarget() {
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
+        composeRule.onNodeWithTag("sessions_run_segmentation").assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("Run segmentation now").performClick()
+        assertThat(segmentationRuns).isEqualTo(1)
     }
 
     @Test
@@ -115,5 +129,41 @@ class SessionsUiTest {
             LocalDate.of(2026, 3, 1), LocalDate.of(2026, 3, 7), ZoneId.of("UTC"), ExportFormat.CSV,
         )
         assertThat(range.suggestedFileName()).isEqualTo("tarry-pings-2026-03-01_to_2026-03-07.csv")
+    }
+
+    @Test
+    fun runningSegmentationDisablesTheButtonAndSaysSo() {
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions, segmentation = SegmentationUi(running = true)) }
+        composeRule.onNodeWithTag("sessions_run_segmentation").assertIsNotEnabled()
+        composeRule.onNodeWithText("Segmentation running…").assertExists()
+        composeRule.onNodeWithTag("sessions_run_segmentation").performClick()
+        assertThat(segmentationRuns).isEqualTo(0)
+    }
+
+    @Test
+    fun lastSuccessIsShownWhenIdle() {
+        composeRule.setContent {
+            SessionsContent(emptyList(), false, null, actions, segmentation = SegmentationUi(lastSuccessMs = 1_700_000_000_000))
+        }
+        composeRule.onNodeWithTag("sessions_segmentation_status").assertTextContains("Last segmentation:", substring = true)
+        composeRule.onNodeWithTag("sessions_run_segmentation").assertIsEnabled()
+    }
+
+    @Test
+    fun errorIsShownInsteadOfSuccess() {
+        composeRule.setContent {
+            SessionsContent(
+                emptyList(), false, null, actions,
+                segmentation = SegmentationUi(lastSuccessMs = 1L, error = SegmentationError(1_700_000_000_000, "db closed")),
+            )
+        }
+        composeRule.onNodeWithTag("sessions_segmentation_status").assertTextContains("db closed", substring = true)
+        composeRule.onNodeWithText("Last segmentation:", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun noStatusLineBeforeAnyRun() {
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
+        composeRule.onNodeWithTag("sessions_segmentation_status").assertDoesNotExist()
     }
 }

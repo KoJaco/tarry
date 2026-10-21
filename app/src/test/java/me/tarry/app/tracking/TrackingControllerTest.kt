@@ -168,6 +168,27 @@ class TrackingControllerTest {
     }
 
     @Test
+    fun startedServiceNotifiesCaptureStartedAndWindowEndNotifiesCaptureStopped() = runBlocking {
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(segmentation.captureStarts).isEqualTo(1)
+        assertThat(segmentation.captureStops).isEqualTo(0)
+
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(segmentation.captureStops).isEqualTo(1)
+    }
+
+    @Test
+    fun deniedStartDoesNotNotifyCaptureStarted() = runBlocking {
+        launcher.denyStart = true
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(segmentation.captureStarts).isEqualTo(0)
+    }
+
+    @Test
     fun reconcileRecoversASessionLeftOpenByADeadProcess() = runBlocking {
         val start = mondayAt(9).toEpochMilli()
         trackingRepo.saveSession(TrackingSession(start = start, zoneId = sydney.id, trigger = SessionTrigger.SCHEDULE))

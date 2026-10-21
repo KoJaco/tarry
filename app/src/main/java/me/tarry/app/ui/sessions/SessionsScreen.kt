@@ -26,6 +26,7 @@ fun SessionsScreen(
 ) {
     val sessions by viewModel.sessions.collectAsStateWithLifecycle()
     val exportResult by viewModel.exportResult.collectAsStateWithLifecycle()
+    val segmentation by viewModel.segmentation.collectAsStateWithLifecycle()
     // The request that the chooser currently open is for.
     var pending by remember { mutableStateOf<ExportRequest?>(null) }
 
@@ -46,12 +47,14 @@ fun SessionsScreen(
             },
             onStartTestWindow = viewModel::startTestWindow,
             onDismissExportResult = viewModel::dismissExportResult,
+            onRunSegmentation = viewModel::runSegmentation,
         )
     }
     SessionsContent(
         sessions = sessions,
         showTestWindow = BuildConfig.DEBUG,
         exportResult = exportResult,
+        segmentation = segmentation,
         actions = actions,
         modifier = modifier,
     )

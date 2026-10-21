@@ -251,6 +251,7 @@ class TrackingController @Inject constructor(
     private suspend fun startService(trigger: SessionTrigger) {
         try {
             launcher.start(trigger)
+            segmentationTrigger.onCaptureStarted()
         } catch (e: ServiceStartDeniedException) {
             onStartFailureLocked(StartFailure.FGS_NOT_ALLOWED)
         }
@@ -259,6 +260,7 @@ class TrackingController @Inject constructor(
     private suspend fun stopCapture(endReason: SessionEndReason) {
         coordinator.end(endReason)
         launcher.stop()
+        segmentationTrigger.onCaptureStopped()
     }
 
     private suspend fun onStartFailureLocked(failure: StartFailure) {

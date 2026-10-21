@@ -31,8 +31,23 @@ interface PlaceDao {
     @Query("SELECT * FROM place WHERE deleted = 0 AND lastVisitAt >= :from AND lastVisitAt < :to ORDER BY lastVisitAt")
     suspend fun getByLastVisitInRange(from: Long, to: Long): List<Place>
 
+    /** Every non-deleted place, merged and ignored ones included (segmentation decides what they mean). */
+    @Query("SELECT * FROM place WHERE deleted = 0")
+    suspend fun getAllActive(): List<Place>
+
     @Query("SELECT * FROM place WHERE deleted = 0 ORDER BY lastVisitAt DESC")
     fun observeAll(): Flow<List<Place>>
+
+    /**
+     * Places still waiting for a geocode lookup, most recently visited first. `address` semantics: null = not looked up
+     * yet, "" (empty) = looked up and nothing found (never retried; treat as no address when displaying), else the address.
+     */
+    @Query("SELECT * FROM place WHERE deleted = 0 AND address IS NULL ORDER BY lastVisitAt DESC LIMIT :limit")
+    suspend fun getMissingAddress(limit: Int): List<Place>
+
+    /** Sets only the address when none is stored yet, so a concurrent edit to other columns survives. */
+    @Query("UPDATE place SET address = :address, updatedAt = :updatedAt WHERE id = :id AND address IS NULL")
+    suspend fun setAddressIfMissing(id: String, address: String, updatedAt: Long): Int
 
     @Upsert suspend fun upsertDefaultTag(link: PlaceDefaultTag)
 

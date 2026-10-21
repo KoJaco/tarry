@@ -13,6 +13,9 @@ import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.db.entity.VisitTag
 
+/** Row of [VisitDao.durationByPlaceOutside]. */
+data class PlaceDuration(val placeId: String, val durationMs: Long)
+
 @Dao
 interface VisitDao {
     @Upsert suspend fun upsert(visit: Visit)
@@ -28,6 +31,21 @@ interface VisitDao {
 
     @Query("SELECT * FROM visit WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
     fun observeInRange(from: Long, to: Long): Flow<List<Visit>>
+
+    /** Non-deleted, non-frozen rows overlapping [from, to). */
+    @Query("SELECT * FROM visit WHERE deleted = 0 AND frozen = 0 AND start < :to AND `end` > :from ORDER BY start")
+    suspend fun getUnfrozenInRange(from: Long, to: Long): List<Visit>
+
+    /** Non-deleted, frozen rows overlapping [from, to). */
+    @Query("SELECT * FROM visit WHERE deleted = 0 AND frozen = 1 AND start < :to AND `end` > :from ORDER BY start")
+    suspend fun getFrozenInRange(from: Long, to: Long): List<Visit>
+
+    /** Total visit time per place, counting only non-deleted visits that do not overlap [from, to). */
+    @Query(
+        "SELECT placeId AS placeId, SUM(`end` - start) AS durationMs FROM visit " +
+            "WHERE deleted = 0 AND placeId IS NOT NULL AND NOT (start < :to AND `end` > :from) GROUP BY placeId",
+    )
+    suspend fun durationByPlaceOutside(from: Long, to: Long): List<PlaceDuration>
 
     @Upsert suspend fun upsertTag(link: VisitTag)
 
@@ -52,6 +70,14 @@ interface TripDao {
 
     @Query("SELECT * FROM trip WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
     fun observeInRange(from: Long, to: Long): Flow<List<Trip>>
+
+    /** Non-deleted, non-frozen rows overlapping [from, to). */
+    @Query("SELECT * FROM trip WHERE deleted = 0 AND frozen = 0 AND start < :to AND `end` > :from ORDER BY start")
+    suspend fun getUnfrozenInRange(from: Long, to: Long): List<Trip>
+
+    /** Non-deleted, frozen rows overlapping [from, to). */
+    @Query("SELECT * FROM trip WHERE deleted = 0 AND frozen = 1 AND start < :to AND `end` > :from ORDER BY start")
+    suspend fun getFrozenInRange(from: Long, to: Long): List<Trip>
 
     @Upsert suspend fun upsertTag(link: TripTag)
 

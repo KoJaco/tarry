@@ -42,6 +42,16 @@ class TrackingStatusStoreTest {
     }
 
     @Test
+    fun segmentationFailureIsRecordedAndClearedBySuccess() = runBlocking {
+        val s = store()
+        s.recordSegmentationFailure(100L, "db closed")
+        assertThat(s.current().segmentationError).isEqualTo(SegmentationError(100L, "db closed"))
+        s.recordSegmentationSuccess(200L)
+        assertThat(s.current().segmentationError).isNull()
+        assertThat(s.current().lastSegmentationSuccessMs).isEqualTo(200L)
+    }
+
+    @Test
     fun corruptFileFallsBackToDefaults() = runBlocking {
         folder.root.resolve("corrupt.preferences_pb").writeBytes(byteArrayOf(1, 2, 3, 4, 5, 6, 7))
         val s = store("corrupt.preferences_pb")

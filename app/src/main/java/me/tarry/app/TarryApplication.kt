@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.HealthCheckWorker
 import me.tarry.app.tracking.ReconcileSource
@@ -21,6 +22,8 @@ class TarryApplication : Application(), Configuration.Provider {
 
     @Inject lateinit var trackingConfig: TrackingConfig
 
+    @Inject lateinit var segmentationScheduler: SegmentationScheduler
+
     @Inject @CaptureScope lateinit var captureScope: CoroutineScope
 
     // Hilt injects in super.onCreate(), before WorkManager first asks for this.
@@ -30,6 +33,7 @@ class TarryApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         HealthCheckWorker.enqueue(this, trackingConfig)
+        segmentationScheduler.ensureDaily()
         // Seeds the schedule on first launch, recovers a crashed session and re-arms the alarm.
         // SYSTEM: process start may be a boot or background wake, which must not start a location FGS directly.
         captureScope.launch { controller.reconcile(ReconcileSource.SYSTEM) }

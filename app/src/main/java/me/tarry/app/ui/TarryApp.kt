@@ -109,6 +109,7 @@ fun TarryAppContent(
     onBack: () -> Unit,
     onToggleClick: () -> Unit,
     settingsContent: @Composable () -> Unit,
+    timelineContent: @Composable () -> Unit = { TimelineScreen() },
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -136,7 +137,7 @@ fun TarryAppContent(
                 rememberViewModelStoreNavEntryDecorator(),
             ),
             entryProvider = entryProvider {
-                entry<TimelineRoute> { TimelineScreen() }
+                entry<TimelineRoute> { timelineContent() }
                 entry<SettingsRoute> { settingsContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }

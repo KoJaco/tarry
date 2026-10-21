@@ -34,7 +34,14 @@ data class TrackingStatus(
     val debugTestWindowStartMs: Long? = null,
     /** True when the last alarm was armed inexact because exact alarms are not allowed (ADR 0003). */
     val alarmDegraded: Boolean = false,
+    /** Last time a segmentation run completed. */
+    val lastSegmentationSuccessMs: Long? = null,
+    /** Set when segmentation gave up; cleared by the next successful run. */
+    val segmentationError: SegmentationError? = null,
 )
+
+/** Why and when segmentation last gave up. */
+data class SegmentationError(val timeMs: Long, val message: String)
 
 /** `tracking_status` DataStore configuration; a corrupt file is replaced by defaults. */
 internal fun createTrackingStatusDataStore(
@@ -58,6 +65,8 @@ class TrackingStatusStore @Inject constructor(
             openHealthGapId = p[OPEN_GAP],
             debugTestWindowStartMs = p[TEST_WINDOW_START],
             alarmDegraded = p[ALARM_DEGRADED] ?: false,
+            lastSegmentationSuccessMs = p[SEG_SUCCESS],
+            segmentationError = p[SEG_ERROR_TIME]?.let { SegmentationError(it, p[SEG_ERROR_MESSAGE] ?: "") },
         )
     }
 
@@ -70,6 +79,22 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
     suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
+
+    /** A successful run: records the time and clears any earlier error. */
+    suspend fun recordSegmentationSuccess(timeMs: Long) {
+        dataStore.edit {
+            it[SEG_SUCCESS] = timeMs
+            it.remove(SEG_ERROR_TIME)
+            it.remove(SEG_ERROR_MESSAGE)
+        }
+    }
+
+    suspend fun recordSegmentationFailure(timeMs: Long, message: String) {
+        dataStore.edit {
+            it[SEG_ERROR_TIME] = timeMs
+            it[SEG_ERROR_MESSAGE] = message
+        }
+    }
 
     /** Clears per-session runtime state (heartbeat, mode, session id). Attention, gap and test window are kept. */
     suspend fun clearSessionState() {
@@ -92,6 +117,9 @@ class TrackingStatusStore @Inject constructor(
         val OPEN_GAP = stringPreferencesKey("open_health_gap_uuid")
         val TEST_WINDOW_START = longPreferencesKey("debug_test_window_start_ms")
         val ALARM_DEGRADED = booleanPreferencesKey("alarm_degraded")
+        val SEG_SUCCESS = longPreferencesKey("segmentation_success_ms")
+        val SEG_ERROR_TIME = longPreferencesKey("segmentation_error_ms")
+        val SEG_ERROR_MESSAGE = stringPreferencesKey("segmentation_error_message")
     }
 }
 

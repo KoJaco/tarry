@@ -23,6 +23,10 @@ interface TrackingSessionDao {
     @Query("SELECT * FROM tracking_session WHERE start >= :from AND start < :to ORDER BY start")
     suspend fun getInRange(from: Long, to: Long): List<TrackingSession>
 
+    /** Sessions overlapping [from, to): started before `to` and still open or ended after `from`. */
+    @Query("SELECT * FROM tracking_session WHERE start < :to AND (`end` IS NULL OR `end` > :from) ORDER BY start")
+    suspend fun getOverlapping(from: Long, to: Long): List<TrackingSession>
+
     @Query("SELECT * FROM tracking_session WHERE `end` IS NULL ORDER BY start DESC LIMIT 1")
     suspend fun getOpenSession(): TrackingSession?
 

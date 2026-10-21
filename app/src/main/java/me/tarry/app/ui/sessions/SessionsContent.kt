@@ -52,6 +52,7 @@ data class SessionsActions(
     val onExport: (ExportRequest) -> Unit,
     val onStartTestWindow: () -> Unit,
     val onDismissExportResult: () -> Unit,
+    val onRunSegmentation: () -> Unit = {},
 )
 
 private val MinTouchTarget = 48.dp
@@ -63,6 +64,7 @@ fun SessionsContent(
     showTestWindow: Boolean,
     exportResult: ExportResult?,
     actions: SessionsActions,
+    segmentation: SegmentationUi = SegmentationUi(),
     modifier: Modifier = Modifier,
     today: LocalDate = LocalDate.now(),
 ) {
@@ -75,6 +77,18 @@ fun SessionsContent(
                 modifier = Modifier.padding(vertical = 8.dp),
             )
             ExportResultText(exportResult, actions.onDismissExportResult)
+            OutlinedButton(
+                onClick = actions.onRunSegmentation,
+                enabled = !segmentation.running,
+                modifier = Modifier.heightIn(min = MinTouchTarget).testTag("sessions_run_segmentation"),
+            ) {
+                Text(
+                    stringResource(
+                        if (segmentation.running) R.string.sessions_segmentation_running else R.string.sessions_run_segmentation,
+                    ),
+                )
+            }
+            SegmentationStatusText(segmentation)
             if (showTestWindow) {
                 Text(stringResource(R.string.sessions_test_window_hint), style = MaterialTheme.typography.bodyMedium)
                 Button(
@@ -263,4 +277,41 @@ private fun SessionEndReason?.labelRes(): Int = when (this) {
     SessionEndReason.USER_PAUSE -> R.string.sessions_end_user_pause
     SessionEndReason.KILLED -> R.string.sessions_end_killed
     SessionEndReason.PERMISSION_LOST -> R.string.sessions_end_permission_lost
+}
+
+private val StatusTimeFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+
+/** The last segmentation outcome: the error if the last attempt gave up (rule 6), else the last success time. */
+@Composable
+private fun SegmentationStatusText(state: SegmentationUi) {
+    val error = state.error
+    val text: String
+    val color: androidx.compose.ui.graphics.Color
+    when {
+        error != null -> {
+            text = stringResource(
+                R.string.sessions_segmentation_failed,
+                StatusTimeFormat.format(Instant.ofEpochMilli(error.timeMs).atZone(ZoneId.systemDefault())),
+                error.message,
+            )
+            color = MaterialTheme.colorScheme.error
+        }
+        state.lastSuccessMs != null -> {
+            text = stringResource(
+                R.string.sessions_segmentation_last_success,
+                StatusTimeFormat.format(Instant.ofEpochMilli(state.lastSuccessMs).atZone(ZoneId.systemDefault())),
+            )
+            color = MaterialTheme.colorScheme.onSurface
+        }
+        else -> return
+    }
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = color,
+        modifier = Modifier
+            .padding(vertical = 4.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite }
+            .testTag("sessions_segmentation_status"),
+    )
 }

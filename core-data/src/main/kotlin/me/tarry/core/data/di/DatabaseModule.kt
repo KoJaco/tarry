@@ -8,6 +8,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import me.tarry.core.data.db.ALL_MIGRATIONS
+import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.TarryDatabase
 import javax.inject.Singleton
 
@@ -22,6 +23,7 @@ object DatabaseModule {
             .addMigrations(*ALL_MIGRATIONS)
             .build()
 
+    @Provides fun segmentationStore(db: TarryDatabase) = SegmentationStore(db)
     @Provides fun trackingSessionDao(db: TarryDatabase) = db.trackingSessionDao()
     @Provides fun locationPingDao(db: TarryDatabase) = db.locationPingDao()
     @Provides fun manualOverrideDao(db: TarryDatabase) = db.manualOverrideDao()

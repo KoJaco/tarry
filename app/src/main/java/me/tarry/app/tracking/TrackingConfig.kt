@@ -30,6 +30,12 @@ data class TrackingConfig(
     val serviceStartGraceMs: Long = 2 * 60_000L,
     /** Health Gaps of the same cause closer together than this are merged into one. */
     val gapMergeToleranceMs: Long = 60_000L,
+    // Segmentation scheduling (the algorithm's own tunables are in SegmentationParams).
+    val segmentationPeriodMin: Long = 15L,
+    val segmentationDailyPeriodHours: Long = 24L,
+    /** Max places looked up per geocode worker run, and the base retry backoff after a failed lookup. */
+    val geocodeBatchSize: Int = 20,
+    val geocodeBackoffSeconds: Long = 30L,
     // Schedule engine.
     /** How far back and ahead the calculator builds windows when looking for the next transition. */
     val scheduleLookBackDays: Long = 1L,

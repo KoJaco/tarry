@@ -22,9 +22,11 @@ import me.tarry.app.ui.shell.TrackingToggle
 import me.tarry.core.data.settings.Settings
 import org.junit.Rule
 import org.junit.Test
+import me.tarry.app.ui.timeline.TimelineContent
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
@@ -45,6 +47,7 @@ class TarryAppShellTest {
                 onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
                 onToggleClick = onToggle,
                 settingsContent = { SettingsContent(Settings()) },
+                timelineContent = { TimelineContent(LocalDate.of(2026, 1, 1), emptyList(), {}, {}) },
             )
         }
     }
