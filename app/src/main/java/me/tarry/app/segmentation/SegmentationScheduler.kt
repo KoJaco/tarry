@@ -45,7 +45,9 @@ class SegmentationScheduler @Inject constructor(
 
     /** Periodic run while capture is on. */
     fun startPeriodic() {
-        val request = PeriodicWorkRequestBuilder<SegmentationWorker>(config.segmentationPeriodMin, TimeUnit.MINUTES).build()
+        val request = PeriodicWorkRequestBuilder<SegmentationWorker>(config.segmentationPeriodMin, TimeUnit.MINUTES)
+            .addTag(TAG_PERIODIC)
+            .build()
         workManager.enqueueUniquePeriodicWork(PERIODIC, ExistingPeriodicWorkPolicy.KEEP, request)
     }
 
@@ -66,5 +68,6 @@ class SegmentationScheduler @Inject constructor(
         const val PERIODIC = "segmentation-periodic"
         const val DAILY = "segmentation-daily"
         const val GEOCODE = "geocode"
+        const val TAG_PERIODIC = "segmentation-periodic-tag"
     }
 }
