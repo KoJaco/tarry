@@ -8,6 +8,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +42,7 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    SettingsContent(settings, onOpenPermissions, onOpenSessions, modifier)
+    SettingsContent(settings, onOpenPermissions, onOpenSessions, modifier, viewModel::setStayGeofenceRadiusM)
 }
 
 /** Stateless, read-only list of the current settings. */
@@ -44,7 +52,9 @@ fun SettingsContent(
     onOpenPermissions: () -> Unit = {},
     onOpenSessions: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onStayRadiusSelected: (Int) -> Unit = {},
 ) {
+    var showRadiusDialog by remember { mutableStateOf(false) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
     val rows: List<Pair<String, String>> = settings?.let { s ->
@@ -67,6 +77,17 @@ fun SettingsContent(
         )
     } ?: emptyList()
 
+    if (showRadiusDialog && settings != null) {
+        StayRadiusDialog(
+            current = settings.stayGeofenceRadiusM,
+            onSelect = {
+                onStayRadiusSelected(it)
+                showRadiusDialog = false
+            },
+            onDismiss = { showRadiusDialog = false },
+        )
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         Text(
             text = stringResource(R.string.nav_settings),
@@ -75,6 +96,13 @@ fun SettingsContent(
         )
         ClickableRow(stringResource(R.string.settings_permissions), onOpenPermissions)
         ClickableRow(stringResource(R.string.settings_sessions), onOpenSessions)
+        if (settings != null) {
+            ClickableRow(
+                label = stringResource(R.string.settings_stay_radius),
+                value = stringResource(R.string.settings_stay_radius_value, settings.stayGeofenceRadiusM),
+                onClick = { showRadiusDialog = true },
+            )
+        }
         LazyColumn {
             items(rows) { (label, value) -> SettingRow(label, value) }
         }
@@ -82,16 +110,24 @@ fun SettingsContent(
 }
 
 @Composable
-private fun ClickableRow(label: String, onClick: () -> Unit) {
+private fun ClickableRow(label: String, onClick: () -> Unit, value: String? = null) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
+        if (value != null) {
+            Text(
+                value,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -110,4 +146,42 @@ private fun SettingRow(label: String, value: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun StayRadiusDialog(current: Int, onSelect: (Int) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_stay_radius)) },
+        text = {
+            Column {
+                Text(
+                    stringResource(R.string.settings_stay_radius_explanation),
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                Column(Modifier.selectableGroup()) {
+                    for (meters in Settings.ALLOWED_STAY_RADII_M.sorted()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .selectable(selected = meters == current, role = Role.RadioButton) { onSelect(meters) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            // The row is the selectable target; the button only shows state.
+                            RadioButton(selected = meters == current, onClick = null)
+                            Text(
+                                stringResource(R.string.settings_stay_radius_value, meters),
+                                style = MaterialTheme.typography.bodyLarge,
+                                modifier = Modifier.padding(start = 16.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.settings_dialog_cancel)) } },
+    )
 }
