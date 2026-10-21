@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import me.tarry.core.data.db.ALL_MIGRATIONS
 import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.TarryDatabase
+import me.tarry.core.data.repository.EditClock
 import javax.inject.Singleton
 
 @Module
@@ -24,6 +25,7 @@ object DatabaseModule {
             .build()
 
     @Provides fun segmentationStore(db: TarryDatabase) = SegmentationStore(db)
+    @Provides fun editClock(): EditClock = EditClock { System.currentTimeMillis() }
     @Provides fun trackingSessionDao(db: TarryDatabase) = db.trackingSessionDao()
     @Provides fun locationPingDao(db: TarryDatabase) = db.locationPingDao()
     @Provides fun manualOverrideDao(db: TarryDatabase) = db.manualOverrideDao()

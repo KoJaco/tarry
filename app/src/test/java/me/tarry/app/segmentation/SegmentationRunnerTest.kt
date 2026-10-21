@@ -21,6 +21,9 @@ import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.PingSource
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.model.VisitOrigin
+import me.tarry.core.data.repository.EditClock
+import me.tarry.core.data.repository.EditResult
+import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.segmentation.SegmentationParams
 import org.junit.After
 import org.junit.Before
@@ -296,5 +299,90 @@ class SegmentationRunnerTest {
         assertThat(visits()).isEmpty()
         assertThat(trips()).isEmpty()
         assertThat(db.placeDao().getAllActive()).isEmpty()
+    }
+
+    private fun editor() = TimelineEditor(
+        db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+        db.segmentationCheckpointDao(), EditClock { now1 + 5 * minute },
+    )
+
+    @Test
+    fun editsBeforeTheCheckpointAreHonouredAfterTheRewindAndRerun() = runBlocking<Unit> {
+        val siteC = -33.9300 to 151.3000
+        insertTwoSiteDay()
+        // B was 40..70; the user left B at 70 and drove on to C, so B is a closed stay and C the ongoing one.
+        val extra = mutableListOf<LocationPing>()
+        for (j in 1..9) {
+            val f = j / 10.0
+            extra += ping(
+                t0 + (70 + j) * minute,
+                (siteB.first + (siteC.first - siteB.first) * f) to (siteB.second + (siteC.second - siteB.second) * f),
+            )
+        }
+        extra += (80..110 step 3).map { ping(t0 + it * minute, siteC) }
+        db.locationPingDao().upsertAll(extra)
+        val end = t0 + 112 * minute
+        runner.run(end)
+        val (a, b, c) = visits()
+        val checkpointBefore = db.segmentationCheckpointDao().getById()!!.processedUntil
+        assertThat(checkpointBefore).isEqualTo(c.start)
+
+        // Trim A (freezes it) and delete B: both lie before the checkpoint.
+        val trimmedEnd = a.end - 5 * minute
+        assertThat(editor().trim(a.id, a.start, trimmedEnd)).isInstanceOf(EditResult.Ok::class.java)
+        assertThat(editor().delete(b.id)).isInstanceOf(EditResult.Ok::class.java)
+        val frozenA = db.visitDao().getById(a.id)!!
+        assertThat(db.segmentationCheckpointDao().getById()!!.processedUntil).isEqualTo(a.start)
+
+        runner.run(end + 2 * minute)
+
+        assertThat(db.visitDao().getById(a.id)).isEqualTo(frozenA)
+        val live = visits()
+        assertThat(live.map { it.id }).contains(a.id)
+        assertThat(live.none { it.id != a.id && it.start < b.end && it.end > b.start }).isTrue()
+        assertThat(db.visitDao().getById(b.id)!!.deleted).isTrue()
+        assertThat(live.none { it.id != a.id && it.start < frozenA.end && it.end > frozenA.start }).isTrue()
+        assertThat(trips().none { it.start < b.end && it.end > b.start }).isTrue()
+        assertThat(live.any { it.id == c.id }).isTrue()
+    }
+
+    @Test
+    fun aManualVisitInsideATripSplitsTheTripOnTheNextRun() = runBlocking<Unit> {
+        val siteC = -34.2000 to 151.6000
+        sessionId = db.trackingSessionDao().upsert(
+            TrackingSession(start = t0 - minute, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE),
+        )
+        val pings = mutableListOf<LocationPing>()
+        for (k in 0..10) pings += ping(t0 + k * 3 * minute, siteA)
+        for (j in 1..44) {
+            val f = j / 45.0
+            pings += ping(
+                t0 + (30 + j) * minute,
+                (siteA.first + (siteC.first - siteA.first) * f) to (siteA.second + (siteC.second - siteA.second) * f),
+            )
+        }
+        pings += (75..100 step 3).map { ping(t0 + it * minute, siteC) }
+        db.locationPingDao().upsertAll(pings)
+        val end = t0 + 101 * minute
+        runner.run(end)
+        val before = trips().single()
+        db.placeDao().upsert(Place(id = "stop", centroidLat = -34.0, centroidLng = 151.4, updatedAt = 0))
+
+        val from = t0 + 50 * minute
+        val to = t0 + 60 * minute
+        val created = editor().createManual("stop", from, to, "Australia/Sydney") as EditResult.Ok
+        runner.run(end + 2 * minute)
+
+        val manual = db.visitDao().getById(created.id!!)!!
+        assertThat(manual.deleted).isFalse()
+        assertThat(manual.frozen).isTrue()
+        assertThat(manual.start).isEqualTo(from)
+        assertThat(manual.end).isEqualTo(to)
+        val after = trips()
+        assertThat(after).hasSize(2)
+        assertThat(after.none { it.start < to && it.end > from }).isTrue()
+        assertThat(after.first().end).isAtMost(from)
+        assertThat(after.last().start).isAtLeast(to)
+        assertThat(after.map { it.id }).contains(before.id)
     }
 }
