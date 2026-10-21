@@ -53,7 +53,7 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
         }
     }
     current?.closeInto(stays, params, open = true)
-    return stays
+    return settleStarts(stays, pings, params)
 }
 
 /** Floor on accuracy for weighting, so one very confident fix cannot dominate the centroid. */
@@ -107,9 +107,75 @@ private class Growing(first: Ping) {
         lngSum += ping.lng * w
     }
 
-    fun closeInto(out: MutableList<StayCandidate>, params: SegmentationParams, open: Boolean) {
+    /** Adds this candidate to [out] when it qualifies; returns whether it did. */
+    fun closeInto(out: MutableList<StayCandidate>, params: SegmentationParams, open: Boolean): Boolean {
         val range = TimeRange(pings.first().timeMs, last.timeMs)
-        if (!open && range.durationMs < params.minStayDurationMs) return
+        if (!open && range.durationMs < params.minStayDurationMs) return false
         out += StayCandidate(range, lat, lng, pings.toList(), bridged, open)
+        return true
     }
+
+}
+
+/** Bound on start-settling rounds; each round only moves the start, so this is reached only by oscillation. */
+private const val MAX_SETTLE_ROUNDS = 10
+
+/**
+ * Settles each stay's start on the stay itself instead of on where greedy growth happened to begin. Growth that
+ * starts on an approach ping drags the centroid toward the approach and swallows pings that are not at the stay,
+ * and which ping it starts on depends on where the run's pings begin, so an overlap re-run would disagree with a
+ * full run. Each round drops leading pings beyond [SegmentationParams.stayRadiusM] of the centroid, then pulls the
+ * start back over the immediately preceding pings within it (never into the previous stay, never across a silence
+ * longer than [SegmentationParams.maxGapToBridgeMs]), recomputing the centroid, until nothing changes. A closed
+ * stay trimmed below [SegmentationParams.minStayDurationMs] is dropped.
+ */
+private fun settleStarts(stays: List<StayCandidate>, pings: List<Ping>, params: SegmentationParams): List<StayCandidate> {
+    val out = ArrayList<StayCandidate>(stays.size)
+    for (stay in stays) {
+        val floor = out.lastOrNull()?.range?.endMs ?: Long.MIN_VALUE
+        var own = stay.pings
+        repeat(MAX_SETTLE_ROUNDS) {
+            val before = own.first().timeMs
+            // A leading ping is judged against the centroid of the pings after it (never one it pulled toward
+            // itself), the same test the extension below applies, so there is one answer rather than two.
+            while (own.size > 1) {
+                val (rLat, rLng) = weightedCentroid(own.subList(1, own.size))
+                if (haversineMeters(own[0].lat, own[0].lng, rLat, rLng) <= params.stayRadiusM) break
+                own = own.drop(1)
+            }
+            var i = pings.indexOfFirst { it.timeMs >= own.first().timeMs }
+            var next = own.first()
+            while (i > 0) {
+                val p = pings[i - 1]
+                if (p.timeMs <= floor || next.timeMs - p.timeMs > params.maxGapToBridgeMs) break
+                val (cLat, cLng) = weightedCentroid(own)
+                if (haversineMeters(p.lat, p.lng, cLat, cLng) > params.stayRadiusM) break
+                own = listOf(p) + own
+                next = p
+                i--
+            }
+            if (own.first().timeMs == before) return@repeat // settled
+        }
+        val range = TimeRange(own.first().timeMs, stay.range.endMs)
+        if (!stay.open && range.durationMs < params.minStayDurationMs) continue
+        // The interior set also depends on growth order (which outliers were skipped). Rebuild it from every ping in
+        // the range within the radius of the centroid, twice, so the centroid is a property of the range alone.
+        repeat(2) {
+            val (cLat, cLng) = weightedCentroid(own)
+            val rebuilt = pings.filter {
+                it.timeMs >= range.startMs && it.timeMs <= range.endMs &&
+                    haversineMeters(it.lat, it.lng, cLat, cLng) <= params.stayRadiusM
+            }
+            if (rebuilt.isNotEmpty()) own = rebuilt
+        }
+        val (lat, lng) = weightedCentroid(own)
+        out += stay.copy(
+            range = range,
+            lat = lat,
+            lng = lng,
+            pings = own,
+            bridged = own.zipWithNext().any { (a, b) -> b.timeMs - a.timeMs > params.signalGapMs },
+        )
+    }
+    return out
 }
