@@ -27,12 +27,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -46,11 +44,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
@@ -92,10 +88,15 @@ private object DayCanvasDefaults {
     val GapPaddingV = 4.dp
     val GapIconSize = 20.dp
     val TripIconSize = 16.dp
-    val InnerGapIconSize = 14.dp
+    val InnerGapIconSize = 16.dp
+    val InnerGapMarkerWidth = 6.dp
+    val InnerGapMarkerRadius = 2.dp
 
-    /** An inner gap band shows its icon and text from this height (per unit of font scale). */
-    const val InnerGapTextMinDp = 20f
+    /** Content start inside a block with outage markers: border (1.5) + marker (6) + 4 dp clearance, from the block edge. */
+    val InnerGapContentStart = 11.5.dp
+
+    /** Height of the "Includes N min not tracked" line (per unit of font scale). */
+    const val SummaryLineDp = 20f
 
     /** Line heights of `titleMedium`, `bodyMedium` and `labelMedium`, to work out how many lines fit in a block. */
     const val TitleLineDp = 22f
@@ -242,8 +243,14 @@ private fun VisitBlock(
     val showChip = !oneLine && job == null && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
     val (titleLines, detailLines) = textLines(placed.heightDp, fontScale, showChip)
 
-    // The outage bands are part of the background: after the fill, before the content, and under the border.
-    val bands = Modifier.innerGapBands(placed.innerGaps, bandContentBottomDp(oneLine, showChip, titleLines, detailLines, fontScale))
+    // The outage markers are part of the background: after the fill, before the content, and under the border.
+    val bands = Modifier.innerGapMarkers(placed.innerGaps)
+    val notTracked = notTrackedText(placed.innerGaps, times)
+    val d = DayCanvasDefaults
+    val summaryRoom = d.BlockPaddingV.value * 2 + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale +
+        (if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f) + d.SummaryLineDp * fontScale
+    val showSummary = notTracked != null && !oneLine && placed.heightDp >= summaryRoom
+    val startPadding = if (placed.innerGaps.isEmpty()) TarryTheme.space.m else maxOf(TarryTheme.space.m, d.InnerGapContentStart)
     val look = if (job != null) {
         Modifier.clip(shape).background(container).then(bands).border(DayCanvasDefaults.BorderWidth, job.border, shape)
     } else {
@@ -257,14 +264,22 @@ private fun VisitBlock(
                 traversalIndex = index.toFloat()
                 blockColor = container
                 blockDashed = job == null
-                if (placed.innerGaps.isNotEmpty()) innerGapHatch = placed.innerGaps.size
+                if (placed.innerGaps.isNotEmpty()) {
+                    innerGapHatch = placed.innerGaps.size
+                    innerGapRects = innerGapMarkerRects(placed.innerGaps)
+                }
             }
             .testTag("timeline_row_${visit.id}"),
     ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = TarryTheme.space.m, vertical = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV),
+            .padding(
+                start = startPadding,
+                end = TarryTheme.space.m,
+                top = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV,
+                bottom = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV,
+            ),
         verticalArrangement = Arrangement.Top,
     ) {
         if (oneLine) {
@@ -290,6 +305,26 @@ private fun VisitBlock(
                 maxLines = detailLines,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (showSummary && notTracked != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_warning),
+                        contentDescription = null,
+                        tint = c.alert,
+                        modifier = Modifier.size(DayCanvasDefaults.InnerGapIconSize),
+                    )
+                    Text(
+                        text = notTracked.replaceFirstChar { it.uppercase() },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = c.onAlertSoft,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             if (showChip) {
                 Text(
                     text = stringResource(R.string.timeline_needs_review),
@@ -309,69 +344,31 @@ private fun VisitBlock(
     }
 }
 
-/** Bottom edge (dp from the block top) of the title, time and chip text; a band label must sit below it. */
-private fun bandContentBottomDp(
-    oneLine: Boolean,
-    showChip: Boolean,
-    titleLines: Int,
-    detailLines: Int,
-    fontScale: Float,
-): Float {
-    val d = DayCanvasDefaults
-    if (oneLine) return d.OneLinePaddingV.value + d.TitleLineDp * fontScale
-    val chip = if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f
-    return d.BlockPaddingV.value + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale + chip
+/** Outage rects (dp, relative to the block's top-left): a marker strip just inside the left border. */
+private fun innerGapMarkerRects(innerGaps: List<InnerGap>): List<Rect> {
+    val left = DayCanvasDefaults.BorderWidth.value
+    return innerGaps.map { Rect(left, it.offsetDp, left + DayCanvasDefaults.InnerGapMarkerWidth.value, it.offsetDp + it.heightDp) }
 }
 
 /**
- * Outages inside a visit, drawn as part of the block background: a hatched alertSoft band with a thin alert edge top
- * and bottom, inset by the border so the border stays on top. The "Not tracked" label is drawn only when the band is
- * tall enough and sits below the text ([contentBottomDp]). Decorative for a11y: the spoken description covers it.
+ * Outages inside a visit as an edge marker: a solid `alert` bar with small rounded ends just inside the left border, at
+ * the outage's proportional offset and height. It is part of the background (clipped to the block shape, under the
+ * border) and the content is padded past it, so it never sits under text. Solid rather than hatched: a hatch is not
+ * legible at 6 dp. Decorative for a11y: the spoken description covers it.
  */
 @Composable
-private fun Modifier.innerGapBands(innerGaps: List<InnerGap>, contentBottomDp: Float): Modifier {
+private fun Modifier.innerGapMarkers(innerGaps: List<InnerGap>): Modifier {
     if (innerGaps.isEmpty()) return this
-    val c = TarryTheme.colors
-    val fontScale = maxOf(1f, LocalDensity.current.fontScale)
-    val measurer = rememberTextMeasurer()
-    val style = MaterialTheme.typography.bodySmall.copy(color = c.onAlertSoft)
-    val icon = painterResource(R.drawable.ic_warning)
-    val padH = TarryTheme.space.m
-    val spaceS = TarryTheme.space.s
-    val labels = innerGaps.map { stringResource(R.string.timeline_gap_row, stringResource(it.gap.cause.labelRes())) }
+    val color = TarryTheme.colors.alert
     return drawBehind {
-        val inset = DayCanvasDefaults.BorderWidth.toPx()
-        val edge = DayCanvasDefaults.RuleWidth.toPx()
-        val step = DayCanvasDefaults.HatchStepDp.dp.toPx()
-        val hatchColor = c.alert.copy(alpha = DayCanvasDefaults.HatchAlpha)
-        val width = size.width - 2 * inset
-        innerGaps.forEachIndexed { i, inner ->
-            val top = inner.offsetDp.dp.toPx()
-            val h = inner.heightDp.dp.toPx()
-            clipRect(left = inset, top = top, right = inset + width, bottom = top + h) {
-                drawRect(c.alertSoft, Offset(inset, top), Size(width, h))
-                var x = inset - h
-                while (x < inset + width) {
-                    drawLine(hatchColor, Offset(x, top + h), Offset(x + h, top), strokeWidth = edge)
-                    x += step
-                }
-                drawLine(c.alert, Offset(inset, top + edge / 2), Offset(inset + width, top + edge / 2), strokeWidth = edge)
-                drawLine(c.alert, Offset(inset, top + h - edge / 2), Offset(inset + width, top + h - edge / 2), strokeWidth = edge)
-            }
-            val showText = inner.heightDp >= DayCanvasDefaults.InnerGapTextMinDp * fontScale && inner.offsetDp >= contentBottomDp
-            if (showText) {
-                val iconSize = DayCanvasDefaults.InnerGapIconSize.toPx()
-                val gapPx = spaceS.toPx()
-                val left = inset + padH.toPx()
-                val layout = measurer.measure(
-                    labels[i], style, overflow = TextOverflow.Ellipsis, maxLines = 1,
-                    constraints = Constraints(maxWidth = (width - 2 * padH.toPx() - iconSize - gapPx).toInt().coerceAtLeast(0)),
-                )
-                translate(left, top + (h - iconSize) / 2) {
-                    with(icon) { draw(Size(iconSize, iconSize), colorFilter = ColorFilter.tint(c.alert)) }
-                }
-                drawText(layout, topLeft = Offset(left + iconSize + gapPx, top + (h - layout.size.height) / 2))
-            }
+        val r = DayCanvasDefaults.InnerGapMarkerRadius.toPx()
+        innerGapMarkerRects(innerGaps).forEach { rect ->
+            drawRoundRect(
+                color,
+                topLeft = Offset(rect.left.dp.toPx(), rect.top.dp.toPx()),
+                size = Size(rect.width.dp.toPx(), rect.height.dp.toPx()),
+                cornerRadius = CornerRadius(r, r),
+            )
         }
     }
 }

@@ -263,7 +263,50 @@ class DayCanvasTest {
     }
 
     @Test
-    fun innerGapBandsAreDrawnBehindTheContentNotAsNodes() {
+    fun innerGapMarkerSitsInTheLeftStripAndNeverUnderTheTitle() {
+        show(
+            listOf(
+                TimelineItem.Visit("v", at(9), at(11), "Marina"),
+                TimelineItem.Gap("g", at(9, 5), at(9, 40), GapCause.SERVICE_KILLED),
+            ),
+        )
+        val block = composeRule.onNodeWithTag("timeline_row_v").getUnclippedBoundsInRoot()
+        val title = composeRule.onNodeWithText("Marina", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        val rects = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().config[InnerGapRectsKey]
+        assertThat(rects).hasSize(1)
+        rects.forEach {
+            assertThat(it.left).isAtLeast(0f)
+            assertThat(it.right).isAtMost(8f)
+            assertThat(it.height).isAtLeast(4f)
+            assertThat(it.right).isLessThan((title.left - block.left).value)
+        }
+    }
+
+    @Test
+    fun includesLineShowsInATallBlockButNotInACompactOne() {
+        show(
+            listOf(
+                TimelineItem.Visit("v", at(9), at(11), "Marina"),
+                TimelineItem.Gap("g", at(9, 5), at(9, 8), GapCause.SERVICE_KILLED),
+            ),
+        )
+        composeRule.onNodeWithText("Includes 3 minutes not tracked").assertIsDisplayed()
+    }
+
+    @Test
+    fun includesLineIsAbsentInACompactBlock() {
+        show(
+            listOf(
+                TimelineItem.Visit("v", at(9), at(9, 25), "Kiosk"),
+                TimelineItem.Gap("g", at(9, 10), at(9, 13), GapCause.SERVICE_KILLED),
+            ),
+        )
+        composeRule.onAllNodesWithText("Includes 3 minutes not tracked", substring = true).assertCountEquals(0)
+        composeRule.onNodeWithTag("timeline_row_v").assert(SemanticsMatcher("marker only") { it.config[InnerGapHatchKey] == 1 })
+    }
+
+    @Test
+    fun innerGapIsNotABandOrANode() {
         // A gap 10 minutes into a short-ish visit lies under the title and time line.
         show(
             listOf(

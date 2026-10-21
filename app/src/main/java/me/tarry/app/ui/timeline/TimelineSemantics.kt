@@ -1,5 +1,6 @@
 package me.tarry.app.ui.timeline
 
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -12,7 +13,11 @@ var SemanticsPropertyReceiver.blockColor: Color by BlockColorKey
 val BlockDashedKey = SemanticsPropertyKey<Boolean>("TimelineBlockDashed")
 var SemanticsPropertyReceiver.blockDashed: Boolean by BlockDashedKey
 
-/** Number of outage bands drawn inside a visit block. For tests. */
+/** Outage rects (dp, relative to the block's top-left) of the edge markers in a visit block. For tests. */
+val InnerGapRectsKey = SemanticsPropertyKey<List<Rect>>("TimelineInnerGapRects")
+var SemanticsPropertyReceiver.innerGapRects: List<Rect> by InnerGapRectsKey
+
+/** Number of outage markers drawn inside a visit block. For tests. */
 val InnerGapHatchKey = SemanticsPropertyKey<Int>("TimelineInnerGapHatch")
 var SemanticsPropertyReceiver.innerGapHatch: Int by InnerGapHatchKey
 

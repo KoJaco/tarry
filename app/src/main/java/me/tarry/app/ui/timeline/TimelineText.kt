@@ -65,6 +65,19 @@ internal fun clampedTimes(item: TimelineItem, dayStart: Long, dayEnd: Long, zone
     )
 }
 
+/** "includes N minutes not tracked" for the outages inside a visit, each clamped to the visit and the day; null if none. */
+@Composable
+internal fun notTrackedText(innerGaps: List<InnerGap>, t: ClampedTimes): String? {
+    if (innerGaps.isEmpty()) return null
+    val ms = innerGaps.sumOf { minOf(it.gap.end, t.end) - maxOf(it.gap.start, t.start) }.coerceAtLeast(0)
+    val minutes = (ms / 60_000L).toInt()
+    return if (minutes < 1) {
+        stringResource(R.string.timeline_includes_not_tracked_short)
+    } else {
+        pluralStringResource(R.plurals.timeline_includes_not_tracked, minutes, minutes)
+    }
+}
+
 /** The full spoken description of one item; [folded] trips without a row of their own are appended. */
 @Composable
 internal fun spokenDescription(
@@ -76,18 +89,7 @@ internal fun spokenDescription(
     innerGaps: List<InnerGap> = emptyList(),
 ): String {
     val t = clampedTimes(item, dayStart, dayEnd, zone)
-    val notTracked = if (innerGaps.isEmpty()) {
-        null
-    } else {
-        // Each gap clamped to the visit and the day, like the band drawn for it.
-        val ms = innerGaps.sumOf { minOf(it.gap.end, t.end) - maxOf(it.gap.start, t.start) }.coerceAtLeast(0)
-        val minutes = (ms / 60_000L).toInt()
-        if (minutes < 1) {
-            stringResource(R.string.timeline_includes_not_tracked_short)
-        } else {
-            pluralStringResource(R.plurals.timeline_includes_not_tracked, minutes, minutes)
-        }
-    }
+    val notTracked = notTrackedText(innerGaps, t)
     val base = when (item) {
         is TimelineItem.Visit -> {
             val place = if (item.labelIsCoordinates) {

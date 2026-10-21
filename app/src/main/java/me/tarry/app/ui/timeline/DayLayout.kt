@@ -15,8 +15,8 @@ data class DayLayoutParams(
     val tripRowDp: Float = 24f,
     /** Minimum vertical space between consecutive items, so adjacent blocks never touch. Not font-scaled. */
     val itemGapDp: Float = 4f,
-    /** Minimum height of an outage band drawn inside a visit. Not font-scaled. */
-    val innerGapMinDp: Float = 3f,
+    /** Minimum height of an outage marker drawn inside a visit. Not font-scaled. */
+    val innerGapMinDp: Float = 4f,
     /** Used only when there are no items and no window. */
     val emptyDayStartHour: Int = 7,
     val emptyDayEndHour: Int = 17,
