@@ -20,7 +20,7 @@ Then restyle every existing screen with it. From here on, phases 3–8 build onl
 ## Decisions (owner, 2026-10-21)
 - **Palette and type:** direction A ("field notebook").
 - **Timeline styling:** direction C (calendar). The day is drawn to scale on a time column, with job-coloured blocks, hatched gaps and a now-line.
-- **Bottom bar:** a full-width container with three equally spaced pill slots, Timeline | tracking toggle | Settings, not a floating bar.
+- **Bottom bar:** full width, the screen's background colour, set apart only by a top border, with three equally spaced pill slots: Timeline | tracking toggle | Settings. Not a floating bar.
 - The comparison mock-ups are the private artifact "Tarry design directions". They are reference only. Where they differ from `tokens.md`, `tokens.md` wins: it replaces the floating bar and puts A's palette onto C's layout.
 
 ## Carry-over
@@ -68,7 +68,7 @@ Create `ui/components/`, each component with previews in light, dark and fontSca
 - `PrimaryButton`, `SecondaryButton`, `TertiaryButton`, `DestructiveButton` (pills, 52 dp).
 - `TarryChip` (selectable), `SegmentedControl` (tabs semantics), `IconCircleButton` (48 dp, description required by signature).
 - `EmptyState`, `LoadingBlocks` (no shimmer when reduced motion is on), `ErrorCard`.
-- `TarryBottomBar`: full width, 28 dp top corners, `card` fill, three `weight(1f)` slots, nav-bar insets inside. Nav items are pills (selected: `ink` fill with icon and label; unselected: `muted`). Keep the existing navigation behaviour.
+- `TarryBottomBar`: full width, `paper` background with only a 1 dp `line` top border (no fill, corners or shadow), three `weight(1f)` slots, nav-bar insets inside. Nav items are pills (selected: `ink` fill with icon and label; unselected: `muted`). Keep the existing navigation behaviour.
 - `TrackingToggle`, restyled to the four states in `tokens.md`:
   - each state differs by shape, icon and label as well as colour;
   - pulse ring only while TRACKING, static when reduced motion is on;

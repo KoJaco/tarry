@@ -16,7 +16,7 @@ Code uses these names through `TarryTheme.colors` (an extended colour object), m
 | Token | Light | Dark | Use |
 |---|---|---|---|
 | `paper` | `#F3EFE8` | `#14120F` | Screen background |
-| `card` | `#FFFFFF` | `#201D18` | Cards, list rows, timeline container, bottom bar |
+| `card` | `#FFFFFF` | `#201D18` | Cards, list rows, timeline container |
 | `inset` | `#EFE9DF` | `#2D2924` | Chips, icon circles, segmented-control track, paused toggle |
 | `ink` | `#1B1813` | `#F2EDE4` | Body text, primary pill buttons, selected states |
 | `onInk` | `#F3EFE8` | `#14120F` | Text and icons on `ink` |
@@ -111,7 +111,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 - **Shape:**
   - `pill` (fully rounded): buttons, chips, the toggle, nav items, segmented controls, icon buttons (circles).
   - `card` 24 dp: cards, list rows, the timeline container.
-  - `container` 28 dp: the summary card, sheets, the bottom bar's top corners.
+  - `container` 28 dp: the summary card and sheets.
   - `block` 14 dp: calendar blocks and swatches.
   - `small` 10 dp: compact blocks under 30 min.
 - **Elevation:** flat. Surfaces separate by colour (`card` on `paper`), not shadow. Sheets and dialogs use the M3 scrim only. No drop shadows on cards or the bar.
@@ -124,7 +124,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 ## Components
 
 ### Bottom bar
-- A full-width container in `card`, edge to edge, with 28 dp top corners and no shadow. It extends under the gesture/navigation bar (insets padding inside).
+- Full width, edge to edge, in `paper` (the screen background), set apart only by a 1 dp `line` top border. It has no fill of its own, no rounded corners and no shadow. It extends under the gesture/navigation bar (insets padding inside).
 - **Three equal slots** (`weight(1f)` each), in this order: **Timeline | tracking toggle | Settings**. Each slot is centred and at least 56 dp tall.
 - **Nav items are pills.** When selected: an `ink` pill with icon and label in `onInk`. Unselected: icon and label in `muted` on no fill. Labels are always shown (no icon-only nav).
 - **The centre slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.

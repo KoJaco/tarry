@@ -21,7 +21,7 @@ Replace the stock purple M3 theme with Tarry's design system and restyle every e
 - **Known literal colours:** `ui/shell/TrackingToggle.kt` (amber for PAUSED). They go away in T4.
 
 ## Design decisions already made (do not re-ask)
-- **Owner choices:** direction A's palette and type, direction C's calendar timeline, and a full-width bottom bar with equal pill slots (Timeline | tracking toggle | Settings).
+- **Owner choices:** direction A's palette and type, direction C's calendar timeline, and a full-width bottom bar in the background colour, set apart only by a top border, with equal pill slots (Timeline | tracking toggle | Settings).
 - **Fixed palette:** no dynamic colour.
 - **Accent rules:** the accent (apricot `#F2B064`) is only for tracking state and "needs you" cues, never for ordinary buttons. Text on apricot is ink, never white.
 - **PAUSED toggle:** `inset` fill with an apricot pause glyph, not amber, because amber and apricot are too close. It stays distinct through fill, glyph and the absence of a ring.
@@ -55,5 +55,4 @@ Replace the stock purple M3 theme with Tarry's design system and restyle every e
 Everything in `docs/specs/phase-2c.md` § Acceptance criteria, then a PR to `main` with green CI. Afterwards the owner dogfoods a full day on the new build before phase 3.
 
 ## Open questions for the owner (ask only if they block)
-- **Bottom bar surface:** the spec says `card` (white or dark brown) with 28 dp top corners. An `ink` bar like mock-up A is the alternative if the owner prefers more contrast.
 - **Week strip:** future days are disabled. Confirm if the owner wants to browse ahead later; that is not needed until the phase 6 schedule work.
