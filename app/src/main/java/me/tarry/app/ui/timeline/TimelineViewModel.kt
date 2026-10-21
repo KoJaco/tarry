@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.stateIn
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
+import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.PlaceRepository
 import me.tarry.core.data.repository.TimelineRepository
 import java.time.LocalDate
@@ -36,6 +37,12 @@ sealed interface TimelineItem {
         val placeLabel: String?,
         /** True when [placeLabel] is only the raw coordinates, so it should be spoken as an unknown place. */
         val labelIsCoordinates: Boolean = false,
+        /**
+         * Name and colour of the visit's job; both null when the visit has no job or its job is unknown or deleted
+         * (deleted jobs are deliberately not shown).
+         */
+        val jobName: String? = null,
+        val jobColorArgb: Int? = null,
     ) : TimelineItem
 
     data class Trip(
@@ -85,12 +92,13 @@ private val RowOrder = compareBy<TimelineItem>({ it.start }, { it.typeOrder() })
 class TimelineViewModel internal constructor(
     timeline: TimelineRepository,
     places: PlaceRepository,
+    jobs: JobRepository,
     zone: ZoneId,
     private val todayProvider: () -> LocalDate,
 ) : ViewModel() {
     @Inject
-    constructor(timeline: TimelineRepository, places: PlaceRepository) :
-        this(timeline, places, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) })
+    constructor(timeline: TimelineRepository, places: PlaceRepository, jobs: JobRepository) :
+        this(timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) })
 
     private val _today = MutableStateFlow(todayProvider())
 
@@ -112,11 +120,17 @@ class TimelineViewModel internal constructor(
                         timeline.observeTrips(from, to),
                         timeline.observeGaps(from, to),
                         places.observeAll(),
-                    ) { visits, trips, gaps, allPlaces ->
+                        jobs.observeAll(), // excludes deleted jobs
+                    ) { visits, trips, gaps, allPlaces, allJobs ->
                         val byId = allPlaces.associateBy { it.id }
+                        val jobsById = allJobs.associateBy { it.id }
                         val rows: List<TimelineItem> = visits.map {
                             val place = it.placeId?.let(byId::get)
-                            TimelineItem.Visit(it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false)
+                            val job = it.jobId?.let(jobsById::get)
+                            TimelineItem.Visit(
+                                it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false,
+                                job?.name, job?.colorArgb,
+                            )
                         } +
                             trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
                             gaps.map { TimelineItem.Gap(it.id, it.start, it.end, it.cause) }
