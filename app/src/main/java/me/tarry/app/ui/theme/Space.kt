@@ -24,14 +24,14 @@ data class TarrySpace(
     /** Screen gutter, 20 dp. */ val gutter: Dp = 20.dp,
 )
 
-/** Shapes from tokens.md: pill (fully rounded), card 24, container 28, block 14, small 10. */
+/** Shapes from tokens.md: pill (fully rounded), card 20, container 24, block 12, small 8. */
 @Immutable
 data class TarryShapes(
     val pill: RoundedCornerShape = RoundedCornerShape(percent = 50),
-    val card: RoundedCornerShape = RoundedCornerShape(24.dp),
-    val container: RoundedCornerShape = RoundedCornerShape(28.dp),
-    val block: RoundedCornerShape = RoundedCornerShape(14.dp),
-    val small: RoundedCornerShape = RoundedCornerShape(10.dp),
+    val card: RoundedCornerShape = RoundedCornerShape(20.dp),
+    val container: RoundedCornerShape = RoundedCornerShape(24.dp),
+    val block: RoundedCornerShape = RoundedCornerShape(12.dp),
+    val small: RoundedCornerShape = RoundedCornerShape(8.dp),
 )
 
 val LocalTarrySpace = staticCompositionLocalOf { TarrySpace() }

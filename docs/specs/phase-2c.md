@@ -5,7 +5,7 @@ Branch: `feat/phase-2c-design-system`, from `main`. Size: M. Parent: `docs/specs
 ## Goal
 Replace Android Studio's default purple theme with Tarry's own design system before more screens exist:
 - warm paper, ink and apricot;
-- Instrument Serif and Inter;
+- Nunito over Nunito Sans (owner change 2026-10-21; first built with Instrument Serif and Inter);
 - flat cards and pills;
 - a full-width bottom bar with equal pill slots;
 - a calendar-style day canvas.
@@ -36,6 +36,7 @@ Then restyle every existing screen with it. From here on, phases 3–8 build onl
   - `inter_regular.ttf`, `inter_medium.ttf`, `inter_semibold.ttf` (static instances; take the official releases from the Google Fonts and rsms/inter repos, OFL 1.1);
   - a `FontFamily` for each in `ui/theme/Type.kt`.
 - Put the OFL texts in `app/src/main/assets/licenses/` (`OFL-InstrumentSerif.txt`, `OFL-Inter.txt`). Phase 8's About screen will list them.
+- **Owner change (2026-10-21):** the families are now Nunito (headings) and Nunito Sans (body). Bundle `nunito_*.ttf` and `nunito_sans_*.ttf` with `OFL-Nunito.txt` and `OFL-NunitoSans.txt`, and remove the Instrument Serif and Inter files.
 - Downloading the files once, at development time, is fine. The app makes no font request at runtime.
 
 ### T2 — Theme (claude + implementer, M)
@@ -96,7 +97,7 @@ Create `ui/components/`, each component with previews in light, dark and fontSca
   - now before the first item or after the last.
 - **Data:** `TimelineItem.Visit` gains `jobName: String?` and `jobColorArgb: Int?` from a query-only join or lookup through `JobRepository`/`JobDao`. No schema change; keep `git diff main -- core-data/schemas` empty.
 - **UI** (`TimelineContent` is replaced):
-  - `DayHeader`: the serif date, weekday, previous/next/calendar `IconCircleButton`s, the M3 `DatePickerDialog` for the calendar, and Next disabled on today.
+  - `DayHeader`: the date (`displaySmall`), weekday, previous/next/calendar `IconCircleButton`s, the M3 `DatePickerDialog` for the calendar, and Next disabled on today.
   - `WeekStrip`: 7 cells; selecting one changes the day; today's accent dot; future days `muted`. Days after today are not selectable, the same rule as Next.
   - `SummaryCard`.
   - `DayCanvas`: the time column, hour rules, blocks (job colours or the dashed no-job style), trips, hatched gaps and the now-line, per `tokens.md`. Each block is one focusable element with the 2b content description extended with the job ("…, job Antifoul"). Reading order is time order.

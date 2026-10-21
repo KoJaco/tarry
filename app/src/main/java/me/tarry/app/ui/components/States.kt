@@ -39,7 +39,7 @@ import me.tarry.app.ui.theme.TarryTheme
 private const val PlaceholderAlpha = 0.6f
 private const val PlaceholderPulseLow = 0.35f
 
-/** A short serif line plus one muted sentence on what will fill the screen. No illustration. */
+/** A short Nunito line plus one muted sentence on what will fill the screen. No illustration. */
 @Composable
 fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
     Column(

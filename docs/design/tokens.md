@@ -5,7 +5,7 @@ Status: chosen 2026-10-21 from the direction comparison (artifact "Tarry design 
 ## Brief
 - **Who and what:** one tradesperson, tracked through the work day; glanced at on site and reviewed at night for invoicing.
 - **Density:** comfortable. Big headline dates, generous cards, at least 48 dp touch targets.
-- **Direction:** *field notebook*. Warm paper, ink-black type and controls, and one apricot accent. Calm, flat surfaces separated by colour, not shadow. A serif for dates and totals, a clean sans for everything else. The day is drawn to scale like a calendar.
+- **Direction:** *field notebook*. Warm paper, ink-black type and controls, and one apricot accent. Calm, flat surfaces separated by colour, not shadow. A rounded sans (Nunito) for headings, dates and totals, and Nunito Sans for everything else. The day is drawn to scale like a calendar.
 - **Fixed palette:** no Material You dynamic colour. Tracking-state and job colours must stay predictable.
 
 ## Colour
@@ -32,6 +32,7 @@ Code uses these names through `TarryTheme.colors` (an extended colour object), m
 | `alert` | `#B3261E` | `#F2B8B5` | Gap icon, attention marks, errors |
 | `alertSoft` | `#F9DEDC` | `#4A1F1B` | Gap block background, error container |
 | `onAlertSoft` | `#8C1D17` | `#F9DEDC` | Text on `alertSoft` |
+| `success` | `#1F5E36` | `#B4E0C2` | Granted / OK status icon and text (Sage job text; always with a word, never colour alone) |
 | `alertDot` | `#FF6B5E` | `#FF6B5E` | The red badge dot on the ATTENTION toggle (on `ink`) |
 | `pulse` | `#F2B064` @ 35 % | `#F2B064` @ 25 % | Tracking pulse ring |
 
@@ -83,37 +84,39 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 
 ## Type
 - **Families (bundled in `res/font`, no downloadable fonts, because rule 2 forbids network):**
-  - *Instrument Serif* (Regular, Italic; OFL 1.1), for dates, totals and screen titles only.
-  - *Inter* (400, 500, 600; OFL 1.1), for everything else.
+  - *Nunito* (600, 700; OFL 1.1), a rounded sans for headings only: major page titles, the timeline date, totals, card headers, sheet titles, empty-state and onboarding titles.
+  - *Nunito Sans* (400, 600, 700; OFL 1.1), for everything else: body text, dense UI, buttons, captions and the tab bar.
   - The licence texts go in `assets/licenses/`.
+  - Changed 2026-10-21 by the owner. It replaces Instrument Serif and Inter.
 - **Scale** (sp, so it follows the user's font size):
 
 | M3 style | Family / weight | Size / line | Use |
 |---|---|---|---|
-| `displaySmall` | Instrument Serif | 40 / 44, −0.5 tracking | Timeline date ("21 October") |
-| `headlineLarge` | Instrument Serif | 36 / 40 | Totals ("6 h 12 m") |
-| `headlineMedium` | Instrument Serif | 30 / 34 | Screen titles (Settings, Sessions, Permissions) |
-| `titleLarge` | Inter 600 | 20 / 26 | Sheet and dialog titles |
-| `titleMedium` | Inter 600 | 16 / 22 | Card and block titles (place name) |
-| `titleSmall` | Inter 600 | 14 / 20 | Row titles |
-| `bodyLarge` | Inter 400 | 16 / 24 | Body |
-| `bodyMedium` | Inter 400 | 14 / 20 | Secondary lines (times, addresses) |
-| `bodySmall` | Inter 400 | 12 / 16 | Hour labels, captions |
-| `labelLarge` | Inter 600 | 15 / 20 | Buttons, the toggle |
-| `labelMedium` | Inter 500 | 13 / 18 | Chips |
-| `labelSmall` | Inter 600 | 11 / 16, +0.6 tracking, upper case | Section headers |
+| `displaySmall` | Nunito 700 | 34 / 40, −0.25 tracking | Timeline date ("21 October") |
+| `headlineLarge` | Nunito 700 | 32 / 38 | Totals ("6 h 12 m") |
+| `headlineMedium` | Nunito 700 | 28 / 34 | Screen titles (Settings, Sessions, Permissions), empty-state titles |
+| `titleLarge` | Nunito 700 | 20 / 26 | Sheet and dialog titles |
+| `titleMedium` | Nunito 600 | 16 / 22 | Card headers and block titles (place name) |
+| `titleSmall` | Nunito Sans 600 | 14 / 20 | Row titles |
+| `bodyLarge` | Nunito Sans 400 | 16 / 24 | Body |
+| `bodyMedium` | Nunito Sans 400 | 14 / 20 | Secondary lines (times, addresses) |
+| `bodySmall` | Nunito Sans 400 | 12 / 16 | Hour labels, captions |
+| `labelLarge` | Nunito Sans 700 | 15 / 20 | Buttons, the toggle |
+| `labelMedium` | Nunito Sans 600 | 13 / 18 | Chips, nav labels |
+| `labelSmall` | Nunito Sans 700 | 11 / 16, +0.6 tracking, upper case | Section headers |
 
-- Numbers in totals and times use Inter's tabular figures (`fontFeatureSettings = "tnum"`), so columns don't jitter.
+- Numbers in totals and times use tabular figures (`fontFeatureSettings = "tnum"`), so columns don't jitter.
 - Max line length is about 60 characters. Long place names ellipsize on one line in blocks and wrap in the drawer.
 
 ## Space, shape, elevation
 - **Spacing:** 4, 8, 12, 16, 20, 24, 32, 48 dp (`TarryTheme.space.xs`…`xxl`). The screen gutter is 20 dp, the gap between cards 8 dp and between sections 20 dp.
 - **Shape:**
   - `pill` (fully rounded): buttons, chips, the toggle, nav items, segmented controls, icon buttons (circles).
-  - `card` 24 dp: cards, list rows, the timeline container.
-  - `container` 28 dp: the summary card and sheets.
-  - `block` 14 dp: calendar blocks and swatches.
-  - `small` 10 dp: compact blocks under 30 min.
+  - `card` 20 dp: cards, list rows, the timeline container, the selected nav-item icon backing.
+  - `container` 24 dp: the summary card and sheets.
+  - `block` 12 dp: calendar blocks and swatches.
+  - `small` 8 dp: compact blocks under 30 min.
+  - These radii were reduced slightly on 2026-10-21, at the owner's request (from 24, 28, 14 and 10).
 - **Elevation:** flat. Surfaces separate by colour (`card` on `paper`), not shadow. Sheets and dialogs use the M3 scrim only. No drop shadows on cards or the bar.
 
 ## Motion
@@ -126,7 +129,10 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 ### Bottom bar
 - Full width, edge to edge, in `paper` (the screen background), set apart only by a 1 dp `line` top border. It has no fill of its own, no rounded corners and no shadow. It extends under the gesture/navigation bar (insets padding inside).
 - **Three equal slots** (`weight(1f)` each), in this order: **Timeline | tracking toggle | Settings**. Each slot is centred and at least 56 dp tall.
-- **Nav items are pills.** When selected: an `ink` pill with icon and label in `onInk`. Unselected: icon and label in `muted` on no fill. Labels are always shown (no icon-only nav).
+- **Nav items** are an icon over a label, with 6 dp between them. Labels are always shown (no icon-only nav). Only the icon is backed, never the whole item.
+  - Selected: a subtle `inset` backing behind the icon only (about 56 × 32 dp, `card` radius), with the icon and label in `ink`.
+  - Unselected: the icon and label in `muted`, with no backing.
+  - When the selection changes, the backing glides across to the new item (200 ms, emphasized easing). With reduced motion it jumps.
 - **The centre slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
 
 ### Tracking toggle (four states, each different in more than colour)
@@ -165,6 +171,12 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
 - A row is a `card` pill (`card` radius), at least 56 dp tall, with a 40 dp `inset` icon circle on the left, the title (`titleSmall`), an optional value (`bodyMedium` `muted`) and a chevron or a switch on the right.
 - Section headers use `labelSmall` `muted`.
 - Rows in one group are separate cards with 8 dp gaps; there are no dividers.
+- **Exception, read-only groups** (such as the Billing values): one `card` surface holding all the rows, with a 1 dp `line` divider between rows inset 16 dp from the edges.
+- **Permissions:** one card per permission, with 12 dp between cards:
+  - a leading icon circle;
+  - the status as an icon plus a word: a check in `success` for granted, a cross in `alert` for not granted;
+  - an action. Not granted: request it. Granted: "Change", which opens the system settings page.
+- **Tracking sheet actions** are rows in the settings-row style (an icon circle, the title and an optional subtitle), not pill buttons.
 
 ### Buttons, chips, inputs
 - **Primary:** `ink` pill, `onInk` label, 52 dp. **Secondary:** a 1.5 dp `ink` outline pill. **Tertiary:** a text button in `ink`. **Destructive:** `alert` text, or an outline pill in `alert`.
@@ -175,7 +187,7 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
 - **Inputs:** an `inset` fill, pill (single line) or `card` radius (multi-line), no underline, a 2 dp `ink` focus ring.
 
 ### Empty, loading and error states
-- **Empty:** a short Instrument Serif line (`headlineMedium`, "Nothing yet today") plus one `bodyMedium` `muted` sentence on what will fill it. No illustration.
+- **Empty:** a short Nunito line (`headlineMedium`, "Nothing yet today") plus one `bodyMedium` `muted` sentence on what will fill it. No illustration.
 - **Loading:** `card` placeholder blocks at 60 % opacity, with no shimmer when reduced motion is on.
 - **Error:** an `alertSoft` card with an icon, a cause and one action.
 

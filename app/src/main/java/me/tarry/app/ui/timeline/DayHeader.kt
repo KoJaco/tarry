@@ -40,7 +40,7 @@ import java.time.format.TextStyle
 internal const val WrapFontScale = 1.5f
 
 /**
- * Weekday over the serif date on the left, previous / next / calendar buttons on the right. Next is disabled on
+ * Weekday over the date on the left, previous / next / calendar buttons on the right. Next is disabled on
  * [today]. At large font scales the buttons wrap below the date.
  */
 @Composable
