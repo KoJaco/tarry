@@ -105,7 +105,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 | `labelMedium` | Nunito Sans 600 | 13 / 18 | Chips, nav labels |
 | `labelSmall` | Nunito Sans 700 | 11 / 16, +0.6 tracking, upper case | Section headers |
 
-- Numbers in totals and times use tabular figures (`fontFeatureSettings = "tnum"`), so columns don't jitter.
+- Nunito's and Nunito Sans's default figures are tabular (all ten digits have the same advance width; the bundled fonts have no `tnum` feature), so totals and times don't jitter. `TabularFiguresTest.digitsAreTabularByDefault` verifies this; if the fonts are ever replaced, that test must still pass or `tnum` must be used.
 - Max line length is about 60 characters. Long place names ellipsize on one line in blocks and wrap in the drawer.
 
 ## Space, shape, elevation

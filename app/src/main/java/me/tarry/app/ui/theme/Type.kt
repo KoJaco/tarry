@@ -85,7 +85,11 @@ val Typography = Typography(
     ),
 )
 
-/** OpenType tabular figures; applied where numbers must align (a no-op if the font lacks `tnum`). */
+/**
+ * OpenType tabular figures. The bundled Nunito and Nunito Sans variable fonts have no `tnum` feature, but their
+ * default digits are already equal-width (guarded by `TabularFiguresTest.digitsAreTabularByDefault`), so this is a
+ * no-op today and only matters if the fonts are replaced.
+ */
 const val TabularFeature = "tnum"
 
 /** A style that only turns on tabular numbers; merge into any text style with `+` or [tabular]. */
