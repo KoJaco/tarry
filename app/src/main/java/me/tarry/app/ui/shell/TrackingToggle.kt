@@ -64,6 +64,9 @@ private const val PulseDurationMs = 1600
 /**
  * Tracking toggle pill in one of four states, each different in shape, glyph and label as well as
  * colour. Tapping or long-pressing (with haptics) calls [onClick].
+ *
+ * Labels follow tokens.md. The spoken description would append the time left on a pause ("· 45 m"),
+ * but [TrackingState] carries no pause end yet; add it once that is plumbed through.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -75,7 +78,7 @@ fun TrackingToggle(
     val colors = TarryTheme.colors
     val shape = TarryTheme.shapes.pill
     val stateLabel = stringResource(state.labelRes())
-    val description = stringResource(R.string.tracking_toggle_description, stateLabel)
+    val description = stringResource(state.descriptionRes())
     val haptics = LocalHapticFeedback.current
 
     val container: Color
@@ -182,6 +185,13 @@ private fun PulseRing(color: Color, modifier: Modifier = Modifier) {
             }
             .border(3.dp, color, TarryTheme.shapes.pill),
     )
+}
+
+private fun TrackingState.descriptionRes(): Int = when (this) {
+    TrackingState.TRACKING -> R.string.tracking_toggle_description_tracking
+    TrackingState.IDLE -> R.string.tracking_toggle_description_idle
+    TrackingState.PAUSED -> R.string.tracking_toggle_description_paused
+    TrackingState.ATTENTION -> R.string.tracking_toggle_description_attention
 }
 
 private fun TrackingState.labelRes(): Int = when (this) {

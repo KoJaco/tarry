@@ -38,6 +38,7 @@ class ContrastGuardTest {
         Pairing("onAccent on accent", { it.onAccent }, { it.accent }, 9.4, 9.4),
         Pairing("onAlertSoft on alertSoft", { it.onAlertSoft }, { it.alertSoft }, 7.2, 11.0),
         Pairing("alert on card", { it.alert }, { it.card }, 6.5, 9.8),
+        Pairing("success on card", { it.success }, { it.card }, 4.5, 4.5),
         // UI component pair: 3:1 minimum rather than the text 4.5:1.
         Pairing("outline on paper", { it.outline }, { it.paper }, 3.1, 3.9, minimum = 3.0),
     )

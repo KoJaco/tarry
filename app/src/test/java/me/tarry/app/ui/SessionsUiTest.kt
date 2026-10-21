@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.export.ExportFormat
@@ -91,8 +92,8 @@ class SessionsUiTest {
     @Test
     fun sessionExportButtonsRequestTheirFormat() {
         composeRule.setContent { SessionsContent(listOf(session), false, null, actions) }
-        composeRule.onNode(hasContentDescription("Export GPX for session 7")).performClick()
-        composeRule.onNode(hasContentDescription("Export CSV for session 7")).performClick()
+        composeRule.onNode(hasContentDescription("Export GPX for session 7")).performScrollTo().performClick()
+        composeRule.onNode(hasContentDescription("Export CSV for session 7")).performScrollTo().performClick()
         assertThat(exports).containsExactly(
             ExportRequest.Session(7, ExportFormat.GPX),
             ExportRequest.Session(7, ExportFormat.CSV),

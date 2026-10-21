@@ -47,16 +47,16 @@ class ShellComponentsTest {
     }
 
     @Test
-    fun toggle_tracking_textAndDescription() = assertToggle(TrackingState.TRACKING, "Tracking", "Tracking: Tracking")
+    fun toggle_tracking_textAndDescription() = assertToggle(TrackingState.TRACKING, "Tracking", "Tracking: on")
 
     @Test
-    fun toggle_idle_textAndDescription() = assertToggle(TrackingState.IDLE, "Idle", "Tracking: Idle")
+    fun toggle_idle_textAndDescription() = assertToggle(TrackingState.IDLE, "Off", "Tracking: off")
 
     @Test
-    fun toggle_paused_textAndDescription() = assertToggle(TrackingState.PAUSED, "Paused", "Tracking: Paused")
+    fun toggle_paused_textAndDescription() = assertToggle(TrackingState.PAUSED, "Paused", "Tracking: paused")
 
     @Test
-    fun toggle_attention_textAndDescription() = assertToggle(TrackingState.ATTENTION, "Attention", "Tracking: Attention")
+    fun toggle_attention_textAndDescription() = assertToggle(TrackingState.ATTENTION, "Needs attention", "Tracking: needs attention")
 
     @Test
     fun toggle_pulseRing_onlyWhileTracking() {

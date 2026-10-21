@@ -10,13 +10,10 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -27,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -37,6 +35,10 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.export.ExportFormat
 import me.tarry.app.export.ExportRequest
+import me.tarry.app.ui.components.SecondaryButton
+import me.tarry.app.ui.components.TarryCard
+import me.tarry.app.ui.components.TertiaryButton
+import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import java.time.DateTimeException
@@ -68,40 +70,54 @@ fun SessionsContent(
     modifier: Modifier = Modifier,
     today: LocalDate = LocalDate.now(),
 ) {
-    LazyColumn(modifier = modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+    val space = TarryTheme.space
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = space.gutter, vertical = space.l),
+        verticalArrangement = Arrangement.spacedBy(space.s),
+    ) {
         item {
-            Text(stringResource(R.string.sessions_title), style = MaterialTheme.typography.headlineMedium)
-            Text(
-                stringResource(R.string.sessions_export_privacy),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(vertical = 8.dp),
-            )
-            ExportResultText(exportResult, actions.onDismissExportResult)
-            OutlinedButton(
-                onClick = actions.onRunSegmentation,
-                enabled = !segmentation.running,
-                modifier = Modifier.heightIn(min = MinTouchTarget).testTag("sessions_run_segmentation"),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(space.s)) {
                 Text(
-                    stringResource(
+                    stringResource(R.string.sessions_title),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = TarryTheme.colors.ink,
+                )
+                Text(
+                    stringResource(R.string.sessions_export_privacy),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TarryTheme.colors.muted,
+                )
+                ExportResultText(exportResult, actions.onDismissExportResult)
+                SecondaryButton(
+                    text = stringResource(
                         if (segmentation.running) R.string.sessions_segmentation_running else R.string.sessions_run_segmentation,
                     ),
+                    onClick = actions.onRunSegmentation,
+                    enabled = !segmentation.running,
+                    modifier = Modifier.testTag("sessions_run_segmentation"),
                 )
-            }
-            SegmentationStatusText(segmentation)
-            if (showTestWindow) {
-                Text(stringResource(R.string.sessions_test_window_hint), style = MaterialTheme.typography.bodyMedium)
-                Button(
-                    onClick = actions.onStartTestWindow,
-                    modifier = Modifier.heightIn(min = MinTouchTarget).testTag("sessions_test_window"),
-                ) {
-                    Text(stringResource(R.string.sessions_test_window))
+                SegmentationStatusText(segmentation)
+                if (showTestWindow) {
+                    Text(
+                        stringResource(R.string.sessions_test_window_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TarryTheme.colors.muted,
+                    )
+                    SecondaryButton(
+                        text = stringResource(R.string.sessions_test_window),
+                        onClick = actions.onStartTestWindow,
+                        modifier = Modifier.testTag("sessions_test_window"),
+                    )
                 }
-            }
-            RangeExport(today, actions.onExport)
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            if (sessions.isEmpty()) {
-                Text(stringResource(R.string.sessions_empty), style = MaterialTheme.typography.bodyLarge)
+                RangeExport(today, actions.onExport)
+                if (sessions.isEmpty()) {
+                    Text(
+                        stringResource(R.string.sessions_empty),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = TarryTheme.colors.ink,
+                    )
+                }
             }
         }
         items(sessions, key = { it.id }) { session -> SessionRow(session, actions.onExport) }
@@ -122,11 +138,13 @@ private fun ExportResultText(result: ExportResult?, onDismiss: () -> Unit) {
         Text(
             text,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }.testTag("sessions_export_result"),
+            color = if (result == ExportResult.Failed) TarryTheme.colors.alert else TarryTheme.colors.ink,
+            modifier = Modifier
+                .weight(1f)
+                .semantics { liveRegion = LiveRegionMode.Polite }
+                .testTag("sessions_export_result"),
         )
-        TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = MinTouchTarget)) {
-            Text(stringResource(R.string.sessions_date_picker_ok))
-        }
+        TertiaryButton(stringResource(R.string.sessions_date_picker_ok), onDismiss)
     }
 }
 
@@ -139,31 +157,39 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
         stringResource(session.trigger.labelRes()),
         stringResource(session.endReason.labelRes()),
     )
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp).testTag("session_row_${session.id}")) {
-        Text(stringResource(R.string.sessions_row_title, start, end), style = MaterialTheme.typography.titleSmall)
-        Text(detail, style = MaterialTheme.typography.bodyMedium)
+    TarryCard(modifier = Modifier.fillMaxWidth().testTag("session_row_${session.id}")) {
+        Text(
+            stringResource(R.string.sessions_row_title, start, end),
+            style = MaterialTheme.typography.titleSmall,
+            color = TarryTheme.colors.ink,
+        )
+        Text(detail, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
         Text(
             pluralStringResource(R.plurals.sessions_row_pings, session.pingCount, session.pingCount),
             style = MaterialTheme.typography.bodyMedium,
+            color = TarryTheme.colors.muted,
             modifier = Modifier.testTag("session_pings_${session.id}"),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+            modifier = Modifier.padding(top = TarryTheme.space.s),
+        ) {
             val gpx = stringResource(R.string.sessions_export_gpx_description, session.id)
             val csv = stringResource(R.string.sessions_export_csv_description, session.id)
-            OutlinedButton(
+            SecondaryButton(
+                text = stringResource(R.string.sessions_export_gpx),
                 onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.GPX)) },
                 modifier = Modifier
-                    .heightIn(min = MinTouchTarget)
                     .semantics { contentDescription = gpx }
                     .testTag("session_export_gpx_${session.id}"),
-            ) { Text(stringResource(R.string.sessions_export_gpx)) }
-            OutlinedButton(
+            )
+            SecondaryButton(
+                text = stringResource(R.string.sessions_export_csv),
                 onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.CSV)) },
                 modifier = Modifier
-                    .heightIn(min = MinTouchTarget)
                     .semantics { contentDescription = csv }
                     .testTag("session_export_csv_${session.id}"),
-            ) { Text(stringResource(R.string.sessions_export_csv)) }
+            )
         }
     }
 }
@@ -182,44 +208,42 @@ private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
     Text(
         stringResource(R.string.sessions_export_range_title),
         style = MaterialTheme.typography.titleMedium,
-        modifier = Modifier.padding(top = 16.dp),
+        color = TarryTheme.colors.ink,
+        modifier = Modifier.padding(top = TarryTheme.space.l),
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
         val fromText = from.format(dateFormat)
         val toText = to.format(dateFormat)
         val fromDescription = stringResource(R.string.sessions_export_range_from_description, fromText)
         val toDescription = stringResource(R.string.sessions_export_range_to_description, toText)
-        OutlinedButton(
+        SecondaryButton(
+            text = stringResource(R.string.sessions_export_range_from, fromText),
             onClick = { picking = PICK_FROM },
             modifier = Modifier
-                .heightIn(min = MinTouchTarget)
                 .semantics { contentDescription = fromDescription }
                 .testTag("range_from"),
-        ) { Text(stringResource(R.string.sessions_export_range_from, fromText)) }
-        OutlinedButton(
+        )
+        SecondaryButton(
+            text = stringResource(R.string.sessions_export_range_to, toText),
             onClick = { picking = PICK_TO },
             modifier = Modifier
-                .heightIn(min = MinTouchTarget)
                 .semantics { contentDescription = toDescription }
                 .testTag("range_to"),
-        ) { Text(stringResource(R.string.sessions_export_range_to, toText)) }
+        )
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
         for (format in ExportFormat.entries) {
-            Button(
+            SecondaryButton(
+                text = stringResource(
+                    if (format == ExportFormat.GPX) R.string.sessions_export_range_gpx else R.string.sessions_export_range_csv,
+                ),
                 onClick = {
                     val first = minOf(from, to)
                     val last = maxOf(from, to)
                     onExport(ExportRequest.Range(first, last, ZoneId.systemDefault(), format))
                 },
-                modifier = Modifier.heightIn(min = MinTouchTarget).testTag("range_export_${format.name}"),
-            ) {
-                Text(
-                    stringResource(
-                        if (format == ExportFormat.GPX) R.string.sessions_export_range_gpx else R.string.sessions_export_range_csv,
-                    ),
-                )
-            }
+                modifier = Modifier.testTag("range_export_${format.name}"),
+            )
         }
     }
 
@@ -286,7 +310,7 @@ private val StatusTimeFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedD
 private fun SegmentationStatusText(state: SegmentationUi) {
     val error = state.error
     val text: String
-    val color: androidx.compose.ui.graphics.Color
+    val color: Color
     when {
         error != null -> {
             text = stringResource(
@@ -294,14 +318,14 @@ private fun SegmentationStatusText(state: SegmentationUi) {
                 StatusTimeFormat.format(Instant.ofEpochMilli(error.timeMs).atZone(ZoneId.systemDefault())),
                 error.message,
             )
-            color = MaterialTheme.colorScheme.error
+            color = TarryTheme.colors.alert
         }
         state.lastSuccessMs != null -> {
             text = stringResource(
                 R.string.sessions_segmentation_last_success,
                 StatusTimeFormat.format(Instant.ofEpochMilli(state.lastSuccessMs).atZone(ZoneId.systemDefault())),
             )
-            color = MaterialTheme.colorScheme.onSurface
+            color = TarryTheme.colors.muted
         }
         else -> return
     }

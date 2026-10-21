@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.SettingsRepository
+import me.tarry.core.data.settings.ThemeMode
 import javax.inject.Inject
 
 @HiltViewModel
@@ -22,5 +23,9 @@ class SettingsViewModel @Inject constructor(
     /** Applies from the next stop; a stop already being tracked keeps its radius. */
     fun setStayGeofenceRadiusM(meters: Int) {
         viewModelScope.launch { repository.setStayGeofenceRadiusM(meters) }
+    }
+
+    fun setTheme(mode: ThemeMode) {
+        viewModelScope.launch { repository.setTheme(mode) }
     }
 }

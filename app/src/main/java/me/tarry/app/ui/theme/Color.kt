@@ -28,6 +28,7 @@ data class TarryColors(
     val alertSoft: Color,
     val onAlertSoft: Color,
     val alertDot: Color,
+    val success: Color,
     val pulse: Color,
 )
 
@@ -52,6 +53,7 @@ val LightTarryColors = TarryColors(
     alertSoft = Color(0xFFF9DEDC),
     onAlertSoft = Color(0xFF8C1D17),
     alertDot = Color(0xFFFF6B5E),
+    success = Color(0xFF1F5E36),
     pulse = Apricot.copy(alpha = 0.35f),
 )
 
@@ -74,6 +76,7 @@ val DarkTarryColors = TarryColors(
     alertSoft = Color(0xFF4A1F1B),
     onAlertSoft = Color(0xFFF9DEDC),
     alertDot = Color(0xFFFF6B5E),
+    success = Color(0xFFB4E0C2),
     pulse = Apricot.copy(alpha = 0.25f),
 )
 

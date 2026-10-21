@@ -41,11 +41,14 @@
     <string name="timeline_gap_permission_lost">Permission lost</string>
     <string name="timeline_gap_location_off">Location off</string>
 
-    <string name="tracking_toggle_description">Tracking: %1$s</string>
+    <string name="tracking_toggle_description_tracking">Tracking: on</string>
+    <string name="tracking_toggle_description_idle">Tracking: off</string>
+    <string name="tracking_toggle_description_paused">Tracking: paused</string>
+    <string name="tracking_toggle_description_attention">Tracking: needs attention</string>
     <string name="tracking_state_tracking">Tracking</string>
-    <string name="tracking_state_idle">Idle</string>
+    <string name="tracking_state_idle">Off</string>
     <string name="tracking_state_paused">Paused</string>
-    <string name="tracking_state_attention">Attention</string>
+    <string name="tracking_state_attention">Needs attention</string>
 
     <string name="tracking_channel_name">Tracking status</string>
     <string name="tracking_alert_channel_name">Tracking alerts</string>
@@ -189,6 +192,14 @@
     <string name="settings_stay_radius_value">%1$d m</string>
     <string name="settings_stay_radius_explanation">How far you must move from a stop before Tarry starts tracking closely again. Smaller catches short trips sooner but can be triggered by GPS drift indoors.</string>
     <string name="settings_dialog_cancel">Cancel</string>
+    <string name="settings_section_tracking">Tracking</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_section_billing">Billing</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="permissions_action_change">Change</string>
+    <string name="permissions_action_change_description">Change %1$s</string>
     <plurals name="settings_days_value">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>

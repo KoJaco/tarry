@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import me.tarry.app.R
 import javax.inject.Inject
@@ -25,6 +26,7 @@ class TrackingNotifications @Inject constructor(
         }
         return NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_tracking)
+            .setColor(ContextCompat.getColor(context, R.color.tarry_accent))
             .setContentTitle(context.getString(R.string.tracking_notification_title))
             .setContentText(context.getString(text))
             .setOngoing(true)
