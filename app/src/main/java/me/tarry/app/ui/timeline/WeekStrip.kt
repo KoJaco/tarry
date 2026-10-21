@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -58,7 +59,7 @@ fun WeekStrip(
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
     val days = weekOf(selected, locale)
     val perRow = if (LocalDensity.current.fontScale >= WrapFontScale) WrappedPerRow else 7
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
+    Column(modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
         for (row in days.chunked(perRow)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
                 for (day in row) {

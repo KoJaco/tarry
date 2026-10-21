@@ -148,7 +148,7 @@ private fun SheetTitle(titleRes: Int) {
 }
 
 @Composable
-private fun SheetRow(label: String, onDone: () -> Unit, @DrawableRes icon: Int, subtitle: String? = null, onClick: () -> Unit) {
+private fun SheetRow(label: String, onDone: () -> Unit, @DrawableRes icon: Int, onClick: () -> Unit) {
     val colors = TarryTheme.colors
     val space = TarryTheme.space
     Row(
@@ -173,7 +173,6 @@ private fun SheetRow(label: String, onDone: () -> Unit, @DrawableRes icon: Int, 
         }
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.titleSmall, color = colors.ink)
-            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
         }
     }
 }

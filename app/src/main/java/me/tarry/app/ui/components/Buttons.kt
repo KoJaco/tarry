@@ -39,7 +39,7 @@ fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifi
             containerColor = c.ink,
             contentColor = c.onInk,
             disabledContainerColor = c.inset,
-            disabledContentColor = c.faint,
+            disabledContentColor = c.muted,
         ),
     ) { ButtonLabel(text) }
 }
@@ -55,7 +55,7 @@ fun SecondaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modi
         shape = TarryTheme.shapes.pill,
         contentPadding = ButtonPadding,
         border = BorderStroke(OutlineWidth, if (enabled) c.ink else c.faint),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = c.ink, disabledContentColor = c.faint),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = c.ink, disabledContentColor = c.muted),
     ) { ButtonLabel(text) }
 }
 
@@ -69,7 +69,7 @@ fun TertiaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modif
         enabled = enabled,
         shape = TarryTheme.shapes.pill,
         contentPadding = ButtonPadding,
-        colors = ButtonDefaults.textButtonColors(contentColor = c.ink, disabledContentColor = c.faint),
+        colors = ButtonDefaults.textButtonColors(contentColor = c.ink, disabledContentColor = c.muted),
     ) { ButtonLabel(text) }
 }
 
@@ -84,7 +84,7 @@ fun DestructiveButton(text: String, onClick: () -> Unit, modifier: Modifier = Mo
         shape = TarryTheme.shapes.pill,
         contentPadding = ButtonPadding,
         border = BorderStroke(OutlineWidth, if (enabled) c.alert else c.faint),
-        colors = ButtonDefaults.outlinedButtonColors(contentColor = c.alert, disabledContentColor = c.faint),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = c.alert, disabledContentColor = c.muted),
     ) { ButtonLabel(text) }
 }
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -46,7 +47,12 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth().padding(TarryTheme.space.xxl),
         verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
     ) {
-        Text(title, style = MaterialTheme.typography.headlineMedium, color = TarryTheme.colors.ink)
+        Text(
+            title,
+            style = MaterialTheme.typography.headlineMedium,
+            color = TarryTheme.colors.ink,
+            modifier = Modifier.semantics { heading() },
+        )
         Text(body, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
     }
 }

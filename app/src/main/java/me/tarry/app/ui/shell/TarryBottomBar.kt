@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -119,6 +120,7 @@ fun TarryBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .selectableGroup()
                 .padding(horizontal = TarryTheme.space.xs, vertical = TarryTheme.space.xs),
             verticalAlignment = Alignment.CenterVertically,
         ) {

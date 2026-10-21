@@ -198,4 +198,19 @@ class ComponentsTest {
         android.provider.Settings.Global.putFloat(ctx.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 0f)
         assertThat(prefs.isReducedMotion()).isTrue()
     }
+
+    @Test
+    fun sectionHeader_isAHeadingDescribedInItsOriginalCase() {
+        composeRule.setContent { SectionHeader("Tracking") }
+        composeRule.onNodeWithText("TRACKING").assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Tracking")),
+        ).assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+    }
+
+    @Test
+    fun emptyState_titleIsAHeading() {
+        composeRule.setContent { EmptyState("Nothing yet today", "Visits appear here.") }
+        composeRule.onNodeWithText("Nothing yet today").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        composeRule.onNodeWithText("Visits appear here.").assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Heading))
+    }
 }

@@ -92,8 +92,5 @@ val Typography = Typography(
  */
 const val TabularFeature = "tnum"
 
-/** A style that only turns on tabular numbers; merge into any text style with `+` or [tabular]. */
-val TabularNumbers = TextStyle(fontFeatureSettings = TabularFeature)
-
 /** This style with tabular figures (`tnum`). */
 fun TextStyle.tabular(): TextStyle = copy(fontFeatureSettings = TabularFeature)

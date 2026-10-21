@@ -50,7 +50,7 @@ fun TarryChip(
     val c = TarryTheme.colors
     val container = if (selected) c.ink else unselectedColor
     val content = when {
-        !enabled -> c.faint
+        !enabled -> c.muted
         selected -> c.onInk
         else -> c.ink
     }
