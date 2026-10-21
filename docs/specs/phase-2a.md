@@ -48,7 +48,7 @@ Prove on the Pixel 10 (target 37) that an alarm can start a `location`-type fore
 
 ### T2 — TrackingConfig and status store (implementer, S)
 - `TrackingConfig` holds:
-  - Capture modes: the STATIONARY entry rule (50 m / 3 min), the stationary fix interval (5 min, passive/low power) and the geofence radius (150 m). MOVING uses balanced power, 20 s interval, 25 m minimum displacement and a 2 min maxUpdateDelay.
+  - Capture modes: the STATIONARY entry rule (50 m / 3 min), the stationary fix interval (3 min, passive/low power) and the geofence radius (100 m default; user setting `stay_geofence_radius_m`, one of 100/150/200/300 m, applied at the next stop; not in `TrackingConfig`). MOVING uses balanced power, 20 s interval, 25 m minimum displacement and a 2 min maxUpdateDelay.
   - Filters: drop fixes with accuracy worse than 100 m, and drop fixes implying more than 70 m/s.
   - Health: no-heartbeat threshold 20 min, worker period 15 min.
 - `TrackingStatusStore` (DataStore) with typed accessors and a `Flow`.
