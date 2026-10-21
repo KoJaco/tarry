@@ -28,6 +28,7 @@
     <string name="timeline_trip_description">Trip by %1$s, %2$s, %3$s</string>
     <string name="timeline_gap_description">Tracking gap, %1$s, %2$s</string>
     <string name="timeline_loading">Loading</string>
+    <string name="component_loading">Loading</string>
     <string name="timeline_distance_m">%1$d m</string>
     <string name="timeline_distance_km">%1$.1f km</string>
     <string name="timeline_mode_vehicle">Vehicle</string>
