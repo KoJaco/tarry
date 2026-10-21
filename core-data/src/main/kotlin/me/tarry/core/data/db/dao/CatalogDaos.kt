@@ -31,6 +31,10 @@ interface PlaceDao {
     @Query("SELECT * FROM place WHERE deleted = 0 AND lastVisitAt >= :from AND lastVisitAt < :to ORDER BY lastVisitAt")
     suspend fun getByLastVisitInRange(from: Long, to: Long): List<Place>
 
+    /** Every non-deleted place, merged and ignored ones included (segmentation decides what they mean). */
+    @Query("SELECT * FROM place WHERE deleted = 0")
+    suspend fun getAllActive(): List<Place>
+
     @Query("SELECT * FROM place WHERE deleted = 0 ORDER BY lastVisitAt DESC")
     fun observeAll(): Flow<List<Place>>
 
