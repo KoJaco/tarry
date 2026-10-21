@@ -27,6 +27,18 @@ data class SegmentationParams(
     /** Confidence of a stay with no bridged gap, and of one bridged across a signal gap. */
     val confidence: Float = 1.0f,
     val bridgedConfidence: Float = 0.6f,
+    /** Accuracy floor when weighting pings, so one very confident fix cannot dominate a centroid. */
+    val minWeightAccuracyM: Double = 5.0,
+    /** Gap pieces shorter than this are display noise and dropped. */
+    val minGapMs: Long = 60_000L,
+    /**
+     * A new place's radius is the farthest distance of its stays' pings from its centroid plus this margin (room
+     * for the centroid to drift as an ongoing stay grows), clamped to [placeMatchRadiusM]..[maxNewPlaceRadiusM].
+     */
+    val newPlaceRadiusMarginM: Double = 15.0,
+    val maxNewPlaceRadiusM: Double = 150.0,
+    /** A matched place's centroid is only rewritten when it moves further than this. Used by the `:app` glue. */
+    val placeMoveThresholdM: Double = 1.0,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }

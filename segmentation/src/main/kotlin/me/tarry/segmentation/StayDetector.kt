@@ -34,7 +34,7 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
     for (ping in pings) {
         val c = current
         if (c == null) {
-            current = Growing(ping)
+            current = Growing(ping, params)
             continue
         }
         val distance = haversineMeters(c.lat, c.lng, ping.lat, ping.lng)
@@ -42,13 +42,13 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
         when {
             silence > params.maxGapToBridgeMs -> {
                 c.closeInto(stays, params, open = false)
-                current = Growing(ping)
+                current = Growing(ping, params)
             }
             distance <= params.stayRadiusM -> c.add(ping, bridging = silence > params.signalGapMs)
             distance - ping.accuracyM <= params.stayRadiusM -> Unit // ambiguous outlier
             else -> {
                 c.closeInto(stays, params, open = false)
-                current = Growing(ping)
+                current = Growing(ping, params)
             }
         }
     }
@@ -56,21 +56,18 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
     return settleStarts(stays, pings, params)
 }
 
-/** Floor on accuracy for weighting, so one very confident fix cannot dominate the centroid. */
-private const val MIN_WEIGHT_ACCURACY_M = 5.0
-
-private fun pingWeight(ping: Ping): Double {
-    val acc = maxOf(ping.accuracyM.toDouble(), MIN_WEIGHT_ACCURACY_M)
+private fun pingWeight(ping: Ping, params: SegmentationParams): Double {
+    val acc = maxOf(ping.accuracyM.toDouble(), params.minWeightAccuracyM)
     return 1.0 / (acc * acc)
 }
 
 /** Accuracy-weighted centroid (lat, lng) of non-empty [pings]; the same rule [detectStays] applies incrementally. */
-internal fun weightedCentroid(pings: List<Ping>): Pair<Double, Double> {
+internal fun weightedCentroid(pings: List<Ping>, params: SegmentationParams): Pair<Double, Double> {
     var weight = 0.0
     var latSum = 0.0
     var lngSum = 0.0
     for (p in pings) {
-        val w = pingWeight(p)
+        val w = pingWeight(p, params)
         weight += w
         latSum += p.lat * w
         lngSum += p.lng * w
@@ -78,7 +75,7 @@ internal fun weightedCentroid(pings: List<Ping>): Pair<Double, Double> {
     return latSum / weight to lngSum / weight
 }
 
-private class Growing(first: Ping) {
+private class Growing(first: Ping, private val params: SegmentationParams) {
     private val pings = arrayListOf(first)
     private var weight = 0.0
     private var latSum = 0.0
@@ -101,7 +98,7 @@ private class Growing(first: Ping) {
     }
 
     private fun accumulate(ping: Ping) {
-        val w = pingWeight(ping)
+        val w = pingWeight(ping, params)
         weight += w
         latSum += ping.lat * w
         lngSum += ping.lng * w
@@ -139,7 +136,7 @@ private fun settleStarts(stays: List<StayCandidate>, pings: List<Ping>, params: 
             // A leading ping is judged against the centroid of the pings after it (never one it pulled toward
             // itself), the same test the extension below applies, so there is one answer rather than two.
             while (own.size > 1) {
-                val (rLat, rLng) = weightedCentroid(own.subList(1, own.size))
+                val (rLat, rLng) = weightedCentroid(own.subList(1, own.size), params)
                 if (haversineMeters(own[0].lat, own[0].lng, rLat, rLng) <= params.stayRadiusM) break
                 own = own.drop(1)
             }
@@ -148,7 +145,7 @@ private fun settleStarts(stays: List<StayCandidate>, pings: List<Ping>, params: 
             while (i > 0) {
                 val p = pings[i - 1]
                 if (p.timeMs <= floor || next.timeMs - p.timeMs > params.maxGapToBridgeMs) break
-                val (cLat, cLng) = weightedCentroid(own)
+                val (cLat, cLng) = weightedCentroid(own, params)
                 if (haversineMeters(p.lat, p.lng, cLat, cLng) > params.stayRadiusM) break
                 own = listOf(p) + own
                 next = p
@@ -161,14 +158,14 @@ private fun settleStarts(stays: List<StayCandidate>, pings: List<Ping>, params: 
         // The interior set also depends on growth order (which outliers were skipped). Rebuild it from every ping in
         // the range within the radius of the centroid, twice, so the centroid is a property of the range alone.
         repeat(2) {
-            val (cLat, cLng) = weightedCentroid(own)
+            val (cLat, cLng) = weightedCentroid(own, params)
             val rebuilt = pings.filter {
                 it.timeMs >= range.startMs && it.timeMs <= range.endMs &&
                     haversineMeters(it.lat, it.lng, cLat, cLng) <= params.stayRadiusM
             }
             if (rebuilt.isNotEmpty()) own = rebuilt
         }
-        val (lat, lng) = weightedCentroid(own)
+        val (lat, lng) = weightedCentroid(own, params)
         out += stay.copy(
             range = range,
             lat = lat,

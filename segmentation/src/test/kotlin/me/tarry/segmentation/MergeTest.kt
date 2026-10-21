@@ -79,7 +79,7 @@ class MergeTest {
         assertTrue(m.open)
         assertTrue(m.pings.size >= stays[0].pings.size + stays[1].pings.size)
         assertEquals(m.pings.sortedBy { it.timeMs }, m.pings)
-        val (lat, lng) = weightedCentroid(m.pings)
+        val (lat, lng) = weightedCentroid(m.pings, params)
         assertEquals(lat, m.lat, 1e-12)
         assertEquals(lng, m.lng, 1e-12)
         val d0 = haversineMeters(m.lat, m.lng, stays[0].lat, stays[0].lng)

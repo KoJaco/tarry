@@ -80,7 +80,7 @@ private fun split(stay: StayCandidate, places: List<KnownPlace>, params: Segment
     if (runs.size == 1) return listOf(stay)
 
     return runs.mapIndexed { i, run ->
-        val (lat, lng) = weightedCentroid(run.pings)
+        val (lat, lng) = weightedCentroid(run.pings, params)
         StayCandidate(
             range = TimeRange(run.pings.first().timeMs, run.pings.last().timeMs),
             lat = lat,
@@ -102,7 +102,8 @@ internal data class PlaceAssignment(
 /**
  * Assigns each stay to the nearest matching known place, otherwise to a new place. Unmatched stays within
  * [SegmentationParams.placeMatchRadiusM] of an earlier new place's running centroid share it (a morning and an
- * afternoon at the same new site make one place). Centroids are duration-weighted means; an existing place's
+ * afternoon at the same new site make one place). A new place's radius covers its stays' pings (see [NewPlace]).
+ * Centroids are duration-weighted means; an existing place's
  * current centroid carries its [KnownPlace.weightMs].
  */
 internal fun assignPlaces(
@@ -112,6 +113,7 @@ internal fun assignPlaces(
 ): PlaceAssignment {
     val refs = ArrayList<PlaceRef>(stays.size)
     val created = ArrayList<WeightedPoint>()
+    val members = ArrayList<MutableList<Ping>>()
     val moved = LinkedHashMap<String, WeightedPoint>()
     for (stay in stays) {
         val weight = maxOf(stay.range.durationMs, 1L).toDouble()
@@ -129,15 +131,22 @@ internal fun assignPlaces(
             ?.first
         if (index != null) {
             created[index].add(stay.lat, stay.lng, weight)
+            members[index] += stay.pings
             refs += PlaceRef.New(index)
         } else {
             created += WeightedPoint(stay.lat, stay.lng, weight)
+            members += stay.pings.toMutableList()
             refs += PlaceRef.New(created.lastIndex)
         }
     }
     return PlaceAssignment(
         refs = refs,
-        newPlaces = created.map { NewPlace(it.lat, it.lng) },
+        newPlaces = created.mapIndexed { i, p ->
+            val farthest = members[i].maxOfOrNull { haversineMeters(it.lat, it.lng, p.lat, p.lng) } ?: 0.0
+            val radius = (farthest + params.newPlaceRadiusMarginM)
+                .coerceIn(params.placeMatchRadiusM, params.maxNewPlaceRadiusM)
+            NewPlace(p.lat, p.lng, radius)
+        },
         updates = moved.map { (id, p) -> PlaceCentroidUpdate(id, p.lat, p.lng) },
     )
 }

@@ -14,7 +14,8 @@ import me.tarry.segmentation.geo.haversineMeters
  *    candidate still open but shorter than the minimum stay is not a stay yet: its pings stay part of the
  *    trailing trip;
  * 4. assign places across all stretches (T6) and build gaps (T7);
- * 5. resolve overlaps with stays > gaps > trips: gaps lose any time a stay covers, and trips are cut around gaps.
+ * 5. resolve overlaps with stays > gaps > trips: gaps lose any time a stay covers, and trips are cut around gaps,
+ *    time outside every session and excluded time (no overnight trip between two days' stays).
  *
  * Only a stay that is open at the very end of the range is [Stay.mayBeOngoing].
  */
@@ -53,7 +54,11 @@ object Segmenter {
         val gaps = buildGaps(input, pings, params).flatMap { gap ->
             gap.range.minus(stayRanges).filter { it.durationMs > 0 }.map { Gap(it, gap.cause) }
         }
-        val gapRanges = gaps.map { it.range }
+        // A trip is movement seen by capture. Time outside every session (overnight, between windows) and excluded
+        // time are not, so trips are cut there as well as around gaps. With no sessions given (tests, traces) the
+        // whole range counts as captured.
+        val outsideSessions = if (input.sessions.isEmpty()) emptyList() else input.range.minus(input.sessions)
+        val cuts = (gaps.map { it.range } + outsideSessions + input.excluded).normalized()
 
         return SegmentationResult(
             stays = stays.mapIndexed { i, s ->
@@ -67,7 +72,7 @@ object Segmenter {
                     mayBeOngoing = s.open,
                 )
             },
-            trips = trips.flatMap { cutAroundGaps(it, gapRanges, stays, pings) },
+            trips = trips.flatMap { cutAround(it, cuts, stays, pings) },
             gaps = gaps,
             newPlaces = assignment.newPlaces,
             placeUpdates = assignment.updates,
@@ -75,20 +80,20 @@ object Segmenter {
     }
 
     /**
-     * The parts of [trip] outside [gaps]. Only the first part keeps the origin stay and only the last keeps the
-     * destination; each part's distance is the ping path inside it plus the legs to the stays it keeps. Parts
-     * that cover no distance (a silence at one spot) are dropped.
+     * The parts of [trip] outside [cuts] (gaps, time outside sessions, excluded time). Only the first part keeps
+     * the origin stay and only the last keeps the destination; each part's distance is the ping path inside it
+     * plus the legs to the stays it keeps. Parts that cover no distance (a silence at one spot) are dropped.
      */
-    private fun cutAroundGaps(
+    private fun cutAround(
         trip: TripCandidate,
-        gaps: List<TimeRange>,
+        cuts: List<TimeRange>,
         stays: List<StayCandidate>,
         pings: List<Ping>,
     ): List<Trip> {
-        if (gaps.none { it.overlaps(trip.range) }) {
+        if (cuts.none { it.overlaps(trip.range) }) {
             return listOf(Trip(trip.range, trip.fromStay, trip.toStay, trip.distanceM, trip.mode))
         }
-        val parts = trip.range.minus(gaps).filter { it.durationMs > 0 }
+        val parts = trip.range.minus(cuts).filter { it.durationMs > 0 }
         return parts.mapIndexedNotNull { i, part ->
             val from = trip.fromStay.takeIf { i == 0 && part.startMs == trip.range.startMs }
             val to = trip.toStay.takeIf { i == parts.lastIndex && part.endMs == trip.range.endMs }

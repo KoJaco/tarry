@@ -75,7 +75,7 @@ private fun combine(a: StayCandidate, b: StayCandidate, pings: List<Ping>, param
             haversineMeters(it.lat, it.lng, b.lat, b.lng) <= params.stayRadiusM
     }
     val all = (a.pings + inside + b.pings).sortedBy { it.timeMs }
-    val (lat, lng) = weightedCentroid(all)
+    val (lat, lng) = weightedCentroid(all, params)
     return StayCandidate(
         range = TimeRange(a.range.startMs, b.range.endMs),
         lat = lat,

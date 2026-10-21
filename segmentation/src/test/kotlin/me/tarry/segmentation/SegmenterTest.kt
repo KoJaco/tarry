@@ -110,8 +110,69 @@ class SegmenterTest {
         assertEquals(Segmenter.segment(input), Segmenter.segment(input))
     }
 
+    @Test
+    fun anOvernightBreakBetweenSessionsIsNotATrip() {
+        // Day 1 at site A until the window ends, day 2 at home 5 km away: nothing was captured overnight.
+        val day1 = builder().stay(10 * HOUR).build()
+        val bLat = SITE_B.first
+        val bLng = SITE_B.second
+        val day2Start = day1.last().timeMs + 14 * HOUR
+        val day2 = TraceBuilder(seed = 6, startLat = bLat, startLng = bLng, startTimeMs = day2Start).stay(3 * HOUR).build()
+        val pings = day1 + day2
+        val sessions = listOf(TimeRange(t0, day1.last().timeMs + 1), TimeRange(day2Start, day2.last().timeMs + 1))
+        val r = Segmenter.segment(SegmentationInput(pings.range(), pings, sessions = sessions))
+        assertEquals(2, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+    }
+
+    @Test
+    fun anOvernightBreakAtTheSamePlaceIsNotATripEither() {
+        val day1 = builder().stay(10 * HOUR).build()
+        val day2Start = day1.last().timeMs + 14 * HOUR
+        val day2 = TraceBuilder(seed = 8, startTimeMs = day2Start).stay(3 * HOUR).build()
+        val pings = day1 + day2
+        val sessions = listOf(TimeRange(t0, day1.last().timeMs + 1), TimeRange(day2Start, day2.last().timeMs + 1))
+        val r = Segmenter.segment(SegmentationInput(pings.range(), pings, sessions = sessions))
+        assertEquals(2, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+        assertEquals(r.stays[0].place, r.stays[1].place)
+    }
+
+    @Test
+    fun excludedTimeIsNeitherAGapNorPartOfATrip() {
+        // A deleted visit in the middle of a drive day: its time is the user's, not a missing signal.
+        val pings = builder().stay(HOUR).moveBy(0.0, 3_000.0, 12.5).stay(2 * HOUR).moveBy(0.0, 3_000.0, 12.5).stay(HOUR).build()
+        val session = TimeRange(t0, pings.last().timeMs + 1)
+        val excluded = TimeRange(t0 + HOUR + 10 * MIN, t0 + 3 * HOUR)
+        val r = Segmenter.segment(SegmentationInput(pings.range(), pings, sessions = listOf(session), excluded = listOf(excluded)))
+        assertTrue(r.gaps.isEmpty())
+        r.trips.forEach { assertFalse(it.range.overlaps(excluded)) }
+        r.stays.forEach { assertFalse(it.range.overlaps(excluded)) }
+    }
+
+    @Test
+    fun aStayMergedAcrossAShortWalkKeepsItsShapeOnceItsPlaceExists() {
+        // Two hours at X, a 120 m walk, ten minutes at Y: one stay (the walk is under minTripDistance). Feeding the
+        // new place back in must not split Y off (it lies outside a default 75 m radius around X).
+        val pings = builder().stay(2 * HOUR).moveBy(90.0, 120.0, 1.2, mode = Activity.WALKING).stay(10 * MIN).build()
+        val first = Segmenter.segment(SegmentationInput(pings.range(), pings))
+        assertEquals(1, first.stays.size)
+        val place = first.newPlaces.single()
+        val known = KnownPlace("p", place.lat, place.lng, place.radiusM.toFloat())
+        val second = Segmenter.segment(SegmentationInput(pings.range(), pings, places = listOf(known)))
+        assertEquals(first.stays.map { it.range }, second.stays.map { it.range })
+        assertEquals(PlaceRef.Existing("p"), second.stays.single().place)
+        assertTrue(second.newPlaces.isEmpty())
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN
+        val SITE_B = me.tarry.segmentation.trace.offsetMeters(
+            me.tarry.segmentation.trace.SYDNEY_LAT,
+            me.tarry.segmentation.trace.SYDNEY_LNG,
+            0.0,
+            5_000.0,
+        )
     }
 }

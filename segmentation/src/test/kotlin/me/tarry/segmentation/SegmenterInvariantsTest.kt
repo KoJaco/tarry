@@ -166,6 +166,24 @@ class SegmenterInvariantsTest {
         }
     }
 
+    /**
+     * Feeding a run's new places and moved centroids back in as known places (what the next run sees) changes
+     * nothing: the same stays, and no further new places.
+     */
+    @Test
+    fun placeFeedbackIsAFixpoint() {
+        for (c in cases()) {
+            val first = Segmenter.segment(c.input, params)
+            val moved = c.input.places.map { p ->
+                first.placeUpdates.find { it.placeId == p.id }?.let { p.copy(lat = it.lat, lng = it.lng) } ?: p
+            }
+            val created = first.newPlaces.mapIndexed { i, n -> KnownPlace("new-$i", n.lat, n.lng, n.radiusM.toFloat()) }
+            val second = Segmenter.segment(c.input.copy(places = moved + created), params)
+            assertEquals("seed ${c.seed}: stays", first.stays.map { it.range }, second.stays.map { it.range })
+            assertTrue("seed ${c.seed}: new places ${second.newPlaces}", second.newPlaces.isEmpty())
+        }
+    }
+
     private companion object {
         const val SEEDS = 200L
         const val MIN = 60_000L
