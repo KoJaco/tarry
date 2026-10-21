@@ -37,12 +37,17 @@ data class Ping(
     val sessionId: Long? = null,
 )
 
-/** An existing, non-deleted place. Merged places are passed so the caller can see they never match. */
+/**
+ * An existing, non-deleted place. Merged places are passed so the caller can see they never match.
+ * [weightMs] is the total duration of the place's visits *outside* the run's range; it weights the current
+ * centroid when the run moves it ([PlaceCentroidUpdate]).
+ */
 data class KnownPlace(
     val id: String,
     val lat: Double,
     val lng: Double,
     val radiusM: Float,
+    val weightMs: Long = 0,
     val merged: Boolean = false,
     val ignored: Boolean = false,
 )
