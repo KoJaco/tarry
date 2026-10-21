@@ -125,8 +125,8 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 ## Space, shape, elevation
 - **Spacing:** `TarryTheme.space` has `xs` 4, `s` 8, `m` 12, `l` 16, `xl` 20, `xxl` 24, `xxxl` 32, `huge` 48 dp, plus `gutter` 20 dp. The gap between cards is `s` (8 dp) and between sections `xl` (20 dp).
 - **Shape:**
-  - `pill` (fully rounded): buttons, chips, the toggle, nav items, segmented controls, icon buttons (circles).
-  - `card` 20 dp: cards, list rows, the timeline container, the selected nav-item icon backing.
+  - `pill` (fully rounded): buttons, chips, the toggle, nav items and their selected icon backing, segmented controls, icon buttons (circles).
+  - `card` 20 dp: cards, list rows, the timeline container, grouped settings surfaces.
   - `container` 24 dp: the summary card and sheets.
   - `block` 12 dp: calendar blocks and swatches.
   - `small` 8 dp: compact blocks under 30 min.
@@ -143,8 +143,8 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 ### Bottom bar
 - Full width, edge to edge, in `paper` (the screen background), set apart only by a 1 dp `line` top border. It has no fill of its own, no rounded corners and no shadow. It extends under the gesture/navigation bar (insets padding inside).
 - **Three equal slots** (`weight(1f)` each), in this order: **Timeline | tracking toggle | Settings**. Each slot is centred and at least 56 dp tall.
-- **Nav items** are an icon over a label, with 6 dp between them. Labels are always shown (no icon-only nav). Only the icon is backed, never the whole item.
-  - Selected: a subtle `inset` backing behind the icon only (about 56 × 32 dp, `card` radius), with the icon and label in `ink`.
+- **Nav items** are an icon over a `labelMedium` label, with 6 dp between them. Labels are always shown (no icon-only nav). Only the icon is backed, never the whole item.
+  - Selected: a subtle `accentSoft` backing behind the icon only (64 × 32 dp, fully rounded `pill`), with the icon and label in `ink`. `inset` was too faint on `paper` in the light theme (about 1.1:1); `accentSoft` reads as a soft tint in both themes without the weight of an `ink` fill.
   - Unselected: the icon and label in `muted`, with no backing.
   - When the selection changes, the backing glides across to the new item (200 ms, emphasized easing). With reduced motion it jumps.
 - **The centre slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
@@ -167,13 +167,14 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - below, a **week strip**: 7 equal day cells (56 dp, `block` radius). The selected day is an `ink` fill with `onInk` text, future days are `muted`, and today is marked by an `accent` dot.
 - **Summary card** (`card`, `container` radius): "Tracked today" (`bodyMedium` `muted`), the total in `headlineLarge`, a needs-review chip (`accentSoft`) and a "3 visits · 1 trip · 1 gap" caption.
 - **Day canvas** (a `card` container, `card` radius):
-  - A left time column, at least 52 dp wide, that grows to fit its widest hour label or the now-pill at large font sizes, with hour labels (`bodySmall` `muted`) and `line` hour rules across the canvas. All times follow the system 24-hour setting: hour labels are "HH" or the locale's "h a", block and now-pill times the locale's "H:mm" or "h:mm a".
+  - A left time column, at least 44 dp wide (the canvas card has 8 dp of side padding), that grows to fit its widest hour label or the now-pill at large font sizes, with hour labels (`bodySmall` `muted`) and `line` hour rules across the canvas. All times follow the system 24-hour setting: hour labels are "HH" or the locale's "h a", block and now-pill times the locale's "H:mm" or "h:mm a".
   - **The scale** is 72 dp per hour × max(1, fontScale), so text keeps fitting at large font sizes. The canvas starts at the earlier of the first item or the window start, rounded down to the hour, and ends at the later of now or the last item.
-  - **Visits** are blocks at their true start and height, inset 8 dp from the rail:
+  - **Visits** are blocks at their true start and height, inset 4 dp from the rail:
     - job colour container, border and text (above); with no job, `card` with a dashed `outline`;
     - title (`titleMedium`), a time range and the job in `bodyMedium`;
     - a "Needs review" chip (`accentSoft` / `onAccentSoft`) on unlabelled visits.
   - **Compact mode:** under 30 min a block shrinks to `small` radius and one line ("Place · 12 m"). Every block is at least 28 dp × max(1, fontScale) tall even if that overstates a very short visit, and its spoken description gives the real times.
+- **Item gaps:** consecutive items (visits, gaps, trip rows) are never closer than `itemGapDp` (4 dp, `DayLayoutParams`). Blocks are drawn at their true top; a block that would touch the next one is trimmed at the bottom, but never below its minimum height. Where it can't be trimmed, the next item is pushed down.  - **No top rule:** the canvas card has no border, and no hour rule is drawn at the very top edge. Hour rules appear only between hours.
   - **Trips** are a slim row (no fill) in the gap between blocks: a car or walk icon plus "Drive · 12.4 km · 25 min" in `bodySmall` `muted`. A trip too short to fit a row shows only in the next block's description.
   - **Gaps:** `alertSoft` fill with diagonal hatch lines (`alert` at 25 %, 1 dp every 8 dp), a 1.5 dp `alert` border, a warning icon and "Not tracked · App was closed" in `onAlertSoft`. They are never mistaken for a visit, because they have different fill, pattern, icon and text.
   - **Now-line:** today only, a 2 dp `accent` line across the canvas with a pill in the time column showing the time (`accent` fill, `onAccent` text). An ongoing visit block extends to it.
@@ -183,10 +184,12 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - At font scale 2.0 the canvas still scales, and the header and week strip wrap.
 
 ### Lists and settings rows
-- A row is a `card` pill (`card` radius), at least 56 dp tall, with a 40 dp `inset` icon circle on the left, the title (`titleSmall`), an optional value (`bodyMedium` `muted`) and a chevron or a switch on the right.
+- **Grouped settings surfaces are the default** for a settings group (Tracking, Appearance, Billing), built with `SettingsGroup { row(...) }`: ONE `card` surface (`card` radius) holding all the rows, separated by 1 dp `line` dividers.
+  - A row has a plain 24 dp `ink` leading icon (no icon circle), a `titleSmall` title with an optional `muted` `bodyMedium` subtitle under it, and a chevron on the right when it is tappable (Role.Button, merged semantics). Read-only rows (Billing) show a `muted` value on the right and no chevron.
+  - Rows are at least 64 dp tall, with 16 dp side padding and 12 dp vertical padding.
+  - The divider is inset from the left to the text start (16 dp, plus 24 dp icon and 16 dp gap when the row has an icon) and runs to the right edge. Dividers are not focusable.
+- **Standalone rows** (`SettingsRow`, `SettingsValueRow`, `SettingsSwitchRow`): used only where rows aren't a group. A row is a `card` pill (`card` radius), at least 56 dp tall, with a 40 dp `inset` icon circle on the left, the title (`titleSmall`), an optional value (`bodyMedium` `muted`) and a chevron or a switch on the right. Standalone rows are separate cards with 8 dp gaps and no dividers.
 - Section headers use `labelSmall` `muted`.
-- Rows in one group are separate cards with 8 dp gaps; there are no dividers.
-- **Exception, read-only groups** (such as the Billing values): one `card` surface holding all the rows, with a 1 dp `line` divider between rows inset 16 dp from the edges.
 - **Permissions:** one card per permission, with 12 dp between cards:
   - a leading icon circle;
   - the status as an icon plus a word: a check in `success` for granted, a cross in `alert` for not granted;
