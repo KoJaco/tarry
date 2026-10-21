@@ -2,14 +2,51 @@ package me.tarry.app.ui.shell
 
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
+import me.tarry.app.tracking.CaptureScope
+import me.tarry.app.tracking.PauseKind
+import me.tarry.app.tracking.TrackingConfig
+import me.tarry.app.tracking.TrackingController
+import me.tarry.app.tracking.TrackingDetails
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.tracking.TrackingStateRepository
+import me.tarry.app.ui.permissions.PermissionChecker
+import me.tarry.core.data.model.ManualOverrideEndMode
 import javax.inject.Inject
 
 @HiltViewModel
 class ShellViewModel @Inject constructor(
     repository: TrackingStateRepository,
+    private val controller: TrackingController,
+    config: TrackingConfig,
+    private val permissions: PermissionChecker,
+    // Controller calls must finish even if the user leaves the screen right after tapping.
+    @param:CaptureScope private val captureScope: CoroutineScope,
 ) : ViewModel() {
     val trackingState: StateFlow<TrackingState> = repository.state
+
+    val trackingDetails: StateFlow<TrackingDetails> = repository.details
+
+    val startDurationsMin: List<Int> = config.manualStartDurationsMin
+
+    /** True when fine location is missing, so the permission flow should open on first launch. */
+    fun needsInitialPermissions(): Boolean = !permissions.check().fineLocation
+
+    fun start(endMode: ManualOverrideEndMode, durationMin: Int?) {
+        captureScope.launch { controller.start(endMode, durationMin) }
+    }
+
+    fun pause(kind: PauseKind) {
+        captureScope.launch { controller.pause(kind) }
+    }
+
+    fun resume() {
+        captureScope.launch { controller.resume() }
+    }
+
+    fun stop() {
+        captureScope.launch { controller.stop() }
+    }
 }

@@ -1,10 +1,12 @@
 package me.tarry.app.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,7 +14,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -24,16 +28,23 @@ import me.tarry.core.data.settings.Settings
 /** Hilt-wired entry point. */
 @Composable
 fun SettingsScreen(
+    onOpenPermissions: () -> Unit,
+    onOpenSessions: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    SettingsContent(settings, modifier)
+    SettingsContent(settings, onOpenPermissions, onOpenSessions, modifier)
 }
 
 /** Stateless, read-only list of the current settings. */
 @Composable
-fun SettingsContent(settings: Settings?, modifier: Modifier = Modifier) {
+fun SettingsContent(
+    settings: Settings?,
+    onOpenPermissions: () -> Unit = {},
+    onOpenSessions: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
     val rows: List<Pair<String, String>> = settings?.let { s ->
@@ -62,9 +73,25 @@ fun SettingsContent(settings: Settings?, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(16.dp),
         )
+        ClickableRow(stringResource(R.string.settings_permissions), onOpenPermissions)
+        ClickableRow(stringResource(R.string.settings_sessions), onOpenSessions)
         LazyColumn {
             items(rows) { (label, value) -> SettingRow(label, value) }
         }
+    }
+}
+
+@Composable
+private fun ClickableRow(label: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
     }
 }
 

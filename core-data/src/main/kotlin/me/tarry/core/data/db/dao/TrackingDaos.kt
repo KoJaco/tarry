@@ -9,6 +9,9 @@ import me.tarry.core.data.db.entity.ManualOverride
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
 import me.tarry.core.data.db.entity.TrackingSession
 
+/** Row of [LocationPingDao.observePingCounts]. */
+data class SessionPingCount(val sessionId: Long, val count: Int)
+
 @Dao
 interface TrackingSessionDao {
     /** Returns the new row id on insert, or -1 when the upsert fell back to an update. */
@@ -22,6 +25,10 @@ interface TrackingSessionDao {
 
     @Query("SELECT * FROM tracking_session WHERE `end` IS NULL ORDER BY start DESC LIMIT 1")
     suspend fun getOpenSession(): TrackingSession?
+
+    /** All sessions, newest first (debug sessions screen). */
+    @Query("SELECT * FROM tracking_session ORDER BY start DESC")
+    fun observeAll(): Flow<List<TrackingSession>>
 }
 
 @Dao
@@ -42,6 +49,10 @@ interface LocationPingDao {
 
     @Query("DELETE FROM location_ping WHERE timestamp < :before")
     suspend fun deleteOlderThan(before: Long): Int
+
+    /** Accepted pings per session; sessions without pings are absent. */
+    @Query("SELECT sessionId, COUNT(*) AS count FROM location_ping GROUP BY sessionId")
+    fun observePingCounts(): Flow<List<SessionPingCount>>
 }
 
 @Dao

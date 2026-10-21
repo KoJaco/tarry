@@ -47,6 +47,7 @@ class TrackingRepository @Inject constructor(
     suspend fun session(id: Long): TrackingSession? = sessions.getById(id)
     suspend fun sessionsInRange(from: Long, to: Long) = sessions.getInRange(from, to)
     suspend fun openSession(): TrackingSession? = sessions.getOpenSession()
+    fun observeSessions(): Flow<List<TrackingSession>> = sessions.observeAll()
 
     suspend fun savePing(ping: LocationPing): Long =
         pings.upsert(ping).let { if (it == -1L) ping.id else it }
@@ -54,6 +55,9 @@ class TrackingRepository @Inject constructor(
     suspend fun pingsInRange(from: Long, to: Long) = pings.getInRange(from, to)
     suspend fun pingsForSession(sessionId: Long) = pings.getBySession(sessionId)
     suspend fun purgePingsBefore(before: Long): Int = pings.deleteOlderThan(before)
+    /** Ping count per session id; sessions with no pings are absent. */
+    fun observePingCounts(): Flow<Map<Long, Int>> =
+        pings.observePingCounts().map { rows -> rows.associate { it.sessionId to it.count } }
 
     suspend fun saveOverride(override: ManualOverride): Long =
         overrides.upsert(override).let { if (it == -1L) override.id else it }
