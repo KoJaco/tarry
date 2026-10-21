@@ -254,6 +254,7 @@ class TimelineEditor @Inject constructor(
         val to = maxOf(v.end, end)
         val undo = snapshotRange(from, to)
         visits.upsert(v.copy(start = start, end = end, frozen = true, updatedAt = clock.nowMs()))
+        unfreezeTripsOver(start, end)
         rewindCheckpoint(from)
         EditResult.Ok(undo)
     }
@@ -268,6 +269,7 @@ class TimelineEditor @Inject constructor(
         visits.upsert(v.copy(end = at, frozen = true, origin = VisitOrigin.SPLIT, updatedAt = now))
         visits.upsert(second.copy(frozen = true, origin = VisitOrigin.SPLIT, updatedAt = now))
         visits.getTags(v.id).forEach { visits.upsertTag(VisitTag(second.id, it.tagId)) }
+        unfreezeTripsOver(v.start, v.end)
         rewindCheckpoint(v.start)
         EditResult.Ok(undo, id = second.id)
     }
@@ -298,6 +300,7 @@ class TimelineEditor @Inject constructor(
         visits.upsert(b.copy(deleted = true, updatedAt = now))
         visits.deleteAllTags(a.id)
         tagIds.forEach { visits.upsertTag(VisitTag(a.id, it)) }
+        unfreezeTripsOver(a.start, b.end)
         rewindCheckpoint(a.start)
         EditResult.Ok(undo, id = a.id)
     }
@@ -334,6 +337,7 @@ class TimelineEditor @Inject constructor(
                 origin = VisitOrigin.MANUAL, confidence = 1f, updatedAt = clock.nowMs(),
             )
             visits.upsert(visit)
+            unfreezeTripsOver(start, end)
             rewindCheckpoint(start)
             EditResult.Ok(undo, id = visit.id)
         }
@@ -392,6 +396,12 @@ class TimelineEditor @Inject constructor(
     }
 
     // endregion
+
+    /** Frozen trips under a new or extended visit span are unfrozen (annotations kept) so segmentation recomputes their times. */
+    private suspend fun unfreezeTripsOver(from: Long, to: Long) {
+        val now = clock.nowMs()
+        trips.getFrozenInRange(from, to).forEach { trips.upsert(it.copy(frozen = false, updatedAt = now)) }
+    }
 
     private suspend fun liveVisit(id: String): Visit? = visits.getById(id)?.takeUnless { it.deleted }
 

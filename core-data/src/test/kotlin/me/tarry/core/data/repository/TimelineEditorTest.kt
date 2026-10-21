@@ -545,4 +545,64 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     // endregion
+
+    // region frozen trips under structural edits
+
+    private suspend fun frozenAnnotatedTrip() {
+        editor.setNotes(ItemRef.trip("T1"), "toll")
+        editor.setAttribution("T1", "j2")
+        now += 10
+    }
+
+    private suspend fun assertUnfreezesTripAndUndoes(op: suspend () -> EditResult) {
+        frozenAnnotatedTrip()
+        val before = state()
+        assertThat(db.tripDao().getById("T1")!!.frozen).isTrue()
+
+        val r = op()
+
+        val t = db.tripDao().getById("T1")!!
+        assertThat(t.frozen).isFalse()
+        assertThat(t.updatedAt).isEqualTo(now)
+        assertThat(t.freeNotes).isEqualTo("toll")
+        assertThat(t.attributedJobId).isEqualTo("j2")
+        assertThat(t.deleted).isFalse()
+
+        editor.restore(r.undo())
+        assertThat(state()).isEqualTo(before)
+        assertThat(db.tripDao().getById("T1")!!.frozen).isTrue()
+    }
+
+    @Test
+    fun trimIntoAFrozenTripUnfreezesItAndUndoRestoresIt() = runTest {
+        seedDay()
+        assertUnfreezesTripAndUndoes { editor.trim("B", t0 + 65 * min, t0 + 130 * min) }
+    }
+
+    @Test
+    fun mergeOverAFrozenTripUnfreezesItAndUndoRestoresIt() = runTest {
+        seedDay()
+        assertUnfreezesTripAndUndoes { editor.merge("A", MergeDirection.NEXT) }
+    }
+
+    @Test
+    fun createManualInsideAFrozenTripUnfreezesItAndUndoRestoresIt() = runTest {
+        seedDay()
+        assertUnfreezesTripAndUndoes { editor.createManual("p2", t0 + 62 * min, t0 + 68 * min, "UTC") }
+    }
+
+    @Test
+    fun splitUnfreezesAFrozenTripOverlappingTheVisit() = runTest {
+        seedDay()
+        db.tripDao().upsert(trip("T2", 20, 30, frozen = true))
+        val before = state()
+
+        val r = editor.split("A", t0 + 40 * min)
+
+        assertThat(db.tripDao().getById("T2")!!.frozen).isFalse()
+        editor.restore(r.undo())
+        assertThat(state()).isEqualTo(before)
+    }
+
+    // endregion
 }
