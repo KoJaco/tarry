@@ -74,7 +74,7 @@ abstract class TrackingModule {
     abstract fun bindStayRadiusSource(impl: SettingsStayRadiusSource): StayRadiusSource
 
     @Binds
-    abstract fun bindSegmentationTrigger(impl: NoOpSegmentationTrigger): SegmentationTrigger
+    abstract fun bindSegmentationTrigger(impl: WorkManagerSegmentationTrigger): SegmentationTrigger
 
     companion object {
         @Provides
