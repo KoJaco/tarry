@@ -15,6 +15,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -24,6 +25,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
@@ -56,24 +60,17 @@ fun TimelineContent(
     zone: ZoneId = ZoneId.systemDefault(),
     nowMs: Long? = null,
 ) {
-    val clock by produceState(System.currentTimeMillis(), nowMs) {
-        if (nowMs == null) {
-            // UI-only recomposition so the now-line moves; nothing is recorded or scheduled here.
-            while (true) {
-                delay(MillisPerMinute - value % MillisPerMinute)
-                value = System.currentTimeMillis()
-            }
-        }
-    }
-    val now = nowMs ?: clock
     val isToday = date == today
+    // Only today has a now-line, and only a started screen needs it to move.
+    val clock by rememberMinuteClock(enabled = nowMs == null && isToday)
+    val now = nowMs ?: clock
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = TarryTheme.space.gutter),
-        verticalArrangement = Arrangement.spacedBy(TarryTheme.space.l),
+        verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xl),
     ) {
         DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate)
         WeekStrip(date, today, onSelectDate)
@@ -93,10 +90,7 @@ fun TimelineContent(
                     val fontScale = LocalDensity.current.fontScale
                     val minute = if (isToday) now / MillisPerMinute else 0L
                     val layout = remember(items, date, zone, minute, isToday, fontScale) {
-                        val scale = maxOf(1f, fontScale)
-                        // Text grows with the font scale, so the minimum block height must too.
-                        val params = DayLayoutParams().let { it.copy(minBlockDp = it.minBlockDp * scale) }
-                        layoutDay(items, bounds, zone, if (isToday) now else -1L, fontScale, params)
+                        layoutDay(items, bounds, zone, if (isToday) now else -1L, fontScale)
                     }
                     SummaryCard(summarize(items, bounds), isToday)
                     DayCanvas(layout, bounds.first, bounds.second, zone, now)
@@ -127,5 +121,26 @@ private fun Modifier.daySlide(date: LocalDate): Modifier {
     return graphicsLayer {
         alpha = progress.value
         translationX = direction * offsetPx * (1f - progress.value)
+    }
+}
+
+/**
+ * The wall clock, refreshed on every minute boundary while the screen is at least STARTED and [enabled]. It stops in
+ * the background and when disabled (not today), and re-reads the clock when it starts again. UI-only recomposition so
+ * the now-line moves; nothing is recorded or scheduled here.
+ */
+@Composable
+internal fun rememberMinuteClock(enabled: Boolean, wallClock: () -> Long = System::currentTimeMillis): State<Long> {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    return produceState(wallClock(), enabled, lifecycle) {
+        if (enabled) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                value = wallClock()
+                while (true) {
+                    delay(MillisPerMinute - value % MillisPerMinute)
+                    value = wallClock()
+                }
+            }
+        }
     }
 }

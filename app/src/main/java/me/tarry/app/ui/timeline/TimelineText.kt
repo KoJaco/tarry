@@ -1,6 +1,10 @@
 package me.tarry.app.ui.timeline
 
+import android.text.format.DateFormat
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import me.tarry.app.R
@@ -9,12 +13,32 @@ import me.tarry.core.data.model.TripMode
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
+import java.util.Locale
 
-private val TimeFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+/**
+ * The single source of timeline time text, honouring the user's 12/24-hour setting: hour labels ("09" or "9 AM") and
+ * block / now-pill times ("9:12" or "9:12 AM"), in [locale]'s own pattern.
+ */
+internal class TimeFormats(locale: Locale, val is24Hour: Boolean) {
+    private val hourFormat = formatter(locale, if (is24Hour) "HH" else "ha")
+    private val timeFormat = formatter(locale, if (is24Hour) "Hm" else "hm")
 
-internal fun formatTime(epochMs: Long, zone: ZoneId): String =
-    TimeFormat.format(Instant.ofEpochMilli(epochMs).atZone(zone))
+    fun hour(epochMs: Long, zone: ZoneId): String = hourFormat.format(Instant.ofEpochMilli(epochMs).atZone(zone))
+
+    fun time(epochMs: Long, zone: ZoneId): String = timeFormat.format(Instant.ofEpochMilli(epochMs).atZone(zone))
+
+    private fun formatter(locale: Locale, skeleton: String): DateTimeFormatter =
+        DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale)
+}
+
+/** Formats for the current locale and 24-hour setting; rebuilt when either (or the configuration) changes. */
+@Composable
+internal fun rememberTimeFormats(): TimeFormats {
+    val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
+    return remember(context, configuration, locale) { TimeFormats(locale, DateFormat.is24HourFormat(context)) }
+}
 
 /** An item's start and end clamped to the day, with the range texts (marked when it crosses midnight). */
 internal class ClampedTimes(val start: Long, val end: Long, val range: String, val spokenRange: String) {
@@ -25,8 +49,9 @@ internal class ClampedTimes(val start: Long, val end: Long, val range: String, v
 internal fun clampedTimes(item: TimelineItem, dayStart: Long, dayEnd: Long, zone: ZoneId): ClampedTimes {
     val start = maxOf(item.start, dayStart)
     val end = minOf(item.end, dayEnd)
-    val startText = formatTime(start, zone)
-    val endText = formatTime(end, zone)
+    val formats = rememberTimeFormats()
+    val startText = formats.time(start, zone)
+    val endText = formats.time(end, zone)
     val suffix = listOfNotNull(
         if (item.start < dayStart) stringResource(R.string.timeline_range_from_previous_day) else null,
         if (item.end > dayEnd) stringResource(R.string.timeline_range_continues) else null,

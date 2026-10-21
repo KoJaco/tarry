@@ -191,4 +191,36 @@ class DayCanvasTest {
         show(listOf(TimelineItem.Visit("v", at(9), at(9, 12), "Kiosk")))
         composeRule.onNodeWithText("Kiosk · 12 min").assertExists()
     }
+
+    private fun colourOf(id: String, jobId: String?, jobName: String = "Same name") {
+        composeRule.setContent {
+            TarryTheme {
+                TimelineContent(
+                    date, listOf(TimelineItem.Visit(id, at(9), at(11), "P", jobName = jobName, jobColorArgb = 0x12345678, jobId = jobId)),
+                    {}, {}, today = date, zone = zone, nowMs = at(20),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun fallbackColourIsKeyedOnTheJobIdNotTheName() {
+        // "a" and "b" hash to different slots, so two jobs with the same name get their own colours.
+        colourOf("v", jobId = "a")
+        val first = blockColor("timeline_row_v")
+        assertThat(first).isEqualTo(JobPalette.fallbackFor("a").light.container)
+        assertThat(JobPalette.fallbackFor("a")).isNotEqualTo(JobPalette.fallbackFor("b"))
+    }
+
+    @Test
+    fun fallbackColourForOtherIdIsThatIdsSlot() {
+        colourOf("v", jobId = "b")
+        assertThat(blockColor("timeline_row_v")).isEqualTo(JobPalette.fallbackFor("b").light.container)
+    }
+
+    @Test
+    fun fallbackColourIsStableForTheSameId() {
+        colourOf("v", jobId = "a", jobName = "Renamed")
+        assertThat(blockColor("timeline_row_v")).isEqualTo(JobPalette.fallbackFor("a").light.container)
+    }
 }

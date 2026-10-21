@@ -3,10 +3,8 @@ package me.tarry.app.ui
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
@@ -14,30 +12,33 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.timeline.HourLabelTag
 import me.tarry.app.ui.timeline.TimelineContent
 import me.tarry.app.ui.timeline.TimelineItem
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import org.robolectric.shadows.ShadowSettings
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -52,13 +53,27 @@ class TimelineContentTest {
     private var next = 0
     private val selected = mutableListOf<LocalDate>()
 
+    private var is24Hour = false
+
+    @Before
+    fun twelveHourByDefault() {
+        ShadowSettings.set24HourTimeFormat(false)
+    }
+
     private fun at(hour: Int, minute: Int): Long =
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
     private fun t(hour: Int, minute: Int): String = fmt(at(hour, minute))
 
-    private fun fmt(epochMs: Long): String =
-        DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).format(Instant.ofEpochMilli(epochMs).atZone(zone))
+    /** The same recipe as the app: the locale's best pattern for "hm" / "Hm". */
+    private fun fmt(epochMs: Long): String {
+        val locale = java.util.Locale.getDefault()
+        val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, if (is24Hour) "Hm" else "hm")
+        return DateTimeFormatter.ofPattern(pattern, locale).format(Instant.ofEpochMilli(epochMs).atZone(zone))
+    }
+
+    /** ICU 72+ uses a narrow no-break space before AM/PM; compare with plain spaces. */
+    private fun String.plain() = replace(' ', ' ').replace(' ', ' ')
 
     /** [today] defaults to [date] (viewing today); pass a later day to view a past day with Next enabled. */
     private fun show(
@@ -67,6 +82,7 @@ class TimelineContentTest {
         fontScale: Float? = null,
         nowMs: Long? = at(20, 0),
     ) {
+        ShadowSettings.set24HourTimeFormat(is24Hour)
         composeRule.setContent {
             val density = LocalDensity.current
             val provided = if (fontScale == null) density else Density(density.density, fontScale = fontScale)
@@ -79,19 +95,6 @@ class TimelineContentTest {
                 }
             }
         }
-    }
-
-    private fun SemanticsNodeInteraction.assertNotTruncated(): SemanticsNodeInteraction {
-        val results = mutableListOf<TextLayoutResult>()
-        fetchSemanticsNode().config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
-        assertThat(results).isNotEmpty()
-        val r = results.first()
-        // hasVisualOverflow is unreliable under Robolectric (line-height trimming), so check what truncation means:
-        // no lines dropped, none ellipsized, and the text fits the width it was given.
-        assertThat(r.multiParagraph.didExceedMaxLines).isFalse()
-        assertThat((0 until r.lineCount).any { r.isLineEllipsized(it) }).isFalse()
-        assertThat(r.size.width).isAtMost(r.layoutInput.constraints.maxWidth)
-        return this
     }
 
     private fun description(tag: String, expected: String) {
@@ -368,5 +371,61 @@ class TimelineContentTest {
         show(emptyList(), fontScale = 2f)
         composeRule.onNodeWithText("Nothing yet today").assertNotTruncated()
         composeRule.onNodeWithText("Visits and trips appear here as Tarry records your day.").assertNotTruncated()
+    }
+
+    private fun rangeTexts(tag: String): List<String> =
+        composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text.plain() }
+
+    private fun hourLabels(): List<String> =
+        composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true).fetchSemanticsNodes()
+            .map { it.config[SemanticsProperties.Text].single().text.plain() }
+
+    @Test
+    fun twelveHourSettingShowsAmPmTimesLabelsAndSpeech() {
+        is24Hour = false
+        show(listOf(TimelineItem.Visit("v", at(21, 5), at(22, 40), "A")), nowMs = at(22, 15))
+        assertThat(rangeTexts("timeline_row_v")).contains("9:05 PM–10:40 PM")
+        assertThat(hourLabels()).containsAtLeast("9 PM", "10 PM")
+        composeRule.onNodeWithTag("timeline_row_v").assert(
+            SemanticsMatcher("12-hour speech") {
+                it.config[SemanticsProperties.ContentDescription].single().plain() ==
+                    "Visit at A, from 9:05 PM to 10:40 PM, 1 hour 35 minutes"
+            },
+        )
+        composeRule.onNodeWithTag("timeline_now_line").assert(
+            SemanticsMatcher("12-hour now") { it.config[SemanticsProperties.ContentDescription].single().plain() == "Now, 10:15 PM" },
+        )
+    }
+
+    @Test
+    fun twentyFourHourSettingShowsTwentyFourHourTimesLabelsAndSpeech() {
+        is24Hour = true
+        show(listOf(TimelineItem.Visit("v", at(21, 5), at(22, 40), "A")), nowMs = at(22, 15))
+        assertThat(rangeTexts("timeline_row_v").any { it.matches(Regex("21:05–22:40")) }).isTrue()
+        assertThat(hourLabels()).containsAtLeast("21", "22")
+        assertThat(hourLabels().none { it.contains("M") }).isTrue()
+        description("timeline_row_v", "Visit at A, from 21:05 to 22:40, 1 hour 35 minutes")
+        composeRule.onNodeWithTag("timeline_now_line").assert(
+            SemanticsMatcher("24-hour now") { it.config[SemanticsProperties.ContentDescription].single() == "Now, 22:15" },
+        )
+    }
+
+    @Test
+    fun fontScaleTwoKeepsTheNowPillHourLabelsAndVisitTextUntruncated() {
+        show(
+            listOf(TimelineItem.Visit("v", at(9, 0), at(11, 0), "Rose Bay Marina", jobName = "Antifoul", jobColorArgb = 0xFFE3EDFB.toInt())),
+            fontScale = 2f,
+            nowMs = at(10, 30),
+        )
+        composeRule.onNodeWithTag("timeline_now_line").assertNotTruncated()
+        composeRule.onNodeWithText("Rose Bay Marina", useUnmergedTree = true).assertNotTruncated()
+        composeRule.onNode(hasText("Antifoul", substring = true), useUnmergedTree = true).assertNotTruncated()
+        val labels = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true)
+        assertThat(labels.fetchSemanticsNodes()).isNotEmpty()
+        // The pill sits in the time column, left of the blocks, and the labels never overflow it.
+        val pill = composeRule.onNodeWithTag("timeline_now_line").fetchSemanticsNode().boundsInRoot
+        val block = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().boundsInRoot
+        assertThat(pill.right).isAtMost(block.left)
+        labels.fetchSemanticsNodes().forEach { assertThat(it.boundsInRoot.right).isAtMost(block.left) }
     }
 }

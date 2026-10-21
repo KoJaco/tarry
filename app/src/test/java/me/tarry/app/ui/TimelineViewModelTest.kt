@@ -124,6 +124,7 @@ class TimelineViewModelTest {
 
         assertThat(v.jobName).isEqualTo("Acme")
         assertThat(v.jobColorArgb).isEqualTo(0xFF112233.toInt())
+        assertThat(v.jobId).isEqualTo("j")
     }
 
     @Test
@@ -134,6 +135,7 @@ class TimelineViewModelTest {
 
         assertThat(v.jobName).isNull()
         assertThat(v.jobColorArgb).isNull()
+        assertThat(v.jobId).isNull()
     }
 
     @Test
@@ -146,6 +148,7 @@ class TimelineViewModelTest {
 
         assertThat(result.map { it.jobName }).containsExactly(null, null).inOrder()
         assertThat(result.map { it.jobColorArgb }).containsExactly(null, null).inOrder()
+        assertThat(result.map { it.jobId }).containsExactly(null, null).inOrder()
     }
 
     @Test

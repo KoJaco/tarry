@@ -225,6 +225,29 @@ class DayLayoutTest {
     }
 
     @Test
+    fun fontScaleTwoDoublesTheMinimumBlockHeight() {
+        val items = listOf(visit("a", at(9, 0), at(9, 5)))
+        assertThat(layout(items).blocks[0].heightDp).isWithin(eps).of(28f)
+        assertThat(layout(items, fontScale = 2f).blocks[0].heightDp).isWithin(eps).of(56f)
+        assertThat(layout(items, fontScale = 0.8f).blocks[0].heightDp).isWithin(eps).of(28f)
+    }
+
+    @Test
+    fun dstFallBackDaySydney() {
+        val date = LocalDate.of(2026, 4, 5)
+        val b = dayBounds(date, sydney)
+        val l = layout(listOf(visit("v", b.first, b.second)), z = sydney, b = b, now = at(0, 0, date.plusDays(9), sydney))
+        assertThat(l.blocks[0].heightDp).isWithin(eps).of(25 * 72f)
+        assertThat(l.heightDp).isWithin(eps).of(25 * 72f)
+        assertThat(l.hourMarks).hasSize(26)
+        val tops = l.hourMarks.map { it.topDp }
+        assertThat(tops).isInStrictOrder()
+        for (i in 1 until tops.size) assertThat(tops[i] - tops[i - 1]).isWithin(eps).of(72f)
+        val hours = l.hourMarks.map { java.time.Instant.ofEpochMilli(it.epochMs).atZone(sydney).hour }
+        assertThat(hours.count { it == 2 }).isEqualTo(2)
+    }
+
+    @Test
     fun fontScaleBelowOneIsIgnored() {
         assertThat(layout(emptyList(), fontScale = 0.8f).scale).isWithin(eps).of(72f)
     }

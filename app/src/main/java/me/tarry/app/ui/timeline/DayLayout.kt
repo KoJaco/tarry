@@ -8,6 +8,7 @@ import java.time.temporal.ChronoUnit
 /** Tunables for [layoutDay]. All sizes are dp. */
 data class DayLayoutParams(
     val dpPerHour: Float = 72f,
+    /** Scaled by max(1, fontScale), like [tripRowDp], because the text inside a block grows with the font. */
     val minBlockDp: Float = 28f,
     val compactUnderMinutes: Int = 30,
     /** Scaled by max(1, fontScale). */
@@ -66,6 +67,12 @@ private fun ceilHour(ms: Long, zone: ZoneId): Long {
     return if (floorMs == ms) ms else floor.plusHours(1).toInstant().toEpochMilli()
 }
 
+/**
+ * Lays [items] out on a day canvas. Scale, minimum block height and trip rows all grow with max(1, [fontScale]).
+ *
+ * [window] (the schedule window) is accepted but nothing passes it yet: it is deferred to phase 6, when the schedule
+ * window is exposed to the UI.
+ */
 fun layoutDay(
     items: List<TimelineItem>,
     dayBounds: Pair<Long, Long>,
@@ -79,7 +86,7 @@ fun layoutDay(
     val fs = maxOf(1f, fontScale)
     val scale = params.dpPerHour * fs
     val tripRow = params.tripRowDp * fs
-    val minBlock = params.minBlockDp
+    val minBlock = params.minBlockDp * fs
 
     // Clamp to the day, drop empties, stable sort by start.
     data class Clamped(val item: TimelineItem, val start: Long, val end: Long)

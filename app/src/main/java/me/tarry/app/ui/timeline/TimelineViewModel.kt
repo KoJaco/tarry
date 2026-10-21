@@ -43,6 +43,8 @@ sealed interface TimelineItem {
          */
         val jobName: String? = null,
         val jobColorArgb: Int? = null,
+        /** Id of that job; seeds the fallback colour when [jobColorArgb] names no palette slot. Null with [jobName]. */
+        val jobId: String? = null,
     ) : TimelineItem
 
     data class Trip(
@@ -129,7 +131,7 @@ class TimelineViewModel internal constructor(
                             val job = it.jobId?.let(jobsById::get)
                             TimelineItem.Visit(
                                 it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false,
-                                job?.name, job?.colorArgb,
+                                job?.name, job?.colorArgb, job?.id,
                             )
                         } +
                             trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
