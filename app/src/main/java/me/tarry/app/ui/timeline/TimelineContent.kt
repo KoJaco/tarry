@@ -13,10 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
@@ -68,7 +65,7 @@ fun TimelineContent(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             IconButton(onClick = onPreviousDay, modifier = Modifier.size(MinTouchTarget).testTag("timeline_previous")) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.timeline_previous_day))
+                Icon(painterResource(R.drawable.ic_chevron_left), contentDescription = stringResource(R.string.timeline_previous_day))
             }
             Text(
                 text = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)),
@@ -88,7 +85,7 @@ fun TimelineContent(
                 enabled = nextEnabled,
                 modifier = Modifier.size(MinTouchTarget).testTag("timeline_next"),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(R.string.timeline_next_day))
+                Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = stringResource(R.string.timeline_next_day))
             }
         }
         when {
@@ -180,7 +177,7 @@ private fun TimelineRow(item: TimelineItem, dayStart: Long, dayEnd: Long, zone: 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     // Decorative: the row description already says "Tracking gap".
                     Icon(
-                        Icons.Filled.Warning,
+                        painterResource(R.drawable.ic_warning),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onErrorContainer,
                     )

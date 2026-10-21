@@ -10,9 +10,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -20,7 +17,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -48,14 +45,14 @@ fun TarryBottomBar(
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
             BottomBarItem(
-                icon = Icons.Filled.DateRange,
+                icon = R.drawable.ic_timeline,
                 label = stringResource(R.string.nav_timeline),
                 selected = timelineSelected,
                 onClick = onTimelineClick,
             )
             TrackingToggle(state = trackingState, onClick = onToggleClick)
             BottomBarItem(
-                icon = Icons.Filled.Settings,
+                icon = R.drawable.ic_settings,
                 label = stringResource(R.string.nav_settings),
                 selected = settingsSelected,
                 onClick = onSettingsClick,
@@ -66,7 +63,7 @@ fun TarryBottomBar(
 
 @Composable
 private fun RowScope.BottomBarItem(
-    icon: ImageVector,
+    icon: Int,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -80,7 +77,7 @@ private fun RowScope.BottomBarItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+        Icon(painter = painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
         Text(text = label, style = MaterialTheme.typography.labelMedium, color = tint)
     }
 }
