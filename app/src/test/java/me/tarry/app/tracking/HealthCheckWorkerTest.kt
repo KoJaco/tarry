@@ -283,12 +283,14 @@ class HealthCheckWorkerTest {
         permissions.fine = false
 
         coordinator.begin(SessionTrigger.SCHEDULE)
-        withTimeout(5_000) { while (alerts.posted.isEmpty()) delay(10) }
+        // The failure is handled on the capture scope: outage, then session end, then the launcher stop.
+        // Wait for the last step so no assertion races it (slow CI runners lose that race).
+        withTimeout(5_000) { while (launcher.stopCalls == 0) delay(10) }
 
         val gap = gaps().single()
         assertThat(gap.cause).isEqualTo(GapCause.PERMISSION_LOST)
         assertThat(alerts.posted).containsExactly(AttentionCause.NO_FINE_LOCATION)
-        withTimeout(5_000) { while (trackingRepo.openSession() != null) delay(10) }
+        assertThat(trackingRepo.openSession()).isNull()
         assertThat(trackingRepo.sessionsInRange(0, Long.MAX_VALUE).single().endReason).isEqualTo(SessionEndReason.PERMISSION_LOST)
         // The service is stopped through the launcher, not left running without a session.
         assertThat(launcher.stopCalls).isGreaterThan(0)

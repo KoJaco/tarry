@@ -77,8 +77,8 @@ class FakeWindowChecker(var inside: Boolean = true) : ScheduleWindowChecker {
 }
 
 class FakeLauncher(var denyStart: Boolean = false) : ServiceLauncher {
-    val started = mutableListOf<SessionTrigger>()
-    var stopCalls = 0
+    val started: MutableList<SessionTrigger> = java.util.concurrent.CopyOnWriteArrayList()
+    @Volatile var stopCalls = 0
         private set
 
     override fun start(trigger: SessionTrigger) {
