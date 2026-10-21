@@ -184,6 +184,10 @@
     <string name="settings_off">Off</string>
     <string name="settings_forever">Forever</string>
     <string name="settings_minutes_value">%1$d min</string>
+    <string name="settings_stay_radius">Stop radius</string>
+    <string name="settings_stay_radius_value">%1$d m</string>
+    <string name="settings_stay_radius_explanation">How far you must move from a stop before Tarry starts tracking closely again. Smaller catches short trips sooner but can be triggered by GPS drift indoors.</string>
+    <string name="settings_dialog_cancel">Cancel</string>
     <plurals name="settings_days_value">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>

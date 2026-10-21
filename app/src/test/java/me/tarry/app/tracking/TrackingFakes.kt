@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.onCompletion
 import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.settings.Settings
 import java.time.Instant
 import java.time.ZoneId
 
@@ -20,13 +21,17 @@ class FakeLocationClient : LocationClient {
     }
 }
 
-class FakeActivityClient(private val available: Boolean = true) : ActivityTransitionClient {
+class FakeActivityClient(var available: Boolean = true) : ActivityTransitionClient {
+    var registerCalls = 0
+        private set
+
     var registered = false
         private set
     var unregisterCalls = 0
         private set
 
     override suspend fun register(): Boolean {
+        registerCalls++
         registered = available
         return available
     }
@@ -107,4 +112,8 @@ class FakeAlertNotifier : HealthAlertNotifier {
     override fun clear() {
         clearCalls++
     }
+}
+
+class FakeStayRadius(var radiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()) : StayRadiusSource {
+    override suspend fun stayRadiusM() = radiusM
 }
