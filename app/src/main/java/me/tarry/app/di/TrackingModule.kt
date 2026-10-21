@@ -24,7 +24,8 @@ import me.tarry.app.tracking.LocationPermissionChecker
 import me.tarry.app.tracking.PlayActivityTransitionClient
 import me.tarry.app.tracking.PlayGeofenceClient
 import me.tarry.app.tracking.PlayLocationClient
-import me.tarry.app.tracking.NoOpSegmentationTrigger
+import me.tarry.app.segmentation.WorkManagerSegmentationTrigger
+import me.tarry.segmentation.SegmentationParams
 import me.tarry.app.tracking.AndroidScheduleAlarmScheduler
 import me.tarry.app.tracking.ScheduleAlarmScheduler
 import me.tarry.app.tracking.SegmentationTrigger
@@ -68,9 +69,12 @@ abstract class TrackingModule {
     abstract fun bindAlarmScheduler(impl: AndroidScheduleAlarmScheduler): ScheduleAlarmScheduler
 
     @Binds
-    abstract fun bindSegmentationTrigger(impl: NoOpSegmentationTrigger): SegmentationTrigger
+    abstract fun bindSegmentationTrigger(impl: WorkManagerSegmentationTrigger): SegmentationTrigger
 
     companion object {
+        @Provides
+        fun provideSegmentationParams(): SegmentationParams = SegmentationParams()
+
         /** See [createCaptureScope]. Lazy recorder avoids a construction cycle. */
         @Provides
         @Singleton
