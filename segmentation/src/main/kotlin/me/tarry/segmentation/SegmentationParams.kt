@@ -11,6 +11,11 @@ data class SegmentationParams(
     val minStayDurationMs: Long = 5 * 60_000L,
     /** A ping gap inside one stay is bridged when the position on both sides is within [stayRadiusM]. */
     val maxGapToBridgeMs: Long = 45 * 60_000L,
+    /**
+     * A silence inside a stay longer than this counts as a signal gap that was bridged (lower confidence). Capture
+     * saves a stationary keepalive every 10 min plus a 3 min fix interval, so normal stays stay under it.
+     */
+    val signalGapMs: Long = 15 * 60_000L,
     /** Radius of a newly created place; existing places match within their own radius. */
     val placeMatchRadiusM: Double = 75.0,
     /** A move shorter than this between two stays merges them. */
@@ -25,7 +30,7 @@ data class SegmentationParams(
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
-        require(minStayDurationMs > 0 && maxGapToBridgeMs >= 0 && shortTripMergeMs >= 0 && overlapMs >= 0)
+        require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }
