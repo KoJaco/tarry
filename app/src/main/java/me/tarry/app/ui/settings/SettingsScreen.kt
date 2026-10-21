@@ -14,7 +14,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -42,19 +42,25 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    SettingsContent(settings, onOpenPermissions, onOpenSessions, modifier, viewModel::setStayGeofenceRadiusM)
+    SettingsContent(
+        settings = settings,
+        onOpenPermissions = onOpenPermissions,
+        onOpenSessions = onOpenSessions,
+        onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
+        modifier = modifier,
+    )
 }
 
-/** Stateless, read-only list of the current settings. */
+/** Stateless list of the current settings; the stop radius is the only editable one. */
 @Composable
 fun SettingsContent(
     settings: Settings?,
     onOpenPermissions: () -> Unit = {},
     onOpenSessions: () -> Unit = {},
-    modifier: Modifier = Modifier,
     onStayRadiusSelected: (Int) -> Unit = {},
+    modifier: Modifier = Modifier,
 ) {
-    var showRadiusDialog by remember { mutableStateOf(false) }
+    var showRadiusDialog by rememberSaveable { mutableStateOf(false) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
     val rows: List<Pair<String, String>> = settings?.let { s ->
