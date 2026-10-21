@@ -25,11 +25,13 @@ private class FakeGeocoder(
     val results: MutableMap<Double, GeocodeResult> = mutableMapOf(),
 ) : PlaceGeocoder {
     val calls = mutableListOf<Double>()
+    var beforeReturn: suspend () -> Unit = {}
 
     override fun isAvailable() = available
 
     override suspend fun lookup(lat: Double, lng: Double): GeocodeResult {
         calls += lat
+        beforeReturn()
         return results[lat] ?: GeocodeResult.NotFound
     }
 }
@@ -75,6 +77,23 @@ class GeocodeWorkerTest {
 
         assertThat(stored(1.0).address).isEqualTo("1 Main St")
         assertThat(stored(1.0).updatedAt).isEqualTo(5_000L)
+    }
+
+    @Test
+    fun concurrentCentroidChangeBetweenReadAndWriteSurvives() = runBlocking<Unit> {
+        place(1.0, 10)
+        geocoder.results[1.0] = GeocodeResult.Found("1 Main St")
+        geocoder.beforeReturn = {
+            val current = db.placeDao().getById("p1.0")!!
+            db.placeDao().upsert(current.copy(centroidLng = 9.0, ignored = true, updatedAt = 99))
+        }
+
+        worker().startWork().get()
+
+        val saved = stored(1.0)
+        assertThat(saved.address).isEqualTo("1 Main St")
+        assertThat(saved.centroidLng).isEqualTo(9.0)
+        assertThat(saved.ignored).isTrue()
     }
 
     @Test

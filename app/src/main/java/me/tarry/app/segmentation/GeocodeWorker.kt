@@ -31,7 +31,7 @@ class GeocodeWorker @AssistedInject constructor(
                 GeocodeResult.NotFound -> ""
                 is GeocodeResult.Failed -> return if (result.retryable) Result.retry() else Result.success()
             }
-            placeDao.upsert(place.copy(address = address, updatedAt = clock.nowMs()))
+            placeDao.setAddressIfMissing(place.id, address, clock.nowMs())
         }
         return Result.success()
     }

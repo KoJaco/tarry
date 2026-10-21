@@ -45,6 +45,10 @@ interface PlaceDao {
     @Query("SELECT * FROM place WHERE deleted = 0 AND address IS NULL ORDER BY lastVisitAt DESC LIMIT :limit")
     suspend fun getMissingAddress(limit: Int): List<Place>
 
+    /** Sets only the address when none is stored yet, so a concurrent edit to other columns survives. */
+    @Query("UPDATE place SET address = :address, updatedAt = :updatedAt WHERE id = :id AND address IS NULL")
+    suspend fun setAddressIfMissing(id: String, address: String, updatedAt: Long): Int
+
     @Upsert suspend fun upsertDefaultTag(link: PlaceDefaultTag)
 
     @Query("DELETE FROM place_default_tag WHERE placeId = :placeId AND tagId = :tagId")
