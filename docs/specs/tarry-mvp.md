@@ -121,7 +121,7 @@ The OS wakes the app; the app never polls on its own timer. A foreground service
 ### Capture modes
 | Mode | Entered when | Location request | Other |
 |---|---|---|---|
-| STATIONARY | Activity STILL, or no movement beyond 50 m for 3 min | Passive / low power, max one fix per 5 min | Geofence (150 m) around current position; exit wakes MOVING |
+| STATIONARY | Activity STILL, or no movement beyond 50 m for 3 min | Low power, one fix per 3 min; a keepalive ping is saved every 10 min, and the last still fix is saved on leaving | Geofence around current position (user setting, default 100 m: 100/150/200/300); exit wakes MOVING |
 | MOVING | Activity IN_VEHICLE / WALKING / ON_BICYCLE, or geofence exit | Balanced power, interval 20 s, min displacement 25 m, maxUpdateDelay 2 min (batched) | Remove stay geofence |
 | SUSPENDED | Outside schedule, paused or stopped | None | Service stopped; alarm armed for next window |
 
@@ -169,6 +169,7 @@ Segmentation is a pure function from pings (plus frozen records) to visits, trip
 | placeMatchRadius | 75 m (or place's own radius) | Assign a stay to an existing place |
 | minTripDistance | 150 m | A move shorter than this between two stays merges them |
 | shortTripMerge | 3 min | Stays at the same place separated by a shorter blip are merged |
+| signalGap | 15 min | A silence inside a stay longer than this marks it bridged (lower confidence) |
 
 ### Algorithm
 1. Load pings for the range since the last processed checkpoint, minus a 30 min overlap, excluding frozen ranges.

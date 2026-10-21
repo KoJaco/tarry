@@ -31,12 +31,15 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 ## Phases
 Each phase: own branch, short spec in `docs/specs/phase-N.md`, implementer → test-writer → reviewer, PR with green CI, device check.
 
+**Status (2026-10-21):** 0, 1, 2a (PR #4, dogfood fixes #5) and 2b (PR #6) are merged. Next is **2c, the design system** (pulled forward from the start of phase 3 so every later screen is built on it), then 3–8.
+
 0. **Repo and conventions (S):** git, `.gitignore`, GPL-3.0 `LICENSE`, Android AGENTS.md, ADR 0001, retarget agents, fix hooks, private GitHub repo + CI + branch protection.
 1. **Foundation (M):** update version catalog; KSP, Room, Hilt, DataStore, WorkManager, Navigation, coroutines, Play Services location (verify Hilt/KSP with AGP 9 first). `:segmentation` and `:core-data` modules, Room v1 with all entities + deltas and exported schema. Hilt app, bottom bar (Timeline | toggle | Settings). Manifest permissions, backup disabled for the DB.
 2. **Tracking core + early segmentation (L):**
    - **2a Capture:** spike the alarm-triggered FGS start first. Foreground service, fused location, activity transitions, stay geofence, capture modes and filters in `TrackingConfig`. Schedule engine with hard-coded Mon–Fri 07:00–17:00, exact alarm, boot/time/update receivers. Manual start/stop/pause, notification actions. Health monitor, ATTENTION, Gap rows. Minimal permission flow. GPX/CSV raw export and debug sessions screen. Install on phone immediately.
    - **2b Segmentation:** pure stay/trip/merge/place/gap logic with frozen and excluded ranges. Synthetic trace generator and golden cases. SegmentationWorker with checkpoint and overlap, geocoder queue. Crude day list.
-3. **Timeline list + edit drawer (L):** design tokens → M3 theme. List view with totals, cards, needs-review dot, filter, badge. Drawer: job picker, tags, billable, notes, trim, split, merge, reassign place, delete, reset to detected, freeze, undo. Manual visit, multi-select bulk actions. Compose tests.
+   - **2c Design system (M):** fill `docs/design/tokens.md` for Android (colour roles light/dark, type, space, shape, motion, tracking-state looks), build the M3 theme and shared components, restyle the existing screens, ui-review. Spec: `docs/specs/phase-2c.md`.
+3. **Timeline list + edit drawer (L):** (design tokens and theme moved to 2c) List view with totals, cards, needs-review dot, filter, badge. Drawer: job picker, tags, billable, notes, trim, split, merge, reassign place, delete, reset to detected, freeze, undo. Manual visit, multi-select bulk actions. Compose tests.
 4. **Jobs, tags and places management (M):** jobs CRUD, tag groups/tags CRUD with reorder and archive, places list with defaults, radius slider, ignore, merge, delete.
 5. **Map (L):** MapLibre + OpenFreeMap, route and numbered pins, scrubber, date-time jump, mini maps, radius preview, map-pin manual visit, offline regions (check OpenFreeMap terms).
 6. **Schedule grid + manual controls UI (M):** 7×48 paint grid, copy day, presets, template vs override, toggle long-press sheet.
@@ -48,7 +51,7 @@ Each phase: own branch, short spec in `docs/specs/phase-N.md`, implementer → t
 ## Verification
 - Every PR: `gradlew.bat assembleDebug testDebugUnitTest lintDebug`, same in CI.
 - Room: exported schema committed; migration tests from v1.
-- Phase 2: a real day on the Pixel; forced Doze, reboot mid-window, revoked permission → ATTENTION; real days saved as fixtures in `segmentation/src/test/resources/traces/`.
+- Phase 2: a real day on the Pixel; forced Doze, reboot mid-window, revoked permission → ATTENTION. Real traces never enter the repo (it is public): exports stay in the gitignored `tmp/`, and segmentation tests use synthetic traces only.
 
 ## Risks
 - Background FGS start from an alarm on Android 12+ / targetSdk 37 (spike first).
