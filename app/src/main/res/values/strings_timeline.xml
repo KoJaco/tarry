@@ -42,4 +42,33 @@
     <string name="timeline_trip_row_unknown">Trip</string>
     <string name="timeline_gap_row">Not tracked · %1$s</string>
     <string name="timeline_now_description">Now, %1$s</string>
+
+
+    <!-- Phase 3: tap to edit, review filter, gap sheet, outage clusters. -->
+    <string name="timeline_edit_visit">Edit visit</string>
+    <string name="timeline_edit_trip">Edit trip</string>
+    <string name="timeline_show_details">Show details</string>
+    <string name="timeline_add_visit">Add visit</string>
+    <string name="timeline_filter_needs_review">Needs review only</string>
+
+    <string name="timeline_cluster_row">Patchy tracking · %1$s · %2$s</string>
+    <plurals name="timeline_cluster_outages">
+        <item quantity="one">%1$d outage</item>
+        <item quantity="other">%1$d outages</item>
+    </plurals>
+    <string name="timeline_cluster_description">Patchy tracking, %1$s, %2$s</string>
+
+    <string name="gap_sheet_cluster_title">Patchy tracking</string>
+    <string name="gap_sheet_times">%1$s · %2$s</string>
+    <string name="gap_sheet_outages_heading">Outages</string>
+    <string name="gap_sheet_outage_line">%1$s · %2$s</string>
+    <string name="gap_sheet_add_visit">Add visit here</string>
+    <string name="gap_sheet_add_visit_unavailable">Visits already cover this time.</string>
+    <string name="gap_sheet_meaning_cluster">Tracking stopped and restarted several times here. Nothing was recorded in between, so places and trips may be missing. If you were somewhere, add a visit for it.</string>
+    <string name="gap_sheet_meaning_no_session">Tracking was not running, so nothing was recorded.</string>
+    <string name="gap_sheet_meaning_no_fix">Tracking was on but the phone could not get a location, for example indoors or underground.</string>
+    <string name="gap_sheet_meaning_tracking_stopped">Tracking was stopped, so nothing was recorded.</string>
+    <string name="gap_sheet_meaning_service_killed">Android closed Tarry, for example after an update or to save memory, so nothing was recorded until it restarted.</string>
+    <string name="gap_sheet_meaning_permission_lost">Location permission was turned off, so nothing was recorded.</string>
+    <string name="gap_sheet_meaning_location_off">Location was switched off on the phone, so nothing was recorded.</string>
 </resources>

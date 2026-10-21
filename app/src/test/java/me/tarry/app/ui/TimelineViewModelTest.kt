@@ -91,7 +91,7 @@ class TimelineViewModelTest {
         val result = viewModel().awaitItems { it.size == 3 }
 
         assertThat(result.map { it.id }).containsExactly("v", "t", "g").inOrder()
-        assertThat(result[0]).isEqualTo(TimelineItem.Visit("v", at(day, 9), at(day, 11), "Office"))
+        assertThat(result[0]).isEqualTo(TimelineItem.Visit("v", at(day, 9), at(day, 11), "Office", placeId = "p"))
         assertThat(result[1]).isEqualTo(TimelineItem.Trip("t", at(day, 11), at(day, 12), 900f, TripMode.VEHICLE))
         assertThat(result[2]).isEqualTo(TimelineItem.Gap("g", at(day, 13), at(day, 14), GapCause.NO_FIX))
     }
@@ -239,5 +239,34 @@ class TimelineViewModelTest {
         vm.previousDay()
         vm.nextDay()
         assertThat(vm.selectedDate.value).isEqualTo(day)
+    }
+
+    @Test
+    fun visitWithoutOwnJobInheritsThePlaceDefaultJob() = runBlocking {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
+        places.save(place("p", name = "Yard").copy(defaultJobId = "j"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
+
+        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
+
+        assertThat(v.jobName).isEqualTo("Acme")
+        assertThat(v.jobInherited).isTrue()
+        assertThat(v.needsReview).isFalse()
+    }
+
+    @Test
+    fun visitExposesFrozenBillableOriginPlaceAndIgnoredFlags() = runBlocking {
+        places.save(place("p", name = "Home").copy(ignored = true))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p").copy(frozen = true, billable = true, origin = VisitOrigin.MANUAL))
+
+        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
+
+        assertThat(v.placeId).isEqualTo("p")
+        assertThat(v.frozen).isTrue()
+        assertThat(v.billable).isTrue()
+        assertThat(v.origin).isEqualTo(VisitOrigin.MANUAL)
+        assertThat(v.placeIgnored).isTrue()
+        assertThat(v.jobInherited).isFalse()
+        assertThat(v.needsReview).isFalse() // ignored place
     }
 }

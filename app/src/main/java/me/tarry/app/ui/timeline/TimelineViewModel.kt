@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.stateIn
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
+import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.PlaceRepository
 import me.tarry.core.data.repository.TimelineRepository
@@ -38,14 +40,26 @@ sealed interface TimelineItem {
         /** True when [placeLabel] is only the raw coordinates, so it should be spoken as an unknown place. */
         val labelIsCoordinates: Boolean = false,
         /**
-         * Name and colour of the visit's job; both null when the visit has no job or its job is unknown or deleted
-         * (deleted jobs are deliberately not shown).
+         * Name and colour of the visit's resolved job (its own job, else its place's default job); both null when
+         * neither resolves or the job is unknown or deleted (deleted jobs are deliberately not shown).
          */
         val jobName: String? = null,
         val jobColorArgb: Int? = null,
         /** Id of that job; seeds the fallback colour when [jobColorArgb] names no palette slot. Null with [jobName]. */
         val jobId: String? = null,
-    ) : TimelineItem
+        val placeId: String? = null,
+        /** The user has edited or annotated this visit; segmentation never touches it. */
+        val frozen: Boolean = false,
+        val billable: Boolean? = null,
+        val origin: VisitOrigin = VisitOrigin.DETECTED,
+        /** True when the resolved job came from the place's default, not from the visit itself. */
+        val jobInherited: Boolean = false,
+        /** The visit's place is ignored, so the visit never asks for review. */
+        val placeIgnored: Boolean = false,
+    ) : TimelineItem {
+        /** A visit with no resolved job, at a place that is not ignored. */
+        val needsReview: Boolean get() = jobName == null && !placeIgnored
+    }
 
     data class Trip(
         override val id: String,
@@ -128,10 +142,14 @@ class TimelineViewModel internal constructor(
                         val jobsById = allJobs.associateBy { it.id }
                         val rows: List<TimelineItem> = visits.map {
                             val place = it.placeId?.let(byId::get)
-                            val job = it.jobId?.let(jobsById::get)
+                            val own = it.jobId?.let(jobsById::get)
+                            val job = own ?: place?.defaultJobId?.let(jobsById::get)
                             TimelineItem.Visit(
                                 it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false,
                                 job?.name, job?.colorArgb, job?.id,
+                                placeId = it.placeId, frozen = it.frozen, billable = it.billable, origin = it.origin,
+                                jobInherited = own == null && job != null,
+                                placeIgnored = place?.ignored ?: false,
                             )
                         } +
                             trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
@@ -170,5 +188,30 @@ class TimelineViewModel internal constructor(
 
     private companion object {
         const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
+    }
+}
+
+/**
+ * Number of visits in `[from, to)` that need review: not deleted (the DAO already skips those), not at an ignored
+ * place, and with no resolved job: neither the visit's own live job nor its place's default live job. Gaps and trips
+ * never count.
+ */
+internal fun observeNeedsReviewCount(
+    timeline: TimelineRepository,
+    places: PlaceRepository,
+    jobs: JobRepository,
+    from: Long,
+    to: Long,
+): Flow<Int> = combine(
+    timeline.observeVisits(from, to),
+    places.observeAll(),
+    jobs.observeAll(), // excludes deleted jobs
+) { visits, allPlaces, allJobs ->
+    val byId = allPlaces.associateBy { it.id }
+    val liveJobs = allJobs.mapTo(HashSet()) { it.id }
+    visits.count { v ->
+        val place = v.placeId?.let(byId::get)
+        val resolved = v.jobId?.takeIf { it in liveJobs } ?: place?.defaultJobId?.takeIf { it in liveJobs }
+        resolved == null && place?.ignored != true
     }
 }

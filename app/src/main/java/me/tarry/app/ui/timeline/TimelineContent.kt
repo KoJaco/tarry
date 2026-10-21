@@ -18,6 +18,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.Role
+import me.tarry.app.ui.components.TarryChip
+import me.tarry.app.ui.drawer.EditTarget
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
@@ -59,7 +63,11 @@ fun TimelineContent(
     onSelectDate: (LocalDate) -> Unit = {},
     zone: ZoneId = ZoneId.systemDefault(),
     nowMs: Long? = null,
+    /** Opens the edit drawer: a tapped visit or trip, or a new manual visit (gap sheet, "+" button). */
+    onEdit: (EditTarget) -> Unit = {},
 ) {
+    var reviewOnly by rememberSaveable { mutableStateOf(false) }
+    var gapSheetId by rememberSaveable { mutableStateOf<String?>(null) }
     val isToday = date == today
     // Only today has a now-line, and only a started screen needs it to move.
     val clock by rememberMinuteClock(enabled = nowMs == null && isToday)
@@ -72,8 +80,23 @@ fun TimelineContent(
             .padding(horizontal = TarryTheme.space.gutter),
         verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xl),
     ) {
-        DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate)
+        DayHeader(
+            date, today, onPreviousDay, onNextDay, onSelectDate,
+            onAddVisit = {
+                val (start, end) = firstFreeSlot(date, zone, items.orEmpty().filterIsInstance<TimelineItem.Visit>())
+                onEdit(EditTarget.NewVisit(start, end))
+            },
+        )
         WeekStrip(date, today, onSelectDate)
+        if (!items.isNullOrEmpty()) {
+            TarryChip(
+                text = stringResource(R.string.timeline_filter_needs_review),
+                selected = reviewOnly,
+                onClick = { reviewOnly = !reviewOnly },
+                role = Role.Checkbox,
+                modifier = Modifier.testTag("timeline_filter_review"),
+            )
+        }
         Column(
             modifier = Modifier.fillMaxWidth().daySlide(date),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
@@ -93,7 +116,32 @@ fun TimelineContent(
                         layoutDay(items, bounds, zone, if (isToday) now else -1L, fontScale)
                     }
                     SummaryCard(summarize(items, bounds), isToday)
-                    DayCanvas(layout, bounds.first, bounds.second, zone, now)
+                    DayCanvas(
+                        layout, bounds.first, bounds.second, zone, now,
+                        dimNonReview = reviewOnly,
+                        onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                        onOpenTrip = { onEdit(EditTarget.Trip(it)) },
+                        onOpenGap = { gap, _ -> gapSheetId = gap.id },
+                    )
+                    val sheetBlock = gapSheetId?.let { id ->
+                        layout.blocks.firstOrNull { it.item.id == id && it.item is TimelineItem.Gap }
+                    }
+                    val sheetGap = sheetBlock?.item as? TimelineItem.Gap
+                    if (sheetBlock != null && sheetGap != null) {
+                        val from = maxOf(sheetGap.start, bounds.first)
+                        val to = minOf(sheetGap.end, bounds.second)
+                        GapSheet(
+                            gap = sheetGap,
+                            outages = sheetBlock.cluster,
+                            slot = freeSlotForGap(from, to, items.filterIsInstance<TimelineItem.Visit>()),
+                            zone = zone,
+                            onAddVisit = { start, end ->
+                                gapSheetId = null
+                                onEdit(EditTarget.NewVisit(start, end))
+                            },
+                            onDismiss = { gapSheetId = null },
+                        )
+                    }
                 }
             }
         }

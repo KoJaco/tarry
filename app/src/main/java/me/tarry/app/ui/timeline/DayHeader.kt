@@ -51,6 +51,8 @@ fun DayHeader(
     onNextDay: () -> Unit,
     onSelectDate: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
+    /** The "+" fallback entry for a manual visit; the caller picks the slot. */
+    onAddVisit: () -> Unit = {},
 ) {
     var picking by rememberSaveable { mutableStateOf(false) }
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
@@ -89,6 +91,12 @@ fun DayHeader(
                 onClick = onNextDay,
                 enabled = date < today,
                 modifier = Modifier.testTag("timeline_next"),
+            )
+            IconCircleButton(
+                icon = R.drawable.ic_plus,
+                contentDescription = stringResource(R.string.timeline_add_visit),
+                onClick = onAddVisit,
+                modifier = Modifier.testTag("timeline_add_visit"),
             )
             IconCircleButton(
                 icon = R.drawable.ic_calendar,

@@ -2,6 +2,11 @@ package me.tarry.app.ui
 
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.remember
+import me.tarry.app.ui.shell.ShellStatusViewModel
+import me.tarry.app.ui.shell.UndoSnackbarEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,8 +45,14 @@ import me.tarry.app.ui.timeline.TimelineScreen
 
 /** Hilt-wired root. Owns the back stack and connects ViewModels to [TarryAppContent]. */
 @Composable
-fun TarryApp(shellViewModel: ShellViewModel = hiltViewModel()) {
+fun TarryApp(
+    shellViewModel: ShellViewModel = hiltViewModel(),
+    statusViewModel: ShellStatusViewModel = hiltViewModel(),
+) {
     val backStack = rememberNavBackStack(TimelineRoute)
+    val needsReview by statusViewModel.needsReviewToday.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    UndoSnackbarEffect(statusViewModel.undoEvents, snackbarHostState, statusViewModel::undo)
     val trackingState by shellViewModel.trackingState.collectAsStateWithLifecycle()
     val trackingDetails by shellViewModel.trackingDetails.collectAsStateWithLifecycle()
     var sheetVisible by rememberSaveable { mutableStateOf(false) }
@@ -60,6 +71,8 @@ fun TarryApp(shellViewModel: ShellViewModel = hiltViewModel()) {
         onNavigate = { backStack.navigateTopLevel(it) },
         onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
         onToggleClick = { sheetVisible = true },
+        needsReviewCount = needsReview,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         settingsContent = {
             SettingsScreen(
                 onOpenPermissions = { openPermissions() },
@@ -113,10 +126,14 @@ fun TarryAppContent(
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
+    /** Today's needs-review count, shown as a badge on the Timeline item. */
+    needsReviewCount: Int = 0,
+    snackbarHost: @Composable () -> Unit = {},
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute }
     Scaffold(
         modifier = modifier,
+        snackbarHost = snackbarHost,
         bottomBar = {
             TarryBottomBar(
                 trackingState = trackingState,
@@ -125,6 +142,7 @@ fun TarryAppContent(
                 onTimelineClick = { onNavigate(TimelineRoute) },
                 onSettingsClick = { onNavigate(SettingsRoute) },
                 onToggleClick = onToggleClick,
+                timelineBadge = needsReviewCount,
             )
         },
     ) { innerPadding ->

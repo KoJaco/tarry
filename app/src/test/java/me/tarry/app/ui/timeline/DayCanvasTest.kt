@@ -27,7 +27,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = android.app.Application::class)
+@Config(sdk = [35], application = android.app.Application::class, qualifiers = "w320dp-h1000dp")
 class DayCanvasTest {
     @get:Rule
     val composeRule = createComposeRule()

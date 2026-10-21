@@ -25,7 +25,7 @@ fun summarize(items: List<TimelineItem>, dayBounds: Pair<Long, Long>): DaySummar
             is TimelineItem.Visit -> {
                 tracked += ms
                 visits++
-                if (item.jobName == null) needsReview++
+                if (item.needsReview) needsReview++
             }
             is TimelineItem.Trip -> trips++
             is TimelineItem.Gap -> gaps++

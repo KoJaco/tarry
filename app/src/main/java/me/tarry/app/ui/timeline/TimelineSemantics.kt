@@ -24,3 +24,11 @@ var SemanticsPropertyReceiver.innerGapHatch: Int by InnerGapHatchKey
 /** Set on a gap block that draws the diagonal hatch. For tests. */
 val GapHatchKey = SemanticsPropertyKey<Boolean>("TimelineGapHatch")
 var SemanticsPropertyReceiver.gapHatch: Boolean by GapHatchKey
+
+/** True on a block drawn at reduced opacity because the "Needs review only" filter is on and it does not need review. For tests. */
+val BlockDimmedKey = SemanticsPropertyKey<Boolean>("TimelineBlockDimmed")
+var SemanticsPropertyReceiver.blockDimmed: Boolean by BlockDimmedKey
+
+/** Number of real outages a cluster block stands for. For tests. */
+val ClusterOutagesKey = SemanticsPropertyKey<Int>("TimelineClusterOutages")
+var SemanticsPropertyReceiver.clusterOutages: Int by ClusterOutagesKey

@@ -426,4 +426,105 @@ class DayLayoutTest {
             l.blocks.forEach { assertThat(it.heightDp).isAtLeast(28f * fs - eps) }
         }
     }
+
+    // --- Outage clusters ---
+
+    private fun clusters(l: DayLayout) = l.blocks.filter { it.cluster.isNotEmpty() }
+
+    @Test
+    fun clusters_noneWhenGapsAreSeparatedByALongVisitOrThereIsOnlyOneGap() {
+        val single = layout(listOf(visit("v0", at(8), at(9)), gap("g1", at(9, 5), at(9, 30)), trip("t", at(9, 30), at(9, 40))))
+        assertThat(clusters(single)).isEmpty()
+        assertThat(single.blocks.filter { it.item is TimelineItem.Gap }).hasSize(1)
+
+        val split = layout(
+            listOf(
+                gap("g1", at(9), at(9, 20)),
+                visit("long", at(9, 30), at(9, 45)),
+                gap("g2", at(9, 50), at(10, 10)),
+            ),
+        )
+        assertThat(clusters(split)).isEmpty()
+        assertThat(split.blocks.filter { it.item is TimelineItem.Gap }.map { it.item.id }).containsExactly("g1", "g2").inOrder()
+    }
+
+    @Test
+    fun clusters_aVisitOfExactlyTheThresholdSeparates_shorterJoins() {
+        fun with(visitMinutes: Int) = layout(
+            listOf(
+                gap("g1", at(9), at(9, 20)),
+                visit("v", at(9, 30), at(9, 30 + visitMinutes)),
+                gap("g2", at(9, 59), at(10, 20)),
+            ),
+        )
+        assertThat(clusters(with(10))).isEmpty()
+        assertThat(clusters(with(9))).hasSize(1)
+    }
+
+    @Test
+    fun clusters_twoGapsSeparatedByATripBecomeOneBlock_andTheTripIsDropped() {
+        val l = layout(
+            listOf(
+                visit("v0", at(8), at(9)),
+                gap("g1", at(10, 5), at(10, 30)),
+                trip("t", at(10, 30), at(10, 50)),
+                gap("g2", at(10, 50), at(11, 40)),
+            ),
+        )
+        val c = clusters(l).single()
+        assertThat(c.cluster.map { it.id }).containsExactly("g1", "g2").inOrder()
+        assertThat(c.item.id).isEqualTo("cluster:g1")
+        assertThat(c.item.start).isEqualTo(at(10, 5))
+        assertThat(c.item.end).isEqualTo(at(11, 40))
+        assertThat(l.trips).isEmpty()
+        assertThat(l.blocks.filter { it.item is TimelineItem.Gap }).hasSize(1)
+        // Stacked like a normal block: proportional position and height.
+        assertThat(c.topDp).isWithin(eps).of(2 * 72f + 5 * 72f / 60)
+        assertThat(c.heightDp).isWithin(eps).of(95 * 72f / 60)
+    }
+
+    @Test
+    fun clusters_shortVisitsInsideStillDrawOnTopOfTheBand() {
+        val l = layout(
+            listOf(
+                gap("g1", at(10, 5), at(10, 30)),
+                visit("quick", at(10, 32), at(10, 38)),
+                trip("t", at(10, 38), at(10, 45)),
+                gap("g2", at(10, 45), at(10, 55)),
+                visit("quick2", at(10, 56), at(11, 2)),
+                gap("g3", at(11, 3), at(11, 40)),
+            ),
+        )
+        val c = clusters(l).single()
+        assertThat(c.cluster.map { it.id }).containsExactly("g1", "g2", "g3").inOrder()
+        assertThat(l.blocks.first()).isSameInstanceAs(c) // drawn first, so the visits overlay it
+        val visits = l.blocks.filter { it.item is TimelineItem.Visit }
+        assertThat(visits.map { it.item.id }).containsExactly("quick", "quick2").inOrder()
+        visits.forEach {
+            assertThat(it.topDp).isAtLeast(c.topDp - eps)
+            assertThat(it.topDp + it.heightDp).isAtMost(c.topDp + c.heightDp + eps)
+        }
+        assertThat(l.trips).isEmpty()
+        assertThat(l.ordered().first()).isSameInstanceAs(c)
+    }
+
+    @Test
+    fun clusters_formByElapsedTimeAcrossTheSpringForwardGap() {
+        // Sydney 2026-10-04: 02:00 -> 03:00. 01:58 to 03:02 on the wall is only 4 minutes of elapsed time.
+        val date = LocalDate.of(2026, 10, 4)
+        val b = dayBounds(date, sydney)
+        fun s(h: Int, m: Int) = at(h, m, date, sydney)
+        val l = layout(
+            listOf(
+                gap("g1", s(1, 30), s(1, 50)),
+                visit("v", s(1, 58), s(3, 2)),
+                gap("g2", s(3, 5), s(3, 30)),
+            ),
+            z = sydney, b = b, now = at(0, 0, date.plusDays(9), sydney),
+        )
+        assertThat(visitMs(s(1, 58), s(3, 2))).isEqualTo(4 * 60_000L)
+        assertThat(clusters(l).single().cluster.map { it.id }).containsExactly("g1", "g2").inOrder()
+    }
+
+    private fun visitMs(s: Long, e: Long) = e - s
 }

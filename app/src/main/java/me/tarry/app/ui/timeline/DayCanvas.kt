@@ -2,6 +2,7 @@ package me.tarry.app.ui.timeline
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -36,6 +38,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +63,9 @@ import me.tarry.core.data.model.TripMode
 import java.time.ZoneId
 import kotlin.math.abs
 import kotlin.math.floor
+
+/** Opacity of blocks that do not need review while the "Needs review only" filter is on. */
+internal const val DimmedAlpha = 0.4f
 
 /** Test tag of every hour label in the time column. */
 internal const val HourLabelTag = "timeline_hour_label"
@@ -132,6 +139,12 @@ fun DayCanvas(
     zone: ZoneId,
     now: Long,
     modifier: Modifier = Modifier,
+    /** The "Needs review only" filter: everything that does not need review is drawn at [DimmedAlpha]. Nothing is hidden. */
+    dimNonReview: Boolean = false,
+    onOpenVisit: (String) -> Unit = {},
+    onOpenTrip: (String) -> Unit = {},
+    /** The tapped gap block: the gap itself, and for an outage cluster the real gaps it stands for (else empty). */
+    onOpenGap: (TimelineItem.Gap, List<TimelineItem.Gap>) -> Unit = { _, _ -> },
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -190,18 +203,28 @@ fun DayCanvas(
                 )
             }
             ordered.forEachIndexed { index, placed ->
+                val dimmed = dimNonReview && ((placed as? PlacedBlock)?.item as? TimelineItem.Visit)?.needsReview != true
                 val position = Modifier
                     .offset(y = placed.topDp.dp)
                     .padding(start = timeColumn + DayCanvasDefaults.BlockInset)
                     .fillMaxWidth()
                     .height(placed.heightDp.dp)
+                    .then(if (dimmed) Modifier.alpha(DimmedAlpha) else Modifier)
                 when (placed) {
                     is PlacedBlock -> {
-                        val description = spokenDescription(placed.item, dayStart, dayEnd, zone, placed.foldedTrips, placed.innerGaps)
                         val times = clampedTimes(placed.item, dayStart, dayEnd, zone)
+                        val description = if (placed.cluster.isNotEmpty()) {
+                            stringResource(
+                                R.string.timeline_cluster_description,
+                                times.spokenRange,
+                                pluralStringResource(R.plurals.timeline_cluster_outages, placed.cluster.size, placed.cluster.size),
+                            )
+                        } else {
+                            spokenDescription(placed.item, dayStart, dayEnd, zone, placed.foldedTrips, placed.innerGaps)
+                        }
                         when (val item = placed.item) {
-                            is TimelineItem.Visit -> VisitBlock(item, placed, times, description, index, fontScale, position)
-                            is TimelineItem.Gap -> GapBlock(item, placed, description, index, fontScale, position)
+                            is TimelineItem.Visit -> VisitBlock(item, placed, times, description, index, fontScale, dimmed, position) { onOpenVisit(item.id) }
+                            is TimelineItem.Gap -> GapBlock(item, placed, times, description, index, fontScale, dimmed, position) { onOpenGap(item, placed.cluster) }
                             is TimelineItem.Trip -> Unit // Trips are placed as PlacedTrip, never as blocks.
                         }
                     }
@@ -210,8 +233,9 @@ fun DayCanvas(
                         clampedTimes(placed.trip, dayStart, dayEnd, zone),
                         spokenDescription(placed.trip, dayStart, dayEnd, zone),
                         index,
+                        dimmed,
                         position,
-                    )
+                    ) { onOpenTrip(placed.trip.id) }
                 }
             }
             layout.nowDp?.let { nowDp ->
@@ -229,7 +253,9 @@ private fun VisitBlock(
     description: String,
     index: Int,
     fontScale: Float,
+    dimmed: Boolean,
     modifier: Modifier,
+    onClick: () -> Unit,
 ) {
     val c = TarryTheme.colors
     val job: JobColors? = visit.jobName?.let { JobPalette.lookup(visit.jobColorArgb, visit.jobId ?: it).colors(TarryTheme.isDark) }
@@ -259,9 +285,11 @@ private fun VisitBlock(
         modifier = modifier
             .then(dots)
             .then(look)
+            .clickable(onClickLabel = stringResource(R.string.timeline_edit_visit), role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = index.toFloat()
+                blockDimmed = dimmed
                 blockColor = container
                 blockDashed = job == null
                 if (placed.innerGaps.isNotEmpty()) {
@@ -366,10 +394,13 @@ private fun textLines(heightDp: Float, fontScale: Float, showChip: Boolean): Pai
 private fun GapBlock(
     gap: TimelineItem.Gap,
     placed: PlacedBlock,
+    times: ClampedTimes,
     description: String,
     index: Int,
     fontScale: Float,
+    dimmed: Boolean,
     modifier: Modifier,
+    onClick: () -> Unit,
 ) {
     val c = TarryTheme.colors
     val shape = if (placed.compact) TarryTheme.shapes.small else TarryTheme.shapes.block
@@ -380,10 +411,13 @@ private fun GapBlock(
             .background(c.alertSoft)
             .hatch(c.alert.copy(alpha = DayCanvasDefaults.HatchAlpha))
             .border(DayCanvasDefaults.BorderWidth, c.alert, shape)
+            .clickable(onClickLabel = stringResource(R.string.timeline_show_details), role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = index.toFloat()
+                blockDimmed = dimmed
                 gapHatch = true
+                if (placed.cluster.isNotEmpty()) clusterOutages = placed.cluster.size
             }
             .testTag("timeline_row_${gap.id}")
             .padding(horizontal = TarryTheme.space.m, vertical = DayCanvasDefaults.GapPaddingV),
@@ -398,7 +432,15 @@ private fun GapBlock(
             modifier = Modifier.size(DayCanvasDefaults.GapIconSize),
         )
         Text(
-            text = stringResource(R.string.timeline_gap_row, stringResource(gap.cause.labelRes())),
+            text = if (placed.cluster.isNotEmpty()) {
+                stringResource(
+                    R.string.timeline_cluster_row,
+                    times.range,
+                    pluralStringResource(R.plurals.timeline_cluster_outages, placed.cluster.size, placed.cluster.size),
+                )
+            } else {
+                stringResource(R.string.timeline_gap_row, stringResource(gap.cause.labelRes()))
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = c.onAlertSoft,
             maxLines = lines,
@@ -408,7 +450,15 @@ private fun GapBlock(
 }
 
 @Composable
-private fun TripRow(trip: TimelineItem.Trip, times: ClampedTimes, description: String, index: Int, modifier: Modifier) {
+private fun TripRow(
+    trip: TimelineItem.Trip,
+    times: ClampedTimes,
+    description: String,
+    index: Int,
+    dimmed: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     val c = TarryTheme.colors
     val text = stringResource(
         R.string.timeline_trip_row,
@@ -418,9 +468,11 @@ private fun TripRow(trip: TimelineItem.Trip, times: ClampedTimes, description: S
     )
     Row(
         modifier = modifier
+            .clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = index.toFloat()
+                blockDimmed = dimmed
             }
             .testTag("timeline_row_${trip.id}")
             .padding(horizontal = TarryTheme.space.m),

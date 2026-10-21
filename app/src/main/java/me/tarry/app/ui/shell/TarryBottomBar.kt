@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -44,6 +45,11 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntOffset
@@ -62,7 +68,13 @@ object BottomBarTags {
     const val ToggleSlot = "bottomBar.toggle"
     const val SettingsSlot = "bottomBar.settings"
     const val Indicator = "bottomBar.indicator"
+    const val Badge = "bottomBar.badge"
 }
+
+private val BadgeMinSize = 18.dp
+private val BadgeOffsetX = 4.dp
+private val BadgeOffsetY = 2.dp
+private const val MaxBadge = 99
 
 private val SlotMinHeight = 56.dp
 private val TopBorder = 1.dp
@@ -89,6 +101,8 @@ fun TarryBottomBar(
     onSettingsClick: () -> Unit,
     onToggleClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Today's needs-review count, shown as a pill on the Timeline item; hidden at 0. */
+    timelineBadge: Int = 0,
 ) {
     val colors = TarryTheme.colors
     var containerOrigin by remember { mutableStateOf<Offset?>(null) }
@@ -134,6 +148,12 @@ fun TarryBottomBar(
                     selected = timelineSelected,
                     onClick = onTimelineClick,
                     onIconPositioned = { timelineIcon = it },
+                    badge = timelineBadge,
+                    badgeDescription = if (timelineBadge > 0) {
+                        pluralStringResource(R.plurals.nav_timeline_needs_review, timelineBadge, timelineBadge)
+                    } else {
+                        null
+                    },
                 )
             }
             Slot(BottomBarTags.ToggleSlot) {
@@ -195,6 +215,8 @@ private fun NavItem(
     selected: Boolean,
     onClick: () -> Unit,
     onIconPositioned: (Offset) -> Unit,
+    badge: Int = 0,
+    badgeDescription: String? = null,
 ) {
     val colors = TarryTheme.colors
     val tint = if (selected) colors.ink else colors.muted
@@ -203,6 +225,7 @@ private fun NavItem(
         modifier = Modifier
             .heightIn(min = 48.dp)
             .clip(TarryTheme.shapes.pill)
+            .then(if (badgeDescription != null) Modifier.semantics { contentDescription = badgeDescription } else Modifier)
             .selectable(
                 selected = selected,
                 role = Role.Tab,
@@ -224,10 +247,34 @@ private fun NavItem(
             contentAlignment = Alignment.Center,
         ) {
             Icon(painter = painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
+            if (badge > 0) {
+                NavBadge(badge, Modifier.align(Alignment.TopEnd).offset(x = BadgeOffsetX, y = (-BadgeOffsetY)))
+            }
         }
         Spacer(Modifier.height(IconLabelGap))
         Text(text = label, style = MaterialTheme.typography.labelMedium, color = tint)
     }
+}
+
+/** Count pill on a nav icon. Decorative for a11y: the nav item's description already says how many. */
+@Composable
+private fun NavBadge(count: Int, modifier: Modifier = Modifier) {
+    val colors = TarryTheme.colors
+    Text(
+        text = if (count > MaxBadge) stringResource(R.string.nav_badge_overflow, MaxBadge) else count.toString(),
+        style = MaterialTheme.typography.labelSmall,
+        color = colors.onAccentSoft,
+        maxLines = 1,
+        softWrap = false,
+        textAlign = TextAlign.Center,
+        modifier = modifier
+            .defaultMinSize(minWidth = BadgeMinSize, minHeight = BadgeMinSize)
+            .clip(TarryTheme.shapes.pill)
+            .background(colors.accentSoft)
+            .padding(horizontal = TarryTheme.space.xs)
+            .testTag(BottomBarTags.Badge)
+            .clearAndSetSemantics {},
+    )
 }
 
 @TarryPreviews
