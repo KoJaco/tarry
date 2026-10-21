@@ -26,6 +26,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.theme.TarryTheme
@@ -38,6 +39,17 @@ import java.util.Locale
 
 private val CellMinHeight = 56.dp
 private const val WrappedPerRow = 4
+
+/** From this font scale the weekday label is the single narrow letter. */
+private const val NarrowFontScale = 1.5f
+
+/** "Mon" style label (trailing "." stripped; short form if the standalone one is a number), or the narrow letter. */
+internal fun weekdayLabel(dow: java.time.DayOfWeek, locale: Locale, narrow: Boolean): String {
+    if (narrow) return dow.getDisplayName(TextStyle.NARROW_STANDALONE, locale)
+    val standalone = dow.getDisplayName(TextStyle.SHORT_STANDALONE, locale)
+    val name = if (standalone.any { it.isDigit() }) dow.getDisplayName(TextStyle.SHORT, locale) else standalone
+    return name.trimEnd('.')
+}
 
 /** The seven days of the week containing [date], starting on the locale's first day. */
 internal fun weekOf(date: LocalDate, locale: Locale): List<LocalDate> {
@@ -63,7 +75,7 @@ fun WeekStrip(
         for (row in days.chunked(perRow)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
                 for (day in row) {
-                    DayCell(day, day == selected, day == today, day > today, locale, onSelect, Modifier.weight(1f))
+                    DayCell(day, day == selected, day == today, day > today, locale, perRow, onSelect, Modifier.weight(1f))
                 }
                 // Keep the cells of a short last row the same width as the full rows.
                 repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
@@ -79,12 +91,15 @@ private fun DayCell(
     isToday: Boolean,
     future: Boolean,
     locale: Locale,
+    perRow: Int,
     onSelect: (LocalDate) -> Unit,
     modifier: Modifier,
 ) {
     val c = TarryTheme.colors
     val full = day.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
     val description = if (isToday) stringResource(R.string.timeline_day_today, full) else full
+    val fontScale = LocalDensity.current.fontScale
+    val label = weekdayLabel(day.dayOfWeek, locale, narrow = fontScale >= NarrowFontScale || perRow < 7)
     val textColor = when {
         selected -> c.onInk
         future -> c.muted
@@ -104,9 +119,12 @@ private fun DayCell(
         // Visuals only; the cell's description above is what is spoken.
         Column(Modifier.clearAndSetSemantics {}, horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = day.dayOfWeek.getDisplayName(TextStyle.NARROW, locale),
+                text = label,
                 style = MaterialTheme.typography.bodySmall,
                 color = if (selected) c.onInk else c.muted,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Clip,
             )
             Text(text = day.dayOfMonth.toString(), style = MaterialTheme.typography.titleMedium, color = textColor)
             Box(

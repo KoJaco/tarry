@@ -29,7 +29,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -43,9 +46,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
@@ -237,10 +242,12 @@ private fun VisitBlock(
     val showChip = !oneLine && job == null && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
     val (titleLines, detailLines) = textLines(placed.heightDp, fontScale, showChip)
 
+    // The outage bands are part of the background: after the fill, before the content, and under the border.
+    val bands = Modifier.innerGapBands(placed.innerGaps, bandContentBottomDp(oneLine, showChip, titleLines, detailLines, fontScale))
     val look = if (job != null) {
-        Modifier.clip(shape).background(container).border(DayCanvasDefaults.BorderWidth, job.border, shape)
+        Modifier.clip(shape).background(container).then(bands).border(DayCanvasDefaults.BorderWidth, job.border, shape)
     } else {
-        Modifier.clip(shape).background(container).dashedBorder(c.outline, shape)
+        Modifier.clip(shape).background(container).then(bands).dashedBorder(c.outline, shape)
     }
     Box(
         modifier = modifier
@@ -258,7 +265,7 @@ private fun VisitBlock(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = TarryTheme.space.m, vertical = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV),
-        verticalArrangement = Arrangement.Center,
+        verticalArrangement = Arrangement.Top,
     ) {
         if (oneLine) {
             Text(
@@ -299,46 +306,72 @@ private fun VisitBlock(
             }
         }
     }
-    placed.innerGaps.forEach { InnerGapBand(it, fontScale) }
     }
 }
 
-/** An outage inside a visit: a full-width hatched band with a thin alert edge top and bottom. Decorative for a11y. */
+/** Bottom edge (dp from the block top) of the title, time and chip text; a band label must sit below it. */
+private fun bandContentBottomDp(
+    oneLine: Boolean,
+    showChip: Boolean,
+    titleLines: Int,
+    detailLines: Int,
+    fontScale: Float,
+): Float {
+    val d = DayCanvasDefaults
+    if (oneLine) return d.OneLinePaddingV.value + d.TitleLineDp * fontScale
+    val chip = if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f
+    return d.BlockPaddingV.value + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale + chip
+}
+
+/**
+ * Outages inside a visit, drawn as part of the block background: a hatched alertSoft band with a thin alert edge top
+ * and bottom, inset by the border so the border stays on top. The "Not tracked" label is drawn only when the band is
+ * tall enough and sits below the text ([contentBottomDp]). Decorative for a11y: the spoken description covers it.
+ */
 @Composable
-private fun InnerGapBand(inner: InnerGap, fontScale: Float) {
+private fun Modifier.innerGapBands(innerGaps: List<InnerGap>, contentBottomDp: Float): Modifier {
+    if (innerGaps.isEmpty()) return this
     val c = TarryTheme.colors
-    val showText = inner.heightDp >= DayCanvasDefaults.InnerGapTextMinDp * fontScale
-    Row(
-        modifier = Modifier
-            .offset(y = inner.offsetDp.dp)
-            .fillMaxWidth()
-            .height(inner.heightDp.dp)
-            .background(c.alertSoft)
-            .hatch(c.alert.copy(alpha = DayCanvasDefaults.HatchAlpha))
-            .drawBehind {
-                val edge = DayCanvasDefaults.RuleWidth.toPx()
-                drawLine(c.alert, Offset(0f, edge / 2), Offset(size.width, edge / 2), strokeWidth = edge)
-                drawLine(c.alert, Offset(0f, size.height - edge / 2), Offset(size.width, size.height - edge / 2), strokeWidth = edge)
+    val fontScale = maxOf(1f, LocalDensity.current.fontScale)
+    val measurer = rememberTextMeasurer()
+    val style = MaterialTheme.typography.bodySmall.copy(color = c.onAlertSoft)
+    val icon = painterResource(R.drawable.ic_warning)
+    val padH = TarryTheme.space.m
+    val spaceS = TarryTheme.space.s
+    val labels = innerGaps.map { stringResource(R.string.timeline_gap_row, stringResource(it.gap.cause.labelRes())) }
+    return drawBehind {
+        val inset = DayCanvasDefaults.BorderWidth.toPx()
+        val edge = DayCanvasDefaults.RuleWidth.toPx()
+        val step = DayCanvasDefaults.HatchStepDp.dp.toPx()
+        val hatchColor = c.alert.copy(alpha = DayCanvasDefaults.HatchAlpha)
+        val width = size.width - 2 * inset
+        innerGaps.forEachIndexed { i, inner ->
+            val top = inner.offsetDp.dp.toPx()
+            val h = inner.heightDp.dp.toPx()
+            clipRect(left = inset, top = top, right = inset + width, bottom = top + h) {
+                drawRect(c.alertSoft, Offset(inset, top), Size(width, h))
+                var x = inset - h
+                while (x < inset + width) {
+                    drawLine(hatchColor, Offset(x, top + h), Offset(x + h, top), strokeWidth = edge)
+                    x += step
+                }
+                drawLine(c.alert, Offset(inset, top + edge / 2), Offset(inset + width, top + edge / 2), strokeWidth = edge)
+                drawLine(c.alert, Offset(inset, top + h - edge / 2), Offset(inset + width, top + h - edge / 2), strokeWidth = edge)
             }
-            .clearAndSetSemantics {}
-            .padding(horizontal = TarryTheme.space.m),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-    ) {
-        if (showText) {
-            Icon(
-                painter = painterResource(R.drawable.ic_warning),
-                contentDescription = null,
-                tint = c.alert,
-                modifier = Modifier.size(DayCanvasDefaults.InnerGapIconSize),
-            )
-            Text(
-                text = stringResource(R.string.timeline_gap_row, stringResource(inner.gap.cause.labelRes())),
-                style = MaterialTheme.typography.bodySmall,
-                color = c.onAlertSoft,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            val showText = inner.heightDp >= DayCanvasDefaults.InnerGapTextMinDp * fontScale && inner.offsetDp >= contentBottomDp
+            if (showText) {
+                val iconSize = DayCanvasDefaults.InnerGapIconSize.toPx()
+                val gapPx = spaceS.toPx()
+                val left = inset + padH.toPx()
+                val layout = measurer.measure(
+                    labels[i], style, overflow = TextOverflow.Ellipsis, maxLines = 1,
+                    constraints = Constraints(maxWidth = (width - 2 * padH.toPx() - iconSize - gapPx).toInt().coerceAtLeast(0)),
+                )
+                translate(left, top + (h - iconSize) / 2) {
+                    with(icon) { draw(Size(iconSize, iconSize), colorFilter = ColorFilter.tint(c.alert)) }
+                }
+                drawText(layout, topLeft = Offset(left + iconSize + gapPx, top + (h - layout.size.height) / 2))
+            }
         }
     }
 }

@@ -4,6 +4,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -257,5 +260,34 @@ class DayCanvasTest {
     fun fallbackColourIsStableForTheSameId() {
         colourOf("v", jobId = "a", jobName = "Renamed")
         assertThat(blockColor("timeline_row_v")).isEqualTo(JobPalette.fallbackFor("a").light.container)
+    }
+
+    @Test
+    fun innerGapBandsAreDrawnBehindTheContentNotAsNodes() {
+        // A gap 10 minutes into a short-ish visit lies under the title and time line.
+        show(
+            listOf(
+                TimelineItem.Visit("v", at(9), at(11), "Marina"),
+                TimelineItem.Gap("g", at(9, 5), at(9, 40), GapCause.SERVICE_KILLED),
+            ),
+        )
+        val block = composeRule.onNodeWithTag("timeline_row_v").getUnclippedBoundsInRoot()
+        val title = composeRule.onNodeWithText("Marina").assertIsDisplayed().getUnclippedBoundsInRoot()
+        assertThat(title.top).isAtLeast(block.top)
+        assertThat(title.bottom).isAtMost(block.bottom)
+        // The band is background drawing: no node of its own and no label text overlapping the title.
+        composeRule.onNodeWithTag("timeline_row_g").assertDoesNotExist()
+        composeRule.onAllNodesWithText("Not tracked · App was closed").assertCountEquals(0)
+        composeRule.onNodeWithText("Needs review").assertIsDisplayed()
+        composeRule.onNodeWithTag("timeline_row_v").assert(SemanticsMatcher("one inner band") { it.config[InnerGapHatchKey] == 1 })
+    }
+
+    @Test
+    fun visitContentIsTopAlignedInATallBlock() {
+        show(listOf(TimelineItem.Visit("v", at(14, 17), at(16, 43), "Marina")))
+        val block = composeRule.onNodeWithTag("timeline_row_v").getUnclippedBoundsInRoot()
+        val title = composeRule.onNodeWithText("Marina").getUnclippedBoundsInRoot()
+        // Block padding is 6 dp; allow 2 dp for the text's own leading.
+        assertThat((title.top - block.top).value).isAtMost(6f + 2f)
     }
 }
