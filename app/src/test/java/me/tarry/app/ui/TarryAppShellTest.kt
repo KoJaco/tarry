@@ -63,7 +63,7 @@ class TarryAppShellTest {
     @Test
     fun opensOnTimeline() {
         setShell()
-        composeRule.onNodeWithText("No visits yet").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing yet today").assertIsDisplayed()
         composeRule.onNodeWithText("Rounding increment").assertDoesNotExist()
         timelineTab.assertIsSelected()
     }
@@ -73,11 +73,11 @@ class TarryAppShellTest {
         setShell()
         settingsTab.performClick()
         composeRule.onNodeWithText("Stop radius").assertIsDisplayed()
-        composeRule.onNodeWithText("No visits yet").assertDoesNotExist()
+        composeRule.onNodeWithText("Nothing yet today").assertDoesNotExist()
         settingsTab.assertIsSelected()
 
         timelineTab.performClick()
-        composeRule.onNodeWithText("No visits yet").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing yet today").assertIsDisplayed()
         composeRule.onNodeWithText("Rounding increment").assertDoesNotExist()
         timelineTab.assertIsSelected()
     }
@@ -88,7 +88,7 @@ class TarryAppShellTest {
         setShell(onToggle = { clicks++ })
         composeRule.onNodeWithContentDescription("Tracking: off").performClick()
         composeRule.runOnIdle { assertEqualsInt(1, clicks) }
-        composeRule.onNodeWithText("No visits yet").assertIsDisplayed()
+        composeRule.onNodeWithText("Nothing yet today").assertIsDisplayed()
     }
 
     @Test

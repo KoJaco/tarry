@@ -8,6 +8,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import me.tarry.core.data.settings.ThemeMode
 
 /** Effective dark flag for a stored [ThemeMode]; SYSTEM follows [systemDark]. */
@@ -17,6 +18,9 @@ fun ThemeMode.isDark(systemDark: Boolean): Boolean = when (this) {
     ThemeMode.DARK -> true
 }
 
+/** True when the Tarry dark palette is active; provided by [TarryTheme]. */
+val LocalIsDarkTheme = staticCompositionLocalOf { false }
+
 /** Accessors for the Tarry tokens, mirroring [MaterialTheme]. */
 object TarryTheme {
     val colors: TarryColors
@@ -25,6 +29,8 @@ object TarryTheme {
         @Composable @ReadOnlyComposable get() = LocalTarrySpace.current
     val shapes: TarryShapes
         @Composable @ReadOnlyComposable get() = LocalTarryShapes.current
+    val isDark: Boolean
+        @Composable @ReadOnlyComposable get() = LocalIsDarkTheme.current
 }
 
 /** M3 mapping exactly per the tokens.md "M3 role mapping" table. */
@@ -79,6 +85,7 @@ fun TarryTheme(
         LocalTarryColors provides colors,
         LocalTarrySpace provides TarrySpace(),
         LocalTarryShapes provides TarryShapes(),
+        LocalIsDarkTheme provides darkTheme,
     ) {
         MaterialTheme(
             colorScheme = colors.toMaterial(darkTheme),

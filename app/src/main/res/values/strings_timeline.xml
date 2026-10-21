@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Day canvas (phase 2c). Older day-list strings live in strings.xml. -->
+    <string name="timeline_empty_title_today">Nothing yet today</string>
+    <string name="timeline_empty_body_today">Visits and trips appear here as Tarry records your day.</string>
+    <string name="timeline_empty_title_past">Nothing recorded</string>
+    <string name="timeline_empty_body_past">Tarry recorded no visits or trips on this day.</string>
+
+    <string name="timeline_open_calendar">Choose a date</string>
+    <string name="timeline_date_picker_ok">OK</string>
+    <string name="timeline_date_picker_cancel">Cancel</string>
+    <string name="timeline_day_today">%1$s, today</string>
+
+    <string name="timeline_summary_title_today">Tracked today</string>
+    <string name="timeline_summary_title_other">Tracked</string>
+    <plurals name="timeline_summary_needs_review">
+        <item quantity="one">%1$d visit needs review</item>
+        <item quantity="other">%1$d visits need review</item>
+    </plurals>
+    <plurals name="timeline_summary_visits">
+        <item quantity="one">%1$d visit</item>
+        <item quantity="other">%1$d visits</item>
+    </plurals>
+    <plurals name="timeline_summary_trips">
+        <item quantity="one">%1$d trip</item>
+        <item quantity="other">%1$d trips</item>
+    </plurals>
+    <plurals name="timeline_summary_gaps">
+        <item quantity="one">%1$d gap</item>
+        <item quantity="other">%1$d gaps</item>
+    </plurals>
+    <string name="timeline_summary_separator">" · "</string>
+
+    <string name="timeline_needs_review">Needs review</string>
+    <string name="timeline_visit_job_description">Visit at %1$s, %2$s, %3$s, job %4$s</string>
+    <string name="timeline_folded_trip">Also: %1$s</string>
+    <string name="timeline_compact_line">%1$s · %2$s</string>
+    <string name="timeline_range_with_job">%1$s · %2$s</string>
+    <string name="timeline_trip_row">%1$s · %2$s · %3$s</string>
+    <string name="timeline_trip_row_drive">Drive</string>
+    <string name="timeline_trip_row_walk">Walk</string>
+    <string name="timeline_trip_row_unknown">Trip</string>
+    <string name="timeline_gap_row">Not tracked · %1$s</string>
+    <string name="timeline_now_description">Now, %1$s</string>
+</resources>

@@ -220,6 +220,15 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun selectDateJumpsAndClampsToToday() {
+        val vm = viewModel()
+        vm.selectDate(day.minusDays(10))
+        assertThat(vm.selectedDate.value).isEqualTo(day.minusDays(10))
+        vm.selectDate(day.plusDays(3))
+        assertThat(vm.selectedDate.value).isEqualTo(day)
+    }
+
+    @Test
     fun nextDayStopsAtToday() {
         val vm = viewModel()
         vm.nextDay()

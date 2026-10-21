@@ -161,6 +161,11 @@ class TimelineViewModel internal constructor(
         if (_selectedDate.value < _today.value) _selectedDate.value = _selectedDate.value.plusDays(1)
     }
 
+    /** Jumps to [date] (week strip, date picker). A date after today is clamped to today. */
+    fun selectDate(date: LocalDate) {
+        _selectedDate.value = if (date > _today.value) _today.value else date
+    }
+
     private companion object {
         const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
     }
