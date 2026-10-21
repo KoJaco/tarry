@@ -13,6 +13,8 @@ data class DayLayoutParams(
     val compactUnderMinutes: Int = 30,
     /** Scaled by max(1, fontScale). */
     val tripRowDp: Float = 24f,
+    /** Minimum vertical space between consecutive items, so adjacent blocks never touch. Not font-scaled. */
+    val itemGapDp: Float = 4f,
     /** Used only when there are no items and no window. */
     val emptyDayStartHour: Int = 7,
     val emptyDayEndHour: Int = 17,
@@ -142,10 +144,24 @@ fun layoutDay(
     val hasVisit = clamped.any { it.item is TimelineItem.Visit }
     val compactUnderMs = params.compactUnderMinutes * MS_PER_MINUTE
 
-    fun block(c: Clamped, top: Float, folded: List<TimelineItem.Trip>) = PlacedBlock(
+    val gap = params.itemGapDp
+
+    /**
+     * Height of a block placed at [top]: its true height (at least the minimum), trimmed at the bottom so a gap is
+     * left before the next item's true start, but only as far as the minimum height allows. Where that is not
+     * enough, the next item is pushed down instead.
+     */
+    fun blockHeight(c: Clamped, top: Float, nextStart: Long?): Float {
+        val trueHeight = maxOf(dp(c.start, c.end), minBlock)
+        if (nextStart == null) return trueHeight
+        val room = dp(canvasStart, nextStart) - gap - top
+        return if (room >= trueHeight) trueHeight else maxOf(room, minBlock)
+    }
+
+    fun block(c: Clamped, top: Float, nextStart: Long?, folded: List<TimelineItem.Trip>) = PlacedBlock(
         item = c.item,
         topDp = top,
-        heightDp = maxOf(dp(c.start, c.end), minBlock),
+        heightDp = blockHeight(c, top, nextStart),
         compact = c.end - c.start < compactUnderMs,
         foldedTrips = folded,
     )
@@ -156,29 +172,29 @@ fun layoutDay(
     if (!hasVisit) {
         // Nothing to fold into: every trip keeps its own row and pushes later items down.
         var cur = 0f
-        for (c in clamped) {
+        for ((i, c) in clamped.withIndex()) {
             val top = maxOf(dp(canvasStart, c.start), cur)
             if (c.item is TimelineItem.Trip) {
                 trips += PlacedTrip(c.item, top, tripRow)
-                cur = top + tripRow
+                cur = top + tripRow + gap
             } else {
-                val b = block(c, top, emptyList())
+                val b = block(c, top, clamped.getOrNull(i + 1)?.start, emptyList())
                 blocks += b
-                cur = top + b.heightDp
+                cur = top + b.heightDp + gap
             }
         }
     } else {
-        // Pass 1: blocks (visits and gaps), never overlapping each other.
+        // Pass 1: blocks (visits and gaps), never overlapping each other and never closer than the item gap.
         val blockSources = clamped.filter { it.item !is TimelineItem.Trip }
         val tops = ArrayList<Float>()
         val heights = ArrayList<Float>()
         var bottom = 0f
-        for (c in blockSources) {
+        for ((i, c) in blockSources.withIndex()) {
             val top = maxOf(dp(canvasStart, c.start), bottom)
-            val h = maxOf(dp(c.start, c.end), minBlock)
+            val h = blockHeight(c, top, blockSources.getOrNull(i + 1)?.start)
             tops += top
             heights += h
-            bottom = top + h
+            bottom = top + h + gap
         }
         // Group trips by the number of blocks that start before them: group k sits between block k-1 and k.
         val groups = List(blockSources.size + 1) { mutableListOf<Clamped>() }
@@ -191,14 +207,14 @@ fun layoutDay(
             (k until blockSources.size).firstOrNull { blockSources[it].item is TimelineItem.Visit }
                 ?: (k - 1 downTo 0).first { blockSources[it].item is TimelineItem.Visit }
         for ((k, group) in groups.withIndex()) {
-            var cur = if (k == 0) 0f else tops[k - 1] + heights[k - 1]
+            var cur = if (k == 0) 0f else tops[k - 1] + heights[k - 1] + gap
             val nextTop = if (k < blockSources.size) tops[k] else Float.POSITIVE_INFINITY
             for (c in group) {
                 val trip = c.item as TimelineItem.Trip
                 val top = maxOf(dp(canvasStart, c.start), cur)
-                if (top + tripRow <= nextTop) {
+                if (top + tripRow + gap <= nextTop) {
                     trips += PlacedTrip(trip, top, tripRow)
-                    cur = top + tripRow
+                    cur = top + tripRow + gap
                 } else {
                     folded[foldTarget(k)] += trip
                 }

@@ -62,13 +62,13 @@ internal const val HourLabelTag = "timeline_hour_label"
 /** Sizes and offsets of the day canvas (dp unless noted). Text-linked offsets are multiplied by the font scale. */
 private object DayCanvasDefaults {
     /** Minimum width of the time column; it grows to fit the widest hour label and the now-pill. */
-    val TimeColumn = 52.dp
-    val BlockInset = 8.dp
+    val TimeColumn = 44.dp
+    val BlockInset = 4.dp
     val BorderWidth = 1.5.dp
     val RuleWidth = 1.dp
 
     /** Gap between the hour label's right edge and the rail, and between the time text and the pill's edge. */
-    val LabelGap = 8.dp
+    val LabelGap = 6.dp
     val PillPaddingH = 4.dp
     val PillPaddingV = 2.dp
 
@@ -142,7 +142,7 @@ fun DayCanvas(
     }
     val ordered = layout.ordered()
 
-    TarryCard(modifier = modifier, contentPadding = PaddingValues(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.l)) {
+    TarryCard(modifier = modifier, contentPadding = PaddingValues(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.l)) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -151,6 +151,8 @@ fun DayCanvas(
                     val stroke = DayCanvasDefaults.RuleWidth.toPx()
                     val railX = timeColumn.toPx()
                     layout.hourMarks.forEach { mark ->
+                        // No rule at the very top edge: hour rules only separate hours.
+                        if (mark.topDp <= 0f) return@forEach
                         val y = mark.topDp.dp.toPx()
                         drawLine(c.line, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
                     }

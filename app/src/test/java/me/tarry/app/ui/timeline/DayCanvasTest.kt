@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -53,6 +54,21 @@ class DayCanvasTest {
         assertThat(blockColor("timeline_row_v")).isEqualTo(sky.light.container)
         composeRule.onNodeWithTag("timeline_row_v")
             .assert(SemanticsMatcher("not dashed") { it.config[BlockDashedKey] == false })
+    }
+
+    @Test
+    fun blocksAreWide_andAdjacentBlocksNeverTouch() {
+        show(
+            listOf(
+                TimelineItem.Visit("a", at(9), at(10), "A"),
+                TimelineItem.Visit("b", at(10), at(11), "B"),
+            ),
+        )
+        val a = composeRule.onNodeWithTag("timeline_row_a").getUnclippedBoundsInRoot()
+        val b = composeRule.onNodeWithTag("timeline_row_b").getUnclippedBoundsInRoot()
+        // 20 dp gutter + 8 dp card padding + 44 dp time column + 4 dp inset (a little more if a label needs the room).
+        assertThat(a.left.value).isAtMost(80f)
+        assertThat((b.top - a.bottom).value).isAtLeast(4f - 0.01f)
     }
 
     @Test
