@@ -527,6 +527,8 @@ class CaptureCoordinatorTest {
         assertThat(pings.map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 120_000).inOrder()
         assertThat(pings.last().source).isEqualTo(PingSource.FUSED)
         assertThat(pings.last().zoneId).isEqualTo("Australia/Sydney")
+        // The departure ping keeps the activity from before the transition.
+        assertThat(pings.last().activity).isEqualTo(ActivityType.STILL)
     }
 
     @Test
@@ -571,5 +573,29 @@ class CaptureCoordinatorTest {
         coordinator.onActivity(ActivityType.WALKING)
 
         assertThat(savedPings()).hasSize(2)
+    }
+
+    @Test
+    fun jitterClassifiedFixBeyondTheStayRadiusStillTripsTheSafetyNet() = runBlocking {
+        stayRadius.radiusM = 50f
+        stationary()
+        // ~80 m away: beyond the 50 m stay radius but inside its own 90 m accuracy circle (jitter for the filter).
+        coordinator.onFixes(listOf(Fix(-33.00072, 151.0, 90f, clock.now + 60_000)))
+
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
+        assertThat(savedPings().map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 60_000).inOrder()
+    }
+
+    @Test
+    fun endingTheSessionSavesTheRememberedStationaryFixFirst() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        val id = coordinator.activeSessionId!!
+
+        coordinator.end(SessionEndReason.SCHEDULE_END)
+
+        val pings = trackingRepo.pingsForSession(id)
+        assertThat(pings.map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 120_000).inOrder()
+        assertThat(pings.last().source).isEqualTo(PingSource.FUSED)
     }
 }

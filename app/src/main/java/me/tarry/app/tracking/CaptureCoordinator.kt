@@ -125,6 +125,8 @@ class CaptureCoordinator @Inject constructor(
     /** Closes the session with [reason] and tears down location, geofence and activity updates. */
     suspend fun end(reason: SessionEndReason) = mutex.withLock {
         val open = session ?: return@withLock
+        // A stay that ends with the session still gets an accurate end time.
+        departurePing(open.id, activity)?.let { trackingRepo.savePings(listOf(it)) }
         session = null
         machine = null
         activityRegistered = false
@@ -165,7 +167,15 @@ class CaptureCoordinator @Inject constructor(
             }
             if (decision == FilterDecision.DROP_JITTER) {
                 // Not saved; remembered so the stay's end time is accurate if it is the last fix before departure.
+                // The machine still sees it: a fix beyond the stay radius whose accuracy circle covers its distance
+                // from the last saved ping must trip the safety net.
                 unsavedStationaryFix = fix
+                apply(m.onAcceptedFix(fix))
+                if (m.mode == CaptureMode.MOVING) {
+                    // This fix is the departure and the exit trigger: save it, tagged, and forget it as a candidate.
+                    unsavedStationaryFix = null
+                    accepted += pingOf(fix, m.takeNextPingSource(), open.id, activity)
+                }
                 continue
             }
             if (!decision.accepted) continue
@@ -206,7 +216,8 @@ class CaptureCoordinator @Inject constructor(
 
     /**
      * The latest jitter-dropped STATIONARY fix as a FUSED ping, if it is newer than the last saved one; forgets it.
-     * Gives a stay an accurate end time.
+     * Gives a stay an accurate end time. Departure pings deliberately bypass [PingFilter] state: they are not offered
+     * to it, so its last-accepted fix and speed checks are unchanged.
      */
     private fun departurePing(
         sessionId: Long,
@@ -220,7 +231,11 @@ class CaptureCoordinator @Inject constructor(
     }
 
     /** Saves the departure ping when a machine step has just moved STATIONARY to MOVING. */
-    private suspend fun saveDepartureIfLeftStationary(m: CaptureModeMachine, modeBefore: CaptureMode) {
+    private suspend fun saveDepartureIfLeftStationary(
+        m: CaptureModeMachine,
+        modeBefore: CaptureMode,
+        activity: ActivityType?,
+    ) {
         if (modeBefore != CaptureMode.STATIONARY || m.mode != CaptureMode.MOVING) return
         val sessionId = session?.id ?: return
         departurePing(sessionId, activity)?.let { trackingRepo.savePings(listOf(it)) }
@@ -231,17 +246,17 @@ class CaptureCoordinator @Inject constructor(
         m.stayRadiusM = stayRadius.stayRadiusM()
         val modeBefore = m.mode
         // The departure ping keeps the activity from before this transition.
-        val step = m.onActivity(type)
-        apply(step)
-        saveDepartureIfLeftStationary(m, modeBefore)
+        val previous = activity
         activity = type
+        apply(m.onActivity(type))
+        saveDepartureIfLeftStationary(m, modeBefore, previous)
     }
 
     suspend fun onGeofenceExit() = mutex.withLock {
         val m = machine ?: return@withLock
         val modeBefore = m.mode
         apply(m.onGeofenceExit())
-        saveDepartureIfLeftStationary(m, modeBefore)
+        saveDepartureIfLeftStationary(m, modeBefore, activity)
     }
 
     private suspend fun apply(step: MachineStep) {
@@ -268,8 +283,9 @@ class CaptureCoordinator @Inject constructor(
 
     /**
      * Keeps an open session fully armed: restarts location updates if the request died (a non-security failure
-     * ended the collector) and retries Activity Recognition if it is not registered. Called by every reconcile and
-     * health check. AR stays optional, so a failed retry is silent.
+     * ended the collector) and retries Activity Recognition if it is not registered. Called by every reconcile, by the
+     * periodic health check (at most 15 min) and when the app resolves a health state (for example after an in-app
+     * permission grant). AR stays optional, so a failed retry is silent.
      */
     suspend fun ensureCapture() = mutex.withLock {
         if (session == null) return@withLock

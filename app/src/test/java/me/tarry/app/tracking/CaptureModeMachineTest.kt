@@ -3,12 +3,13 @@ package me.tarry.app.tracking
 import com.google.common.truth.Truth.assertThat
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.PingSource
+import me.tarry.core.data.settings.Settings
 import org.junit.Test
 
 class CaptureModeMachineTest {
     private val config = TrackingConfig()
     private val min = 60_000L
-    private val DEFAULT_RADIUS = 100f
+    private val DEFAULT_RADIUS = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
 
     private fun machine(activityAvailable: Boolean = true) =
         CaptureModeMachine(config, activityAvailable).also { it.start() }
@@ -149,7 +150,7 @@ class CaptureModeMachineTest {
     @Test
     fun radiusChangeWhileStationaryAppliesOnlyToTheNextStop() {
         val m = machine()
-        m.stayRadiusM = 100f
+        m.stayRadiusM = DEFAULT_RADIUS
         m.onAcceptedFix(fixAt(0))
         m.onActivity(ActivityType.STILL)
 
@@ -162,5 +163,19 @@ class CaptureModeMachineTest {
         // Next stop uses the new radius.
         val step = m.onActivity(ActivityType.STILL)
         assertThat(step.effects.filterIsInstance<CaptureEffect.AddStayGeofence>().single().radiusM).isEqualTo(300f)
+    }
+
+    @Test
+    fun lateGeofenceExitAfterTheSafetyNetDoesNotTagTheNextFix() {
+        val m = machine()
+        m.onAcceptedFix(fixAt(0))
+        m.onActivity(ActivityType.STILL)
+        m.onAcceptedFix(fixAt(min, northM = DEFAULT_RADIUS + 50.0))
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.GEOFENCE_EXIT)
+
+        m.onGeofenceExit()
+        m.onAcceptedFix(fixAt(2 * min, northM = DEFAULT_RADIUS + 400.0))
+
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.FUSED)
     }
 }

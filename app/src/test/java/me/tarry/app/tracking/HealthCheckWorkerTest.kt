@@ -92,11 +92,13 @@ class HealthCheckWorkerTest {
         })
     }
 
+    private val activityClient = FakeActivityClient()
+
     private fun wire(locationClient: LocationClient) {
         val inputs = ScheduleInputsProvider(ScheduleRepository(db.scheduleDao()), trackingRepo, store, config, clock)
         val calculator = EffectiveScheduleCalculator(config)
         coordinator = CaptureCoordinator(
-            config, trackingRepo, timeline, store, locationClient, FakeActivityClient(), FakeGeofenceClient(), FakeStayRadius(), permissions,
+            config, trackingRepo, timeline, store, locationClient, activityClient, FakeGeofenceClient(), FakeStayRadius(), permissions,
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
@@ -104,7 +106,7 @@ class HealthCheckWorkerTest {
             clock, config,
         )
         val snapshots = TrackingSnapshotProvider(inputs, calculator, store, preconditions, coordinator, clock)
-        checker = HealthChecker(snapshots, HealthEvaluator(config), health, controller)
+        checker = HealthChecker(snapshots, HealthEvaluator(config), health, controller, coordinator)
     }
 
     @After
@@ -537,5 +539,23 @@ class HealthCheckWorkerTest {
 
         assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
         assertThat(alerts.posted.last()).isEqualTo(AttentionCause.NO_BACKGROUND_LOCATION)
+    }
+
+    @Test
+    fun checkAndClearResolvedRetryActivityRecognitionWhileASessionIsOpen() = runBlocking<Unit> {
+        activityClient.available = false
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        assertThat(activityClient.registerCalls).isEqualTo(1)
+
+        checker.check()
+        assertThat(activityClient.registerCalls).isEqualTo(2)
+
+        activityClient.available = true
+        checker.clearResolved()
+        assertThat(activityClient.registerCalls).isEqualTo(3)
+        assertThat(activityClient.registered).isTrue()
+
+        checker.check()
+        assertThat(activityClient.registerCalls).isEqualTo(3)
     }
 }

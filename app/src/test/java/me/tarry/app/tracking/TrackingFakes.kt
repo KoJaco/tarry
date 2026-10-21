@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.onCompletion
 import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.settings.Settings
 import java.time.Instant
 import java.time.ZoneId
 
@@ -113,6 +114,6 @@ class FakeAlertNotifier : HealthAlertNotifier {
     }
 }
 
-class FakeStayRadius(var radiusM: Float = 100f) : StayRadiusSource {
+class FakeStayRadius(var radiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()) : StayRadiusSource {
     override suspend fun stayRadiusM() = radiusM
 }

@@ -2,6 +2,7 @@ package me.tarry.app.tracking
 
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.PingSource
+import me.tarry.core.data.settings.Settings
 
 /** Parameters for a fused location request, derived from [TrackingConfig]. */
 data class LocationRequestParams(
@@ -39,7 +40,7 @@ class CaptureModeMachine(
      * Radius of the stay geofence created at the next STATIONARY entry (set by the coordinator from the user setting).
      * A stop that is already active keeps the radius it was created with.
      */
-    var stayRadiusM: Float = DEFAULT_STAY_RADIUS_M
+    var stayRadiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
 
     var mode: CaptureMode = CaptureMode.MOVING
         private set
@@ -48,7 +49,7 @@ class CaptureModeMachine(
     private var anchor: Fix? = null
     private var lastFix: Fix? = null
     private var geofenceCentre: Fix? = null
-    private var geofenceRadiusM: Float = DEFAULT_STAY_RADIUS_M
+    private var geofenceRadiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
     private var stillPending = false
     private var nextSource = PingSource.FUSED
 
@@ -100,11 +101,13 @@ class CaptureModeMachine(
 
     fun onGeofenceExit(): MachineStep {
         stillPending = false
+        if (mode != CaptureMode.STATIONARY) return step()
+        // Only a real exit from a stop is tagged: a late OS event after the safety net already fired is not.
         nextSource = PingSource.GEOFENCE_EXIT
-        return if (mode == CaptureMode.STATIONARY) enterMoving() else step()
+        return enterMoving()
     }
 
-    /** [fix] must already have passed [PingFilter]: accepted, or only held back from saving by the displacement gate. */
+    /** [fix] must already have passed [PingFilter]: accepted, or only held back from saving by the displacement gate or STATIONARY jitter. */
     fun onAcceptedFix(fix: Fix): MachineStep {
         lastFix = fix
         if (mode == CaptureMode.STATIONARY) {
@@ -177,7 +180,6 @@ class CaptureModeMachine(
     private fun step() = MachineStep(mode, emptyList())
 
     private companion object {
-        const val DEFAULT_STAY_RADIUS_M = 100f
         val MOVING_ACTIVITIES = setOf(ActivityType.WALKING, ActivityType.IN_VEHICLE, ActivityType.ON_BICYCLE)
     }
 }
