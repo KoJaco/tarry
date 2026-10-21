@@ -78,16 +78,7 @@ fun PermissionsScreen(
                     PermissionStep.BATTERY_OPTIMISATION -> openSettings(PermissionIntents.batteryOptimisation(context))
                 }
             },
-            onChange = { step ->
-                openSettings(
-                    when (step) {
-                        PermissionStep.NOTIFICATIONS -> PermissionIntents.notificationSettings(context)
-                        PermissionStep.EXACT_ALARMS -> PermissionIntents.exactAlarms(context)
-                        PermissionStep.BATTERY_OPTIMISATION -> PermissionIntents.batteryOptimisation(context)
-                        else -> PermissionIntents.appSettings(context)
-                    },
-                )
-            },
+            onChange = { step -> openSettings(changeIntentFor(step, context)) },
             onSkip = viewModel::skip,
             onConfirmBackgroundDisclosure = {
                 viewModel.hideBackgroundDisclosure()
