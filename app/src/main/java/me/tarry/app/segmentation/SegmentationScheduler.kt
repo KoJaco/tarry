@@ -1,7 +1,9 @@
 package me.tarry.app.segmentation
 
 import android.content.Context
+import androidx.work.BackoffPolicy
 import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
@@ -32,6 +34,15 @@ class SegmentationScheduler @Inject constructor(
         workManager.enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, OneTimeWorkRequestBuilder<SegmentationWorker>().build())
     }
 
+    /** Geocode places that have no address yet. Needs a network; KEEP: a queued or running batch covers the request. */
+    fun enqueueGeocode() {
+        val request = OneTimeWorkRequestBuilder<GeocodeWorker>()
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, config.geocodeBackoffSeconds, TimeUnit.SECONDS)
+            .build()
+        workManager.enqueueUniqueWork(GEOCODE, ExistingWorkPolicy.KEEP, request)
+    }
+
     /** Periodic run while capture is on. */
     fun startPeriodic() {
         val request = PeriodicWorkRequestBuilder<SegmentationWorker>(config.segmentationPeriodMin, TimeUnit.MINUTES).build()
@@ -54,5 +65,6 @@ class SegmentationScheduler @Inject constructor(
         const val NOW = "segmentation-now"
         const val PERIODIC = "segmentation-periodic"
         const val DAILY = "segmentation-daily"
+        const val GEOCODE = "geocode"
     }
 }

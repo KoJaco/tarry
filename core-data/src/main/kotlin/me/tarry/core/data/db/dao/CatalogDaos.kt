@@ -38,6 +38,13 @@ interface PlaceDao {
     @Query("SELECT * FROM place WHERE deleted = 0 ORDER BY lastVisitAt DESC")
     fun observeAll(): Flow<List<Place>>
 
+    /**
+     * Places still waiting for a geocode lookup, most recently visited first. `address` semantics: null = not looked up
+     * yet, "" (empty) = looked up and nothing found (never retried; treat as no address when displaying), else the address.
+     */
+    @Query("SELECT * FROM place WHERE deleted = 0 AND address IS NULL ORDER BY lastVisitAt DESC LIMIT :limit")
+    suspend fun getMissingAddress(limit: Int): List<Place>
+
     @Upsert suspend fun upsertDefaultTag(link: PlaceDefaultTag)
 
     @Query("DELETE FROM place_default_tag WHERE placeId = :placeId AND tagId = :tagId")

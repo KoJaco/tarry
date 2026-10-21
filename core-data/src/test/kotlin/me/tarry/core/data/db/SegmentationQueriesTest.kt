@@ -41,6 +41,21 @@ class SegmentationQueriesTest : DbTestBase() {
     }
 
     @Test
+    fun placeGetMissingAddress_onlyNullAddressNotDeletedNewestVisitFirstAndLimited() = runTest {
+        fun p(id: String, last: Long?, address: String? = null, deleted: Boolean = false) =
+            Place(id = id, centroidLat = 0.0, centroidLng = 0.0, address = address, lastVisitAt = last, updatedAt = 0, deleted = deleted)
+        db.placeDao().upsert(p("old", 100))
+        db.placeDao().upsert(p("new", 300))
+        db.placeDao().upsert(p("mid", 200))
+        db.placeDao().upsert(p("has", 400, address = "1 Main St"))
+        db.placeDao().upsert(p("empty", 500, address = ""))
+        db.placeDao().upsert(p("gone", 600, deleted = true))
+
+        assertThat(db.placeDao().getMissingAddress(10).map { it.id }).containsExactly("new", "mid", "old").inOrder()
+        assertThat(db.placeDao().getMissingAddress(2).map { it.id }).containsExactly("new", "mid").inOrder()
+    }
+
+    @Test
     fun visitUnfrozenAndFrozenInRange_splitByFrozenAndSkipDeleted() = runTest {
         db.visitDao().upsertAll(
             listOf(

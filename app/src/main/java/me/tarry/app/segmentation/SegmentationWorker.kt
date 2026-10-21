@@ -16,10 +16,12 @@ class SegmentationWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val runner: SegmentationRunner,
     private val clock: TrackingClock,
+    private val scheduler: SegmentationScheduler,
 ) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result =
         try {
             runner.run(clock.nowMs())
+            scheduler.enqueueGeocode()
             Result.success()
         } catch (e: CancellationException) {
             throw e

@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import androidx.work.WorkInfo
 import androidx.work.CoroutineWorker
 import androidx.work.ListenableWorker
+import androidx.work.NetworkType
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
@@ -81,6 +82,18 @@ class SegmentationSchedulerTest {
         assertThat(info.constraints.requiresCharging()).isTrue()
         assertThat(info.periodicityInfo!!.repeatIntervalMillis).isEqualTo(TimeUnit.HOURS.toMillis(config.segmentationDailyPeriodHours))
         assertThat(SegmentationScheduler.DAILY).isEqualTo("segmentation-daily")
+    }
+
+    @Test
+    fun geocodeIsUniqueNeedsNetworkAndKeepsTheQueuedRun() {
+        scheduler.enqueueGeocode()
+        val first = infos(SegmentationScheduler.GEOCODE).single()
+        scheduler.enqueueGeocode()
+
+        val info = infos(SegmentationScheduler.GEOCODE).single()
+        assertThat(info.id).isEqualTo(first.id)
+        assertThat(info.constraints.requiredNetworkType).isEqualTo(NetworkType.CONNECTED)
+        assertThat(SegmentationScheduler.GEOCODE).isEqualTo("geocode")
     }
 
     @Test

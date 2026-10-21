@@ -6,6 +6,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
+import androidx.work.WorkManager
+import androidx.work.Configuration
+import androidx.work.testing.WorkManagerTestInitHelper
+import me.tarry.app.tracking.TrackingConfig
 import androidx.work.testing.TestListenableWorkerBuilder
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
@@ -29,6 +33,7 @@ class SegmentationWorkerTest {
 
     @Before
     fun setUp() {
+        WorkManagerTestInitHelper.initializeTestWorkManager(ApplicationProvider.getApplicationContext(), Configuration.Builder().build())
         db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), TarryDatabase::class.java)
             .allowMainThreadQueries()
             .build()
@@ -49,7 +54,10 @@ class SegmentationWorkerTest {
             .setRunAttemptCount(attempt)
             .setWorkerFactory(object : WorkerFactory() {
                 override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) =
-                    SegmentationWorker(appContext, workerParameters, runner, FakeClock(now = 1_700_000_000_000L))
+                    SegmentationWorker(
+                        appContext, workerParameters, runner, FakeClock(now = 1_700_000_000_000L),
+                        SegmentationScheduler(appContext, TrackingConfig()),
+                    )
             })
             .build()
 
@@ -57,6 +65,9 @@ class SegmentationWorkerTest {
     fun successfulRunReturnsSuccess() = runBlocking<Unit> {
         assertThat(work(0).startWork().get()).isEqualTo(ListenableWorker.Result.success())
         assertThat(db.segmentationCheckpointDao().getById()!!.processedUntil).isEqualTo(1_700_000_000_000L)
+        val geocode = WorkManager.getInstance(ApplicationProvider.getApplicationContext<Context>())
+            .getWorkInfosForUniqueWork(SegmentationScheduler.GEOCODE).get()
+        assertThat(geocode).hasSize(1)
     }
 
     @Test
