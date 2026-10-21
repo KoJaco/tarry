@@ -18,6 +18,11 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertLeftPositionInRootIsEqualTo
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -66,6 +71,46 @@ class ComponentsTest {
     fun settingsValueRow_clickable_isButton() {
         composeRule.setContent { SettingsValueRow(title = "Stop radius", value = "100 m", onClick = {}) }
         composeRule.onNode(hasText("Stop radius")).assert(hasRole(Role.Button)).assert(hasText("100 m"))
+    }
+
+    @Test
+    fun settingsGroup_rowsAreMergedButtons_atLeast64dp_orReadOnly() {
+        var clicks = 0
+        composeRule.setContent {
+            SettingsGroup {
+                row("Stop radius", onClick = { clicks++ }, icon = R.drawable.ic_radius, subtitle = "100 m")
+                row("Rounding", value = "15 min")
+            }
+        }
+        val tappable = composeRule.onNode(hasText("Stop radius"))
+        tappable.assert(hasRole(Role.Button)).assertHasClickAction().assert(hasText("100 m")).assertHeightIsAtLeast(64.dp)
+        tappable.performClick()
+        assertThat(clicks).isEqualTo(1)
+        val readOnly = composeRule.onNode(hasText("Rounding"))
+        readOnly.assert(hasText("15 min")).assertHeightIsAtLeast(64.dp)
+        readOnly.assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Role))
+    }
+
+    @Test
+    fun settingsGroup_dividersSitBetweenRows_andTakeNoFocusOrClicks() {
+        composeRule.setContent {
+            SettingsGroup {
+                row("One", onClick = {}, icon = R.drawable.ic_radius)
+                row("Two", onClick = {}, icon = R.drawable.ic_permissions)
+                row("Three", onClick = {})
+            }
+        }
+        val dividers = composeRule.onAllNodesWithTag(SettingsGroupDividerTag, useUnmergedTree = true)
+        dividers.assertCountEquals(2)
+        for (i in 0..1) {
+            dividers[i].assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsActions.OnClick))
+            dividers[i].assert(SemanticsMatcher.keyNotDefined(androidx.compose.ui.semantics.SemanticsActions.RequestFocus))
+        }
+        // Inset to the text start: row padding 16 + icon 24 + gap 16 = 56 dp for an icon row, 16 dp without.
+        dividers[0].assertLeftPositionInRootIsEqualTo(56.dp)
+        // The divider runs to the right edge of the card.
+        val card = composeRule.onRoot().getUnclippedBoundsInRoot()
+        assertThat(dividers[0].getUnclippedBoundsInRoot().right).isEqualTo(card.right)
     }
 
     @Test

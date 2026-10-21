@@ -3,7 +3,6 @@ package me.tarry.app.ui.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -14,7 +13,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -37,9 +35,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.R
 import me.tarry.app.ui.components.SectionHeader
-import me.tarry.app.ui.components.SettingsRow
-import me.tarry.app.ui.components.TarryCard
-import me.tarry.app.ui.components.SettingsValueRow
+import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
@@ -140,36 +136,27 @@ fun SettingsContent(
             color = TarryTheme.colors.ink,
         )
         SectionHeader(stringResource(R.string.settings_section_tracking), Modifier.padding(top = space.m))
-        if (settings != null) {
-            SettingsValueRow(
-                title = stringResource(R.string.settings_stay_radius),
-                value = stringResource(R.string.settings_stay_radius_value, settings.stayGeofenceRadiusM),
-                onClick = { picker = Picker.RADIUS },
-                icon = R.drawable.ic_radius,
-            )
+        val stayRadiusTitle = stringResource(R.string.settings_stay_radius)
+        val stayRadiusValue = settings?.let { stringResource(R.string.settings_stay_radius_value, it.stayGeofenceRadiusM) }
+        val permissionsTitle = stringResource(R.string.settings_permissions)
+        val sessionsTitle = stringResource(R.string.settings_sessions)
+        SettingsGroup {
+            if (stayRadiusValue != null) {
+                row(stayRadiusTitle, onClick = { picker = Picker.RADIUS }, icon = R.drawable.ic_radius, subtitle = stayRadiusValue)
+            }
+            row(permissionsTitle, onClick = onOpenPermissions, icon = R.drawable.ic_permissions)
+            row(sessionsTitle, onClick = onOpenSessions, icon = R.drawable.ic_sessions)
         }
-        SettingsRow(stringResource(R.string.settings_permissions), onOpenPermissions, icon = R.drawable.ic_permissions)
-        SettingsRow(stringResource(R.string.settings_sessions), onOpenSessions, icon = R.drawable.ic_sessions)
         if (settings != null) {
             SectionHeader(stringResource(R.string.settings_section_appearance), Modifier.padding(top = space.m))
-            SettingsValueRow(
-                title = stringResource(R.string.settings_theme),
-                value = stringResource(settings.theme.labelRes()),
-                onClick = { picker = Picker.THEME },
-                icon = R.drawable.ic_theme,
-            )
+            val themeTitle = stringResource(R.string.settings_theme)
+            val themeValue = stringResource(settings.theme.labelRes())
+            SettingsGroup {
+                row(themeTitle, onClick = { picker = Picker.THEME }, icon = R.drawable.ic_theme, subtitle = themeValue)
+            }
             SectionHeader(stringResource(R.string.settings_section_billing), Modifier.padding(top = space.m))
-            TarryCard(contentPadding = PaddingValues(0.dp)) {
-                billing.forEachIndexed { index, (label, value) ->
-                    if (index > 0) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = space.l),
-                            thickness = 1.dp,
-                            color = TarryTheme.colors.line,
-                        )
-                    }
-                    SettingsValueRow(label, value)
-                }
+            SettingsGroup {
+                billing.forEach { (label, value) -> row(label, value = value) }
             }
         }
     }

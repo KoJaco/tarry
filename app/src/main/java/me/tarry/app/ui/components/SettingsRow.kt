@@ -163,7 +163,7 @@ private fun RowFrame(
 }
 
 @Composable
-private fun Chevron() {
+internal fun Chevron() {
     Icon(
         painter = painterResource(R.drawable.ic_chevron_right),
         contentDescription = null,
