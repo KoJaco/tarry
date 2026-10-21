@@ -52,6 +52,7 @@ data class SessionsActions(
     val onExport: (ExportRequest) -> Unit,
     val onStartTestWindow: () -> Unit,
     val onDismissExportResult: () -> Unit,
+    val onRunSegmentation: () -> Unit = {},
 )
 
 private val MinTouchTarget = 48.dp
@@ -75,6 +76,12 @@ fun SessionsContent(
                 modifier = Modifier.padding(vertical = 8.dp),
             )
             ExportResultText(exportResult, actions.onDismissExportResult)
+            OutlinedButton(
+                onClick = actions.onRunSegmentation,
+                modifier = Modifier.heightIn(min = MinTouchTarget).testTag("sessions_run_segmentation"),
+            ) {
+                Text(stringResource(R.string.sessions_run_segmentation))
+            }
             if (showTestWindow) {
                 Text(stringResource(R.string.sessions_test_window_hint), style = MaterialTheme.typography.bodyMedium)
                 Button(

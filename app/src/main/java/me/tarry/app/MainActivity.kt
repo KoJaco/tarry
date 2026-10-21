@@ -7,6 +7,7 @@ import androidx.activity.enableEdgeToEdge
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.HealthChecker
 import me.tarry.app.tracking.ReconcileSource
@@ -23,6 +24,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var controller: TrackingController
 
     @Inject lateinit var healthChecker: HealthChecker
+
+    @Inject lateinit var segmentationScheduler: SegmentationScheduler
 
     @Inject @CaptureScope lateinit var captureScope: CoroutineScope
 
@@ -41,6 +44,7 @@ class MainActivity : ComponentActivity() {
         // Permissions and settings can change while we were away: re-evaluate now, and let the controller
         // fix what it can (the app is in the foreground, so it may start the service directly).
         trackingState.refresh()
+        segmentationScheduler.enqueueNow()
         captureScope.launch {
             controller.reconcile(ReconcileSource.UI)
             healthChecker.clearResolved()

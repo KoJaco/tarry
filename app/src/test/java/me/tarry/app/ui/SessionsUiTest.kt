@@ -33,7 +33,8 @@ class SessionsUiTest {
 
     private val exports = mutableListOf<ExportRequest>()
     private var testWindowTaps = 0
-    private val actions = SessionsActions({ exports += it }, { testWindowTaps++ }, {})
+    private var segmentationRuns = 0
+    private val actions = SessionsActions({ exports += it }, { testWindowTaps++ }, {}, { segmentationRuns++ })
     private val session = SessionListItem(
         id = 7, start = 1_700_000_000_000, end = 1_700_000_600_000, zoneId = "Australia/Sydney",
         trigger = SessionTrigger.SCHEDULE, endReason = SessionEndReason.SCHEDULE_END, pingCount = 42,
@@ -72,6 +73,14 @@ class SessionsUiTest {
         composeRule.setContent { SessionsContent(emptyList(), true, null, actions) }
         composeRule.onNodeWithTag("sessions_test_window").performClick()
         assertThat(testWindowTaps).isEqualTo(1)
+    }
+
+    @Test
+    fun runSegmentationButtonInvokesActionAndMeetsTouchTarget() {
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
+        composeRule.onNodeWithTag("sessions_run_segmentation").assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("Run segmentation now").performClick()
+        assertThat(segmentationRuns).isEqualTo(1)
     }
 
     @Test

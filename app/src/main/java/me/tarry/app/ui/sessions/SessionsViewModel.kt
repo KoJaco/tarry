@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.export.RawExporter
+import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.TrackingController
 import me.tarry.core.data.model.SessionEndReason
@@ -43,6 +44,7 @@ class SessionsViewModel @Inject constructor(
     trackingRepo: TrackingRepository,
     private val exporter: RawExporter,
     private val controller: TrackingController,
+    private val segmentationScheduler: SegmentationScheduler,
     // The test window must be scheduled even if the user leaves the screen right after tapping.
     @param:CaptureScope private val captureScope: CoroutineScope,
 ) : ViewModel() {
@@ -73,6 +75,10 @@ class SessionsViewModel @Inject constructor(
 
     fun dismissExportResult() {
         _exportResult.value = null
+    }
+
+    fun runSegmentation() {
+        segmentationScheduler.enqueueNow()
     }
 
     /** Debug builds only; the controller ignores it in release builds. */

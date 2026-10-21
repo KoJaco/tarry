@@ -94,6 +94,7 @@
 
     <string name="sessions_title">Sessions</string>
     <string name="sessions_empty">No sessions recorded yet</string>
+    <string name="sessions_run_segmentation">Run segmentation now</string>
     <string name="sessions_test_window">Start test window</string>
     <string name="sessions_test_window_hint">Starts a 10 minute tracking window in about 2 minutes (debug builds only).</string>
     <string name="sessions_row_title">%1$s to %2$s</string>

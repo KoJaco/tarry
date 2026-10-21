@@ -46,6 +46,7 @@ fun SessionsScreen(
             },
             onStartTestWindow = viewModel::startTestWindow,
             onDismissExportResult = viewModel::dismissExportResult,
+            onRunSegmentation = viewModel::runSegmentation,
         )
     }
     SessionsContent(
