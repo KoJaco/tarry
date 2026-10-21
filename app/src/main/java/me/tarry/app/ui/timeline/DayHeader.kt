@@ -148,6 +148,7 @@ private fun DayPickerDialog(
             TertiaryButton(text = stringResource(R.string.timeline_date_picker_cancel), onClick = onDismiss)
         },
     ) {
-        DatePicker(state = state)
+        // The edit-mode toggle is hidden: M3 rebuilds the calendar grid on every mode switch (rows animate in); a day pick is all we need.
+        DatePicker(state = state, showModeToggle = false)
     }
 }
