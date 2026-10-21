@@ -6,117 +6,181 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyKey
+import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.components.PreviewSurface
+import me.tarry.app.ui.components.TarryPreviews
+import me.tarry.app.ui.components.rememberReducedMotion
 import me.tarry.app.ui.theme.TarryTheme
 
-private val ToggleSize = 64.dp
-private val BadgeSize = 14.dp
+/** Test tag of the pulse ring (present only while TRACKING). */
+const val PulseRingTag = "trackingPulseRing"
 
-/** Large circular tracking toggle. Renders [state]; tapping calls [onClick]. */
+/** The ring's current scale, exposed so tests can assert it does not animate under reduced motion. */
+internal val PulseRingScale = SemanticsPropertyKey<Float>("PulseRingScale")
+private var SemanticsPropertyReceiver.pulseRingScale by PulseRingScale
+
+private const val PulseMaxScale = 1.35f
+private const val PulseStaticScale = 1.15f
+private const val PulseDurationMs = 1600
+
+/**
+ * Tracking toggle pill in one of four states, each different in shape, glyph and label as well as
+ * colour. Tapping or long-pressing (with haptics) calls [onClick].
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackingToggle(
     state: TrackingState,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MaterialTheme.colorScheme
-    val tarry = TarryTheme.colors
+    val colors = TarryTheme.colors
+    val shape = TarryTheme.shapes.pill
     val stateLabel = stringResource(state.labelRes())
     val description = stringResource(R.string.tracking_toggle_description, stateLabel)
+    val haptics = LocalHapticFeedback.current
 
     val container: Color
     val content: Color
     when (state) {
         TrackingState.TRACKING -> {
-            container = colors.primary
-            content = colors.onPrimary
+            container = colors.accent
+            content = colors.onAccent
+        }
+        TrackingState.IDLE -> {
+            container = Color.Transparent
+            content = colors.ink
         }
         TrackingState.PAUSED -> {
-            container = tarry.inset
-            content = tarry.accentStrong
+            container = colors.inset
+            content = colors.ink
         }
-        TrackingState.IDLE, TrackingState.ATTENTION -> {
-            container = colors.surface
-            content = colors.onSurface
+        TrackingState.ATTENTION -> {
+            container = colors.ink
+            content = colors.onInk
         }
     }
-    val outline = state == TrackingState.IDLE || state == TrackingState.ATTENTION
 
-    // The pulse ring may be clipped by the bar Surface until phase 3 styling.
-    Box(modifier = modifier.size(ToggleSize), contentAlignment = Alignment.Center) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
         if (state == TrackingState.TRACKING) {
-            PulseRing(color = colors.primary)
+            PulseRing(color = colors.pulse, modifier = Modifier.matchParentSize())
         }
-        Box(
+        Row(
             modifier = Modifier
-                .size(ToggleSize)
-                .clip(CircleShape)
+                .widthIn(min = 48.dp)
+                .heightIn(min = 48.dp)
+                .clip(shape)
                 .background(container)
-                .then(
-                    if (outline) Modifier.border(BorderStroke(2.dp, colors.outline), CircleShape)
-                    else Modifier
-                )
+                .then(if (state == TrackingState.IDLE) Modifier.border(1.5.dp, colors.ink, shape) else Modifier)
                 .semantics { contentDescription = description }
-                .clickable(role = Role.Button, onClick = onClick),
-            contentAlignment = Alignment.Center,
+                .combinedClickable(
+                    role = Role.Button,
+                    onClick = onClick,
+                    onLongClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onClick()
+                    },
+                )
+                .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.s),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s, Alignment.CenterHorizontally),
         ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_location_pin),
-                contentDescription = null,
-                tint = content,
-                modifier = Modifier.size(32.dp),
-            )
-        }
-        if (state == TrackingState.ATTENTION) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(BadgeSize)
-                    .background(colors.error, CircleShape)
-                    .border(2.dp, colors.surface, CircleShape),
+            StateMark(state)
+            Text(
+                text = stateLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = content,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f, fill = false),
             )
         }
     }
 }
 
+/** Dot or glyph that differs per state: filled dot, hollow dot, pause glyph, alert dot. */
 @Composable
-private fun PulseRing(color: Color) {
-    val transition = rememberInfiniteTransition(label = "pulse")
-    val progress = transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(durationMillis = 2400, easing = LinearEasing), RepeatMode.Restart),
-        label = "pulseProgress",
-    )
+private fun StateMark(state: TrackingState) {
+    val colors = TarryTheme.colors
+    when (state) {
+        TrackingState.TRACKING ->
+            Box(Modifier.size(10.dp).background(colors.onAccent, CircleShape))
+        TrackingState.IDLE ->
+            Box(Modifier.size(10.dp).border(2.dp, colors.ink, CircleShape))
+        TrackingState.PAUSED ->
+            Icon(
+                painter = painterResource(R.drawable.ic_pause),
+                contentDescription = null,
+                tint = colors.accentStrong,
+                modifier = Modifier.size(18.dp),
+            )
+        TrackingState.ATTENTION ->
+            Box(Modifier.size(12.dp).background(colors.alertDot, CircleShape))
+    }
+}
+
+@Composable
+private fun PulseRing(color: Color, modifier: Modifier = Modifier) {
+    val reduced = rememberReducedMotion()
+    val progress: State<Float> = if (reduced) {
+        remember { mutableFloatStateOf(0f) }
+    } else {
+        rememberInfiniteTransition(label = "pulse").animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(durationMillis = PulseDurationMs, easing = LinearEasing), RepeatMode.Restart),
+            label = "pulseProgress",
+        )
+    }
+    val scale = if (reduced) PulseStaticScale else 1f + (PulseMaxScale - 1f) * progress.value
+    val alpha = if (reduced) 1f else 1f - progress.value
     Box(
-        modifier = Modifier
-            .size(ToggleSize)
-            .scale(1f + 0.5f * progress.value)
-            .alpha(0.5f * (1f - progress.value))
-            .border(3.dp, color, CircleShape),
+        modifier = modifier
+            .testTag(PulseRingTag)
+            .semantics { pulseRingScale = scale }
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+            }
+            .border(3.dp, color, TarryTheme.shapes.pill),
     )
 }
 
@@ -125,4 +189,12 @@ private fun TrackingState.labelRes(): Int = when (this) {
     TrackingState.IDLE -> R.string.tracking_state_idle
     TrackingState.PAUSED -> R.string.tracking_state_paused
     TrackingState.ATTENTION -> R.string.tracking_state_attention
+}
+
+@TarryPreviews
+@Composable
+private fun TrackingTogglePreview() = PreviewSurface {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(16.dp)) {
+        TrackingState.entries.forEach { TrackingToggle(state = it, onClick = {}) }
+    }
 }
