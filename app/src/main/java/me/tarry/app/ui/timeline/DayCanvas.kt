@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -56,6 +57,7 @@ import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.TripMode
 import java.time.ZoneId
+import kotlin.math.abs
 import kotlin.math.floor
 
 /** Test tag of every hour label in the time column. */
@@ -89,11 +91,8 @@ private object DayCanvasDefaults {
     val GapIconSize = 20.dp
     val TripIconSize = 16.dp
     val InnerGapIconSize = 16.dp
-    val InnerGapMarkerWidth = 6.dp
-    val InnerGapMarkerRadius = 2.dp
-
-    /** Content start inside a block with outage markers: border (1.5) + marker (6) + 4 dp clearance, from the block edge. */
-    val InnerGapContentStart = 11.5.dp
+    /** Radius of the outage dot that sits on a visit block's left border. */
+    val InnerGapDotRadius = 2.5.dp
 
     /** Height of the "Includes N min not tracked" line (per unit of font scale). */
     const val SummaryLineDp = 20f
@@ -172,6 +171,7 @@ fun DayCanvas(
                 .semantics { isTraversalGroup = true },
         ) {
             layout.hourMarks.forEachIndexed { i, mark ->
+                if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed
                 Text(
                     text = hourLabels[i],
                     style = hourStyle,
@@ -243,21 +243,21 @@ private fun VisitBlock(
     val showChip = !oneLine && job == null && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
     val (titleLines, detailLines) = textLines(placed.heightDp, fontScale, showChip)
 
-    // The outage markers are part of the background: after the fill, before the content, and under the border.
-    val bands = Modifier.innerGapMarkers(placed.innerGaps)
+    // Outage dots sit on top of the left border, outside the block clip.
+    val dots = Modifier.innerGapDots(placed.innerGaps)
     val notTracked = notTrackedText(placed.innerGaps, times)
     val d = DayCanvasDefaults
     val summaryRoom = d.BlockPaddingV.value * 2 + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale +
         (if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f) + d.SummaryLineDp * fontScale
     val showSummary = notTracked != null && !oneLine && placed.heightDp >= summaryRoom
-    val startPadding = if (placed.innerGaps.isEmpty()) TarryTheme.space.m else maxOf(TarryTheme.space.m, d.InnerGapContentStart)
     val look = if (job != null) {
-        Modifier.clip(shape).background(container).then(bands).border(DayCanvasDefaults.BorderWidth, job.border, shape)
+        Modifier.clip(shape).background(container).border(DayCanvasDefaults.BorderWidth, job.border, shape)
     } else {
-        Modifier.clip(shape).background(container).then(bands).dashedBorder(c.outline, shape)
+        Modifier.clip(shape).background(container).dashedBorder(c.outline, shape)
     }
     Box(
         modifier = modifier
+            .then(dots)
             .then(look)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
@@ -266,7 +266,7 @@ private fun VisitBlock(
                 blockDashed = job == null
                 if (placed.innerGaps.isNotEmpty()) {
                     innerGapHatch = placed.innerGaps.size
-                    innerGapRects = innerGapMarkerRects(placed.innerGaps)
+                    innerGapRects = innerGapDotRects(placed.innerGaps)
                 }
             }
             .testTag("timeline_row_${visit.id}"),
@@ -275,7 +275,7 @@ private fun VisitBlock(
         modifier = Modifier
             .fillMaxSize()
             .padding(
-                start = startPadding,
+                start = TarryTheme.space.m,
                 end = TarryTheme.space.m,
                 top = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV,
                 bottom = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV,
@@ -344,34 +344,6 @@ private fun VisitBlock(
     }
 }
 
-/** Outage rects (dp, relative to the block's top-left): a marker strip just inside the left border. */
-private fun innerGapMarkerRects(innerGaps: List<InnerGap>): List<Rect> {
-    val left = DayCanvasDefaults.BorderWidth.value
-    return innerGaps.map { Rect(left, it.offsetDp, left + DayCanvasDefaults.InnerGapMarkerWidth.value, it.offsetDp + it.heightDp) }
-}
-
-/**
- * Outages inside a visit as an edge marker: a solid `alert` bar with small rounded ends just inside the left border, at
- * the outage's proportional offset and height. It is part of the background (clipped to the block shape, under the
- * border) and the content is padded past it, so it never sits under text. Solid rather than hatched: a hatch is not
- * legible at 6 dp. Decorative for a11y: the spoken description covers it.
- */
-@Composable
-private fun Modifier.innerGapMarkers(innerGaps: List<InnerGap>): Modifier {
-    if (innerGaps.isEmpty()) return this
-    val color = TarryTheme.colors.alert
-    return drawBehind {
-        val r = DayCanvasDefaults.InnerGapMarkerRadius.toPx()
-        innerGapMarkerRects(innerGaps).forEach { rect ->
-            drawRoundRect(
-                color,
-                topLeft = Offset(rect.left.dp.toPx(), rect.top.dp.toPx()),
-                size = Size(rect.width.dp.toPx(), rect.height.dp.toPx()),
-                cornerRadius = CornerRadius(r, r),
-            )
-        }
-    }
-}
 
 /**
  * How many lines the title and the time line of a block may use. At normal font size both stay on one line and
@@ -471,6 +443,13 @@ private fun TripRow(trip: TimelineItem.Trip, times: ClampedTimes, description: S
     }
 }
 
+/** True when the now-pill would overlap the hour label at [markDp]; that label is hidden, as calendars do. */
+internal fun hourLabelCoveredByNowPill(markDp: Float, nowDp: Float?, fontScale: Float): Boolean {
+    if (nowDp == null) return false
+    val reach = (DayCanvasDefaults.NowPillHalfHeight + DayCanvasDefaults.HourLabelHalfLine).value * fontScale
+    return abs(markDp - nowDp) < reach
+}
+
 @Composable
 private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, timeColumn: Dp, fontScale: Float) {
     val c = TarryTheme.colors
@@ -532,5 +511,32 @@ private fun Modifier.hatch(color: Color): Modifier = drawBehind {
     while (x < size.width) {
         drawLine(color, Offset(x, size.height), Offset(x + size.height, 0f), strokeWidth = stroke)
         x += step
+    }
+}
+
+/** Outage dots (dp, relative to the block's top-left): one dot on the left border at each outage's midpoint. */
+private fun innerGapDotRects(innerGaps: List<InnerGap>): List<Rect> {
+    val r = DayCanvasDefaults.InnerGapDotRadius.value
+    val x = DayCanvasDefaults.BorderWidth.value / 2
+    return innerGaps.map {
+        val y = it.offsetDp + it.heightDp / 2
+        Rect(x - r, y - r, x + r, y + r)
+    }
+}
+
+/**
+ * Outages inside a visit as a small `alert` dot sitting on the block's left border, at the outage's real time. It is
+ * drawn after the block (above the border, outside its clip), so it never touches text. Decorative for a11y: the
+ * spoken description and the "Includes N min not tracked" line cover it.
+ */
+@Composable
+private fun Modifier.innerGapDots(innerGaps: List<InnerGap>): Modifier {
+    if (innerGaps.isEmpty()) return this
+    val color = TarryTheme.colors.alert
+    return drawWithContent {
+        drawContent()
+        innerGapDotRects(innerGaps).forEach { rect ->
+            drawCircle(color, radius = rect.width.dp.toPx() / 2, center = Offset(rect.center.x.dp.toPx(), rect.center.y.dp.toPx()))
+        }
     }
 }

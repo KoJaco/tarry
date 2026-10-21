@@ -263,7 +263,7 @@ class DayCanvasTest {
     }
 
     @Test
-    fun innerGapMarkerSitsInTheLeftStripAndNeverUnderTheTitle() {
+    fun innerGapDotSitsOnTheLeftBorderAndNeverUnderTheTitle() {
         show(
             listOf(
                 TimelineItem.Visit("v", at(9), at(11), "Marina"),
@@ -275,9 +275,9 @@ class DayCanvasTest {
         val rects = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().config[InnerGapRectsKey]
         assertThat(rects).hasSize(1)
         rects.forEach {
-            assertThat(it.left).isAtLeast(0f)
-            assertThat(it.right).isAtMost(8f)
-            assertThat(it.height).isAtLeast(4f)
+            assertThat(it.center.x).isWithin(1f).of(0.75f)
+            assertThat(it.width).isWithin(0.01f).of(5f)
+            assertThat(it.height).isWithin(0.01f).of(5f)
             assertThat(it.right).isLessThan((title.left - block.left).value)
         }
     }
