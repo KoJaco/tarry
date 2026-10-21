@@ -142,6 +142,39 @@ class SegmentationRunnerTest {
     }
 
     @Test
+    fun longTripKeepsItsOriginWhenALaterRunWidensIntoIt() = runBlocking<Unit> {
+        val siteC = -34.2000 to 151.6000
+        sessionId = db.trackingSessionDao().upsert(
+            TrackingSession(start = t0 - minute, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE),
+        )
+        val pings = mutableListOf<LocationPing>()
+        for (k in 0..10) pings += ping(t0 + k * 3 * minute, siteA)
+        // A 45 minute drive: longer than the 30 minute overlap, so the second run starts inside the trip.
+        for (j in 1..44) {
+            val f = j / 45.0
+            pings += ping(
+                t0 + (30 + j) * minute,
+                (siteA.first + (siteC.first - siteA.first) * f) to (siteA.second + (siteC.second - siteA.second) * f),
+            )
+        }
+        pings += (75..100 step 3).map { ping(t0 + it * minute, siteC) }
+        db.locationPingDao().upsertAll(pings)
+        runner.run(t0 + 101 * minute)
+        val tripBefore = trips().single()
+        assertThat(tripBefore.fromVisitId).isNotNull()
+
+        db.locationPingDao().upsertAll((103..115 step 3).map { ping(t0 + it * minute, siteC) })
+        runner.run(t0 + 117 * minute)
+
+        val tripAfter = trips().single()
+        assertThat(tripAfter.id).isEqualTo(tripBefore.id)
+        assertThat(tripAfter.fromVisitId).isEqualTo(tripBefore.fromVisitId)
+        assertThat(tripAfter.toVisitId).isNotNull()
+        assertThat(tripAfter.distanceM).isWithin(1f).of(tripBefore.distanceM)
+        assertThat(visits()).hasSize(2)
+    }
+
+    @Test
     fun frozenVisitIsUntouchedAndNothingOverlapsIt() = runBlocking<Unit> {
         insertTwoSiteDay()
         val frozen = Visit(

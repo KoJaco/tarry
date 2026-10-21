@@ -76,12 +76,20 @@ class SegmentationRunner @Inject constructor(
 
         // Widen once so a detected row is never half inside the range. Segmentation-owned gaps are widened too:
         // they are rebuilt from the range, and reconciling a partly covered gap would otherwise shrink it.
+        val unfrozenTrips = tripDao.getUnfrozenInRange(from, to)
         val widenedFrom = buildList {
             visitDao.getUnfrozenInRange(from, to).forEach { add(it.start) }
-            tripDao.getUnfrozenInRange(from, to).forEach { add(it.start) }
+            unfrozenTrips.forEach { add(it.start) }
             gapDao.getInRange(from, to).filter { it.cause.toSegmentationOrNull() != null }.forEach { add(it.start) }
         }.minOrNull()
-        if (widenedFrom != null && widenedFrom < from) from = widenedFrom
+        if (widenedFrom != null && widenedFrom < from) {
+            from = widenedFrom
+            // A trip reached by the widening needs its origin stay in the input, or it is re-emitted without one.
+            // One extra step, not a loop: the origin visit's start becomes the bound.
+            unfrozenTrips.mapNotNull { it.fromVisitId }.mapNotNull { visitDao.getById(it) }
+                .filter { !it.deleted && !it.frozen }.minOfOrNull { it.start }
+                ?.let { if (it < from) from = it }
+        }
 
         val pings = pingDao.getInRange(from, to)
         val sessions = sessionDao.getOverlapping(from, to)
@@ -136,14 +144,14 @@ class SegmentationRunner @Inject constructor(
         result.newPlaces.forEachIndexed { i, p ->
             val id = newPlaceIds[i]
             byId[id] = Place(
-                id = id, centroidLat = p.lat, centroidLng = p.lng, radiusM = params.placeMatchRadiusM.toFloat(),
+                id = id, centroidLat = p.lat, centroidLng = p.lng, radiusM = p.radiusM.toFloat(),
                 updatedAt = now,
             )
             dirty += id
         }
         for (u in result.placeUpdates) {
             val old = byId[u.placeId] ?: continue
-            if (haversineMeters(old.centroidLat, old.centroidLng, u.lat, u.lng) > PLACE_MOVE_THRESHOLD_M) {
+            if (haversineMeters(old.centroidLat, old.centroidLng, u.lat, u.lng) > params.placeMoveThresholdM) {
                 byId[old.id] = old.copy(centroidLat = u.lat, centroidLng = u.lng, updatedAt = now)
                 dirty += old.id
             }
@@ -218,8 +226,10 @@ class SegmentationRunner @Inject constructor(
             val toVisit = trip.toStay?.let { visitIds[it] }
             val existing = match[i]?.let { candidates[it] }
             if (existing != null) {
+                // An origin outside the input comes back null: keep the stored one while the trip still starts at the same time.
+                val keptFrom = if (fromVisit == null && existing.start == trip.range.startMs) existing.fromVisitId else fromVisit
                 val updated = existing.copy(
-                    start = trip.range.startMs, end = trip.range.endMs, fromVisitId = fromVisit, toVisitId = toVisit,
+                    start = trip.range.startMs, end = trip.range.endMs, fromVisitId = keptFrom, toVisitId = toVisit,
                     distanceM = trip.distanceM.toFloat(), mode = trip.mode.toEntity(),
                 )
                 if (updated != existing) tripDao.upsert(updated.copy(updatedAt = now))
@@ -289,7 +299,6 @@ class SegmentationRunner @Inject constructor(
 
     private companion object {
         val mutex = Mutex()
-        const val PLACE_MOVE_THRESHOLD_M = 1.0
     }
 }
 
