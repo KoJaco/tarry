@@ -6,7 +6,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -24,14 +23,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -41,6 +43,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
@@ -53,8 +56,11 @@ import me.tarry.app.ui.theme.TarryTheme
 /** Test tag of the pulse ring (present only while TRACKING). */
 const val PulseRingTag = "trackingPulseRing"
 
-/** The ring's current scale, exposed so tests can assert it does not animate under reduced motion. */
-internal val PulseRingScale = SemanticsPropertyKey<Float>("PulseRingScale")
+/**
+ * The ring's current scale as a lazy reader, so tests can assert it does not animate under reduced motion. It is a
+ * lambda so that publishing it does not read the animation value during composition.
+ */
+internal val PulseRingScale = SemanticsPropertyKey<() -> Float>("PulseRingScale")
 private var SemanticsPropertyReceiver.pulseRingScale by PulseRingScale
 
 private const val PulseMaxScale = 1.35f
@@ -68,7 +74,6 @@ private const val PulseDurationMs = 1600
  * Labels follow tokens.md. The spoken description would append the time left on a pause ("· 45 m"),
  * but [TrackingState] carries no pause end yet; add it once that is plumbed through.
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackingToggle(
     state: TrackingState,
@@ -122,21 +127,54 @@ fun TrackingToggle(
                         onClick()
                     },
                 )
-                .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.s),
+                .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.s),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s, Alignment.CenterHorizontally),
         ) {
             StateMark(state)
-            Text(
+            FitLabel(
                 text = stateLabel,
-                style = MaterialTheme.typography.labelLarge,
                 color = content,
-                textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f, fill = false),
             )
         }
     }
 }
+
+/** Smallest fraction of the label style [FitLabel] will shrink to while looking for a size where no word splits. */
+private const val MinLabelFactor = 0.4f
+private const val LabelShrinkStep = 0.9f
+
+/**
+ * The toggle label. It may wrap, but only between words: if the slot is too narrow for the longest word at the
+ * current size (large font scales in a one-third slot), the text shrinks a step at a time until no line ends
+ * mid-word, instead of splitting the word.
+ */
+@Composable
+private fun FitLabel(text: String, color: Color, modifier: Modifier = Modifier) {
+    val style = MaterialTheme.typography.labelLarge
+    val fontScale = LocalDensity.current.fontScale
+    var factor by remember(text, fontScale) { mutableFloatStateOf(1f) }
+    Text(
+        text = text,
+        style = style.copy(fontSize = style.fontSize * factor, lineHeight = style.lineHeight * factor),
+        color = color,
+        textAlign = TextAlign.Center,
+        onTextLayout = { layout ->
+            if (layout.splitsAWord(text) && factor > MinLabelFactor) {
+                factor = maxOf(MinLabelFactor, factor * LabelShrinkStep)
+            }
+        },
+        modifier = modifier,
+    )
+}
+
+/** True when a line other than the last ends in the middle of a word. */
+private fun TextLayoutResult.splitsAWord(text: String): Boolean =
+    (0 until lineCount - 1).any { line ->
+        val end = getLineEnd(line)
+        end in 1 until text.length && !text[end - 1].isWhitespace() && !text[end].isWhitespace()
+    }
 
 /** Dot or glyph that differs per state: filled dot, hollow dot, pause glyph, alert dot. */
 @Composable
@@ -159,6 +197,10 @@ private fun StateMark(state: TrackingState) {
     }
 }
 
+/**
+ * The animation value is read only inside `graphicsLayer {}` and the semantics lambda, so a frame invalidates the
+ * draw layer and never recomposes this function.
+ */
 @Composable
 private fun PulseRing(color: Color, modifier: Modifier = Modifier) {
     val reduced = rememberReducedMotion()
@@ -172,16 +214,17 @@ private fun PulseRing(color: Color, modifier: Modifier = Modifier) {
             label = "pulseProgress",
         )
     }
-    val scale = if (reduced) PulseStaticScale else 1f + (PulseMaxScale - 1f) * progress.value
-    val alpha = if (reduced) 1f else 1f - progress.value
     Box(
         modifier = modifier
             .testTag(PulseRingTag)
-            .semantics { pulseRingScale = scale }
+            .semantics {
+                pulseRingScale = { if (reduced) PulseStaticScale else 1f + (PulseMaxScale - 1f) * progress.value }
+            }
             .graphicsLayer {
+                val scale = if (reduced) PulseStaticScale else 1f + (PulseMaxScale - 1f) * progress.value
                 scaleX = scale
                 scaleY = scale
-                this.alpha = alpha
+                alpha = if (reduced) 1f else 1f - progress.value
             }
             .border(3.dp, color, TarryTheme.shapes.pill),
     )

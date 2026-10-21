@@ -21,11 +21,13 @@ class SystemMotionPreferences(private val context: Context) : MotionPreferences 
 /** Override with a [MotionPreferences] (e.g. in tests); null means "read the system setting". */
 val LocalMotionPreferences = compositionLocalOf<MotionPreferences?> { null }
 
-/** True when decorative motion should be replaced by a static presentation. */
+/**
+ * True when decorative motion should be replaced by a static presentation. Read once per context (or override), not on
+ * every recomposition; a change in the system setting is picked up the next time the screen is composed afresh.
+ */
 @Composable
 fun rememberReducedMotion(): Boolean {
     val override = LocalMotionPreferences.current
     val context = LocalContext.current
-    val prefs = override ?: remember(context) { SystemMotionPreferences(context) }
-    return prefs.isReducedMotion()
+    return remember(override, context) { (override ?: SystemMotionPreferences(context)).isReducedMotion() }
 }

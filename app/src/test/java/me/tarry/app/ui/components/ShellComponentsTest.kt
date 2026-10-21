@@ -14,6 +14,9 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
@@ -38,7 +41,7 @@ class ShellComponentsTest {
 
     private fun ringScale(): Float =
         composeRule.onNodeWithTag(PulseRingTag, useUnmergedTree = true)
-            .fetchSemanticsNode().config[PulseRingScale]
+            .fetchSemanticsNode().config[PulseRingScale].invoke()
 
     private fun assertToggle(state: TrackingState, text: String, description: String) {
         composeRule.setContent { TrackingToggle(state = state, onClick = {}) }
@@ -59,6 +62,16 @@ class ShellComponentsTest {
     @Test
     fun toggle_attention_textAndDescription() = assertToggle(TrackingState.ATTENTION, "Needs attention", "Tracking: needs attention")
 
+
+    @Test
+    fun toggle_tapAndLongPress_bothInvokeOnClick() {
+        var clicks = 0
+        composeRule.setContent { TrackingToggle(state = TrackingState.IDLE, onClick = { clicks++ }) }
+        composeRule.onNodeWithContentDescription("Tracking: off").performClick()
+        assertThat(clicks).isEqualTo(1)
+        composeRule.onNodeWithContentDescription("Tracking: off").performTouchInput { longClick() }
+        assertThat(clicks).isEqualTo(2)
+    }
     @Test
     fun toggle_pulseRing_onlyWhileTracking() {
         composeRule.mainClock.autoAdvance = false
