@@ -165,6 +165,35 @@ class SegmenterTest {
         assertTrue(second.newPlaces.isEmpty())
     }
 
+    @Test
+    fun aDifferentSiteNearAnExistingPlaceOnALaterDayGetsItsOwnPlace() {
+        // A place from an earlier day, and today a job 100 m from its centroid: outside its default radius.
+        val known = KnownPlace("old", me.tarry.segmentation.trace.SYDNEY_LAT, me.tarry.segmentation.trace.SYDNEY_LNG, 75f)
+        val (zLat, zLng) = me.tarry.segmentation.trace.offsetMeters(known.lat, known.lng, 100.0, 0.0)
+        val pings = TraceBuilder(seed = 9, startLat = zLat, startLng = zLng, startTimeMs = t0).stay(2 * HOUR).build()
+        val r = Segmenter.segment(SegmentationInput(pings.range(), pings, places = listOf(known)))
+        assertEquals(PlaceRef.New(0), r.stays.single().place)
+        assertEquals(75.0, r.newPlaces.single().radiusM, 0.0)
+    }
+
+    @Test
+    fun anOngoingStayThatDriftsBetweenRunsKeepsItsPlace() {
+        // Run 1 sees an hour; run 2 sees two more hours, centred 25 m away (indoor drift), and knows run 1's place.
+        val first = builder().stay(HOUR).build()
+        val (dLat, dLng) = me.tarry.segmentation.trace.offsetMeters(
+            me.tarry.segmentation.trace.SYDNEY_LAT, me.tarry.segmentation.trace.SYDNEY_LNG, 25.0, 0.0,
+        )
+        val later = TraceBuilder(seed = 10, startLat = dLat, startLng = dLng, startTimeMs = first.last().timeMs + MIN)
+            .stay(2 * HOUR, jitterM = 20.0).build()
+        val r1 = Segmenter.segment(SegmentationInput(first.range(), first))
+        val p = r1.newPlaces.single()
+        val pings = first + later
+        val r2 = Segmenter.segment(SegmentationInput(pings.range(), pings, places = listOf(KnownPlace("p", p.lat, p.lng, p.radiusM.toFloat()))))
+        assertEquals(1, r2.stays.size)
+        assertEquals(PlaceRef.Existing("p"), r2.stays.single().place)
+        assertTrue(r2.newPlaces.isEmpty())
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN

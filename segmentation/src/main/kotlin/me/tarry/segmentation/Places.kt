@@ -16,16 +16,37 @@ internal fun matchPlace(lat: Double, lng: Double, places: List<KnownPlace>): Kno
         .minByOrNull { (_, d) -> d }
         ?.first
 
-/** True when [a] and [b] fall in different known places (or one in a place and the other in none). */
-internal fun distinctKnownPlaces(places: List<KnownPlace>): (StayCandidate, StayCandidate) -> Boolean = { a, b ->
-    matchPlace(a.lat, a.lng, places)?.id != matchPlace(b.lat, b.lng, places)?.id
+/**
+ * A place smaller than the stay radius. Only the user makes one (by shrinking a place, docs/specs/tarry-mvp.md
+ * §Same-site disambiguation), so being just outside it means being somewhere else. Being just outside a default
+ * place means nothing: a stay's pings reach [SegmentationParams.stayRadiusM] from its centroid, and places shared
+ * by nearby stays reach further, so treating that as another site would split stays on every re-run.
+ */
+internal fun KnownPlace.isTight(params: SegmentationParams): Boolean = radiusM < params.stayRadiusM
+
+/**
+ * True when [a] and [b] are at different places: two different known places, or a tight known place and no place.
+ * No place next to a default-sized place is not a difference (see [isTight]).
+ */
+internal fun distinctKnownPlaces(
+    places: List<KnownPlace>,
+    params: SegmentationParams,
+): (StayCandidate, StayCandidate) -> Boolean = { a, b ->
+    val pa = matchPlace(a.lat, a.lng, places)
+    val pb = matchPlace(b.lat, b.lng, places)
+    when {
+        pa == null && pb == null -> false
+        pa != null && pb != null -> pa.id != pb.id
+        else -> (pa ?: pb)!!.isTight(params)
+    }
 }
 
 /**
  * Splits a stay whose pings dwell in different known places, so two boats 40 m apart become two stays once each
  * has its own small place (a 60 m stay radius alone would keep them together).
  *
- * Each ping is labelled with its matching place (or none). Consecutive pings with the same label form runs;
+ * Each ping is labelled with its matching place (or none; unplaced pings take a neighbouring label unless the stay
+ * touches a tight place, see [isTight]). Consecutive pings with the same label form runs;
  * a run spans from its first ping to the next run's first ping. Runs shorter than
  * [SegmentationParams.minStayDurationMs] are absorbed into their longer neighbour, shortest first, so
  * accuracy noise at a place's edge does not split anything. What remains, if more than one run, becomes
@@ -43,7 +64,13 @@ internal fun splitStaysByPlace(
 private class Run(val label: String?, val pings: MutableList<Ping>)
 
 private fun split(stay: StayCandidate, places: List<KnownPlace>, params: SegmentationParams): List<StayCandidate> {
-    val labels = stay.pings.map { matchPlace(it.lat, it.lng, places)?.id }
+    val matched = stay.pings.map { matchPlace(it.lat, it.lng, places) }
+    // Without a tight place in this stay, pings in no place belong with the place next to them (see [isTight]).
+    val labels = if (matched.any { it != null && it.isTight(params) }) {
+        matched.map { it?.id }
+    } else {
+        absorbUnplaced(matched.map { it?.id })
+    }
     if (labels.distinct().size < 2) return listOf(stay)
 
     val runs = ArrayList<Run>()
@@ -102,9 +129,8 @@ internal data class PlaceAssignment(
 /**
  * Assigns each stay to the nearest matching known place, otherwise to a new place. Unmatched stays within
  * [SegmentationParams.placeMatchRadiusM] of an earlier new place's running centroid share it (a morning and an
- * afternoon at the same new site make one place). A new place's radius covers its stays' pings (see [NewPlace]).
- * Centroids are duration-weighted means; an existing place's
- * current centroid carries its [KnownPlace.weightMs].
+ * afternoon at the same new site make one place).
+ * Centroids are duration-weighted means; an existing place's current centroid carries its [KnownPlace.weightMs].
  */
 internal fun assignPlaces(
     stays: List<StayCandidate>,
@@ -113,7 +139,6 @@ internal fun assignPlaces(
 ): PlaceAssignment {
     val refs = ArrayList<PlaceRef>(stays.size)
     val created = ArrayList<WeightedPoint>()
-    val members = ArrayList<MutableList<Ping>>()
     val moved = LinkedHashMap<String, WeightedPoint>()
     for (stay in stays) {
         val weight = maxOf(stay.range.durationMs, 1L).toDouble()
@@ -131,22 +156,15 @@ internal fun assignPlaces(
             ?.first
         if (index != null) {
             created[index].add(stay.lat, stay.lng, weight)
-            members[index] += stay.pings
             refs += PlaceRef.New(index)
         } else {
             created += WeightedPoint(stay.lat, stay.lng, weight)
-            members += stay.pings.toMutableList()
             refs += PlaceRef.New(created.lastIndex)
         }
     }
     return PlaceAssignment(
         refs = refs,
-        newPlaces = created.mapIndexed { i, p ->
-            val farthest = members[i].maxOfOrNull { haversineMeters(it.lat, it.lng, p.lat, p.lng) } ?: 0.0
-            val radius = (farthest + params.newPlaceRadiusMarginM)
-                .coerceIn(params.placeMatchRadiusM, params.maxNewPlaceRadiusM)
-            NewPlace(p.lat, p.lng, radius)
-        },
+        newPlaces = created.map { NewPlace(it.lat, it.lng, params.placeMatchRadiusM) },
         updates = moved.map { (id, p) -> PlaceCentroidUpdate(id, p.lat, p.lng) },
     )
 }
@@ -165,4 +183,21 @@ private class WeightedPoint(lat: Double, lng: Double, private var weight: Double
         lngSum += lng * w
         weight += w
     }
+}
+
+/** Replaces each null label with the nearest earlier non-null label, else the nearest later one. */
+private fun absorbUnplaced(labels: List<String?>): List<String?> {
+    val forward = ArrayList<String?>(labels.size)
+    var last: String? = null
+    for (l in labels) {
+        if (l != null) last = l
+        forward += last
+    }
+    var next: String? = null
+    val out = arrayOfNulls<String>(labels.size)
+    for (i in labels.indices.reversed()) {
+        if (labels[i] != null) next = labels[i]
+        out[i] = forward[i] ?: next
+    }
+    return out.toList()
 }

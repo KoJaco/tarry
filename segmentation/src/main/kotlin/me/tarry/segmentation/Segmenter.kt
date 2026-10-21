@@ -41,7 +41,7 @@ object Segmenter {
             }
             if (!reachesEnd) detected = detected.map { if (it.open) it.copy(open = false) else it }
             val split = splitStaysByPlace(detected, input.places, params)
-            val merged = mergeStays(split, local, params, distinctKnownPlaces(input.places))
+            val merged = mergeStays(split, local, params, distinctKnownPlaces(input.places, params))
             val offset = stays.size
             buildTrips(merged, local).mapTo(trips) { t ->
                 t.copy(fromStay = t.fromStay?.plus(offset), toStay = t.toStay?.plus(offset))

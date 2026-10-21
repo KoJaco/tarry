@@ -101,11 +101,7 @@ data class Trip(
 
 data class Gap(val range: TimeRange, val cause: GapCause)
 
-/**
- * A place to create, at the duration-weighted centroid of the stays assigned to it. [radiusM] covers the pings of
- * those stays (see [SegmentationParams.newPlaceRadiusMarginM]), so a re-run that sees it as a known place keeps
- * the same stays instead of splitting off pings outside a default radius.
- */
+/** A place to create, at the duration-weighted centroid of the stays assigned to it, with the default radius. */
 data class NewPlace(val lat: Double, val lng: Double, val radiusM: Double)
 
 /** A new centroid for an existing place, as a duration-weighted mean including its new stays. */

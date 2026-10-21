@@ -26,7 +26,7 @@ class PlacesTest {
 
     private fun pipeline(pings: List<Ping>, places: List<KnownPlace>): List<StayCandidate> {
         val split = splitStaysByPlace(detectStays(pings, params), places, params)
-        return mergeStays(split, pings, params, distinctKnownPlaces(places))
+        return mergeStays(split, pings, params, distinctKnownPlaces(places, params))
     }
 
     @Test
