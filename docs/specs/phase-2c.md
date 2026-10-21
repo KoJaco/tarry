@@ -43,12 +43,12 @@ Then restyle every existing screen with it. From here on, phases 3–8 build onl
 - **`ui/theme/`:**
   - `TarryColors` (an immutable data class with every semantic token in `tokens.md`), plus `LightTarryColors` and `DarkTarryColors`;
   - `LocalTarryColors`;
-  - `TarrySpace` (xs 4 … xxl 48, plus `gutter` 20);
+  - `TarrySpace` (`xs` 4, `s` 8, `m` 12, `l` 16, `xl` 20, `xxl` 24, `xxxl` 32, `huge` 48, plus `gutter` 20);
   - `TarryShapes` (pill, card 24, container 28, block 14, small 10);
   - `JobPalette` (8 slots × light/dark container, border, text, with lookup by the stored `colorArgb`; an unknown value falls back to a slot chosen deterministically from the job id);
   - `TarryTheme { colors, space, shapes }` accessors.
 - **M3 schemes:** `lightColorScheme`/`darkColorScheme` mapped exactly as in the `tokens.md` table. Delete `Purple80` and the rest, and the `dynamicColor` path.
-- **Typography:** the M3 `Typography` with the `tokens.md` scale, plus a `TabularNumbers` text style helper (`tnum`).
+- **Typography:** the M3 `Typography` with the `tokens.md` scale, plus a `TextStyle.tabular()` helper (`tnum`).
 - **Theme setting:**
   - `MainActivity` reads `Settings.theme` and passes `darkTheme` to `TarryTheme` (SYSTEM → `isSystemInDarkTheme()`).
   - Status and navigation bar icon appearance follows the theme (`enableEdgeToEdge` with `SystemBarStyle.auto`/`light`/`dark` per the effective theme).

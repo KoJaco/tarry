@@ -6,8 +6,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toArgb
@@ -20,7 +18,6 @@ import me.tarry.core.data.settings.SettingsRepository
 import me.tarry.core.data.settings.ThemeMode
 import me.tarry.app.ui.theme.DarkTarryColors
 import me.tarry.app.ui.theme.LightTarryColors
-import me.tarry.app.ui.theme.isDark
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.HealthChecker
@@ -28,7 +25,7 @@ import me.tarry.app.tracking.ReconcileSource
 import me.tarry.app.tracking.TrackingController
 import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.ui.TarryApp
-import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.TarryRoot
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -47,31 +44,31 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             val themeFlow = remember { settingsRepository.settings.map { it.theme } }
-            val mode by themeFlow
-                .collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
-            val darkTheme = mode.isDark(isSystemInDarkTheme())
-            DisposableEffect(darkTheme) {
-                val scrim = (if (darkTheme) DarkTarryColors else LightTarryColors).paper.toArgb()
-                enableEdgeToEdge(
-                    statusBarStyle = if (darkTheme) {
-                        SystemBarStyle.dark(Color.TRANSPARENT)
-                    } else {
-                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-                    },
-                    navigationBarStyle = if (darkTheme) {
-                        SystemBarStyle.dark(scrim)
-                    } else {
-                        SystemBarStyle.light(scrim, scrim)
-                    },
-                )
-                onDispose { }
-            }
-            TarryTheme(darkTheme = darkTheme) {
+            // Null until the stored theme loads: TarryRoot composes nothing (the paper window background shows).
+            val mode by themeFlow.collectAsStateWithLifecycle<ThemeMode?>(initialValue = null)
+            TarryRoot(themeMode = mode, onDarkChanged = ::styleSystemBars) {
                 TarryApp()
             }
         }
+    }
+
+    private fun styleSystemBars(darkTheme: Boolean) {
+        val scrim = (if (darkTheme) DarkTarryColors else LightTarryColors).paper.toArgb()
+        enableEdgeToEdge(
+            statusBarStyle = if (darkTheme) {
+                SystemBarStyle.dark(Color.TRANSPARENT)
+            } else {
+                SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+            },
+            navigationBarStyle = if (darkTheme) {
+                SystemBarStyle.dark(scrim)
+            } else {
+                SystemBarStyle.light(scrim, scrim)
+            },
+        )
     }
 
     override fun onStart() {

@@ -48,6 +48,16 @@ internal fun TarryColors.toMaterial(dark: Boolean) =
             error = alert, onError = DarkOnError,
             errorContainer = alertSoft, onErrorContainer = onAlertSoft,
             outline = outline, outlineVariant = line,
+            // Roles the table above does not list explicitly, mapped to the nearest token so no baseline purple survives.
+            primaryContainer = inset, onPrimaryContainer = ink,
+            tertiaryContainer = accentSoft, onTertiaryContainer = onAccentSoft, onTertiary = card,
+            inversePrimary = accent, inverseSurface = ink, inverseOnSurface = onInk,
+            surfaceTint = paper, surfaceBright = card, surfaceDim = inset,
+            primaryFixed = inset, primaryFixedDim = line, onPrimaryFixed = ink, onPrimaryFixedVariant = muted,
+            secondaryFixed = accentSoft, secondaryFixedDim = accent,
+            onSecondaryFixed = onAccentSoft, onSecondaryFixedVariant = onAccentSoft,
+            tertiaryFixed = accentSoft, tertiaryFixedDim = accent,
+            onTertiaryFixed = onAccentSoft, onTertiaryFixedVariant = onAccentSoft,
         )
     } else {
         lightColorScheme(
@@ -62,6 +72,16 @@ internal fun TarryColors.toMaterial(dark: Boolean) =
             error = alert, onError = LightOnError,
             errorContainer = alertSoft, onErrorContainer = onAlertSoft,
             outline = outline, outlineVariant = line,
+            // Roles the table above does not list explicitly, mapped to the nearest token so no baseline purple survives.
+            primaryContainer = inset, onPrimaryContainer = ink,
+            tertiaryContainer = accentSoft, onTertiaryContainer = onAccentSoft, onTertiary = card,
+            inversePrimary = accent, inverseSurface = ink, inverseOnSurface = onInk,
+            surfaceTint = paper, surfaceBright = card, surfaceDim = inset,
+            primaryFixed = inset, primaryFixedDim = line, onPrimaryFixed = ink, onPrimaryFixedVariant = muted,
+            secondaryFixed = accentSoft, secondaryFixedDim = accent,
+            onSecondaryFixed = onAccentSoft, onSecondaryFixedVariant = onAccentSoft,
+            tertiaryFixed = accentSoft, tertiaryFixedDim = accent,
+            onTertiaryFixed = onAccentSoft, onTertiaryFixedVariant = onAccentSoft,
         )
     }
 

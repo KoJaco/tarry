@@ -21,7 +21,7 @@ Code uses these names through `TarryTheme.colors` (an extended colour object), m
 | `ink` | `#1B1813` | `#F2EDE4` | Body text, primary pill buttons, selected states |
 | `onInk` | `#F3EFE8` | `#14120F` | Text and icons on `ink` |
 | `muted` | `#655E54` | `#A9A193` | Secondary text, time labels, unselected nav |
-| `faint` | `#C2BAAE` | `#5E574D` | Disabled controls (decorative, never text) |
+| `faint` | `#C2BAAE` | `#5E574D` | Disabled control fills and outlines (decorative, never text; disabled labels use `muted`) |
 | `line` | `#DDD5C8` | `#3A352E` | Hour lines, dividers, timeline rail |
 | `outline` | `#8F877B` | `#7A7266` | Input borders, the dashed outline of a visit that needs review (3:1 UI contrast) |
 | `accent` | `#F2B064` | `#F2B064` | Apricot: tracking toggle, now-line, needs-review chip fill |
@@ -46,6 +46,7 @@ Contrast, computed with WCAG 2.x relative luminance (keep these passing when tun
 | `onAccent` on `accent` | 9.4:1 | 9.4:1 |
 | `onAlertSoft` on `alertSoft` | 7.2:1 | 11.0:1 |
 | `alert` on `card` | 6.5:1 | 9.8:1 |
+| `success` on `card` | 7.7:1 | 11.5:1 |
 | `outline` on `paper` (UI, 3:1) | 3.1:1 | 3.9:1 |
 
 Every job-colour text-on-container pair is at least 6.6:1 in both themes.
@@ -65,6 +66,19 @@ Every job-colour text-on-container pair is at least 6.6:1 in both themes.
 | `error` / `onError` | `alert` / white (light), `#601410` (dark) |
 | `errorContainer` / `onErrorContainer` | `alertSoft` / `onAlertSoft` |
 | `outline` / `outlineVariant` | `outline` / `line` |
+| `primaryContainer` / `onPrimaryContainer` | `inset` / `ink` |
+| `tertiaryContainer` / `onTertiaryContainer` | `accentSoft` / `onAccentSoft` |
+| `onTertiary` | `card` |
+| `inversePrimary` | `accent` |
+| `inverseSurface` / `inverseOnSurface` | `ink` / `onInk` (the same tokens in both themes, so the dark scheme inverts automatically) |
+| `surfaceTint` | `paper` (flat: no tint on elevated surfaces) |
+| `surfaceBright` / `surfaceDim` | `card` / `inset` |
+| `primaryFixed`, `primaryFixedDim`, `onPrimaryFixed`, `onPrimaryFixedVariant` | `inset`, `line`, `ink`, `muted` |
+| `secondaryFixed`, `secondaryFixedDim` and `tertiaryFixed`, `tertiaryFixedDim` | `accentSoft`, `accent` |
+| `onSecondaryFixed`, `onSecondaryFixedVariant`, `onTertiaryFixed`, `onTertiaryFixedVariant` | `onAccentSoft` |
+| `scrim` | M3 default (black) |
+
+No role keeps an M3 baseline value (`TarryThemeTest.noRoleKeepsTheM3BaselineValue`). The error roles and the two white-on-white light roles coincide with the baseline by design.
 
 ### Job colours (calendar blocks)
 `Job.colorArgb` stores one of these slots (by its light `container` value). Blocks are a tinted container, a 1.5 dp border and dark text. Never colour alone: the job name is always written in the block.
@@ -106,10 +120,10 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 | `labelSmall` | Nunito Sans 700 | 11 / 16, +0.6 tracking, upper case | Section headers |
 
 - Nunito's and Nunito Sans's default figures are tabular (all ten digits have the same advance width; the bundled fonts have no `tnum` feature), so totals and times don't jitter. `TabularFiguresTest.digitsAreTabularByDefault` verifies this; if the fonts are ever replaced, that test must still pass or `tnum` must be used.
-- Max line length is about 60 characters. Long place names ellipsize on one line in blocks and wrap in the drawer.
+- Max line length is about 60 characters. Long place names ellipsize on one line in blocks (at font scales above 1.0 a tall enough block lets the title wrap to two lines and the time line to three instead) and wrap in the drawer.
 
 ## Space, shape, elevation
-- **Spacing:** 4, 8, 12, 16, 20, 24, 32, 48 dp (`TarryTheme.space.xs`…`xxl`). The screen gutter is 20 dp, the gap between cards 8 dp and between sections 20 dp.
+- **Spacing:** `TarryTheme.space` has `xs` 4, `s` 8, `m` 12, `l` 16, `xl` 20, `xxl` 24, `xxxl` 32, `huge` 48 dp, plus `gutter` 20 dp. The gap between cards is `s` (8 dp) and between sections `xl` (20 dp).
 - **Shape:**
   - `pill` (fully rounded): buttons, chips, the toggle, nav items, segmented controls, icon buttons (circles).
   - `card` 20 dp: cards, list rows, the timeline container, the selected nav-item icon backing.
@@ -134,6 +148,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
   - Unselected: the icon and label in `muted`, with no backing.
   - When the selection changes, the backing glides across to the new item (200 ms, emphasized easing). With reduced motion it jumps.
 - **The centre slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
+  - The label may wrap between words but never inside one. In a one-third slot at large font scales it shrinks a step at a time until no word is split.
 
 ### Tracking toggle (four states, each different in more than colour)
 | State | Look | Label | Content description |
@@ -152,13 +167,13 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - below, a **week strip**: 7 equal day cells (56 dp, `block` radius). The selected day is an `ink` fill with `onInk` text, future days are `muted`, and today is marked by an `accent` dot.
 - **Summary card** (`card`, `container` radius): "Tracked today" (`bodyMedium` `muted`), the total in `headlineLarge`, a needs-review chip (`accentSoft`) and a "3 visits · 1 trip · 1 gap" caption.
 - **Day canvas** (a `card` container, `card` radius):
-  - A left time column 52 dp wide with hour labels (`bodySmall` `muted`, `HH` or localised short time) and `line` hour rules across the canvas.
+  - A left time column, at least 52 dp wide, that grows to fit its widest hour label or the now-pill at large font sizes, with hour labels (`bodySmall` `muted`) and `line` hour rules across the canvas. All times follow the system 24-hour setting: hour labels are "HH" or the locale's "h a", block and now-pill times the locale's "H:mm" or "h:mm a".
   - **The scale** is 72 dp per hour × max(1, fontScale), so text keeps fitting at large font sizes. The canvas starts at the earlier of the first item or the window start, rounded down to the hour, and ends at the later of now or the last item.
   - **Visits** are blocks at their true start and height, inset 8 dp from the rail:
     - job colour container, border and text (above); with no job, `card` with a dashed `outline`;
     - title (`titleMedium`), a time range and the job in `bodyMedium`;
     - a "Needs review" chip (`accentSoft` / `onAccentSoft`) on unlabelled visits.
-  - **Compact mode:** under 30 min a block shrinks to `small` radius and one line ("Place · 12 m"). Every block is at least 28 dp tall even if that overstates a very short visit, and its spoken description gives the real times.
+  - **Compact mode:** under 30 min a block shrinks to `small` radius and one line ("Place · 12 m"). Every block is at least 28 dp × max(1, fontScale) tall even if that overstates a very short visit, and its spoken description gives the real times.
   - **Trips** are a slim row (no fill) in the gap between blocks: a car or walk icon plus "Drive · 12.4 km · 25 min" in `bodySmall` `muted`. A trip too short to fit a row shows only in the next block's description.
   - **Gaps:** `alertSoft` fill with diagonal hatch lines (`alert` at 25 %, 1 dp every 8 dp), a 1.5 dp `alert` border, a warning icon and "Not tracked · App was closed" in `onAlertSoft`. They are never mistaken for a visit, because they have different fill, pattern, icon and text.
   - **Now-line:** today only, a 2 dp `accent` line across the canvas with a pill in the time column showing the time (`accent` fill, `onAccent` text). An ongoing visit block extends to it.
