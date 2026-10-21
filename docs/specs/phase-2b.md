@@ -109,18 +109,29 @@ Merge stays separated by a trip shorter than `minTripDistance`, or by a blip at 
 - It's driven by the range `Flow`s. Use plain M3 components; phase 3 restyles it.
 - Empty state: "No visits yet". Touch targets are at least 48dp, and content descriptions are set.
 
-### T13 — Real-day fixtures (test-writer + owner, S)
-- Convert the owner's 2a CSV exports into fixtures in `segmentation/src/test/resources/traces/`, with expected-output snapshots.
-- **Privacy, because the repo is public:** first anonymise them. Translate every coordinate by a fixed offset to a synthetic origin (distances are kept) and shift times by a whole number of days. Have the owner review before committing.
+### T13 — Real-day fixtures (dropped)
+Dropped by the owner (2026-10-21): the repo is public, so real traces are never committed, not even anonymised. Exports stay in the gitignored `tmp/`; behaviour seen in them is reproduced with synthetic traces.
 
 ## Acceptance criteria
 - `gradlew.bat assembleDebug testDebugUnitTest :segmentation:test lintDebug` passes locally and in CI.
-- All golden cases and invariants pass, and at least one anonymised real-day fixture is committed.
+- All golden cases and invariants pass.
 - `:segmentation` has no Android or core-data imports.
 - **On the Pixel:** after a tracked day, the day list shows plausible visits and trips with no overlaps. Rerunning segmentation does not change visit ids. Places gain addresses when online.
 - Room schema unchanged, or a v2 migration with a test.
 
 ## Risks and open questions
 - **Parameter tuning:** expect to adjust `SegmentationParams` from real days. Changes need a golden-case update (rule 7).
-- **Fixture anonymisation:** the default above needs owner approval before the first real trace is committed.
 - **Geocoder:** it may be absent or rate-limited on some devices. Addresses stay null, and the day list falls back to coordinates.
+
+## As built (PR #6)
+Where the implementation differs from or adds to the plan above:
+- **Stay starts settle on the stay.** Greedy growth starts a stay wherever a restart fell on the approach, so leading pings are trimmed and extended against the centroid of the pings after them, and the interior is rebuilt from the range. An overlap re-run then agrees with a full run (start within 2 min, same end).
+- **`signalGapMs` (15 min)** is a new parameter: a silence inside a stay longer than this marks it bridged. Capture's 10 min stationary keepalive keeps normal stays under it.
+- **Merge never crosses a silence longer than `maxGapToBridge`**, so a NO_FIX gap is not hidden.
+- **Trips are cut at time outside every session and at excluded time** as well as at gaps, so an overnight break is never a trip.
+- **Same-site split:** a place smaller than `stayRadius` (only the user makes one, by shrinking it) splits a stay; unplaced time next to a default-sized place does not. New places use the default 75 m. Feeding new places back in is a fixpoint (invariant test).
+- **Scheduling:** three unique work names (now, periodic, daily) instead of one, because WorkManager cannot share a name between periodic and one-time work. A process-wide Mutex in `SegmentationRunner` keeps runs from overlapping. A periodic run cancels itself when no session is open and no window is active.
+- **Range widening** also covers segmentation gaps and the origin visit of a trip the widening reaches, so a long drive keeps its `fromVisitId`.
+- **Failures** after 3 retries are recorded in `TrackingStatusStore` and shown on the Sessions screen (rule 6).
+- **Geocoder** writes with `UPDATE ... WHERE address IS NULL`; an empty string means "looked up, nothing found".
+- **Deferred:** pruning places left with no visits (phase 4).
