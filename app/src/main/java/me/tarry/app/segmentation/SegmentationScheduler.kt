@@ -9,6 +9,8 @@ import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import androidx.work.WorkInfo
+import kotlinx.coroutines.flow.Flow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import me.tarry.app.tracking.TrackingConfig
 import java.util.concurrent.TimeUnit
@@ -33,6 +35,9 @@ class SegmentationScheduler @Inject constructor(
     fun enqueueNow() {
         workManager.enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, OneTimeWorkRequestBuilder<SegmentationWorker>().build())
     }
+
+    /** State of the one-time "run now" work; empty if it never ran. */
+    fun observeNow(): Flow<List<WorkInfo>> = workManager.getWorkInfosForUniqueWorkFlow(NOW)
 
     /** Geocode places that have no address yet. Needs a network; KEEP: a queued or running batch covers the request. */
     fun enqueueGeocode() {
