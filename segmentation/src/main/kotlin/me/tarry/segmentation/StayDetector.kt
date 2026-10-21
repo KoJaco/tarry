@@ -59,6 +59,25 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
 /** Floor on accuracy for weighting, so one very confident fix cannot dominate the centroid. */
 private const val MIN_WEIGHT_ACCURACY_M = 5.0
 
+private fun pingWeight(ping: Ping): Double {
+    val acc = maxOf(ping.accuracyM.toDouble(), MIN_WEIGHT_ACCURACY_M)
+    return 1.0 / (acc * acc)
+}
+
+/** Accuracy-weighted centroid (lat, lng) of non-empty [pings]; the same rule [detectStays] applies incrementally. */
+internal fun weightedCentroid(pings: List<Ping>): Pair<Double, Double> {
+    var weight = 0.0
+    var latSum = 0.0
+    var lngSum = 0.0
+    for (p in pings) {
+        val w = pingWeight(p)
+        weight += w
+        latSum += p.lat * w
+        lngSum += p.lng * w
+    }
+    return latSum / weight to lngSum / weight
+}
+
 private class Growing(first: Ping) {
     private val pings = arrayListOf(first)
     private var weight = 0.0
@@ -82,8 +101,7 @@ private class Growing(first: Ping) {
     }
 
     private fun accumulate(ping: Ping) {
-        val acc = maxOf(ping.accuracyM.toDouble(), MIN_WEIGHT_ACCURACY_M)
-        val w = 1.0 / (acc * acc)
+        val w = pingWeight(ping)
         weight += w
         latSum += ping.lat * w
         lngSum += ping.lng * w
