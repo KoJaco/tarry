@@ -63,7 +63,7 @@ object BottomBarTags {
 
 private val SlotMinHeight = 56.dp
 private val TopBorder = 1.dp
-private val IconBackingWidth = 56.dp
+private val IconBackingWidth = 64.dp
 private val IconBackingHeight = 32.dp
 private val IconLabelGap = 6.dp
 private const val GlideMillis = 200
@@ -73,7 +73,7 @@ private val EmphasizedEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
  * Stateless full-width bottom bar: Timeline (left), tracking toggle (centre), Settings (right).
  * `paper` background with a 1 dp `line` top border only; nav-bar insets are applied inside.
  *
- * Nav items are an icon over a label. Only the selected icon is backed, by a single `inset` indicator that glides
+ * Nav items are an icon over a label. Only the selected icon is backed, by a single `accentSoft` indicator that glides
  * between the Timeline and Settings icons across the toggle slot (it jumps under reduced motion). When neither is
  * selected (Sessions, Permissions) the indicator is hidden.
  */
@@ -150,7 +150,7 @@ fun TarryBottomBar(
 }
 
 /**
- * The single `inset` backing behind the selected icon. It is composed only while a nav item is selected, so it
+ * The single `accentSoft` backing behind the selected icon. It is composed only while a nav item is selected, so it
  * appears in place (no glide from a stale position) and then glides on selection changes: 200 ms, emphasized easing.
  */
 @Composable
@@ -166,8 +166,8 @@ private fun IconBackingIndicator(x: Float, y: Float) {
         modifier = Modifier
             .offset { IntOffset(animatedX.roundToPx(), y.toInt()) }
             .size(IconBackingWidth, IconBackingHeight)
-            .clip(TarryTheme.shapes.card)
-            .background(TarryTheme.colors.inset)
+            .clip(TarryTheme.shapes.pill)
+            .background(TarryTheme.colors.accentSoft)
             .testTag(BottomBarTags.Indicator),
     )
 }

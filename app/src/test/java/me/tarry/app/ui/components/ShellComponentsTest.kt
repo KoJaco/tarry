@@ -154,7 +154,7 @@ class ShellComponentsTest {
         composeRule.waitForIdle()
         assertThat(slotRange(BottomBarTags.TimelineSlot).contains(indicatorCentreX())).isTrue()
         val bounds = composeRule.onNodeWithTag(BottomBarTags.Indicator).getUnclippedBoundsInRoot()
-        assertThat(bounds.width.value).isEqualTo(56f)
+        assertThat(bounds.width.value).isEqualTo(64f)
         assertThat(bounds.height.value).isEqualTo(32f)
 
         composeRule.runOnUiThread { timeline.value = false }
