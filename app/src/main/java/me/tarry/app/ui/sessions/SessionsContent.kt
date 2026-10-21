@@ -19,6 +19,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -198,8 +199,8 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
-    var fromDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
-    var toDay by rememberSaveable { mutableStateOf(today.toEpochDay()) }
+    var fromDay by rememberSaveable { mutableLongStateOf(today.toEpochDay()) }
+    var toDay by rememberSaveable { mutableLongStateOf(today.toEpochDay()) }
     var picking by rememberSaveable { mutableStateOf<String?>(null) }
     val from = LocalDate.ofEpochDay(fromDay)
     val to = LocalDate.ofEpochDay(toDay)
