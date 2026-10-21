@@ -74,7 +74,7 @@ class TrackingReceiversTest {
         val health = HealthGapRecorder(store, timelineRepo, FakeAlertNotifier(), clock, config, EffectiveScheduleWindowChecker(inputs, calculator, clock))
         val coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo,
-            store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakePermissions(),
+            store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakeStayRadius(), FakePermissions(),
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(

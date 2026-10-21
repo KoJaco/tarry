@@ -45,6 +45,7 @@ class CaptureCoordinatorTest {
     private val location = FakeLocationClient()
     private val activityClient = FakeActivityClient()
     private val geofence = FakeGeofenceClient()
+    private val stayRadius = FakeStayRadius()
     private val permissions = FakePermissions()
     private val windows = FakeWindowChecker()
     private val clock = FakeClock()
@@ -64,7 +65,7 @@ class CaptureCoordinatorTest {
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
         health = HealthGapRecorder(store, timelineRepo, alerts, clock, config, windows)
         coordinator = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, location, activityClient, geofence, permissions, windows,
+            config, trackingRepo, timelineRepo, store, location, activityClient, geofence, stayRadius, permissions, windows,
             health, clock, captureScope,
         )
     }
@@ -143,7 +144,7 @@ class CaptureCoordinatorTest {
         coordinator.onActivity(ActivityType.STILL)
 
         assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
-        assertThat(geofence.stay).isEqualTo(FakeGeofenceClient.Stay(-33.0, 151.0, config.stayGeofenceRadiusM))
+        assertThat(geofence.stay).isEqualTo(FakeGeofenceClient.Stay(-33.0, 151.0, stayRadius.radiusM))
         assertThat(location.requests.last().intervalMs).isEqualTo(config.stationaryFixIntervalMs)
 
         coordinator.onGeofenceExit()
@@ -156,13 +157,99 @@ class CaptureCoordinatorTest {
     }
 
     @Test
+    fun exitThenDisplacementDroppedFixThenSavedFixDoesNotCarryTheExitTag() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+        coordinator.onGeofenceExit()
+        // ~11 m from the last saved fix: dropped by the 25 m displacement gate.
+        coordinator.onFixes(listOf(fix(60_000, lat = -33.0001)))
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.01)))
+
+        val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
+        assertThat(pings.map { it.source }).containsExactly(PingSource.FUSED, PingSource.FUSED).inOrder()
+    }
+
+    @Test
+    fun exitThenAcceptedFixTagsThatFixAsGeofenceExit() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+        coordinator.onGeofenceExit()
+        coordinator.onFixes(listOf(fix(60_000, lat = -33.01)))
+
+        val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
+        assertThat(pings.last().source).isEqualTo(PingSource.GEOFENCE_EXIT)
+    }
+
+    @Test
+    fun exitTagSurvivesAFixRejectedForAccuracy() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+        coordinator.onGeofenceExit()
+        coordinator.onFixes(listOf(fix(30_000, accuracy = config.maxAccuracyM + 1)))
+        coordinator.onFixes(listOf(fix(60_000, lat = -33.01)))
+
+        val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
+        assertThat(pings.last().source).isEqualTo(PingSource.GEOFENCE_EXIT)
+    }
+
+    @Test
+    fun safetyNetExitTagsTheTriggeringSavedFix() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+        // ~1.1 km away, no geofence event delivered.
+        coordinator.onFixes(listOf(fix(300_000, lat = -33.01)))
+
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
+        val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
+        assertThat(pings.last().source).isEqualTo(PingSource.GEOFENCE_EXIT)
+    }
+
+    @Test
+    fun activityRegistrationIsRetriedOnEnsureCaptureUntilItSucceeds() = runBlocking {
+        activityClient.available = false
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        assertThat(activityClient.registerCalls).isEqualTo(1)
+
+        // Still failing: tried again, silently.
+        coordinator.ensureCapture()
+        assertThat(activityClient.registerCalls).isEqualTo(2)
+
+        activityClient.available = true
+        coordinator.ensureCapture()
+        assertThat(activityClient.registerCalls).isEqualTo(3)
+        assertThat(activityClient.registered).isTrue()
+
+        coordinator.ensureCapture()
+        assertThat(activityClient.registerCalls).isEqualTo(3)
+
+        // Activity-aware gating is now live.
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+    }
+
+    @Test
+    fun radiusFromTheSourceReachesTheStayGeofence() = runBlocking {
+        stayRadius.radiusM = 200f
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+
+        assertThat(geofence.stay).isEqualTo(FakeGeofenceClient.Stay(-33.0, 151.0, 200f))
+    }
+
+    @Test
     fun locationUpdatesFailingWithGenericExceptionRecordsOutageGapAndAlert() = runBlocking {
         val failing = object : LocationClient {
             override fun updates(params: LocationRequestParams) =
                 kotlinx.coroutines.flow.flow<List<Fix>> { throw IllegalStateException("boom") }
         }
         val c = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, failing, activityClient, geofence, permissions, windows,
+            config, trackingRepo, timelineRepo, store, failing, activityClient, geofence, stayRadius, permissions, windows,
             health, clock, captureScope,
         )
         c.begin(SessionTrigger.SCHEDULE)
@@ -273,7 +360,7 @@ class CaptureCoordinatorTest {
     fun noActivityRecognitionSubDisplacementFixesStillDriveHeartbeatAndStationaryRule() = runBlocking {
         // Fused now delivers every fix (no request-level distance filter), so a stationary phone is still heard.
         val noAr = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, location, FakeActivityClient(available = false), geofence,
+            config, trackingRepo, timelineRepo, store, location, FakeActivityClient(available = false), geofence, stayRadius,
             permissions, windows, health, clock, captureScope,
         )
         noAr.begin(SessionTrigger.SCHEDULE)
@@ -309,7 +396,7 @@ class CaptureCoordinatorTest {
             override suspend fun unregister() = Unit
         }
         val c = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, location, throwing, geofence, permissions, windows, health, clock,
+            config, trackingRepo, timelineRepo, store, location, throwing, geofence, stayRadius, permissions, windows, health, clock,
             captureScope,
         )
         c.begin(SessionTrigger.SCHEDULE)
@@ -329,7 +416,7 @@ class CaptureCoordinatorTest {
             }
         }
         val c = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, location, activityClient, failingGeofence, permissions, windows,
+            config, trackingRepo, timelineRepo, store, location, activityClient, failingGeofence, stayRadius, permissions, windows,
             health, clock, captureScope,
         )
 
@@ -357,13 +444,13 @@ class CaptureCoordinatorTest {
                 }
         }
         val c = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, flaky, activityClient, geofence, permissions, windows,
+            config, trackingRepo, timelineRepo, store, flaky, activityClient, geofence, stayRadius, permissions, windows,
             health, clock, captureScope,
         )
         c.begin(SessionTrigger.SCHEDULE)
         kotlinx.coroutines.withTimeout(5_000) {
             while (calls.get() < 2) {
-                c.ensureLocationUpdates()
+                c.ensureCapture()
                 kotlinx.coroutines.delay(10)
             }
         }
@@ -371,13 +458,13 @@ class CaptureCoordinatorTest {
         assertThat(location.requests).hasSize(1)
         assertThat(location.requests.single().intervalMs).isEqualTo(config.movingIntervalMs)
         // A live request is left alone.
-        c.ensureLocationUpdates()
+        c.ensureCapture()
         assertThat(calls.get()).isEqualTo(2)
     }
 
     @Test
-    fun ensureLocationUpdatesWithoutASessionDoesNothing() = runBlocking {
-        coordinator.ensureLocationUpdates()
+    fun ensureCaptureWithoutASessionDoesNothing() = runBlocking {
+        coordinator.ensureCapture()
 
         assertThat(location.requests).isEmpty()
     }
@@ -390,7 +477,7 @@ class CaptureCoordinatorTest {
                 kotlinx.coroutines.flow.flow<List<Fix>> { throw SecurityException("revoked") }
         }
         val c = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, denied, activityClient, geofence, permissions, windows,
+            config, trackingRepo, timelineRepo, store, denied, activityClient, geofence, stayRadius, permissions, windows,
             health, clock, captureScope,
         )
         c.failureListener = { _, issue -> seen += issue }
@@ -417,5 +504,98 @@ class CaptureCoordinatorTest {
         assertThat(gaps.map { it.start to it.end }).containsExactly(
             lastPing to lastPing + 600_000, clock.now - 300_000 to clock.now,
         ).inOrder()
+    }
+
+    /** Begin, one saved fix, STILL: STATIONARY with the last saved ping at +1 s. */
+    private suspend fun stationary() {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        coordinator.onActivity(ActivityType.STILL)
+    }
+
+    private suspend fun savedPings() = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
+
+    @Test
+    fun leavingStationaryByActivitySavesTheLastJitterFixAsAFusedPing() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(60_000, lat = -33.00003), fix(120_000, lat = -33.00004)))
+        assertThat(savedPings()).hasSize(1)
+
+        coordinator.onActivity(ActivityType.WALKING)
+
+        val pings = savedPings()
+        assertThat(pings.map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 120_000).inOrder()
+        assertThat(pings.last().source).isEqualTo(PingSource.FUSED)
+        assertThat(pings.last().zoneId).isEqualTo("Australia/Sydney")
+        // The departure ping keeps the activity from before the transition.
+        assertThat(pings.last().activity).isEqualTo(ActivityType.STILL)
+    }
+
+    @Test
+    fun safetyNetSavesTheDeparturePingBeforeTheExitTaggedTriggeringFix() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
+
+        val pings = savedPings()
+        assertThat(pings.map { it.timestamp })
+            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000).inOrder()
+        assertThat(pings.map { it.source })
+            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+    }
+
+    @Test
+    fun geofenceExitSavesTheDeparturePingAndStillTagsTheNextFix() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        coordinator.onGeofenceExit()
+        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
+
+        assertThat(savedPings().map { it.source })
+            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+    }
+
+    @Test
+    fun noDeparturePingWhenTheLastDeliveredFixWasAlreadySaved() = runBlocking {
+        stationary()
+        coordinator.onActivity(ActivityType.WALKING)
+
+        assertThat(savedPings()).hasSize(1)
+    }
+
+    @Test
+    fun keepaliveSaveClearsTheRememberedFix() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(60_000, lat = -33.00003)))
+        coordinator.onFixes(listOf(fix(1_000 + config.stationaryKeepaliveMs, lat = -33.00004)))
+        assertThat(savedPings()).hasSize(2)
+
+        coordinator.onActivity(ActivityType.WALKING)
+
+        assertThat(savedPings()).hasSize(2)
+    }
+
+    @Test
+    fun jitterClassifiedFixBeyondTheStayRadiusStillTripsTheSafetyNet() = runBlocking {
+        stayRadius.radiusM = 50f
+        stationary()
+        // ~80 m away: beyond the 50 m stay radius but inside its own 90 m accuracy circle (jitter for the filter).
+        coordinator.onFixes(listOf(Fix(-33.00072, 151.0, 90f, clock.now + 60_000)))
+
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
+        assertThat(savedPings().map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 60_000).inOrder()
+    }
+
+    @Test
+    fun endingTheSessionSavesTheRememberedStationaryFixFirst() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        val id = coordinator.activeSessionId!!
+
+        coordinator.end(SessionEndReason.SCHEDULE_END)
+
+        val pings = trackingRepo.pingsForSession(id)
+        assertThat(pings.map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 120_000).inOrder()
+        assertThat(pings.last().source).isEqualTo(PingSource.FUSED)
     }
 }

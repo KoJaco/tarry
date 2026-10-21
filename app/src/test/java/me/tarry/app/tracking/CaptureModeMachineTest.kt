@@ -3,11 +3,13 @@ package me.tarry.app.tracking
 import com.google.common.truth.Truth.assertThat
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.PingSource
+import me.tarry.core.data.settings.Settings
 import org.junit.Test
 
 class CaptureModeMachineTest {
     private val config = TrackingConfig()
     private val min = 60_000L
+    private val DEFAULT_RADIUS = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
 
     private fun machine(activityAvailable: Boolean = true) =
         CaptureModeMachine(config, activityAvailable).also { it.start() }
@@ -29,7 +31,7 @@ class CaptureModeMachineTest {
         m.onAcceptedFix(fix)
         val step = m.onActivity(ActivityType.STILL)
         assertThat(step.mode).isEqualTo(CaptureMode.STATIONARY)
-        assertThat(step.effects).contains(CaptureEffect.AddStayGeofence(fix.lat, fix.lng, config.stayGeofenceRadiusM))
+        assertThat(step.effects).contains(CaptureEffect.AddStayGeofence(fix.lat, fix.lng, DEFAULT_RADIUS))
         val request = step.effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
         assertThat(request.priority).isEqualTo(config.stationaryPriority)
         assertThat(request.intervalMs).isEqualTo(config.stationaryFixIntervalMs)
@@ -108,8 +110,72 @@ class CaptureModeMachineTest {
         val m = machine()
         m.onAcceptedFix(fixAt(0))
         m.onActivity(ActivityType.STILL)
-        val step = m.onAcceptedFix(fixAt(min, northM = config.stayGeofenceRadiusM + 50.0))
+        val step = m.onAcceptedFix(fixAt(min, northM = DEFAULT_RADIUS + 50.0))
         assertThat(step.mode).isEqualTo(CaptureMode.MOVING)
         assertThat(step.effects).contains(CaptureEffect.RemoveGeofence)
+    }
+
+    @Test
+    fun safetyNetExitTagsTheTriggeringFixAsGeofenceExit() {
+        val m = machine()
+        m.onAcceptedFix(fixAt(0))
+        m.onActivity(ActivityType.STILL)
+        assertThat(m.onAcceptedFix(fixAt(min, northM = DEFAULT_RADIUS + 50.0)).mode).isEqualTo(CaptureMode.MOVING)
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.GEOFENCE_EXIT)
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.FUSED)
+    }
+
+    @Test
+    fun discardPendingSourceClearsTheExitTag() {
+        val m = machine()
+        m.onAcceptedFix(fixAt(0))
+        m.onActivity(ActivityType.STILL)
+        m.onGeofenceExit()
+        m.discardPendingSource()
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.FUSED)
+    }
+
+    @Test
+    fun activityTransitionsAreIgnoredUntilRecognitionBecomesAvailable() {
+        val m = machine(activityAvailable = false)
+        m.onAcceptedFix(fixAt(0))
+        assertThat(m.onActivity(ActivityType.STILL).effects).isEmpty()
+        assertThat(m.mode).isEqualTo(CaptureMode.MOVING)
+
+        m.onActivityRecognitionAvailable()
+        assertThat(m.onActivity(ActivityType.STILL).mode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(m.onActivity(ActivityType.WALKING).mode).isEqualTo(CaptureMode.MOVING)
+    }
+
+    @Test
+    fun radiusChangeWhileStationaryAppliesOnlyToTheNextStop() {
+        val m = machine()
+        m.stayRadiusM = DEFAULT_RADIUS
+        m.onAcceptedFix(fixAt(0))
+        m.onActivity(ActivityType.STILL)
+
+        // Changed mid-stop: the safety net for this stop still uses 100 m.
+        m.stayRadiusM = 300f
+        val within = m.onAcceptedFix(fixAt(min, northM = 150.0))
+        assertThat(within.mode).isEqualTo(CaptureMode.MOVING)
+        m.takeNextPingSource()
+
+        // Next stop uses the new radius.
+        val step = m.onActivity(ActivityType.STILL)
+        assertThat(step.effects.filterIsInstance<CaptureEffect.AddStayGeofence>().single().radiusM).isEqualTo(300f)
+    }
+
+    @Test
+    fun lateGeofenceExitAfterTheSafetyNetDoesNotTagTheNextFix() {
+        val m = machine()
+        m.onAcceptedFix(fixAt(0))
+        m.onActivity(ActivityType.STILL)
+        m.onAcceptedFix(fixAt(min, northM = DEFAULT_RADIUS + 50.0))
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.GEOFENCE_EXIT)
+
+        m.onGeofenceExit()
+        m.onAcceptedFix(fixAt(2 * min, northM = DEFAULT_RADIUS + 400.0))
+
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.FUSED)
     }
 }

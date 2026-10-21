@@ -229,8 +229,9 @@ class TrackingController @Inject constructor(
                     startService(if (effective.manuallyStarted) SessionTrigger.MANUAL else SessionTrigger.SCHEDULE)
                 }
             } else {
-                // A location request that died on a non-security error is retried here.
-                coordinator.ensureLocationUpdates()
+                // A location request that died on a non-security error, or a failed Activity Recognition
+                // registration, is retried here.
+                coordinator.ensureCapture()
             }
         } else if (coordinator.isActive) {
             val paused = effective.winningOverride?.type == ManualOverrideType.PAUSE

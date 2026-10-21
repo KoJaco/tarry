@@ -73,6 +73,11 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.THEME] = theme.name }
     }
 
+    suspend fun setStayGeofenceRadiusM(meters: Int) {
+        require(meters in Settings.ALLOWED_STAY_RADII_M) { "Invalid stay radius: $meters" }
+        dataStore.edit { it[Keys.STAY_GEOFENCE_RADIUS_M] = meters }
+    }
+
     private object Keys {
         val ROUNDING_INCREMENT_MIN = intPreferencesKey("rounding_increment_min")
         val ROUNDING_MODE = stringPreferencesKey("rounding_mode")
@@ -84,6 +89,7 @@ class SettingsRepository @Inject constructor(
         val REVIEW_REMINDER_ENABLED = booleanPreferencesKey("review_reminder_enabled")
         val REVIEW_REMINDER_MINUTE = intPreferencesKey("review_reminder_minute_of_day")
         val THEME = stringPreferencesKey("theme")
+        val STAY_GEOFENCE_RADIUS_M = intPreferencesKey("stay_geofence_radius_m")
     }
 
     private fun Preferences.toSettings(): Settings {
@@ -105,6 +111,8 @@ class SettingsRepository @Inject constructor(
             reviewReminderMinuteOfDay = this[Keys.REVIEW_REMINDER_MINUTE]
                 ?.takeIf { it in 0..1439 } ?: d.reviewReminderMinuteOfDay,
             theme = enumOrDefault(this[Keys.THEME], d.theme),
+            stayGeofenceRadiusM = this[Keys.STAY_GEOFENCE_RADIUS_M]
+                ?.takeIf { it in Settings.ALLOWED_STAY_RADII_M } ?: d.stayGeofenceRadiusM,
         )
     }
 

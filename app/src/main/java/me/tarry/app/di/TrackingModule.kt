@@ -28,6 +28,8 @@ import me.tarry.app.tracking.NoOpSegmentationTrigger
 import me.tarry.app.tracking.AndroidScheduleAlarmScheduler
 import me.tarry.app.tracking.ScheduleAlarmScheduler
 import me.tarry.app.tracking.SegmentationTrigger
+import me.tarry.app.tracking.SettingsStayRadiusSource
+import me.tarry.app.tracking.StayRadiusSource
 import me.tarry.app.tracking.ScheduleWindowChecker
 import me.tarry.app.tracking.ServiceLauncher
 import me.tarry.app.tracking.SystemTrackingClock
@@ -66,6 +68,9 @@ abstract class TrackingModule {
 
     @Binds
     abstract fun bindAlarmScheduler(impl: AndroidScheduleAlarmScheduler): ScheduleAlarmScheduler
+
+    @Binds
+    abstract fun bindStayRadiusSource(impl: SettingsStayRadiusSource): StayRadiusSource
 
     @Binds
     abstract fun bindSegmentationTrigger(impl: NoOpSegmentationTrigger): SegmentationTrigger

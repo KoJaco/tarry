@@ -2,6 +2,7 @@ package me.tarry.app.tracking
 
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.PingSource
+import me.tarry.core.data.settings.Settings
 
 /** Parameters for a fused location request, derived from [TrackingConfig]. */
 data class LocationRequestParams(
@@ -31,8 +32,16 @@ data class MachineStep(val mode: CaptureMode, val effects: List<CaptureEffect>)
  */
 class CaptureModeMachine(
     private val config: TrackingConfig,
-    private val activityRecognitionAvailable: Boolean = true,
+    activityRecognitionAvailable: Boolean = true,
 ) {
+    private var activityRecognitionAvailable = activityRecognitionAvailable
+
+    /**
+     * Radius of the stay geofence created at the next STATIONARY entry (set by the coordinator from the user setting).
+     * A stop that is already active keeps the radius it was created with.
+     */
+    var stayRadiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
+
     var mode: CaptureMode = CaptureMode.MOVING
         private set
 
@@ -40,6 +49,7 @@ class CaptureModeMachine(
     private var anchor: Fix? = null
     private var lastFix: Fix? = null
     private var geofenceCentre: Fix? = null
+    private var geofenceRadiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
     private var stillPending = false
     private var nextSource = PingSource.FUSED
 
@@ -57,6 +67,16 @@ class CaptureModeMachine(
 
     /** Source for the next saved ping: GEOFENCE_EXIT once after an exit, otherwise FUSED. */
     fun takeNextPingSource(): PingSource = nextSource.also { nextSource = PingSource.FUSED }
+
+    /** Drops a pending GEOFENCE_EXIT tag (the fix it was meant for is not saved). */
+    fun discardPendingSource() {
+        nextSource = PingSource.FUSED
+    }
+
+    /** Activity Recognition registered after the session began: STILL/moving transitions now take effect. */
+    fun onActivityRecognitionAvailable() {
+        activityRecognitionAvailable = true
+    }
 
     fun onActivity(type: ActivityType): MachineStep {
         if (!activityRecognitionAvailable) return step()
@@ -81,17 +101,20 @@ class CaptureModeMachine(
 
     fun onGeofenceExit(): MachineStep {
         stillPending = false
+        if (mode != CaptureMode.STATIONARY) return step()
+        // Only a real exit from a stop is tagged: a late OS event after the safety net already fired is not.
         nextSource = PingSource.GEOFENCE_EXIT
-        return if (mode == CaptureMode.STATIONARY) enterMoving() else step()
+        return enterMoving()
     }
 
-    /** [fix] must already have passed [PingFilter]: accepted, or only held back from saving by the displacement gate. */
+    /** [fix] must already have passed [PingFilter]: accepted, or only held back from saving by the displacement gate or STATIONARY jitter. */
     fun onAcceptedFix(fix: Fix): MachineStep {
         lastFix = fix
         if (mode == CaptureMode.STATIONARY) {
             val centre = geofenceCentre
             // Safety net if the geofence exit event is late or lost.
-            return if (centre != null && fix.distanceTo(centre) > config.stayGeofenceRadiusM) {
+            return if (centre != null && fix.distanceTo(centre) > geofenceRadiusM) {
+                nextSource = PingSource.GEOFENCE_EXIT
                 enterMoving()
             } else {
                 step()
@@ -122,6 +145,7 @@ class CaptureModeMachine(
         stillPending = false
         anchor = null
         geofenceCentre = at
+        geofenceRadiusM = stayRadiusM
         return MachineStep(
             mode,
             listOf(
@@ -132,7 +156,7 @@ class CaptureModeMachine(
                         maxUpdateDelayMs = 0L,
                     ),
                 ),
-                CaptureEffect.AddStayGeofence(at.lat, at.lng, config.stayGeofenceRadiusM),
+                CaptureEffect.AddStayGeofence(at.lat, at.lng, geofenceRadiusM),
             ),
         )
     }

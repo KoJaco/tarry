@@ -52,6 +52,7 @@ class HealthChecker @Inject constructor(
     private val evaluator: HealthEvaluator,
     private val recorder: HealthGapRecorder,
     private val controller: TrackingController,
+    private val coordinator: CaptureCoordinator,
 ) {
     private fun issueFor(health: HealthSnapshot): HealthIssue? =
         if (health.shouldRun) evaluator.evaluate(health) else evaluator.standingIssue(health.preconditions)
@@ -61,6 +62,8 @@ class HealthChecker @Inject constructor(
      * user fixes a setting instead of waiting for the next periodic check.
      */
     suspend fun clearResolved() {
+        // An in-app grant can make Activity Recognition registrable; pick it up now rather than at the next check.
+        coordinator.ensureCapture()
         val stored = recorder.attentionOnlyCause() ?: return
         // Same ordering as check(): recovery first, then the decision.
         controller.recoverCrashedSession()
@@ -78,6 +81,8 @@ class HealthChecker @Inject constructor(
         // first, so the open health Gap is settled before anything is reported or recovered. No lock is held here,
         // so the order controller -> coordinator -> recorder holds.
         controller.recoverCrashedSession()
+        // Retries an Activity Recognition registration that failed earlier (no-op without an open session).
+        coordinator.ensureCapture()
         val health = snapshots.capture().health
         // Outside a window only standing configuration problems count, and they never open a Gap (ADR 0003).
         val issue = issueFor(health)

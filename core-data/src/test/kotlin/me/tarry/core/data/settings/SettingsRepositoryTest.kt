@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
+import androidx.datastore.preferences.core.edit
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -45,6 +46,7 @@ class SettingsRepositoryTest {
         assertThat(s.reviewReminderEnabled).isFalse()
         assertThat(s.reviewReminderMinuteOfDay).isEqualTo(1050)
         assertThat(s.theme).isEqualTo(ThemeMode.SYSTEM)
+        assertThat(s.stayGeofenceRadiusM).isEqualTo(100)
     }
 
     @Test
@@ -137,6 +139,25 @@ class SettingsRepositoryTest {
         assertThat(r.settings.first().theme).isEqualTo(ThemeMode.DARK)
         r.setTheme(ThemeMode.LIGHT)
         assertThat(r.settings.first().theme).isEqualTo(ThemeMode.LIGHT)
+    }
+
+    @Test
+    fun stayRadius_roundTrips_andRejectsValuesOutsideTheAllowedSet() = runTest {
+        val r = repo()
+        for (m in Settings.ALLOWED_STAY_RADII_M) {
+            r.setStayGeofenceRadiusM(m)
+            assertThat(r.settings.first().stayGeofenceRadiusM).isEqualTo(m)
+        }
+        assertRejected { r.setStayGeofenceRadiusM(50) }
+        assertThat(r.settings.first().stayGeofenceRadiusM).isEqualTo(300)
+    }
+
+    @Test
+    fun stayRadius_invalidStoredValueFallsBackToDefault() = runTest {
+        val file = tmp.newFile("badradius.preferences_pb")
+        val store = createSettingsDataStore(newScope()) { file }
+        store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("stay_geofence_radius_m")] = 50 }
+        assertThat(SettingsRepository(store).settings.first().stayGeofenceRadiusM).isEqualTo(100)
     }
 
     private fun TestScope.newScope() =

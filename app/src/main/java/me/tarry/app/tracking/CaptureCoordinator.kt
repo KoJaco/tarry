@@ -38,6 +38,7 @@ class CaptureCoordinator @Inject constructor(
     private val locationClient: LocationClient,
     private val activityClient: ActivityTransitionClient,
     private val geofenceClient: GeofenceClient,
+    private val stayRadius: StayRadiusSource,
     private val permissions: LocationPermissionChecker,
     private val windowChecker: ScheduleWindowChecker,
     private val health: HealthGapRecorder,
@@ -51,6 +52,8 @@ class CaptureCoordinator @Inject constructor(
     private var filter = PingFilter(config)
     private var activity: ActivityType? = null
     private var manualStartPending = false
+    private var activityRegistered = false
+    private var unsavedStationaryFix: Fix? = null
     private var locationJob: Job? = null
     private var lastLocationParams: LocationRequestParams? = null
 
@@ -80,19 +83,23 @@ class CaptureCoordinator @Inject constructor(
         session = opened
         activity = null
         manualStartPending = trigger == SessionTrigger.MANUAL
+        unsavedStationaryFix = null
         filter = PingFilter(config)
         statusStore.setActiveSessionId(opened.id)
         statusStore.setLastHeartbeat(now)
         try {
             // The service is up, so the outage (if any) is over; the health check re-raises anything still broken.
             health.closeOutage(now)
-            val m = CaptureModeMachine(config, activityRecognitionAvailable = registerActivity())
+            activityRegistered = registerActivity()
+            val m = CaptureModeMachine(config, activityRecognitionAvailable = activityRegistered)
+            m.stayRadiusM = stayRadius.stayRadiusM()
             machine = m
             apply(m.start())
         } catch (t: Throwable) {
             // Never leave a session open without a machine: fixes would be ignored while the heartbeat looks alive.
             session = null
             machine = null
+            activityRegistered = false
             locationJob?.cancel()
             locationJob = null
             withContext(NonCancellable) {
@@ -118,8 +125,11 @@ class CaptureCoordinator @Inject constructor(
     /** Closes the session with [reason] and tears down location, geofence and activity updates. */
     suspend fun end(reason: SessionEndReason) = mutex.withLock {
         val open = session ?: return@withLock
+        // A stay that ends with the session still gets an accurate end time.
+        departurePing(open.id, activity)?.let { trackingRepo.savePings(listOf(it)) }
         session = null
         machine = null
+        activityRegistered = false
         locationJob?.cancel()
         locationJob = null
         trackingRepo.saveSession(open.copy(end = clock.nowMs(), endReason = reason))
@@ -141,33 +151,46 @@ class CaptureCoordinator @Inject constructor(
     suspend fun onFixes(fixes: List<Fix>) = mutex.withLock {
         val open = session ?: return@withLock
         val m = machine ?: return@withLock
+        m.stayRadiusM = stayRadius.stayRadiusM()
         val accepted = ArrayList<LocationPing>()
         var latest = Long.MIN_VALUE
         for (fix in fixes.sortedBy { it.timeMs }) {
             latest = maxOf(latest, fix.timeMs)
+            val lastSavedBefore = filter.lastAccepted?.timeMs ?: Long.MIN_VALUE
             val decision = filter.offer(fix, m.mode)
             if (decision == FilterDecision.DROP_DISPLACEMENT) {
                 // Not saved, but the machine still needs it (stationary rule); every delivered fix is a heartbeat.
                 apply(m.onAcceptedFix(fix))
+                // A GEOFENCE_EXIT tag is for the fix that is saved; this one is not, so the tag is not carried forward.
+                m.discardPendingSource()
+                continue
+            }
+            if (decision == FilterDecision.DROP_JITTER) {
+                // Not saved; remembered so the stay's end time is accurate if it is the last fix before departure.
+                // The machine still sees it: a fix beyond the stay radius whose accuracy circle covers its distance
+                // from the last saved ping must trip the safety net.
+                unsavedStationaryFix = fix
+                apply(m.onAcceptedFix(fix))
+                if (m.mode == CaptureMode.MOVING) {
+                    // This fix is the departure and the exit trigger: save it, tagged, and forget it as a candidate.
+                    unsavedStationaryFix = null
+                    accepted += pingOf(fix, m.takeNextPingSource(), open.id, activity)
+                }
                 continue
             }
             if (!decision.accepted) continue
+            val modeBefore = m.mode
+            // Step first: a safety-net exit triggered by this very fix tags it GEOFENCE_EXIT.
+            apply(m.onAcceptedFix(fix))
+            if (modeBefore == CaptureMode.STATIONARY && m.mode == CaptureMode.MOVING) {
+                // Departure ping goes in before the triggering fix and does not consume the exit tag.
+                departurePing(open.id, activity, lastSavedBefore)?.let { accepted += it }
+            }
+            unsavedStationaryFix = null
             val machineSource = m.takeNextPingSource()
             val source = if (manualStartPending) PingSource.MANUAL_START else machineSource
             manualStartPending = false
-            accepted += LocationPing(
-                timestamp = fix.timeMs,
-                zoneId = clock.zone().id,
-                lat = fix.lat,
-                lng = fix.lng,
-                accuracyM = fix.accuracyM,
-                speedMps = fix.speedMps,
-                bearing = fix.bearing,
-                activity = activity,
-                source = source,
-                sessionId = open.id,
-            )
-            apply(m.onAcceptedFix(fix))
+            accepted += pingOf(fix, source, open.id, activity)
         }
         if (accepted.isNotEmpty()) trackingRepo.savePings(accepted)
         // Every fix or batch counts as a heartbeat, even when all were filtered out.
@@ -178,15 +201,62 @@ class CaptureCoordinator @Inject constructor(
         }
     }
 
+    private fun pingOf(fix: Fix, source: PingSource, sessionId: Long, activity: ActivityType?) = LocationPing(
+        timestamp = fix.timeMs,
+        zoneId = clock.zone().id,
+        lat = fix.lat,
+        lng = fix.lng,
+        accuracyM = fix.accuracyM,
+        speedMps = fix.speedMps,
+        bearing = fix.bearing,
+        activity = activity,
+        source = source,
+        sessionId = sessionId,
+    )
+
+    /**
+     * The latest jitter-dropped STATIONARY fix as a FUSED ping, if it is newer than the last saved one; forgets it.
+     * Gives a stay an accurate end time. Departure pings deliberately bypass [PingFilter] state: they are not offered
+     * to it, so its last-accepted fix and speed checks are unchanged.
+     */
+    private fun departurePing(
+        sessionId: Long,
+        activity: ActivityType?,
+        lastSavedMs: Long = filter.lastAccepted?.timeMs ?: Long.MIN_VALUE,
+    ): LocationPing? {
+        val fix = unsavedStationaryFix
+        unsavedStationaryFix = null
+        if (fix == null || fix.timeMs <= lastSavedMs) return null
+        return pingOf(fix, PingSource.FUSED, sessionId, activity)
+    }
+
+    /** Saves the departure ping when a machine step has just moved STATIONARY to MOVING. */
+    private suspend fun saveDepartureIfLeftStationary(
+        m: CaptureModeMachine,
+        modeBefore: CaptureMode,
+        activity: ActivityType?,
+    ) {
+        if (modeBefore != CaptureMode.STATIONARY || m.mode != CaptureMode.MOVING) return
+        val sessionId = session?.id ?: return
+        departurePing(sessionId, activity)?.let { trackingRepo.savePings(listOf(it)) }
+    }
+
     suspend fun onActivity(type: ActivityType) = mutex.withLock {
         val m = machine ?: return@withLock
+        m.stayRadiusM = stayRadius.stayRadiusM()
+        val modeBefore = m.mode
+        // The departure ping keeps the activity from before this transition.
+        val previous = activity
         activity = type
         apply(m.onActivity(type))
+        saveDepartureIfLeftStationary(m, modeBefore, previous)
     }
 
     suspend fun onGeofenceExit() = mutex.withLock {
         val m = machine ?: return@withLock
+        val modeBefore = m.mode
         apply(m.onGeofenceExit())
+        saveDepartureIfLeftStationary(m, modeBefore, activity)
     }
 
     private suspend fun apply(step: MachineStep) {
@@ -212,11 +282,18 @@ class CaptureCoordinator @Inject constructor(
     }
 
     /**
-     * Restarts location updates if the request died (a non-security failure ended the collector) while a session is
-     * open. Called by every reconcile and health check, so an open session is never left without updates.
+     * Keeps an open session fully armed: restarts location updates if the request died (a non-security failure
+     * ended the collector) and retries Activity Recognition if it is not registered. Called by every reconcile, by the
+     * periodic health check (at most 15 min) and when the app resolves a health state (for example after an in-app
+     * permission grant). AR stays optional, so a failed retry is silent.
      */
-    suspend fun ensureLocationUpdates() = mutex.withLock {
-        if (session == null || locationJob?.isActive == true) return@withLock
+    suspend fun ensureCapture() = mutex.withLock {
+        if (session == null) return@withLock
+        if (!activityRegistered && registerActivity()) {
+            activityRegistered = true
+            machine?.onActivityRecognitionAvailable()
+        }
+        if (locationJob?.isActive == true) return@withLock
         lastLocationParams?.let(::startLocation)
     }
 

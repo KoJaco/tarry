@@ -80,7 +80,7 @@ class TrackingControllerTest {
         health = HealthGapRecorder(store, timelineRepo, alerts, clock, config, EffectiveScheduleWindowChecker(inputs, calculator, clock))
         coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo,
-            store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), permissions,
+            store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakeStayRadius(), permissions,
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
@@ -394,7 +394,7 @@ class TrackingControllerTest {
             }
         }
         val failingCoordinator = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, FakeLocationClient(), activity, failingGeofence,
+            config, trackingRepo, timelineRepo, store, FakeLocationClient(), activity, failingGeofence, FakeStayRadius(),
             permissions, FakeWindowChecker(), health, clock, captureScope,
         )
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
