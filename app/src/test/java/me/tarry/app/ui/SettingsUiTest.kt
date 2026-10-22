@@ -48,7 +48,25 @@ class SettingsUiTest {
         composeRule.onNodeWithText("Stop radius").assertHeightIsAtLeast(48.dp)
     }
 
-    private val radioOption = SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
+    @Test
+    fun labelsGroupHasJobsAndTagsRowsThatOpenTheirScreens() {
+        val opened = mutableListOf<String>()
+        composeRule.setContent {
+            SettingsContent(
+                Settings(),
+                onOpenJobs = { opened += "jobs" },
+                onOpenTags = { opened += "tags" },
+            )
+        }
+
+        composeRule.onNodeWithText("Labels", ignoreCase = true).assertExists()
+        composeRule.onNodeWithText("Jobs").assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithText("Tags").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+
+        assertThat(opened).containsExactly("jobs", "tags").inOrder()
+    }
+
+    private val radioOption =SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
 
     private fun option(text: String) = hasText(text) and radioOption
 
@@ -88,7 +106,7 @@ class SettingsUiTest {
     @Test
     fun themeRowShowsCurrentValueAndListsThreeOptions() {
         show(theme = ThemeMode.LIGHT)
-        composeRule.onNodeWithText("Theme").performClick()
+        composeRule.onNodeWithText("Theme").performScrollTo().performClick()
         composeRule.onAllNodes(radioOption).assertCountEquals(3)
         composeRule.onNode(option("System")).assertExists()
         composeRule.onNode(option("Light")).assertIsSelected()
@@ -98,7 +116,7 @@ class SettingsUiTest {
     @Test
     fun selectingDarkCallsBackAndClosesTheSheet() {
         show()
-        composeRule.onNodeWithText("Theme").performClick()
+        composeRule.onNodeWithText("Theme").performScrollTo().performClick()
         composeRule.onNode(option("Dark")).performClick()
 
         assertThat(themes).containsExactly(ThemeMode.DARK)

@@ -61,11 +61,19 @@ class CatalogEditor @Inject constructor(
     /** Soft delete. [EditResult.InUse] when a live visit, trip attribution or place default still uses the job. */
     suspend fun deleteJob(jobId: String): EditResult = db.withTransaction {
         val job = liveJob(jobId) ?: return@withTransaction EditResult.NotFound
-        val uses = jobs.countVisits(jobId) + jobs.countTrips(jobId) + places.getByDefaultJob(jobId).size
+        val uses = jobUses(jobId)
         if (uses > 0) return@withTransaction EditResult.InUse(uses)
         jobs.upsert(job.copy(deleted = true, updatedAt = clock.nowMs()))
         EditResult.Ok()
     }
+
+    /** How many live visits, trips and place defaults use the job (what blocks [deleteJob]). Read-only, for the UI to explain a disabled Delete. */
+    suspend fun jobUses(jobId: String): Int =
+        jobs.countVisits(jobId) + jobs.countTrips(jobId) + places.getByDefaultJob(jobId).size
+
+    /** How many live visits, trips and place defaults carry the tag (what blocks [deleteTag]). */
+    suspend fun tagUses(tagId: String): Int =
+        tags.countVisitUses(tagId) + tags.countTripUses(tagId) + places.getDefaultTagLinksByTag(tagId).size
 
     // endregion
 
@@ -94,7 +102,7 @@ class CatalogEditor @Inject constructor(
     /** Soft delete, only when no live visit, trip or place default carries the tag ([EditResult.InUse] otherwise). */
     suspend fun deleteTag(tagId: String): EditResult = db.withTransaction {
         val tag = liveTag(tagId) ?: return@withTransaction EditResult.NotFound
-        val uses = tags.countVisitUses(tagId) + tags.countTripUses(tagId) + places.getDefaultTagLinksByTag(tagId).size
+        val uses = tagUses(tagId)
         if (uses > 0) return@withTransaction EditResult.InUse(uses)
         tags.upsert(tag.copy(deleted = true, updatedAt = clock.nowMs()))
         EditResult.Ok()

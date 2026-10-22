@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phase 4a: Labels (jobs and tags) management. -->
+    <string name="settings_section_labels">Labels</string>
+    <string name="settings_jobs">Jobs</string>
+    <string name="settings_tags">Tags</string>
+
+    <string name="catalog_action_rename">Rename</string>
+    <string name="catalog_action_colour">Colour</string>
+    <string name="catalog_action_archive">Archive</string>
+    <string name="catalog_action_unarchive">Unarchive</string>
+    <string name="catalog_action_delete">Delete</string>
+    <string name="catalog_actions_for">Actions for %1$s</string>
+    <string name="catalog_colour_none">No colour</string>
+    <string name="catalog_archived_section">Archived</string>
+    <string name="catalog_checking_use">Checking where it is used…</string>
+
+    <string name="jobs_title">Jobs</string>
+    <string name="jobs_new">New job</string>
+    <string name="jobs_empty_title">No jobs yet</string>
+    <string name="jobs_empty_body">Create a job to label visits and trips for invoicing.</string>
+    <string name="jobs_rename_title">Rename job</string>
+    <string name="jobs_colour_title">Colour for %1$s</string>
+    <string name="jobs_archive_title">Archive %1$s?</string>
+    <string name="jobs_archive_body">It will be hidden from pickers and stay on past visits.</string>
+    <plurals name="jobs_archive_clears_places">
+        <item quantity="one">It will be hidden from pickers and stay on past visits. Its default will be cleared on %1$d place.</item>
+        <item quantity="other">It will be hidden from pickers and stay on past visits. Its default will be cleared on %1$d places.</item>
+    </plurals>
+    <string name="jobs_delete_title">Delete %1$s?</string>
+    <string name="jobs_delete_body">The job is removed from your list. This cannot be undone.</string>
+    <plurals name="jobs_delete_blocked">
+        <item quantity="one">Cannot delete: used by %1$d visit, trip or place. Archive it instead.</item>
+        <item quantity="other">Cannot delete: used by %1$d visits, trips or places. Archive it instead.</item>
+    </plurals>
+    <string name="jobs_undo_archived">Job archived</string>
+
+    <string name="tags_title">Tags</string>
+    <string name="tags_new_group">New group</string>
+    <string name="tags_new_group_title">New tag group</string>
+    <string name="tags_group_name_label">Group name</string>
+    <string name="tags_new_tag">New tag</string>
+    <string name="tags_empty_title">No tag groups yet</string>
+    <string name="tags_empty_body">Create a group, then add tags to label visits and trips.</string>
+    <string name="tags_group_empty">No tags in this group yet.</string>
+    <string name="tags_rename_group_title">Rename group</string>
+    <string name="tags_rename_tag_title">Rename tag</string>
+    <string name="tags_archive_all">Archive all tags</string>
+    <string name="tags_delete_group_title">Delete group %1$s?</string>
+    <string name="tags_delete_group_body">The group is removed. This cannot be undone.</string>
+    <plurals name="tags_delete_group_blocked">
+        <item quantity="one">Cannot delete: the group still has %1$d tag. Delete its tags first.</item>
+        <item quantity="other">Cannot delete: the group still has %1$d tags. Delete its tags first.</item>
+    </plurals>
+    <string name="tags_delete_tag_title">Delete tag %1$s?</string>
+    <string name="tags_delete_tag_body">The tag is removed from your list. This cannot be undone.</string>
+    <plurals name="tags_delete_tag_blocked">
+        <item quantity="one">Cannot delete: used by %1$d visit, trip or place default. Archive it instead.</item>
+        <item quantity="other">Cannot delete: used by %1$d visits, trips or place defaults. Archive it instead.</item>
+    </plurals>
+    <string name="tags_reorder">Reorder %1$s</string>
+    <string name="tags_move_up">Move up</string>
+    <string name="tags_move_down">Move down</string>
+    <string name="tags_unarchive_named">Unarchive %1$s</string>
+    <string name="tags_archived_marker">Archived</string>
+    <string name="tags_undo_archived">Tag archived</string>
+    <string name="tags_undo_archived_all">Tags archived</string>
+</resources>

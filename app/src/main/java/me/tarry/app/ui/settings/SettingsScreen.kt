@@ -46,6 +46,8 @@ import me.tarry.core.data.settings.ThemeMode
 fun SettingsScreen(
     onOpenPermissions: () -> Unit,
     onOpenSessions: () -> Unit,
+    onOpenJobs: () -> Unit = {},
+    onOpenTags: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -54,6 +56,8 @@ fun SettingsScreen(
         settings = settings,
         onOpenPermissions = onOpenPermissions,
         onOpenSessions = onOpenSessions,
+        onOpenJobs = onOpenJobs,
+        onOpenTags = onOpenTags,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onThemeSelected = viewModel::setTheme,
         modifier = modifier,
@@ -68,6 +72,8 @@ fun SettingsContent(
     settings: Settings?,
     onOpenPermissions: () -> Unit = {},
     onOpenSessions: () -> Unit = {},
+    onOpenJobs: () -> Unit = {},
+    onOpenTags: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -149,6 +155,13 @@ fun SettingsContent(
             }
             row(permissionsTitle, onClick = onOpenPermissions, icon = R.drawable.ic_permissions)
             row(sessionsTitle, onClick = onOpenSessions, icon = R.drawable.ic_sessions)
+        }
+        SectionHeader(stringResource(R.string.settings_section_labels), Modifier.padding(top = space.m))
+        val jobsTitle = stringResource(R.string.settings_jobs)
+        val tagsTitle = stringResource(R.string.settings_tags)
+        SettingsGroup {
+            row(jobsTitle, onClick = onOpenJobs)
+            row(tagsTitle, onClick = onOpenTags)
         }
         if (settings != null) {
             SectionHeader(stringResource(R.string.settings_section_appearance), Modifier.padding(top = space.m))

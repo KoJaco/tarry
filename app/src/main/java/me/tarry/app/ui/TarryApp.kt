@@ -31,6 +31,10 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.catalog.JobsScreen
+import me.tarry.app.ui.catalog.TagsScreen
+import me.tarry.app.ui.navigation.JobsRoute
+import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.PermissionsRoute
 import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
@@ -103,12 +107,16 @@ fun TarryApp(
             SettingsScreen(
                 onOpenPermissions = { openPermissions() },
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
+                onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
+                onOpenTags = { if (backStack.lastOrNull() != TagsRoute) backStack.add(TagsRoute) },
             )
         },
         permissionsContent = {
             PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
         },
         sessionsContent = { SessionsScreen() },
+        jobsContent = { JobsScreen() },
+        tagsContent = { TagsScreen() },
     )
     if (sheetVisible) {
         val openAppSettings = { context.startActivity(appSettingsIntent(context)) }
@@ -151,6 +159,8 @@ fun TarryAppContent(
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
+    jobsContent: @Composable () -> Unit = {},
+    tagsContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     snackbarHost: @Composable () -> Unit = {},
     /** Replaces the bottom navigation while visits are selected for a bulk edit (null = the normal bar). */
@@ -184,6 +194,8 @@ fun TarryAppContent(
                 entry<SettingsRoute> { settingsContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }
+                entry<JobsRoute> { jobsContent() }
+                entry<TagsRoute> { tagsContent() }
             },
         )
     }

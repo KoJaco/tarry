@@ -19,9 +19,12 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.navigation.JobsRoute
+import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.settings.SettingsContent
@@ -87,6 +90,42 @@ class TarryAppShellTest {
         composeRule.onNodeWithText("Nothing yet today").assertIsDisplayed()
         composeRule.onNodeWithText("Rounding increment").assertDoesNotExist()
         timelineTab.assertIsSelected()
+    }
+
+    @Test
+    fun settingsRows_pushJobsAndTagsOverSettings_andTheSettingsTabReturns() {
+        val backStack = mutableStateListOf<NavKey>(TimelineRoute)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = { backStack.navigateTopLevel(it) },
+                onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+                onToggleClick = {},
+                settingsContent = {
+                    SettingsContent(
+                        Settings(),
+                        onOpenJobs = { backStack.add(JobsRoute) },
+                        onOpenTags = { backStack.add(TagsRoute) },
+                    )
+                },
+                timelineContent = { Text("Timeline screen") },
+                jobsContent = { Text("Jobs screen") },
+                tagsContent = { Text("Tags screen") },
+            )
+        }
+        settingsTab.performClick()
+
+        composeRule.onNodeWithText("Jobs").performScrollTo().performClick()
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.onNodeWithText("Jobs screen").assertIsDisplayed()
+        settingsTab.assertIsSelected()
+        settingsTab.performClick()
+        composeRule.onNodeWithText("Stop radius").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Tags").performScrollTo().performClick()
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.onNodeWithText("Tags screen").assertIsDisplayed()
     }
 
     @Test
