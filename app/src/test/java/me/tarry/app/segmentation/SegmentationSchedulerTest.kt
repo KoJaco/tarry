@@ -50,12 +50,17 @@ class SegmentationSchedulerTest {
     private fun infos(name: String): List<WorkInfo> = workManager.getWorkInfosForUniqueWork(name).get()
 
     @Test
-    fun enqueueNowIsUniqueAndKeepsTheQueuedRun() {
+    fun enqueueNowChainsASecondRequestBehindTheRunInProgress() {
         scheduler.enqueueNow()
         val first = infos(SegmentationScheduler.NOW).single()
         scheduler.enqueueNow()
 
-        assertThat(infos(SegmentationScheduler.NOW).single().id).isEqualTo(first.id)
+        // KEEP would have dropped the second request: a run that already read its inputs does not cover a later edit.
+        val all = infos(SegmentationScheduler.NOW)
+        assertThat(all).hasSize(2)
+        val second = all.single { it.id != first.id }
+        assertThat(second.state).isEqualTo(WorkInfo.State.BLOCKED)
+        assertThat(all.single { it.id == first.id }.state).isNotEqualTo(WorkInfo.State.BLOCKED)
         assertThat(SegmentationScheduler.NOW).isEqualTo("segmentation-now")
     }
 
