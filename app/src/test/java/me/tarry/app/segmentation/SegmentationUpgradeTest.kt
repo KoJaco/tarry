@@ -83,6 +83,17 @@ class SegmentationUpgradeTest {
     }
 
     @Test
+    fun aDeviceOnThePreviousVersionReRuns() = runBlocking<Unit> {
+        db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = now - day))
+        settings.setSegmentationVersion(SegmentationUpgrade.SEGMENTATION_VERSION - 1)
+
+        assertThat(upgrade.runIfNeeded()).isTrue()
+
+        assertThat(db.segmentationCheckpointDao().getById()!!.processedUntil).isEqualTo(now - 90 * day)
+        assertThat(settings.segmentationVersion()).isEqualTo(SegmentationUpgrade.SEGMENTATION_VERSION)
+    }
+
+    @Test
     fun currentVersionDoesNothing() = runBlocking<Unit> {
         db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = now - day))
         settings.setSegmentationVersion(SegmentationUpgrade.SEGMENTATION_VERSION)

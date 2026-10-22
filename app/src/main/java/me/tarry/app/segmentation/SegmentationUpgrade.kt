@@ -31,7 +31,10 @@ class SegmentationUpgrade @Inject constructor(
     }
 
     companion object {
-        /** 1 = original algorithm; 2 = dogfood-1 fixes (sustained departure, displacement merge, arrival radius). */
-        const val SEGMENTATION_VERSION = 2
+        /**
+         * 1 = original algorithm; 2 = dogfood-1 fixes (sustained departure, displacement merge, arrival radius);
+         * 3 = indistinguishable known places never split a stay, no zero-length stays.
+         */
+        const val SEGMENTATION_VERSION = 3
     }
 }
