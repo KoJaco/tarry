@@ -14,6 +14,10 @@ import me.tarry.core.data.db.entity.TagGroup
 interface JobDao {
     @Upsert suspend fun upsert(job: Job)
 
+    /** Un-archives a live job without touching its other columns (a rename since the archive survives). */
+    @Query("UPDATE job SET archived = 0, updatedAt = :updatedAt WHERE id = :id AND deleted = 0")
+    suspend fun unarchive(id: String, updatedAt: Long)
+
     @Query("SELECT * FROM job WHERE id = :id")
     suspend fun getById(id: String): Job?
 
@@ -76,6 +80,10 @@ interface PlaceDao {
     @Query("UPDATE place SET defaultJobId = :jobId, updatedAt = :updatedAt WHERE id = :id")
     suspend fun setDefaultJob(id: String, jobId: String?, updatedAt: Long)
 
+    /** Undo of a job archive: sets the default only on a live place that has none now, so a default chosen since survives. */
+    @Query("UPDATE place SET defaultJobId = :jobId, updatedAt = :updatedAt WHERE id = :id AND deleted = 0 AND defaultJobId IS NULL")
+    suspend fun restoreDefaultJob(id: String, jobId: String, updatedAt: Long)
+
     /** Default-tag links of live places that carry [tagId]. */
     @Query("SELECT pdt.* FROM place_default_tag pdt JOIN place p ON p.id = pdt.placeId WHERE pdt.tagId = :tagId AND p.deleted = 0")
     suspend fun getDefaultTagLinksByTag(tagId: String): List<PlaceDefaultTag>
@@ -89,6 +97,10 @@ interface TagDao {
     @Upsert suspend fun upsertGroup(group: TagGroup)
 
     @Upsert suspend fun upsert(tag: Tag)
+
+    /** Un-archives a live tag without touching its other columns (a rename since the archive survives). */
+    @Query("UPDATE tag SET archived = 0, updatedAt = :updatedAt WHERE id = :id AND deleted = 0")
+    suspend fun unarchive(id: String, updatedAt: Long)
 
     @Query("SELECT * FROM tag_group WHERE id = :id")
     suspend fun getGroupById(id: String): TagGroup?

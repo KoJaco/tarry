@@ -134,6 +134,79 @@ class CatalogEditorTest : DbTestBase() {
     }
 
     @Test
+    fun archiveUndoKeepsARenameMadeSinceAndStampsUpdatedAt() = runTest {
+        db.jobDao().upsert(job("j"))
+        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 1))
+        db.tagDao().upsert(tag("t"))
+        val jobUndo = catalog.archiveJob("j") as EditResult.Ok
+        val tagUndo = catalog.archiveTag("t") as EditResult.Ok
+        catalog.renameJob("j", "Renamed")
+        catalog.renameTag("t", "Renamed tag")
+
+        now = 2_000_000L
+        timeline.restore(jobUndo.undo!!)
+        timeline.restore(tagUndo.undo!!)
+
+        val j = db.jobDao().getById("j")!!
+        assertThat(j.archived).isFalse()
+        assertThat(j.name).isEqualTo("Renamed")
+        assertThat(j.updatedAt).isEqualTo(2_000_000L)
+        val t = db.tagDao().getById("t")!!
+        assertThat(t.archived).isFalse()
+        assertThat(t.name).isEqualTo("Renamed tag")
+        assertThat(t.updatedAt).isEqualTo(2_000_000L)
+    }
+
+    @Test
+    fun archiveUndoDoesNotResurrectARowDeletedSince() = runTest {
+        db.jobDao().upsert(job("j"))
+        seedGroup("t")
+        val jobUndo = catalog.archiveJob("j") as EditResult.Ok
+        val tagUndo = catalog.archiveTag("t") as EditResult.Ok
+        assertThat(catalog.deleteJob("j")).isEqualTo(EditResult.Ok())
+        assertThat(catalog.deleteTag("t")).isEqualTo(EditResult.Ok())
+
+        timeline.restore(jobUndo.undo!!)
+        timeline.restore(tagUndo.undo!!)
+
+        assertThat(db.jobDao().getById("j")!!.deleted).isTrue()
+        assertThat(db.jobDao().getById("j")!!.archived).isTrue()
+        assertThat(db.tagDao().getById("t")!!.deleted).isTrue()
+        assertThat(db.tagDao().getById("t")!!.archived).isTrue()
+    }
+
+    @Test
+    fun archiveTagUndoKeepsADefaultTagAddedInBetweenAndSkipsDeletedPlaces() = runTest {
+        seedGroup("a", "b")
+        listOf("p1", "p2").forEach { db.placeDao().upsert(place(it)) }
+        db.placeDao().upsertDefaultTag(PlaceDefaultTag("p1", "a"))
+        db.placeDao().upsertDefaultTag(PlaceDefaultTag("p2", "a"))
+        val result = catalog.archiveTag("a") as EditResult.Ok
+        db.placeDao().upsertDefaultTag(PlaceDefaultTag("p1", "b"))
+        db.placeDao().upsert(db.placeDao().getById("p2")!!.copy(deleted = true))
+
+        timeline.restore(result.undo!!)
+
+        assertThat(db.placeDao().getDefaultTags("p1").map { it.tagId }).containsExactly("a", "b")
+        assertThat(db.placeDao().getDefaultTags("p2")).isEmpty()
+    }
+
+    @Test
+    fun archiveJobUndoKeepsADefaultJobSetInBetween() = runTest {
+        db.jobDao().upsert(job("j"))
+        db.jobDao().upsert(job("new"))
+        db.placeDao().upsert(place("p1", "j"))
+        db.placeDao().upsert(place("p2", "j"))
+        val result = catalog.archiveJob("j") as EditResult.Ok
+        db.placeDao().setDefaultJob("p1", "new", 5)
+
+        timeline.restore(result.undo!!)
+
+        assertThat(db.placeDao().getById("p1")!!.defaultJobId).isEqualTo("new")
+        assertThat(db.placeDao().getById("p2")!!.defaultJobId).isEqualTo("j")
+    }
+
+    @Test
     fun unarchiveBringsTheJobBackButNotTheDefaults() = runTest {
         db.jobDao().upsert(job("j"))
         db.placeDao().upsert(place("p", "j"))

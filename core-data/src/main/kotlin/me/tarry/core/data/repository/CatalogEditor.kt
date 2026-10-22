@@ -14,7 +14,7 @@ import javax.inject.Singleton
 /**
  * Management of the job, tag and tag-group catalog (phase 4 T3). Same contract as [TimelineEditor]: one Room
  * transaction per op that re-reads its rows by id, and failures come back as [EditResult], never exceptions.
- * Archiving a job or tag also clears it from place defaults; the returned [Snapshot] puts everything back through
+ * Archiving a job or tag also clears it from place defaults; the returned [Snapshot] reverses only those changes, targeted, through
  * [TimelineEditor.restore]. Archived rows stay on past visits. Catalog edits never touch segmentation state.
  */
 @Singleton
@@ -42,14 +42,14 @@ class CatalogEditor @Inject constructor(
         EditResult.Ok()
     }
 
-    /** Hides the job from pickers and clears it from every place default; the undo [Snapshot] restores both. */
+    /** Hides the job from pickers and clears it from every place default; the undo [Snapshot] reverses just those two changes. */
     suspend fun archiveJob(jobId: String): EditResult = db.withTransaction {
         val job = liveJob(jobId) ?: return@withTransaction EditResult.NotFound
         val affected = places.getByDefaultJob(jobId)
         val now = clock.nowMs()
         jobs.upsert(job.copy(archived = true, updatedAt = now))
         affected.forEach { places.setDefaultJob(it.id, null, now) }
-        EditResult.Ok(emptySnapshot().copy(jobs = listOf(job), placeDefaultJobs = affected.associate { it.id to jobId }))
+        EditResult.Ok(emptySnapshot().copy(archivedJobIds = listOf(jobId), placeDefaultJobs = affected.associate { it.id to jobId }))
     }
 
     suspend fun unarchiveJob(jobId: String): EditResult = db.withTransaction {
@@ -188,15 +188,13 @@ class CatalogEditor @Inject constructor(
 
     // endregion
 
-    /** Archives [toArchive] and deletes their place-default links; the snapshot holds the tags and all default tags of the affected places. */
+    /** Archives [toArchive] and deletes their place-default links; the snapshot holds the tag ids and exactly the links removed. */
     private suspend fun archive(toArchive: List<Tag>): Snapshot {
-        val now = clock.nowMs()
         val links = toArchive.flatMap { places.getDefaultTagLinksByTag(it.id) }
-        val affected = links.map { it.placeId }.distinct()
-        val before = if (affected.isEmpty()) emptyList() else places.getDefaultTagsFor(affected)
+        val now = clock.nowMs()
         links.forEach { places.deleteDefaultTag(it.placeId, it.tagId) }
         toArchive.forEach { tags.upsert(it.copy(archived = true, updatedAt = now)) }
-        return emptySnapshot().copy(tags = toArchive, placeDefaultTags = before)
+        return emptySnapshot().copy(archivedTagIds = toArchive.map { it.id }, placeDefaultTags = links)
     }
 
     private fun matches(live: Set<String>, ordered: List<String>) = ordered.size == live.size && ordered.toSet() == live

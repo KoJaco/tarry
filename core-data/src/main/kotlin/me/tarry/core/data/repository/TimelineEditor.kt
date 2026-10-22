@@ -10,13 +10,13 @@ import me.tarry.core.data.db.dao.TagDao
 import me.tarry.core.data.db.dao.TripDao
 import me.tarry.core.data.db.dao.VisitDao
 import me.tarry.core.data.db.entity.ExcludedRange
-import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
+import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.PlaceDefaultTag
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
-import me.tarry.core.data.db.entity.Tag
 import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.Trip
+import me.tarry.core.data.db.entity.Tag
 import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.db.entity.VisitTag
@@ -74,12 +74,12 @@ data class Snapshot(
     val tripTags: List<TripTag>,
     val exclusions: List<ExcludedRange>,
     val places: List<Place> = emptyList(),
-    /** Catalog rows (jobs, tags) as they were before a [CatalogEditor] edit; restore upserts them. */
-    val jobs: List<Job> = emptyList(),
-    val tags: List<Tag> = emptyList(),
-    /** Every default-tag link of the places affected by a tag edit; restore replaces the default tags of exactly the places listed here. */
+    /** Ids a [CatalogEditor] archive hid; restore only clears `archived` (and bumps `updatedAt`) on the ones still live, never resurrecting a deleted row or reverting a rename. */
+    val archivedJobIds: List<String> = emptyList(),
+    val archivedTagIds: List<String> = emptyList(),
+    /** The default-tag links a tag archive removed; restore re-inserts just these, and only while both the place and the tag are live. */
     val placeDefaultTags: List<PlaceDefaultTag> = emptyList(),
-    /** placeId to the default job it had before a job archive; restore sets only that column, leaving the rest of the place as it is now. */
+    /** placeId to the default job a job archive cleared; restore sets only that column, and only while the place is live, still has no default and the job is live. */
     val placeDefaultJobs: Map<String, String> = emptyMap(),
 )
 
@@ -425,12 +425,16 @@ class TimelineEditor @Inject constructor(
             excluded.getInRange(from, to).filter { it.id !in keepExclusions }.forEach { excluded.upsert(it.copy(deleted = true, updatedAt = now)) }
         }
         snapshot.places.forEach { places.upsert(it) }
-        snapshot.jobs.forEach { jobs.upsert(it) }
-        snapshot.placeDefaultJobs.forEach { (placeId, jobId) -> places.setDefaultJob(placeId, jobId, now) }
-        snapshot.tags.forEach { tags.upsert(it) }
-        snapshot.placeDefaultTags.map { it.placeId }.distinct().forEach { placeId ->
-            places.getDefaultTags(placeId).forEach { places.deleteDefaultTag(placeId, it.tagId) }
-            snapshot.placeDefaultTags.filter { it.placeId == placeId }.forEach { places.upsertDefaultTag(it) }
+        // Catalog undo is targeted: it reverses only what the archive did, so edits made since (renames, new defaults) survive.
+        snapshot.archivedJobIds.forEach { jobs.unarchive(it, now) }
+        snapshot.placeDefaultJobs.forEach { (placeId, jobId) ->
+            if (jobs.getById(jobId)?.deleted == false) places.restoreDefaultJob(placeId, jobId, now)
+        }
+        snapshot.archivedTagIds.forEach { tags.unarchive(it, now) }
+        snapshot.placeDefaultTags.forEach { link ->
+            val placeLive = places.getById(link.placeId)?.deleted == false
+            val tagLive = tags.getById(link.tagId)?.deleted == false
+            if (placeLive && tagLive) places.upsertDefaultTag(link)
         }
         snapshot.visits.forEach { v ->
             visits.upsert(v)
