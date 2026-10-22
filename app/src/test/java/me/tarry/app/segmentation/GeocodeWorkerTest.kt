@@ -146,4 +146,43 @@ class GeocodeWorkerTest {
         assertThat(geocoder.calls).containsExactly(2.0, 3.0).inOrder()
         assertThat(stored(4.0).address).isNull()
     }
+
+    @Test
+    fun labelFollowsTheDistanceToTheAddressPoint() = runBlocking<Unit> {
+        place(1.0, 40)
+        place(2.0, 30)
+        place(3.0, 20)
+        place(4.0, 10)
+        geocoder.results[1.0] = GeocodeResult.Found("1 Main St", distanceM = 75.0, locality = "Pyrmont")
+        geocoder.results[2.0] = GeocodeResult.Found("2 Main St", distanceM = 75.1, locality = "Pyrmont")
+        geocoder.results[3.0] = GeocodeResult.Found("3 Main St", distanceM = 300.0, locality = "Pyrmont")
+        geocoder.results[4.0] = GeocodeResult.Found("4 Main St", distanceM = 300.1, locality = "Pyrmont")
+
+        worker().startWork().get()
+
+        assertThat(stored(1.0).address).isEqualTo("1 Main St")
+        assertThat(stored(2.0).address).isEqualTo("Near 2 Main St")
+        assertThat(stored(3.0).address).isEqualTo("Near 3 Main St")
+        assertThat(stored(4.0).address).isEqualTo("Unnamed place · Pyrmont")
+    }
+
+    @Test
+    fun farAddressWithoutLocalityIsJustUnnamed() = runBlocking<Unit> {
+        place(1.0, 10)
+        geocoder.results[1.0] = GeocodeResult.Found("1 Main St", distanceM = 900.0)
+
+        worker().startWork().get()
+
+        assertThat(stored(1.0).address).isEqualTo("Unnamed place")
+    }
+
+    @Test
+    fun unknownDistanceKeepsTheAddress() = runBlocking<Unit> {
+        place(1.0, 10)
+        geocoder.results[1.0] = GeocodeResult.Found("1 Main St", distanceM = null, locality = "Pyrmont")
+
+        worker().startWork().get()
+
+        assertThat(stored(1.0).address).isEqualTo("1 Main St")
+    }
 }

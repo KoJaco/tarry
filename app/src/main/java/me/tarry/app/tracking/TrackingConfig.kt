@@ -51,6 +51,10 @@ data class TrackingConfig(
     /** Max places looked up per geocode worker run, and the base retry backoff after a failed lookup. */
     val geocodeBatchSize: Int = 20,
     val geocodeBackoffSeconds: Long = 30L,
+    /** Label by distance from the place to the geocoder's address point: street address within this many metres. */
+    val addressExactMaxM: Double = 75.0,
+    /** Within this many metres (and past [addressExactMaxM]) the label is "Near <address>"; further out the suburb only. */
+    val addressNearMaxM: Double = 300.0,
     // Schedule engine.
     /** How far back and ahead the calculator builds windows when looking for the next transition. */
     val scheduleLookBackDays: Long = 1L,

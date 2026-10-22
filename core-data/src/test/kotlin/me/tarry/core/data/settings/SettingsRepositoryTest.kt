@@ -148,16 +148,33 @@ class SettingsRepositoryTest {
             r.setStayGeofenceRadiusM(m)
             assertThat(r.settings.first().stayGeofenceRadiusM).isEqualTo(m)
         }
-        assertRejected { r.setStayGeofenceRadiusM(50) }
-        assertThat(r.settings.first().stayGeofenceRadiusM).isEqualTo(300)
+        assertRejected { r.setStayGeofenceRadiusM(300) }
+        assertRejected { r.setStayGeofenceRadiusM(40) }
+        assertThat(r.settings.first().stayGeofenceRadiusM).isEqualTo(200)
     }
 
     @Test
     fun stayRadius_invalidStoredValueFallsBackToDefault() = runTest {
         val file = tmp.newFile("badradius.preferences_pb")
         val store = createSettingsDataStore(newScope()) { file }
-        store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("stay_geofence_radius_m")] = 50 }
+        store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("stay_geofence_radius_m")] = 40 }
         assertThat(SettingsRepository(store).settings.first().stayGeofenceRadiusM).isEqualTo(100)
+    }
+
+    @Test
+    fun stayRadius_storedLegacy300ReadsAs200() = runTest {
+        val file = tmp.newFile("legacyradius.preferences_pb")
+        val store = createSettingsDataStore(newScope()) { file }
+        store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("stay_geofence_radius_m")] = 300 }
+        assertThat(SettingsRepository(store).settings.first().stayGeofenceRadiusM).isEqualTo(200)
+    }
+
+    @Test
+    fun segmentationVersion_defaultsToZeroAndRoundTrips() = runTest {
+        val r = repo()
+        assertThat(r.segmentationVersion()).isEqualTo(0)
+        r.setSegmentationVersion(2)
+        assertThat(r.segmentationVersion()).isEqualTo(2)
     }
 
     private fun TestScope.newScope() =

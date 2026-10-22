@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 import javax.inject.Inject
@@ -78,6 +79,15 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.STAY_GEOFENCE_RADIUS_M] = meters }
     }
 
+    /** The segmentation algorithm version that last processed the stored data; 0 if never recorded. */
+    suspend fun segmentationVersion(): Int =
+        dataStore.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+            .first()[Keys.SEGMENTATION_VERSION] ?: 0
+
+    suspend fun setSegmentationVersion(version: Int) {
+        dataStore.edit { it[Keys.SEGMENTATION_VERSION] = version }
+    }
+
     private object Keys {
         val ROUNDING_INCREMENT_MIN = intPreferencesKey("rounding_increment_min")
         val ROUNDING_MODE = stringPreferencesKey("rounding_mode")
@@ -90,6 +100,7 @@ class SettingsRepository @Inject constructor(
         val REVIEW_REMINDER_MINUTE = intPreferencesKey("review_reminder_minute_of_day")
         val THEME = stringPreferencesKey("theme")
         val STAY_GEOFENCE_RADIUS_M = intPreferencesKey("stay_geofence_radius_m")
+        val SEGMENTATION_VERSION = intPreferencesKey("segmentation_version")
     }
 
     private fun Preferences.toSettings(): Settings {
@@ -112,6 +123,7 @@ class SettingsRepository @Inject constructor(
                 ?.takeIf { it in 0..1439 } ?: d.reviewReminderMinuteOfDay,
             theme = enumOrDefault(this[Keys.THEME], d.theme),
             stayGeofenceRadiusM = this[Keys.STAY_GEOFENCE_RADIUS_M]
+                ?.let { if (it == Settings.LEGACY_STAY_RADIUS_M) Settings.MAX_STAY_RADIUS_M else it }
                 ?.takeIf { it in Settings.ALLOWED_STAY_RADII_M } ?: d.stayGeofenceRadiusM,
         )
     }

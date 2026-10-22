@@ -7,6 +7,7 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.tarry.app.segmentation.SegmentationScheduler
+import me.tarry.app.segmentation.SegmentationUpgrade
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.HealthCheckWorker
 import me.tarry.app.tracking.ReconcileSource
@@ -24,6 +25,8 @@ class TarryApplication : Application(), Configuration.Provider {
 
     @Inject lateinit var segmentationScheduler: SegmentationScheduler
 
+    @Inject lateinit var segmentationUpgrade: SegmentationUpgrade
+
     @Inject @CaptureScope lateinit var captureScope: CoroutineScope
 
     // Hilt injects in super.onCreate(), before WorkManager first asks for this.
@@ -34,6 +37,9 @@ class TarryApplication : Application(), Configuration.Provider {
         super.onCreate()
         HealthCheckWorker.enqueue(this, trackingConfig)
         segmentationScheduler.ensureDaily()
+        // After an upgrade that changed segmentation, re-run over the retention window (frozen rows stay untouched).
+        // A failure leaves the version unrecorded, so the next start tries again.
+        captureScope.launch { runCatching { segmentationUpgrade.runIfNeeded() } }
         // Seeds the schedule on first launch, recovers a crashed session and re-arms the alarm.
         // SYSTEM: process start may be a boot or background wake, which must not start a location FGS directly.
         captureScope.launch { controller.reconcile(ReconcileSource.SYSTEM) }

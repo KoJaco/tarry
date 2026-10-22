@@ -1,5 +1,6 @@
 package me.tarry.app.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -100,6 +101,7 @@ fun SettingsContent(
                 explanation = stringResource(R.string.settings_stay_radius_explanation),
                 options = Settings.ALLOWED_STAY_RADII_M.sorted()
                     .map { it to stringResource(R.string.settings_stay_radius_value, it) },
+                details = Settings.ALLOWED_STAY_RADII_M.associateWith { stayRadiusDetail(it) },
                 current = settings.stayGeofenceRadiusM,
                 onSelect = {
                     onStayRadiusSelected(it)
@@ -126,7 +128,7 @@ fun SettingsContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+                .verticalScroll(rememberScrollState())
             .padding(horizontal = space.gutter, vertical = space.l),
         verticalArrangement = Arrangement.spacedBy(space.s),
     ) {
@@ -168,6 +170,18 @@ private fun ThemeMode.labelRes(): Int = when (this) {
     ThemeMode.DARK -> R.string.settings_theme_dark
 }
 
+/** One-line use case for a picker option, plus an optional warning shown beneath it. */
+private data class OptionDetail(val useCase: String, val warning: String? = null)
+
+@Composable
+private fun stayRadiusDetail(meters: Int): OptionDetail = when (meters) {
+    50 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_50), stringResource(R.string.settings_stay_radius_small_warning))
+    75 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_75), stringResource(R.string.settings_stay_radius_small_warning))
+    100 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_100))
+    150 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_150))
+    else -> OptionDetail(stringResource(R.string.settings_stay_radius_use_200))
+}
+
 /** Bottom sheet of selectable rows (radio semantics, the row is the target). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,6 +192,7 @@ private fun <T> PickerSheet(
     current: T,
     onSelect: (T) -> Unit,
     onDismiss: () -> Unit,
+    details: Map<T, OptionDetail> = emptyMap(),
 ) {
     val colors = TarryTheme.colors
     val space = TarryTheme.space
@@ -192,6 +207,7 @@ private fun <T> PickerSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = space.gutter)
                 .padding(bottom = space.l),
         ) {
@@ -219,12 +235,24 @@ private fun <T> PickerSheet(
                             onClick = null,
                             colors = RadioButtonDefaults.colors(selectedColor = colors.ink, unselectedColor = colors.outline),
                         )
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = colors.ink,
-                            modifier = Modifier.padding(start = space.l),
-                        )
+                        Column(Modifier.padding(start = space.l, top = space.xs, bottom = space.xs)) {
+                            Text(label, style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                            val detail = details[value]
+                            if (detail != null) {
+                                Text(detail.useCase, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
+                                if (detail.warning != null) {
+                                    Text(
+                                        detail.warning,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = colors.onAlertSoft,
+                                        modifier = Modifier
+                                            .padding(top = space.xs)
+                                            .background(colors.alertSoft, TarryTheme.shapes.container)
+                                            .padding(space.s),
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
