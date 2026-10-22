@@ -74,6 +74,11 @@ data class Snapshot(
     val tripTags: List<TripTag>,
     val exclusions: List<ExcludedRange>,
     val places: List<Place> = emptyList(),
+    /** Catalog rows (jobs, tags) as they were before a [CatalogEditor] edit; restore upserts them. */
+    val jobs: List<Job> = emptyList(),
+    val tags: List<Tag> = emptyList(),
+    /** Every default-tag link of the places affected by a tag edit; restore replaces the default tags of exactly the places listed here. */
+    val placeDefaultTags: List<PlaceDefaultTag> = emptyList(),
 )
 
 sealed interface EditResult {
@@ -91,6 +96,9 @@ sealed interface EditResult {
 
     /** A name that is blank after trimming. */
     data object BlankName : EditResult
+
+    /** A catalog row cannot be deleted because [count] live visits, trips, places or tags still use it. */
+    data class InUse(val count: Int) : EditResult
 }
 
 /**
@@ -415,6 +423,12 @@ class TimelineEditor @Inject constructor(
             excluded.getInRange(from, to).filter { it.id !in keepExclusions }.forEach { excluded.upsert(it.copy(deleted = true, updatedAt = now)) }
         }
         snapshot.places.forEach { places.upsert(it) }
+        snapshot.jobs.forEach { jobs.upsert(it) }
+        snapshot.tags.forEach { tags.upsert(it) }
+        snapshot.placeDefaultTags.map { it.placeId }.distinct().forEach { placeId ->
+            places.getDefaultTags(placeId).forEach { places.deleteDefaultTag(placeId, it.tagId) }
+            snapshot.placeDefaultTags.filter { it.placeId == placeId }.forEach { places.upsertDefaultTag(it) }
+        }
         snapshot.visits.forEach { v ->
             visits.upsert(v)
             visits.deleteAllTags(v.id)

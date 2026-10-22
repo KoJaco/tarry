@@ -17,11 +17,19 @@ interface JobDao {
     @Query("SELECT * FROM job WHERE id = :id")
     suspend fun getById(id: String): Job?
 
-    @Query("SELECT * FROM job WHERE deleted = 0 ORDER BY name")
+    @Query("SELECT * FROM job WHERE deleted = 0 ORDER BY name COLLATE NOCASE")
     fun observeAll(): Flow<List<Job>>
 
     @Query("SELECT * FROM job WHERE deleted = 0")
     suspend fun getAllActive(): List<Job>
+
+    /** Live visits that use the job. */
+    @Query("SELECT COUNT(*) FROM visit WHERE jobId = :jobId AND deleted = 0")
+    suspend fun countVisits(jobId: String): Int
+
+    /** Live trips attributed to the job. */
+    @Query("SELECT COUNT(*) FROM trip WHERE attributedJobId = :jobId AND deleted = 0")
+    suspend fun countTrips(jobId: String): Int
 }
 
 @Dao
@@ -59,6 +67,17 @@ interface PlaceDao {
 
     @Query("SELECT * FROM place_default_tag WHERE placeId = :placeId")
     suspend fun getDefaultTags(placeId: String): List<PlaceDefaultTag>
+
+    /** Live places whose default job is [jobId]. */
+    @Query("SELECT * FROM place WHERE deleted = 0 AND defaultJobId = :jobId")
+    suspend fun getByDefaultJob(jobId: String): List<Place>
+
+    /** Default-tag links of live places that carry [tagId]. */
+    @Query("SELECT pdt.* FROM place_default_tag pdt JOIN place p ON p.id = pdt.placeId WHERE pdt.tagId = :tagId AND p.deleted = 0")
+    suspend fun getDefaultTagLinksByTag(tagId: String): List<PlaceDefaultTag>
+
+    @Query("SELECT * FROM place_default_tag WHERE placeId IN (:placeIds)")
+    suspend fun getDefaultTagsFor(placeIds: List<String>): List<PlaceDefaultTag>
 }
 
 @Dao
@@ -84,4 +103,12 @@ interface TagDao {
 
     @Query("SELECT * FROM tag_group WHERE deleted = 0 ORDER BY sortOrder")
     suspend fun getGroups(): List<TagGroup>
+
+    /** Live visits carrying the tag. */
+    @Query("SELECT COUNT(*) FROM visit_tag vt JOIN visit v ON v.id = vt.visitId WHERE vt.tagId = :tagId AND v.deleted = 0")
+    suspend fun countVisitUses(tagId: String): Int
+
+    /** Live trips carrying the tag. */
+    @Query("SELECT COUNT(*) FROM trip_tag tt JOIN trip t ON t.id = tt.tripId WHERE tt.tagId = :tagId AND t.deleted = 0")
+    suspend fun countTripUses(tagId: String): Int
 }
