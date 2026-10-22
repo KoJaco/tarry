@@ -71,18 +71,22 @@ internal fun stayEdge(stay: StayCandidate, atEnd: Boolean, pings: List<Ping>): P
 }
 
 /**
- * Length of the path through [points]. A hop counts when it is at least [SegmentationParams.movingSpeedMps] (travel
- * stays whole however poor the accuracy, so curves are not cut into chords) or longer than the two fixes' combined
- * accuracy. A slower, shorter hop is noise: it is skipped and the next one is measured from the last counted point.
+ * Length of the path through [points]. Interior fixes worse than [SegmentationParams.goodAccuracyM] are skipped when
+ * better ones exist (the first and last point always stay). A hop then counts when it is longer than the two fixes'
+ * combined accuracy, or, at [SegmentationParams.movingSpeedMps] or faster (so a curve is not cut into chords), when it
+ * is longer than the worse of the two accuracies. Any other hop is noise: it is skipped and the next one is measured
+ * from the last counted point.
  */
 internal fun pathDistance(points: List<PathPoint>, params: SegmentationParams): Double {
     if (points.size < 2) return 0.0
+    val good = points.subList(1, points.lastIndex).filter { it.accuracyM <= params.goodAccuracyM }
+    val used = if (good.isEmpty()) points else listOf(points.first()) + good + points.last()
     var distance = 0.0
-    var prev = points.first()
-    for (p in points.drop(1)) {
+    var prev = used.first()
+    for (p in used.drop(1)) {
         val hop = haversineMeters(prev.lat, prev.lng, p.lat, p.lng)
         val seconds = (p.timeMs - prev.timeMs) / 1000.0
-        val moving = seconds > 0 && hop / seconds >= params.movingSpeedMps
+        val moving = seconds > 0 && hop / seconds >= params.movingSpeedMps && hop > maxOf(prev.accuracyM, p.accuracyM)
         if (moving || hop > prev.accuracyM + p.accuracyM) {
             distance += hop
             prev = p

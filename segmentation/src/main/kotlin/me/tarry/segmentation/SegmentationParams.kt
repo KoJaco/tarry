@@ -56,8 +56,8 @@ data class SegmentationParams(
     /** A vehicle-to-stay tail only becomes a WALK leg when its average speed is at most this (m/s). */
     val walkMaxSpeedMps: Double = 2.5,
     /**
-     * Trip distance counts any hop at least this fast (m/s) however poor the accuracy: it is travel, and dropping it
-     * turns curves into chords. Slower hops count only when longer than the two fixes' combined accuracy.
+     * Trip distance counts a hop at least this fast (m/s) when it is longer than the worse of the two fixes'
+     * accuracies, so curves are not cut into chords. Other hops count only when longer than the combined accuracy.
      */
     val movingSpeedMps: Double = 5.0,
 ) {

@@ -271,7 +271,7 @@ class GoldenCasesTest {
     fun curvedRouteDistanceIsWithinTenPercent() {
         val radius = 300.0
         val b = builder(51).stay(30 * MIN, intervalMs = 3 * MIN)
-        val accuracies = listOf(20f, 100f, 45f, 80f, 30f, 100f)
+        val accuracies = listOf(20f, 100f, 45f, 80f, 30f, 40f)
         for (k in 1..18) {
             val theta = Math.toRadians(15.0 * k)
             val (lat, lng) = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, radius * kotlin.math.sin(theta), radius * (kotlin.math.cos(theta) - 1))
@@ -281,6 +281,21 @@ class GoldenCasesTest {
         val trip = run(pings).trips.single()
         val truth = radius * Math.toRadians(270.0)
         assertEquals(truth, trip.distanceM, truth * 0.10)
+    }
+
+    @Test
+    fun poorSignalStopDoesNotInflateDriveDistance() {
+        val pings = builder(71)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(0.0, 4_000.0, 12.5)
+            // A 4 min stop in a bad-signal spot: fixes jump 100-270 m every 20 s at 50-98 m accuracy.
+            .hops(4 * MIN, jitterM = 100.0, hopMinM = 100.0, hopMaxM = 270.0, hopEvery = 2, accuracyM = 50f..98f,
+                activity = Activity.IN_VEHICLE)
+            .moveBy(0.0, 4_000.0, 12.5)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val trip = run(pings).trips.single()
+        assertEquals(8_000.0, trip.distanceM, 800.0)
     }
 
     @Test

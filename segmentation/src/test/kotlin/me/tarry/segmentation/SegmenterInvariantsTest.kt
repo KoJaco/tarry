@@ -165,7 +165,7 @@ class SegmenterInvariantsTest {
             // Like the :app glue: back off by the overlap, then widen to the start of any stay that range cuts into.
             val backed = checkpoint - params.overlapMs
             // Also from the stay before the first one: arrival attribution caps a stay's start at half the distance to
-            // the previous stay's centroid, so the run must see that stay too (the glue must widen the same way).
+            // the previous stay's centroid, so the run must see that stay too (the runner's trip-origin widening already covers it).
             val firstKept = full.stays.indexOfFirst { it.range.endMs > backed }
             val widened = if (firstKept < 0) backed else full.stays[maxOf(0, firstKept - 1)].range.startMs
             val start = maxOf(c.input.range.startMs, minOf(backed, widened))
