@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -188,30 +187,5 @@ class TimelineViewModel internal constructor(
 
     private companion object {
         const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
-    }
-}
-
-/**
- * Number of visits in `[from, to)` that need review: not deleted (the DAO already skips those), not at an ignored
- * place, and with no resolved job: neither the visit's own live job nor its place's default live job. Gaps and trips
- * never count.
- */
-internal fun observeNeedsReviewCount(
-    timeline: TimelineRepository,
-    places: PlaceRepository,
-    jobs: JobRepository,
-    from: Long,
-    to: Long,
-): Flow<Int> = combine(
-    timeline.observeVisits(from, to),
-    places.observeAll(),
-    jobs.observeAll(), // excludes deleted jobs
-) { visits, allPlaces, allJobs ->
-    val byId = allPlaces.associateBy { it.id }
-    val liveJobs = allJobs.mapTo(HashSet()) { it.id }
-    visits.count { v ->
-        val place = v.placeId?.let(byId::get)
-        val resolved = v.jobId?.takeIf { it in liveJobs } ?: place?.defaultJobId?.takeIf { it in liveJobs }
-        resolved == null && place?.ignored != true
     }
 }

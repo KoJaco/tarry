@@ -127,7 +127,7 @@ fun TrackingToggle(
                         onClick()
                     },
                 )
-                .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.s),
+                .padding(horizontal = if (state == TrackingState.IDLE) TarryTheme.space.l else TarryTheme.space.s, vertical = TarryTheme.space.s),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s, Alignment.CenterHorizontally),
         ) {

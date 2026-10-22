@@ -48,8 +48,8 @@
     <string name="timeline_edit_visit">Edit visit</string>
     <string name="timeline_edit_trip">Edit trip</string>
     <string name="timeline_show_details">Show details</string>
-    <string name="timeline_add_visit">Add visit</string>
-    <string name="timeline_filter_needs_review">Needs review only</string>
+    <string name="timeline_new_visit">New visit</string>
+    <string name="timeline_filter_needs_review">Needs review</string>
 
     <string name="timeline_cluster_row">Patchy tracking · %1$s · %2$s</string>
     <plurals name="timeline_cluster_outages">

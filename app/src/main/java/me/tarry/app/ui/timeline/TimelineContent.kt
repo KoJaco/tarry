@@ -19,20 +19,18 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.semantics.Role
-import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.drawer.EditTarget
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import androidx.compose.ui.res.stringResource
 import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
@@ -80,23 +78,17 @@ fun TimelineContent(
             .padding(horizontal = TarryTheme.space.gutter),
         verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xl),
     ) {
-        DayHeader(
-            date, today, onPreviousDay, onNextDay, onSelectDate,
-            onAddVisit = {
+        DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate)
+        WeekStrip(date, today, onSelectDate)
+        ReviewRow(
+            reviewOnly = reviewOnly,
+            showToggle = !items.isNullOrEmpty(),
+            onReviewOnlyChange = { reviewOnly = it },
+            onNewVisit = {
                 val (start, end) = firstFreeSlot(date, zone, items.orEmpty().filterIsInstance<TimelineItem.Visit>())
                 onEdit(EditTarget.NewVisit(start, end))
             },
         )
-        WeekStrip(date, today, onSelectDate)
-        if (!items.isNullOrEmpty()) {
-            TarryChip(
-                text = stringResource(R.string.timeline_filter_needs_review),
-                selected = reviewOnly,
-                onClick = { reviewOnly = !reviewOnly },
-                role = Role.Checkbox,
-                modifier = Modifier.testTag("timeline_filter_review"),
-            )
-        }
         Column(
             modifier = Modifier.fillMaxWidth().daySlide(date),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),

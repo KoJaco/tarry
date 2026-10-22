@@ -4,7 +4,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -138,16 +141,16 @@ class TimelineEditingUiTest {
     }
 
     @Test
-    fun plusButtonOpensANewVisitOnTheFirstFreeHourAfterTheLastVisit() {
+    fun newVisitButtonOpensANewVisitOnTheFirstFreeHourAfterTheLastVisit() {
         show(listOf(review, labelled))
-        composeRule.onNodeWithContentDescription("Add visit").assertIsDisplayed().performClick()
+        composeRule.onNodeWithText("New visit").assertIsDisplayed().performClick()
         assertThat(targets).containsExactly(EditTarget.NewVisit(at(12), at(13)))
     }
 
     @Test
-    fun plusButtonDefaultsTo9To10OnAnEmptyDay() {
+    fun newVisitButtonDefaultsTo9To10OnAnEmptyDay() {
         show(emptyList())
-        composeRule.onNodeWithContentDescription("Add visit").performClick()
+        composeRule.onNodeWithText("New visit").performClick()
         assertThat(targets).containsExactly(EditTarget.NewVisit(at(9), at(10)))
     }
 
@@ -162,4 +165,25 @@ class TimelineEditingUiTest {
         composeRule.onNodeWithText("Add visit here").assertIsNotEnabled()
         composeRule.onNodeWithText("Visits already cover this time.").assertIsDisplayed()
     }
+
+    @Test
+    fun needsReviewToggleReportsItsStateAsASwitch() {
+        show(listOf(review, labelled))
+        tag("timeline_filter_review").assertIsOff().assertHasClickAction()
+        assertThat(tag("timeline_filter_review").fetchSemanticsNode().config[SemanticsProperties.Role]).isEqualTo(Role.Switch)
+        composeRule.onNodeWithText("Needs review").assertIsDisplayed()
+        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").assertIsOn()
+        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").assertIsOff()
+    }
+
+    @Test
+    fun newVisitButtonHasALabelAndNoPlusIsLeftInTheHeader() {
+        show(listOf(review))
+        composeRule.onNodeWithText("New visit").assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Add visit").assertDoesNotExist()
+        tag("timeline_add_visit").assertDoesNotExist()
+    }
+
 }

@@ -13,7 +13,6 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.MutableSharedFlow
 import me.tarry.app.R
 import me.tarry.app.tracking.TrackingState
-import me.tarry.app.ui.shell.BottomBarTags
 import me.tarry.app.ui.shell.TarryBottomBar
 import me.tarry.app.ui.shell.UndoSnackbarEffect
 import me.tarry.app.ui.theme.TarryTheme
@@ -31,35 +30,15 @@ class ShellStatusUiTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private fun showBar(badge: Int) {
+    @Test
+    fun timelineItemHasNoBadgeOrNeedsReviewDescription() {
         composeRule.setContent {
-            TarryTheme { TarryBottomBar(TrackingState.IDLE, true, false, {}, {}, {}, timelineBadge = badge) }
+            TarryTheme { TarryBottomBar(TrackingState.IDLE, true, false, {}, {}, {}) }
         }
-    }
-
-    private fun badge() = composeRule.onNodeWithTag(BottomBarTags.Badge, useUnmergedTree = true)
-
-    @Test
-    fun badgeShowsCountAndNamesItInTheTimelineItemDescription() {
-        showBar(3)
-        badge().assertIsDisplayed()
         composeRule.onNode(hasText("Timeline") and isSelectable()).assertIsDisplayed()
-        composeRule.onNodeWithTag(BottomBarTags.TimelineSlot, useUnmergedTree = true).assertIsDisplayed()
-        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Timeline, 3 visits need review")).assertIsDisplayed()
-    }
-
-    @Test
-    fun badgeUsesTheSingularForOne() {
-        showBar(1)
-        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Timeline, 1 visit needs review")).assertIsDisplayed()
-    }
-
-    @Test
-    fun badgeIsHiddenAtZero() {
-        showBar(0)
-        badge().assertDoesNotExist()
-        composeRule.onNode(hasText("Timeline") and isSelectable()).assertIsDisplayed()
-        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Timeline, 0 visits need review", substring = true)).assertDoesNotExist()
+        composeRule.onNodeWithTag("bottomBar.badge", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("need review", substring = true)).assertDoesNotExist()
+        composeRule.onNode(androidx.compose.ui.test.hasContentDescription("needs review", substring = true)).assertDoesNotExist()
     }
 
     private val snapshot = Snapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
