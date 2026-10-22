@@ -74,24 +74,34 @@ internal fun stayEdge(stay: StayCandidate, atEnd: Boolean, pings: List<Ping>): P
  * Length of the path through [points]. Interior fixes worse than [SegmentationParams.goodAccuracyM] are skipped when
  * better ones exist (the first and last point always stay). A hop then counts when it is longer than the two fixes'
  * combined accuracy, or, at [SegmentationParams.movingSpeedMps] or faster (so a curve is not cut into chords), when it
- * is longer than the worse of the two accuracies. Any other hop is noise: it is skipped and the next one is measured
- * from the last counted point.
+ * is longer than the worse of the two accuracies; and only where the path is going somewhere
+ * ([SegmentationParams.movingMinEfficiency] over a window of fixes around it), so jitter at one spot never counts.
+ * A skipped hop keeps the anchor: the next counted hop is measured from the last counted point, and whatever remains
+ * to the final point is added as a chord, so the distance carries over instead of being lost.
  */
 internal fun pathDistance(points: List<PathPoint>, params: SegmentationParams): Double {
     if (points.size < 2) return 0.0
     val good = points.subList(1, points.lastIndex).filter { it.accuracyM <= params.goodAccuracyM }
     val used = if (good.isEmpty()) points else listOf(points.first()) + good + points.last()
+    fun between(a: PathPoint, b: PathPoint) = haversineMeters(a.lat, a.lng, b.lat, b.lng)
+    fun goingSomewhere(i: Int): Boolean {
+        val window = used.subList(maxOf(0, i - 3), minOf(used.size, i + 3))
+        val path = window.zipWithNext().sumOf { (a, b) -> between(a, b) }
+        return path <= 0.0 || between(window.first(), window.last()) / path >= params.movingMinEfficiency
+    }
     var distance = 0.0
-    var prev = used.first()
-    for (p in used.drop(1)) {
-        val hop = haversineMeters(prev.lat, prev.lng, p.lat, p.lng)
-        val seconds = (p.timeMs - prev.timeMs) / 1000.0
-        val moving = seconds > 0 && hop / seconds >= params.movingSpeedMps && hop > maxOf(prev.accuracyM, p.accuracyM)
-        if (moving || hop > prev.accuracyM + p.accuracyM) {
+    var anchor = used.first()
+    for (i in 1 until used.size) {
+        val p = used[i]
+        val hop = between(anchor, p)
+        val seconds = (p.timeMs - anchor.timeMs) / 1000.0
+        val moving = seconds > 0 && hop / seconds >= params.movingSpeedMps && hop > maxOf(anchor.accuracyM, p.accuracyM)
+        if ((moving || hop > anchor.accuracyM + p.accuracyM) && goingSomewhere(i)) {
             distance += hop
-            prev = p
+            anchor = p
         }
     }
+    if (anchor !== used.last()) distance += between(anchor, used.last())
     return distance
 }
 

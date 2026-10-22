@@ -271,7 +271,7 @@ class GoldenCasesTest {
     fun curvedRouteDistanceIsWithinTenPercent() {
         val radius = 300.0
         val b = builder(51).stay(30 * MIN, intervalMs = 3 * MIN)
-        val accuracies = listOf(20f, 100f, 45f, 80f, 30f, 40f)
+        val accuracies = listOf(20f, 100f, 45f, 80f, 30f, 100f)
         for (k in 1..18) {
             val theta = Math.toRadians(15.0 * k)
             val (lat, lng) = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, radius * kotlin.math.sin(theta), radius * (kotlin.math.cos(theta) - 1))
@@ -295,7 +295,22 @@ class GoldenCasesTest {
             .stay(HOUR, intervalMs = 3 * MIN)
             .build()
         val trip = run(pings).trips.single()
-        assertEquals(8_000.0, trip.distanceM, 800.0)
+        assertEquals(8_000.0, trip.distanceM, 400.0)
+    }
+
+    @Test
+    fun goodAccuracyJitterDuringAStopDoesNotInflateDriveDistance() {
+        val pings = builder(72)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(0.0, 4_000.0, 12.5)
+            // Jitter that passes the good-accuracy filter: 100-270 m hops at 30-50 m accuracy.
+            .hops(4 * MIN, jitterM = 100.0, hopMinM = 100.0, hopMaxM = 270.0, hopEvery = 2, accuracyM = 30f..50f,
+                activity = Activity.IN_VEHICLE)
+            .moveBy(0.0, 4_000.0, 12.5)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val trip = run(pings).trips.single()
+        assertEquals(8_000.0, trip.distanceM, 400.0)
     }
 
     @Test

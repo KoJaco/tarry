@@ -60,6 +60,12 @@ data class SegmentationParams(
      * accuracies, so curves are not cut into chords. Other hops count only when longer than the combined accuracy.
      */
     val movingSpeedMps: Double = 5.0,
+    /**
+     * Trip distance counts a hop only where the path is going somewhere: over a window of a few fixes around it, the
+     * straight-line displacement must be at least this fraction of the path length. Jitter at one spot (a stop with
+     * poor fixes) fails it however fast or accurate the hops look; driving, curves included, passes.
+     */
+    val movingMinEfficiency: Double = 0.35,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
