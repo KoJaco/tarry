@@ -27,7 +27,16 @@ import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import me.tarry.core.data.repository.AnnotationOp
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -49,7 +58,7 @@ import java.time.ZoneId
 @Config(sdk = [35], application = android.app.Application::class, qualifiers = "w320dp-h1000dp")
 class TimelineEditingUiTest {
     @get:Rule
-    val composeRule = createComposeRule()
+    val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private val zone = ZoneId.of("Australia/Sydney")
     private val date = LocalDate.of(2026, 10, 21)
@@ -76,6 +85,45 @@ class TimelineEditingUiTest {
                 )
             }
         }
+    }
+
+    /** Multi-select harness: the same wiring as the shell (content + bar), with the bulk call recorded. */
+    private var selection by mutableStateOf(emptySet<String>())
+    private val bulkCalls = mutableListOf<Pair<List<String>, AnnotationOp>>()
+
+    private fun showSelectable(items: List<TimelineItem>) {
+        composeRule.setContent {
+            TarryTheme {
+                Column(Modifier.fillMaxWidth()) {
+                    Box(Modifier.weight(1f)) {
+                        TimelineContent(
+                            date, items, {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = { targets += it },
+                            onResizeVisit = { id, s, e -> resizes += Resize(id, s, e) },
+                            selection = selection,
+                            onStartSelection = { selection = linkedSetOf(it) },
+                            onToggleSelected = { selection = if (it in selection) selection - it else selection + it },
+                            onClearSelection = { selection = emptySet() },
+                        )
+                    }
+                    if (selection.isNotEmpty()) {
+                        SelectionBar(
+                            count = selection.size, jobs = emptyList(), tagGroups = emptyList(),
+                            onSetJob = {}, onNewJob = {}, onAddTags = {},
+                            onSetBillable = { bulkCalls += selection.toList() to AnnotationOp.SetBillable(it); selection = emptySet() },
+                            onIgnorePlace = { bulkCalls += selection.toList() to AnnotationOp.IgnorePlace(); selection = emptySet() },
+                            onCancel = { selection = emptySet() },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun isSelected(id: String) = tag("timeline_row_$id").fetchSemanticsNode().config[SemanticsProperties.Selected]
+
+    private fun longPress(id: String) {
+        tag("timeline_row_$id").performTouchInput { longClick() }
+        composeRule.waitForIdle()
     }
 
     private fun handle(edge: ResizeEdge, id: String) = tag(handleTag(edge, id))
@@ -249,13 +297,93 @@ class TimelineEditingUiTest {
     }
 
     @Test
-    fun longPressOnAVisitDoesNothingYet() {
-        show(listOf(review))
-        tag("timeline_row_review").performTouchInput { longClick() }
-        composeRule.waitForIdle()
+    fun longPressEntersSelectionWithThatVisitWithoutOpeningOrResizing() {
+        showSelectable(listOf(review, trip, labelled))
+        assertThat(tag("timeline_row_review").fetchSemanticsNode().config[SemanticsActions.OnLongClick].label)
+            .isEqualTo("Select for bulk edit")
+
+        longPress("review")
+
+        assertThat(selection).containsExactly("review")
+        assertThat(isSelected("review")).isTrue()
+        assertThat(isSelected("labelled")).isFalse()
+        tag(SelectionBarTag).assertIsDisplayed()
+        composeRule.onNodeWithText("1 selected").assertIsDisplayed()
         assertThat(targets).isEmpty()
         assertThat(resizes).isEmpty()
         handle(ResizeEdge.Start, "review").assertDoesNotExist()
+        handle(ResizeEdge.End, "review").assertDoesNotExist()
+    }
+
+    @Test
+    fun whileSelectingTapsToggleVisitsAndTripsAndGapsAreIgnored() {
+        showSelectable(listOf(review, trip, labelled, gap))
+        longPress("review")
+
+        tag("timeline_row_labelled").performClick()
+        composeRule.waitForIdle()
+        assertThat(selection).containsExactly("review", "labelled")
+        composeRule.onNodeWithText("2 selected").assertIsDisplayed()
+
+        tag("timeline_row_trip").performClick()
+        tag("timeline_row_gap").performClick()
+        composeRule.waitForIdle()
+        assertThat(selection).containsExactly("review", "labelled")
+        assertThat(targets).isEmpty()
+
+        // A double tap does not open the drawer while selecting.
+        tag("timeline_row_review").performTouchInput { doubleClick() }
+        composeRule.waitForIdle()
+        assertThat(targets).isEmpty()
+
+        // Toggling the last visit off leaves selection mode and brings the normal tap behaviour back.
+        tag("timeline_row_labelled").performClick()
+        composeRule.waitForIdle()
+        assertThat(selection).containsExactly("review")
+        tag("timeline_row_review").performClick()
+        composeRule.waitForIdle()
+        assertThat(selection).isEmpty()
+        tag(SelectionBarTag).assertDoesNotExist()
+    }
+
+    @Test
+    fun selectionBarActionIsOneBulkCallOverEverySelectedVisitThenExits() {
+        showSelectable(listOf(review, trip, labelled))
+        longPress("review")
+        tag("timeline_row_labelled").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Billable").assertHasClickAction().performClick()
+        composeRule.waitForIdle()
+
+        assertThat(bulkCalls).hasSize(1)
+        assertThat(bulkCalls.single().first).containsExactly("review", "labelled")
+        assertThat(bulkCalls.single().second).isEqualTo(AnnotationOp.SetBillable(true))
+        tag(SelectionBarTag).assertDoesNotExist()
+        assertThat(isSelected("review")).isFalse()
+    }
+
+    @Test
+    fun selectionBarOffersEveryActionAndCancelExits() {
+        showSelectable(listOf(review))
+        longPress("review")
+        listOf("Set job", "Add tags", "Billable", "Not billable", "Ignore place", "Cancel").forEach {
+            composeRule.onNodeWithText(it).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        }
+        composeRule.onNodeWithText("Cancel").performClick()
+        composeRule.waitForIdle()
+        assertThat(selection).isEmpty()
+        tag(SelectionBarTag).assertDoesNotExist()
+    }
+
+    @Test
+    fun backExitsSelectionMode() {
+        showSelectable(listOf(review))
+        longPress("review")
+        composeRule.runOnUiThread { composeRule.activity.onBackPressedDispatcher.onBackPressed() }
+        composeRule.waitForIdle()
+        assertThat(selection).isEmpty()
+        tag(SelectionBarTag).assertDoesNotExist()
     }
 
     @Test

@@ -1,6 +1,6 @@
 package me.tarry.app.ui.undo
 
-import androidx.annotation.StringRes
+import androidx.annotation.AnyRes
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -11,7 +11,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /** A destructive edit that can be undone from the snackbar, e.g. "Visit deleted · Undo". */
-data class UndoEvent(@param:StringRes val message: Int, val snapshot: Snapshot)
+data class UndoEvent(
+    /** A string resource, or a plurals resource when [count] is set (bulk edits: "5 visits updated"). */
+    @param:AnyRes val message: Int,
+    val snapshot: Snapshot,
+    val count: Int? = null,
+)
 
 /**
  * App-wide channel between whoever makes a destructive edit (the drawer, bulk actions) and the snackbar host in the

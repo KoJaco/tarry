@@ -1,6 +1,13 @@
 package me.tarry.app.ui
 
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -120,6 +127,32 @@ class TarryAppShellTest {
         composeRule.onNodeWithContentDescription("Tracking: off")
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun selectionBar_replacesTheBottomNavigation() {
+        val backStack = mutableStateListOf<NavKey>(TimelineRoute)
+        var selecting by mutableStateOf(true)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = {},
+                onBack = {},
+                onToggleClick = {},
+                settingsContent = {},
+                timelineContent = {},
+                selectionBar = if (selecting) ({ Text("3 selected", Modifier.testTag("selection_bar_stub")) }) else null,
+            )
+        }
+        composeRule.onNodeWithTag("selection_bar_stub").assertIsDisplayed()
+        timelineTab.assertDoesNotExist()
+        settingsTab.assertDoesNotExist()
+
+        composeRule.runOnUiThread { selecting = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("selection_bar_stub").assertDoesNotExist()
+        timelineTab.assertIsDisplayed()
     }
 
     private fun assertEqualsInt(expected: Int, actual: Int) =

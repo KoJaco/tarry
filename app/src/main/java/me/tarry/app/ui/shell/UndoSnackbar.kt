@@ -33,7 +33,7 @@ fun UndoSnackbarEffect(
         events.collectLatest { event ->
             val result = withTimeoutOrNull(holdMs) {
                 hostState.showSnackbar(
-                    message = resources.getString(event.message),
+                    message = event.count?.let { resources.getQuantityString(event.message, it, it) } ?: resources.getString(event.message),
                     actionLabel = resources.getString(R.string.undo_action),
                     duration = SnackbarDuration.Indefinite,
                 )
