@@ -22,10 +22,11 @@ enum class FilterDecision(val accepted: Boolean) {
  * 2. a fix implying more than [TrackingConfig.maxSpeedMps] from the last accepted fix is dropped
  *    (a fix not newer than the last accepted one is also dropped, as DROP_SPEED, since no speed can be implied);
  *    (also by `elapsedRealtimeNanos` when both fixes carry it);
- * 2b. a fix with exactly the lat/lng of one of the last [TrackingConfig.staleRepeatMemory] offered fixes, and no
- *    better accuracy, is dropped as DROP_STALE. Dogfood showed the fused provider re-emitting its last known position
- *    with a fresh `Location.time` and accuracy inflated to 100 m, so a time check alone cannot catch these; real
- *    GPS never repeats a coordinate to 7 decimals;
+ * 2b. a fix at the accuracy limit ([TrackingConfig.maxAccuracyM]) with exactly the lat/lng of one of the last
+ *    [TrackingConfig.staleRepeatMemory] offered fixes is dropped as DROP_STALE. A repeat with better accuracy is a real
+ *    reading (a still phone on a steady Wi-Fi position) and falls through to the jitter and keepalive rules.
+ *    Dogfood showed the fused provider re-emitting its last known position
+ *    with a fresh `Location.time` and accuracy inflated to the cap, so a time check alone cannot catch these;
  * 3. in STATIONARY, a fix inside its own accuracy circle around the last accepted fix is dropped as jitter,
  *    unless [TrackingConfig.stationaryKeepaliveMs] has passed since the last accepted fix (a keepalive ping, so a
  *    long stay is not read as a recording gap);
@@ -49,7 +50,8 @@ class PingFilter(private val config: TrackingConfig) {
             val lastElapsed = last.elapsedRealtimeNanos
             if (elapsed != null && lastElapsed != null && elapsed <= lastElapsed) return FilterDecision.DROP_SPEED
         }
-        val repeated = recent.any { it.lat == fix.lat && it.lng == fix.lng && fix.accuracyM >= it.accuracyM }
+        val repeated = fix.accuracyM >= config.maxAccuracyM &&
+            recent.any { it.lat == fix.lat && it.lng == fix.lng }
         remember(fix)
         if (repeated) return FilterDecision.DROP_STALE
         if (last != null) {

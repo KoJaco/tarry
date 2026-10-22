@@ -10,6 +10,12 @@ data class TrackingConfig(
     // STATIONARY entry rule: no movement beyond [stationaryEntryRadiusM] for [stationaryEntryDurationMs].
     val stationaryEntryRadiusM: Float = 50f,
     val stationaryEntryDurationMs: Long = 3 * 60_000L,
+    /**
+     * Safety net for a lost geofence exit: STATIONARY is left by a fix only after [stationaryExitFixes] consecutive
+     * fixes clearly outside the stay radius (distance minus accuracy), spanning at least [stationaryExitMinMs].
+     */
+    val stationaryExitFixes: Int = 2,
+    val stationaryExitMinMs: Long = 60_000L,
     // STATIONARY location request. The stay geofence radius is a user setting (Settings.stayGeofenceRadiusM).
     val stationaryPriority: LocationPriority = LocationPriority.LOW_POWER,
     val stationaryFixIntervalMs: Long = 3 * 60_000L,

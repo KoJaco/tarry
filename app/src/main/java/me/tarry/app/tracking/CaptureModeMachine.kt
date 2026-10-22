@@ -56,6 +56,8 @@ class CaptureModeMachine(
     private var nextSource = PingSource.FUSED
     private var progressBase: Fix? = null
     private var progressCount = 0
+    private var exitBase: Fix? = null
+    private var exitCount = 0
 
     /** Session start: always begin MOVING so the first fix is quick. */
     fun start(): MachineStep {
@@ -117,13 +119,18 @@ class CaptureModeMachine(
         lastFix = fix
         if (mode == CaptureMode.STATIONARY) {
             val centre = geofenceCentre
-            // Safety net if the geofence exit event is late or lost.
-            return if (centre != null && fix.distanceTo(centre) > geofenceRadiusM) {
-                nextSource = PingSource.GEOFENCE_EXIT
-                enterMoving()
-            } else {
-                step()
+            // Safety net if the geofence exit event is late or lost: accuracy-aware and sustained, so one noisy hop
+            // (a berthed boat) does not flap the mode.
+            if (centre == null || fix.distanceTo(centre) - fix.accuracyM <= geofenceRadiusM) {
+                exitBase = null
+                exitCount = 0
+                return step()
             }
+            val base = exitBase ?: fix.also { exitBase = it }
+            exitCount++
+            if (exitCount < config.stationaryExitFixes || fix.timeMs - base.timeMs < config.stationaryExitMinMs) return step()
+            nextSource = PingSource.GEOFENCE_EXIT
+            return enterMoving()
         }
         if (stillPending) return enterStationary(fix)
         if (noProgress(fix)) return enterStationary(fix)
@@ -156,6 +163,8 @@ class CaptureModeMachine(
     }
 
     private fun resetProgress() {
+        exitBase = null
+        exitCount = 0
         progressBase = null
         progressCount = 0
     }

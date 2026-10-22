@@ -54,7 +54,7 @@ class PingFilterTest {
         filter.offer(fixAt(0), CaptureMode.STATIONARY)
         val jittery = fixAt(60_000, northM = 8.0, accuracyM = 15f)
         assertThat(filter.offer(jittery, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
-        assertThat(filter.offer(fixAt(60_000, northM = 9.0, accuracyM = 15f), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
+        assertThat(filter.offer(jittery, CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
         val moved = fixAt(60_000, northM = 30.0, accuracyM = 15f)
         assertThat(filter.offer(moved, CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
     }
@@ -130,10 +130,10 @@ class PingFilterTest {
         val keepalive = config.stationaryKeepaliveMs
         assertThat(filter.offer(fixAt(keepalive - 1, northM = 3.0), CaptureMode.STATIONARY))
             .isEqualTo(FilterDecision.DROP_JITTER)
-        assertThat(filter.offer(fixAt(keepalive, northM = 3.1), CaptureMode.STATIONARY))
+        assertThat(filter.offer(fixAt(keepalive, northM = 3.0), CaptureMode.STATIONARY))
             .isEqualTo(FilterDecision.ACCEPT)
         // The keepalive counts from the last saved ping.
-        assertThat(filter.offer(fixAt(keepalive + 1_000, northM = 3.2), CaptureMode.STATIONARY))
+        assertThat(filter.offer(fixAt(keepalive + 1_000, northM = 3.0), CaptureMode.STATIONARY))
             .isEqualTo(FilterDecision.DROP_JITTER)
     }
 
@@ -148,7 +148,7 @@ class PingFilterTest {
     }
 
     @Test
-    fun repeatedPositionWithFreshTimestampAndInflatedAccuracyIsStale() {
+    fun repeatedPositionAtTheAccuracyLimitIsStale() {
         // Shape of the dogfood repeats: the provider re-emits the last position minutes later at the accuracy limit.
         filter.offer(fixAt(0, accuracyM = 20f), CaptureMode.STATIONARY)
         val repeat = fixAt(12 * 60_000L, accuracyM = config.maxAccuracyM)
@@ -157,16 +157,28 @@ class PingFilterTest {
     }
 
     @Test
-    fun repeatOfAnEarlierDroppedFixIsStaleToo() {
+    fun repeatOfAnEarlierDroppedFixAtTheLimitIsStaleToo() {
         filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        val jitter = fixAt(60_000, northM = 4.0)
-        assertThat(filter.offer(jitter, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
+        assertThat(filter.offer(fixAt(60_000, northM = 4.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
         val repeat = fixAt(15 * 60_000L, northM = 4.0, accuracyM = config.maxAccuracyM)
         assertThat(filter.offer(repeat, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_STALE)
     }
 
     @Test
-    fun differentPositionIsNotStale() {
+    fun stillPhoneWithAnIdenticalGoodFixKeepsProducingKeepalivePings() {
+        // Same 20 m position every 3 min for 40 min: only keepalives are saved, and never more than 10 min apart.
+        val saved = mutableListOf<Long>()
+        var t = 0L
+        while (t <= 40 * 60_000L) {
+            if (filter.offer(fixAt(t, accuracyM = 20f), CaptureMode.STATIONARY).accepted) saved += t
+            t += 3 * 60_000L
+        }
+        assertThat(saved.zipWithNext { a, b -> b - a }.maxOrNull()!!).isAtMost(config.stationaryKeepaliveMs + 3 * 60_000L)
+        assertThat(saved.size).isAtLeast(4)
+    }
+
+    @Test
+    fun differentPositionAtTheLimitIsNotStale() {
         filter.offer(fixAt(0), CaptureMode.STATIONARY)
         assertThat(filter.offer(fixAt(12 * 60_000L, northM = 1.0, accuracyM = config.maxAccuracyM), CaptureMode.STATIONARY))
             .isEqualTo(FilterDecision.ACCEPT)

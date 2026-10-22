@@ -39,7 +39,15 @@ class TarryApplication : Application(), Configuration.Provider {
         segmentationScheduler.ensureDaily()
         // After an upgrade that changed segmentation, re-run over the retention window (frozen rows stay untouched).
         // A failure leaves the version unrecorded, so the next start tries again.
-        captureScope.launch { runCatching { segmentationUpgrade.runIfNeeded() } }
+        captureScope.launch {
+            try {
+                segmentationUpgrade.runIfNeeded()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Retried on the next start.
+            }
+        }
         // Seeds the schedule on first launch, recovers a crashed session and re-arms the alarm.
         // SYSTEM: process start may be a boot or background wake, which must not start a location FGS directly.
         captureScope.launch { controller.reconcile(ReconcileSource.SYSTEM) }

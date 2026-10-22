@@ -128,7 +128,7 @@ fun SettingsContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-                .verticalScroll(rememberScrollState())
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = space.gutter, vertical = space.l),
         verticalArrangement = Arrangement.spacedBy(space.s),
     ) {
