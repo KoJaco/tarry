@@ -1,5 +1,6 @@
 package me.tarry.app.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -98,8 +99,10 @@ fun SettingsContent(
             Picker.RADIUS -> PickerSheet(
                 title = stringResource(R.string.settings_stay_radius),
                 explanation = stringResource(R.string.settings_stay_radius_explanation),
+                warning = stringResource(R.string.settings_stay_radius_small_warning),
                 options = Settings.ALLOWED_STAY_RADII_M.sorted()
                     .map { it to stringResource(R.string.settings_stay_radius_value, it) },
+                details = Settings.ALLOWED_STAY_RADII_M.associateWith { stayRadiusDetail(it) },
                 current = settings.stayGeofenceRadiusM,
                 onSelect = {
                     onStayRadiusSelected(it)
@@ -168,6 +171,16 @@ private fun ThemeMode.labelRes(): Int = when (this) {
     ThemeMode.DARK -> R.string.settings_theme_dark
 }
 
+/** One-line use case for a stop radius option. */
+@Composable
+private fun stayRadiusDetail(meters: Int): String = when (meters) {
+    50 -> stringResource(R.string.settings_stay_radius_use_50)
+    75 -> stringResource(R.string.settings_stay_radius_use_75)
+    100 -> stringResource(R.string.settings_stay_radius_use_100)
+    150 -> stringResource(R.string.settings_stay_radius_use_150)
+    else -> stringResource(R.string.settings_stay_radius_use_200)
+}
+
 /** Bottom sheet of selectable rows (radio semantics, the row is the target). */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,6 +191,8 @@ private fun <T> PickerSheet(
     current: T,
     onSelect: (T) -> Unit,
     onDismiss: () -> Unit,
+    details: Map<T, String> = emptyMap(),
+    warning: String? = null,
 ) {
     val colors = TarryTheme.colors
     val space = TarryTheme.space
@@ -192,6 +207,7 @@ private fun <T> PickerSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = space.gutter)
                 .padding(bottom = space.l),
         ) {
@@ -202,6 +218,17 @@ private fun <T> PickerSheet(
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.muted,
                     modifier = Modifier.padding(top = space.xs, bottom = space.s),
+                )
+            }
+            if (warning != null) {
+                Text(
+                    warning,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onAlertSoft,
+                    modifier = Modifier
+                        .padding(bottom = space.s)
+                        .background(colors.alertSoft, TarryTheme.shapes.container)
+                        .padding(space.s),
                 )
             }
             Column(Modifier.selectableGroup()) {
@@ -219,12 +246,12 @@ private fun <T> PickerSheet(
                             onClick = null,
                             colors = RadioButtonDefaults.colors(selectedColor = colors.ink, unselectedColor = colors.outline),
                         )
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = colors.ink,
-                            modifier = Modifier.padding(start = space.l),
-                        )
+                        Column(Modifier.padding(start = space.l, top = space.xs, bottom = space.xs)) {
+                            Text(label, style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                            details[value]?.let {
+                                Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
+                            }
+                        }
                     }
                 }
             }

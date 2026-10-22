@@ -18,7 +18,9 @@ internal data class StayCandidate(
  * unfrozen stretch.
  *
  * A candidate grows while each ping is within [SegmentationParams.stayRadiusM] of its running accuracy-weighted
- * centroid, and closes on the first ping clearly outside it. A closed candidate is kept when it spans at least
+ * centroid, and closes once the pings clearly outside it are sustained: at least
+ * [SegmentationParams.departureMinFixes] consecutive ones spanning [SegmentationParams.departureMinMs]. A shorter
+ * excursion is an outlier and ignored. A closed candidate is kept when it spans at least
  * [SegmentationParams.minStayDurationMs]. The candidate still open when the pings run out is always returned
  * (with [StayCandidate.open]), however short: the caller decides whether it is a stay yet and resumes from it.
  *
@@ -31,26 +33,46 @@ internal data class StayCandidate(
 internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<StayCandidate> {
     val stays = ArrayList<StayCandidate>()
     var current: Growing? = null
-    for (ping in pings) {
+    // Index of the first ping of the current run of consecutive clearly-outside pings, or -1.
+    var excursion = -1
+    var i = 0
+    while (i < pings.size) {
+        val ping = pings[i]
         val c = current
         if (c == null) {
             current = Growing(ping, params)
+            excursion = -1
+            i++
             continue
         }
         val distance = haversineMeters(c.lat, c.lng, ping.lat, ping.lng)
         val silence = ping.timeMs - c.last.timeMs
         when {
-            silence > params.maxGapToBridgeMs -> {
+            silence > params.maxGapToBridgeMs || ping.timeMs - pings[i - 1].timeMs > params.maxGapToBridgeMs -> {
                 c.closeInto(stays, params, open = false)
                 current = Growing(ping, params)
+                excursion = -1
             }
-            distance <= params.stayRadiusM -> c.add(ping, bridging = silence > params.signalGapMs)
-            distance - ping.accuracyM <= params.stayRadiusM -> Unit // ambiguous outlier
+            distance <= params.stayRadiusM -> {
+                c.add(ping, bridging = silence > params.signalGapMs)
+                excursion = -1
+            }
+            distance - ping.accuracyM <= params.stayRadiusM -> excursion = -1 // ambiguous outlier
             else -> {
-                c.closeInto(stays, params, open = false)
-                current = Growing(ping, params)
+                if (excursion < 0) excursion = i
+                val sustained = i - excursion + 1 >= params.departureMinFixes &&
+                    ping.timeMs - pings[excursion].timeMs >= params.departureMinMs
+                if (sustained) {
+                    // A real departure: the stay ends before the excursion, which is re-read as what comes next.
+                    c.closeInto(stays, params, open = false)
+                    current = null
+                    i = excursion
+                    excursion = -1
+                    continue
+                }
             }
         }
+        i++
     }
     current?.closeInto(stays, params, open = true)
     return settleStarts(stays, pings, params)

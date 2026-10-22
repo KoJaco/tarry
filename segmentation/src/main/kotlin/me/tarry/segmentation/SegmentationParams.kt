@@ -33,10 +33,50 @@ data class SegmentationParams(
     val minGapMs: Long = 60_000L,
     /** A matched place's centroid is only rewritten when it moves further than this. Used by the `:app` glue. */
     val placeMoveThresholdM: Double = 1.0,
+    /**
+     * A stay closes only after at least this many consecutive pings clearly outside it
+     * (`distance - accuracy > stayRadiusM`) that also span [departureMinMs]. Fewer is an outlier and is ignored.
+     */
+    val departureMinFixes: Int = 2,
+    /** The consecutive outside pings that close a stay must span at least this long. */
+    val departureMinMs: Long = 2 * 60_000L,
+    /** Pings at least this accurate (metres, smaller is better) are trusted for displacement and distance. */
+    val goodAccuracyM: Double = 50.0,
+    /**
+     * Movement within this distance of a stay's centroid, between the vehicle stopping (or starting) and the stay,
+     * belongs to the visit. On foot movement beyond it becomes its own WALK trip leg.
+     */
+    val arrivalRadiusM: Double = 200.0,
+    /**
+     * A ping with the same lat/lng as an earlier ping and accuracy at or above this (metres) is a stale repeat: it
+     * carries no position, so it never starts, extends or moves a stay. It still counts as tracking (no gap).
+     * Matches the capture filter's maximum accepted accuracy.
+     */
+    val maxAccuracyM: Float = 100f,
+    /** A vehicle-to-stay tail only becomes a WALK leg when its average speed is at most this (m/s). */
+    val walkMaxSpeedMps: Double = 2.5,
+    /**
+     * Trip distance counts a hop at least this fast (m/s) when it is longer than the worse of the two fixes'
+     * accuracies, so curves are not cut into chords. Other hops count only when longer than the combined accuracy.
+     */
+    val movingSpeedMps: Double = 5.0,
+    /**
+     * Trip distance counts a hop only where the path is going somewhere: over a window of a few fixes around it, the
+     * straight-line displacement must be at least this fraction of the path length. Jitter at one spot (a stop with
+     * poor fixes) fails it however fast or accurate the hops look; driving, curves included, passes.
+     */
+    val movingMinEfficiency: Double = 0.35,
+    /**
+     * Two known places whose centroids are closer than this many [stayRadiusM] (or within each other's radius) are
+     * indistinguishable by GPS: a stay is never split between them and stays matched to them merge. Tight places
+     * (radius below [stayRadiusM]) are exempt: the user made them small to separate neighbours.
+     */
+    val indistinguishablePlaceFactor: Double = 2.0,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
+        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }

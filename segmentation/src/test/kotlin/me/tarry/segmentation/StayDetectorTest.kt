@@ -112,6 +112,24 @@ class StayDetectorTest {
     }
 
     @Test
+    fun aSingleFarFixDoesNotCloseTheStay() {
+        val pings = builder().stay(30 * MIN).spikes(1, accuracyM = 10f, offsetM = 500.0).stay(30 * MIN).build()
+        assertEquals(1, detectStays(pings, params).size)
+    }
+
+    @Test
+    fun fewFarFixesSpanningUnderTwoMinutesAreOutliers() {
+        val pings = builder().stay(30 * MIN).spikes(3, accuracyM = 10f, offsetM = 500.0).stay(30 * MIN).build()
+        assertEquals(1, detectStays(pings, params).size) // three fixes 30 s apart span 60 s
+    }
+
+    @Test
+    fun sustainedFarFixesCloseTheStay() {
+        val pings = builder().stay(30 * MIN).spikes(6, accuracyM = 10f, offsetM = 500.0).stay(30 * MIN).build()
+        assertEquals(2, detectStays(pings, params).size) // six fixes span 150 s, then the same place again
+    }
+
+    @Test
     fun emptyInputGivesNoStays() {
         assertTrue(detectStays(emptyList(), params).isEmpty())
     }

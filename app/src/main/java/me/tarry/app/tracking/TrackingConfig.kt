@@ -10,11 +10,27 @@ data class TrackingConfig(
     // STATIONARY entry rule: no movement beyond [stationaryEntryRadiusM] for [stationaryEntryDurationMs].
     val stationaryEntryRadiusM: Float = 50f,
     val stationaryEntryDurationMs: Long = 3 * 60_000L,
+    /**
+     * Safety net for a lost geofence exit: STATIONARY is left by a fix only after [stationaryExitFixes] consecutive
+     * fixes clearly outside the stay radius (distance minus accuracy), spanning at least [stationaryExitMinMs].
+     */
+    val stationaryExitFixes: Int = 2,
+    val stationaryExitMinMs: Long = 60_000L,
     // STATIONARY location request. The stay geofence radius is a user setting (Settings.stayGeofenceRadiusM).
     val stationaryPriority: LocationPriority = LocationPriority.LOW_POWER,
     val stationaryFixIntervalMs: Long = 3 * 60_000L,
     /** In STATIONARY, a jitter fix is still saved once this long has passed since the last saved ping. */
     val stationaryKeepaliveMs: Long = 10 * 60_000L,
+    /**
+     * Demotion of MOVING without displacement (a berthed boat or a parked car can keep reporting a moving activity).
+     * After [noProgressFixes] consecutive accepted fixes that all stay within the stay radius times
+     * [noProgressRadiusFactor] of the run's first fix (accuracy-aware: distance minus accuracy), spanning at least
+     * [noProgressMinDurationMs], capture goes back to STATIONARY even if the activity still says moving.
+     * The minimum duration keeps a traffic stop of a few minutes in MOVING.
+     */
+    val noProgressFixes: Int = 6,
+    val noProgressRadiusFactor: Float = 1f,
+    val noProgressMinDurationMs: Long = 5 * 60_000L,
     // MOVING location request.
     val movingPriority: LocationPriority = LocationPriority.BALANCED,
     val movingIntervalMs: Long = 20_000L,
@@ -23,6 +39,11 @@ data class TrackingConfig(
     // Ping filters.
     val maxAccuracyM: Float = 100f,
     val maxSpeedMps: Float = 70f,
+    /**
+     * How many recent offered positions [PingFilter] remembers to recognise a repeated position. The fused provider
+     * re-emits its last known position with a fresh timestamp and an inflated accuracy when it has no new reading.
+     */
+    val staleRepeatMemory: Int = 8,
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,
@@ -36,6 +57,10 @@ data class TrackingConfig(
     /** Max places looked up per geocode worker run, and the base retry backoff after a failed lookup. */
     val geocodeBatchSize: Int = 20,
     val geocodeBackoffSeconds: Long = 30L,
+    /** Label by distance from the place to the geocoder's address point: street address within this many metres. */
+    val addressExactMaxM: Double = 75.0,
+    /** Within this many metres (and past [addressExactMaxM]) the label is "Near <address>"; further out the suburb only. */
+    val addressNearMaxM: Double = 300.0,
     // Schedule engine.
     /** How far back and ahead the calculator builds windows when looking for the next transition. */
     val scheduleLookBackDays: Long = 1L,

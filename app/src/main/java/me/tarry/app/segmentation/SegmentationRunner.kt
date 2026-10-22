@@ -284,6 +284,17 @@ class SegmentationRunner @Inject constructor(
         return Long.MAX_VALUE
     }
 
+    /**
+     * Lowers the checkpoint to [processedUntilMs] if it is later, under the run mutex so an in-flight run cannot write
+     * a newer value over it. Creates nothing when no run has happened yet (the first run starts from the first session).
+     */
+    suspend fun rewindCheckpoint(processedUntilMs: Long) {
+        mutex.withLock {
+            val current = checkpointDao.getById()?.processedUntil ?: return
+            if (processedUntilMs < current) saveCheckpoint(processedUntilMs)
+        }
+    }
+
     private suspend fun saveCheckpoint(processedUntil: Long) {
         checkpointDao.upsert(SegmentationCheckpoint(processedUntil = processedUntil))
     }

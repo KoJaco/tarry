@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Stop radius options: one-line use case each. The warning shows once, under the sheet's explanation. -->
+    <string name="settings_stay_radius_use_50">Boats at a berth, closely spaced sites, or a single building.</string>
+    <string name="settings_stay_radius_use_75">Small sites, a house and yard, or a marina office.</string>
+    <string name="settings_stay_radius_use_100">Most work: shops, offices, homes. The default.</string>
+    <string name="settings_stay_radius_use_150">Large sites such as a campus, hospital or depot.</string>
+    <string name="settings_stay_radius_use_200">Farms, quarries or sprawling sites where you walk around a lot.</string>
+    <string name="settings_stay_radius_small_warning">Below 100 m: Android geofences are less reliable at that size, so a departure may be noticed late, and tracking closely again can use more battery.</string>
+</resources>

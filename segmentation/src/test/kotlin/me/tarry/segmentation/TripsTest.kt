@@ -68,7 +68,8 @@ class TripsTest {
     fun majorityActivityWinsInMixedTrip() {
         val walkHeavy = builder().stay(10 * min).moveBy(90.0, 3_000.0, 12.5)
             .moveBy(90.0, 1_000.0, 1.4, mode = Activity.WALKING).stay(10 * min).build()
-        assertEquals(TripMode.WALK, trips(walkHeavy).single().mode)
+        // Changed by dogfood-1: a vehicle part ending beyond arrivalRadiusM, then on foot, splits into two legs.
+        assertEquals(listOf(TripMode.VEHICLE, TripMode.WALK), trips(walkHeavy).map { it.mode })
         val driveHeavy = builder().stay(10 * min).moveBy(90.0, 5_000.0, 12.5)
             .moveBy(90.0, 100.0, 1.4, mode = Activity.WALKING).stay(10 * min).build()
         assertEquals(TripMode.VEHICLE, trips(driveHeavy).single().mode)

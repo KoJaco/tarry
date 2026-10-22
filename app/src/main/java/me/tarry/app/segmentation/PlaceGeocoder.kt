@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import me.tarry.segmentation.geo.haversineMeters
 import java.io.IOException
 import java.util.Locale
 import javax.inject.Inject
@@ -17,7 +18,12 @@ import javax.inject.Singleton
 import kotlin.coroutines.resume
 
 sealed interface GeocodeResult {
-    data class Found(val address: String) : GeocodeResult
+    /**
+     * [distanceM] is how far the address point is from the queried coordinates, when the backend gave one
+     * (`Address.hasLatitude()`); the geocoder returns the nearest street address however far away it is.
+     * [locality] is the suburb or town, if any.
+     */
+    data class Found(val address: String, val distanceM: Double? = null, val locality: String? = null) : GeocodeResult
 
     /** The lookup worked but there is no address for these coordinates. */
     data object NotFound : GeocodeResult
@@ -47,10 +53,12 @@ internal fun formatAddress(
         .ifEmpty { null }
 }
 
-private fun Address.toResult(): GeocodeResult {
+private fun Address.toResult(lat: Double, lng: Double): GeocodeResult {
     val line0 = if (maxAddressLineIndex >= 0) getAddressLine(0) else null
     val text = formatAddress(line0, thoroughfare, locality, adminArea)
-    return if (text == null) GeocodeResult.NotFound else GeocodeResult.Found(text)
+    if (text == null) return GeocodeResult.NotFound
+    val distance = if (hasLatitude() && hasLongitude()) haversineMeters(lat, lng, latitude, longitude) else null
+    return GeocodeResult.Found(text, distance, locality?.takeIf { it.isNotBlank() })
 }
 
 @Singleton
@@ -70,7 +78,7 @@ class AndroidPlaceGeocoder @Inject constructor(
             lat, lng, 1,
             object : Geocoder.GeocodeListener {
                 override fun onGeocode(addresses: MutableList<Address>) {
-                    if (cont.isActive) cont.resume(addresses.firstOrNull()?.toResult() ?: GeocodeResult.NotFound)
+                    if (cont.isActive) cont.resume(addresses.firstOrNull()?.toResult(lat, lng) ?: GeocodeResult.NotFound)
                 }
 
                 override fun onError(errorMessage: String?) {
@@ -83,7 +91,7 @@ class AndroidPlaceGeocoder @Inject constructor(
     @Suppress("DEPRECATION")
     private suspend fun lookupBlocking(lat: Double, lng: Double): GeocodeResult = withContext(Dispatchers.IO) {
         try {
-            geocoder.getFromLocation(lat, lng, 1)?.firstOrNull()?.toResult() ?: GeocodeResult.NotFound
+            geocoder.getFromLocation(lat, lng, 1)?.firstOrNull()?.toResult(lat, lng) ?: GeocodeResult.NotFound
         } catch (e: CancellationException) {
             throw e
         } catch (e: IOException) {

@@ -146,4 +146,48 @@ class PingFilterTest {
         assertThat(filter.offer(fixAt(late, northM = 3.0), CaptureMode.MOVING))
             .isEqualTo(FilterDecision.DROP_DISPLACEMENT)
     }
+
+    @Test
+    fun repeatedPositionAtTheAccuracyLimitIsStale() {
+        // Shape of the dogfood repeats: the provider re-emits the last position minutes later at the accuracy limit.
+        filter.offer(fixAt(0, accuracyM = 20f), CaptureMode.STATIONARY)
+        val repeat = fixAt(12 * 60_000L, accuracyM = config.maxAccuracyM)
+        assertThat(filter.offer(repeat, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_STALE)
+        assertThat(filter.lastAccepted!!.timeMs).isEqualTo(0L)
+    }
+
+    @Test
+    fun repeatOfAnEarlierDroppedFixAtTheLimitIsStaleToo() {
+        filter.offer(fixAt(0), CaptureMode.STATIONARY)
+        assertThat(filter.offer(fixAt(60_000, northM = 4.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
+        val repeat = fixAt(15 * 60_000L, northM = 4.0, accuracyM = config.maxAccuracyM)
+        assertThat(filter.offer(repeat, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_STALE)
+    }
+
+    @Test
+    fun stillPhoneWithAnIdenticalGoodFixKeepsProducingKeepalivePings() {
+        // Same 20 m position every 3 min for 40 min: only keepalives are saved, and never more than 10 min apart.
+        val saved = mutableListOf<Long>()
+        var t = 0L
+        while (t <= 40 * 60_000L) {
+            if (filter.offer(fixAt(t, accuracyM = 20f), CaptureMode.STATIONARY).accepted) saved += t
+            t += 3 * 60_000L
+        }
+        assertThat(saved.zipWithNext { a, b -> b - a }.maxOrNull()!!).isAtMost(config.stationaryKeepaliveMs + 3 * 60_000L)
+        assertThat(saved.size).isAtLeast(4)
+    }
+
+    @Test
+    fun differentPositionAtTheLimitIsNotStale() {
+        filter.offer(fixAt(0), CaptureMode.STATIONARY)
+        assertThat(filter.offer(fixAt(12 * 60_000L, northM = 1.0, accuracyM = config.maxAccuracyM), CaptureMode.STATIONARY))
+            .isEqualTo(FilterDecision.ACCEPT)
+    }
+
+    @Test
+    fun fixNotNewerByElapsedRealtimeIsDroppedEvenIfWallTimeAdvanced() {
+        filter.offer(fixAt(0).copy(elapsedRealtimeNanos = 5_000_000_000L), CaptureMode.MOVING)
+        val older = fixAt(60_000, northM = 100.0).copy(elapsedRealtimeNanos = 4_000_000_000L)
+        assertThat(filter.offer(older, CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_SPEED)
+    }
 }

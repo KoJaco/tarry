@@ -58,6 +58,9 @@ class TraceBuilder(
     val currentLat: Double get() = lat
     val currentLng: Double get() = lng
 
+    /** Number of pings added so far; the index of the next ping. */
+    val pingCount: Int get() = pings.size
+
     fun session(id: Long) = apply { sessionId = id }
 
     fun stay(
@@ -114,6 +117,65 @@ class TraceBuilder(
         move(toLat, toLng, speedMps, intervalMs, mode, accuracyM)
     }
 
+    /**
+     * Noisy fixes scattered within [radiusM] of the cursor (the cursor does not move), each with an accuracy drawn
+     * from [accuracyM]. Models walking about, or a bad-signal stretch, near one point.
+     */
+    fun wander(
+        durationMs: Long,
+        intervalMs: Long = 20_000,
+        radiusM: Double,
+        accuracyM: ClosedFloatingPointRange<Float> = 30f..98f,
+        activity: Activity? = Activity.WALKING,
+    ) = apply {
+        require(intervalMs > 0 && durationMs >= 0)
+        var t = 0L
+        while (t < durationMs) {
+            val (pLat, pLng) = destination(lat, lng, random.nextDouble() * 360.0, random.nextDouble() * radiusM)
+            add(timeMs + t, pLat, pLng, drawAccuracy(accuracyM), activity)
+            t += intervalMs
+        }
+        timeMs += durationMs
+    }
+
+    /**
+     * Fixes around the cursor within [jitterM], except every [hopEvery]th, which hops [hopMinM]..[hopMaxM] away
+     * (never two hops in a row). Models a boat on the water: a stay with large, isolated position errors.
+     */
+    fun hops(
+        durationMs: Long,
+        intervalMs: Long = 20_000,
+        jitterM: Double = 30.0,
+        hopMinM: Double = 100.0,
+        hopMaxM: Double = 270.0,
+        hopEvery: Int = 5,
+        accuracyM: ClosedFloatingPointRange<Float> = 30f..98f,
+        activity: Activity? = Activity.STILL,
+    ) = apply {
+        require(intervalMs > 0 && durationMs >= 0 && hopEvery >= 2)
+        var t = 0L
+        var n = 0
+        while (t < durationMs) {
+            n++
+            val distance = if (n % hopEvery == 0) hopMinM + random.nextDouble() * (hopMaxM - hopMinM)
+            else random.nextDouble() * jitterM
+            val (pLat, pLng) = destination(lat, lng, random.nextDouble() * 360.0, distance)
+            add(timeMs + t, pLat, pLng, drawAccuracy(accuracyM), activity)
+            t += intervalMs
+        }
+        timeMs += durationMs
+    }
+
+    /**
+     * Stale cached fixes: [count] pings carrying the exact lat/lng of the earlier ping at [pingIndex] (index into
+     * the pings added so far), [intervalMs] apart, at [accuracyM].
+     */
+    fun repeatEarlier(pingIndex: Int, count: Int, intervalMs: Long = 60_000, accuracyM: Float = 100f) = apply {
+        val source = pings[pingIndex]
+        repeat(count) { k -> add(timeMs + k * intervalMs, source.lat, source.lng, accuracyM, Activity.STILL) }
+        timeMs += count * intervalMs
+    }
+
     /** Advances time with no pings. */
     fun gap(durationMs: Long) = apply { timeMs += durationMs }
 
@@ -135,6 +197,9 @@ class TraceBuilder(
     private fun add(t: Long, pLat: Double, pLng: Double, acc: Float, activity: Activity?) {
         pings += Ping(t, pLat, pLng, acc, activity, sessionId)
     }
+
+    private fun drawAccuracy(range: ClosedFloatingPointRange<Float>): Float =
+        range.start + random.nextFloat() * (range.endInclusive - range.start)
 
     private fun noisyAccuracy(base: Float): Float = base * (1f + (random.nextFloat() * 2f - 1f) * 0.25f)
 

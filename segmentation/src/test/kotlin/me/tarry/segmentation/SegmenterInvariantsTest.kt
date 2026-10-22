@@ -57,6 +57,25 @@ class SegmenterInvariantsTest {
         )
     }
 
+    /** Stale repeats (spike, then its exact copies) keep the structural invariants: ordered, disjoint, in range. */
+    @Test
+    fun staleRepeatsKeepTheStructuralInvariants() {
+        for (seed in 1L..20L) {
+            val b = TraceBuilder(seed = seed, startTimeMs = 1_760_000_000_000L).stay(30 * MIN, intervalMs = 3 * MIN)
+            b.spikes(1, accuracyM = 100f, offsetM = 300.0)
+            val spike = b.pingCount - 1
+            val pings = b.stay(20 * MIN, intervalMs = 3 * MIN).repeatEarlier(spike, 8)
+                .moveBy(45.0, 3_000.0, 10.0).stay(30 * MIN, intervalMs = 3 * MIN).repeatEarlier(spike, 4).build()
+            val range = pings.range()
+            val r = Segmenter.segment(SegmentationInput(range, pings), params)
+            val all = allRanges(r)
+            for (i in all.indices) for (j in i + 1 until all.size) {
+                assertTrue("seed $seed: ${all[i]} overlaps ${all[j]}", !all[i].second.overlaps(all[j].second))
+            }
+            assertTrue(all.all { it.second.startMs >= range.startMs && it.second.endMs <= range.endMs })
+        }
+    }
+
     private fun allRanges(r: SegmentationResult) =
         r.stays.map { "stay" to it.range } + r.trips.map { "trip" to it.range } + r.gaps.map { "gap" to it.range }
 
@@ -66,6 +85,28 @@ class SegmenterInvariantsTest {
             val all = allRanges(Segmenter.segment(c.input, params))
             for (i in all.indices) for (j in i + 1 until all.size) {
                 assertTrue("seed ${c.seed}: ${all[i]} overlaps ${all[j]}", !all[i].second.overlaps(all[j].second))
+            }
+        }
+    }
+
+    /** Every stay is at least the minimum stay long, unless it is the ongoing open stay at the end of the range. */
+    @Test
+    fun everyStayIsAtLeastTheMinimumDuration() {
+        for (c in cases()) {
+            // Known places near the trace's start exercise the split-by-place step too.
+            val first = c.input.pings.first()
+            val places = listOf(
+                KnownPlace("p1", first.lat, first.lng, 75f),
+                KnownPlace("p2", first.lat + 0.0006, first.lng, 75f),
+                KnownPlace("p3", first.lat, first.lng + 0.001, 20f),
+            )
+            for (input in listOf(c.input, c.input.copy(places = places))) {
+                for (s in Segmenter.segment(input, params).stays) {
+                    assertTrue(
+                        "seed ${c.seed}: stay ${s.range} shorter than the minimum",
+                        s.mayBeOngoing || s.range.durationMs >= params.minStayDurationMs,
+                    )
+                }
             }
         }
     }
@@ -145,7 +186,10 @@ class SegmenterInvariantsTest {
             val checkpoint = if (last.mayBeOngoing) last.range.startMs else last.range.endMs
             // Like the :app glue: back off by the overlap, then widen to the start of any stay that range cuts into.
             val backed = checkpoint - params.overlapMs
-            val widened = full.stays.filter { it.range.endMs > backed }.minOfOrNull { it.range.startMs } ?: backed
+            // Also from the stay before the first one: arrival attribution caps a stay's start at half the distance to
+            // the previous stay's centroid, so the run must see that stay too (the runner's trip-origin widening already covers it).
+            val firstKept = full.stays.indexOfFirst { it.range.endMs > backed }
+            val widened = if (firstKept < 0) backed else full.stays[maxOf(0, firstKept - 1)].range.startMs
             val start = maxOf(c.input.range.startMs, minOf(backed, widened))
             val partial = Segmenter.segment(c.input.copy(range = TimeRange(start, c.input.range.endMs)), params)
             val label = "seed ${c.seed}, C=$checkpoint"

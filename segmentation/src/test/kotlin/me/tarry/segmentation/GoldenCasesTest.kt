@@ -147,6 +147,222 @@ class GoldenCasesTest {
         assertFalse(r.stays[0].range.overlaps(trip.range))
     }
 
+    @Test
+    fun parkThenWalkIn() {
+        val home = builder(21).stay(30 * MIN, intervalMs = 3 * MIN)
+        home.moveBy(90.0, 5_000.0, 12.5)
+        val parked = home.currentTimeMs
+        val pings = home
+            .wander(15 * MIN, radiusM = 120.0, accuracyM = 30f..98f, activity = Activity.WALKING)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        // The drive ends at the moment the vehicle stopped and the visit starts there, not 15 min later.
+        assertEquals(parked, trip.range.endMs)
+        assertEquals(parked, r.stays[1].range.startMs)
+        assertEquals(5_000.0, trip.distanceM, 250.0)
+    }
+
+    @Test
+    fun marinaJitter() {
+        val pings = builder(5)
+            .hops(40 * MIN)
+            .wander(90_000, radiusM = 40.0, accuracyM = 30f..98f, activity = Activity.IN_VEHICLE)
+            .hops(40 * MIN)
+            .wander(90_000, radiusM = 40.0, accuracyM = 30f..98f, activity = Activity.IN_VEHICLE)
+            .hops(40 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.gaps.isEmpty())
+    }
+
+    /** The marina shape with a phantom place 70 m from the real one: GPS cannot tell them apart, so one stay. */
+    @Test
+    fun marinaJitterWithTwoNearbyKnownPlaces() {
+        // The boat sits at A, drifts to the other side of the marina (B, 70 m east) for 16 min, and comes back.
+        val a = SYDNEY_LAT to SYDNEY_LNG
+        val b = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 0.0, 70.0)
+        val pings = builder(5)
+            .hops(40 * MIN)
+            .wander(90_000, radiusM = 40.0, accuracyM = 30f..98f, activity = Activity.IN_VEHICLE)
+            .move(b.first, b.second, speedMps = 1.0, mode = Activity.STILL, accuracyM = 30f)
+            .hops(16 * MIN)
+            .move(a.first, a.second, speedMps = 1.0, mode = Activity.STILL, accuracyM = 30f)
+            .hops(75 * MIN)
+            .build()
+        val places = listOf(
+            KnownPlace("main", a.first, a.second, radiusM = 75f),
+            KnownPlace("phantom", b.first, b.second, radiusM = 75f),
+        )
+        val r = run(pings, places)
+        assertEquals(1, r.stays.size)
+        assertEquals(PlaceRef.Existing("main"), r.stays.single().place)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.newPlaces.isEmpty())
+    }
+
+    /** Places far enough apart for GPS to separate still split a day into two stays around a real walk. */
+    @Test
+    fun twoKnownPlaces300mApartWithAFiveMinuteWalkStayTwoStays() {
+        val a = SYDNEY_LAT to SYDNEY_LNG
+        val b = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 0.0, 300.0)
+        val pings = builder(61)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(90.0, 300.0, 1.0, mode = Activity.WALKING, accuracyM = 15f)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val places = listOf(
+            KnownPlace("a", a.first, a.second, radiusM = 75f),
+            KnownPlace("b", b.first, b.second, radiusM = 75f),
+        )
+        val r = run(pings, places)
+        assertEquals(2, r.stays.size)
+        assertEquals(listOf(PlaceRef.Existing("a"), PlaceRef.Existing("b")), r.stays.map { it.place })
+    }
+
+    @Test
+    fun staleRepeats() {
+        val b = builder(9).stay(30 * MIN, intervalMs = 3 * MIN).spikes(1, accuracyM = 100f, offsetM = 300.0)
+        val spike = b.pingCount - 1
+        val pings = b.stay(30 * MIN, intervalMs = 3 * MIN)
+            .repeatEarlier(spike, count = 8, intervalMs = MIN, accuracyM = 100f)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.gaps.isEmpty())
+        // Without the stale rule the repeats would form a phantom visit, so the case really exercises it.
+        val unfiltered = Segmenter.segment(SegmentationInput(pings.range(), pings), SegmentationParams(maxAccuracyM = 1_000f))
+        assertTrue(unfiltered.stays.size > 1)
+    }
+
+    @Test
+    fun driveThenWalkAway() {
+        val pings = builder(14)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(90.0, 5_000.0, 12.5)
+            .moveBy(90.0, 600.0, 1.4, mode = Activity.WALKING, accuracyM = 15f)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        assertEquals(listOf(TripMode.VEHICLE, TripMode.WALK), r.trips.map { it.mode })
+        val (drive, walk) = r.trips
+        assertEquals(5_000.0, drive.distanceM, 250.0)
+        // The last 200 m of the walk belong to the visit; the rest is its own on-foot trip.
+        assertEquals(400.0, walk.distanceM, 100.0)
+        assertEquals(0, drive.fromStay)
+        assertEquals(1, walk.toStay)
+        assertEquals(drive.range.endMs, walk.range.startMs)
+        assertEquals(walk.range.endMs, r.stays[1].range.startMs)
+    }
+
+    @Test
+    fun trafficStops() {
+        val pings = builder(17)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(0.0, 2_000.0, 12.5).stay(2 * MIN, intervalMs = 30_000, jitterM = 5.0)
+            .moveBy(0.0, 2_000.0, 12.5).stay(3 * MIN, intervalMs = 30_000, jitterM = 5.0)
+            .moveBy(0.0, 2_000.0, 12.5).stay(4 * MIN, intervalMs = 30_000, jitterM = 5.0)
+            .moveBy(0.0, 2_000.0, 12.5)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        assertEquals(8_000.0, trip.distanceM, 300.0)
+    }
+
+    @Test
+    fun activityLagAfterDrivingIsOneVehicleTrip() {
+        val pings = builder(31)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(90.0, 5_000.0, 12.5)
+            // Recognition lags: the car keeps rolling for ~800 m after IN_VEHICLE ended.
+            .moveBy(90.0, 800.0, 12.5, mode = Activity.WALKING)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        assertEquals(5_800.0, trip.distanceM, 400.0)
+    }
+
+    @Test
+    fun walkBetweenTwoNearbyPlacesStaysATrip() {
+        val pings = builder(41)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(90.0, 170.0, 0.9, mode = Activity.WALKING, accuracyM = 20f)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val walk = r.trips.single()
+        // Arrival attribution is capped at half the distance between the stays, so the walk is not swallowed.
+        assertTrue(walk.range.durationMs >= 20_000)
+        assertTrue(r.stays[0].range.endMs <= walk.range.startMs && walk.range.endMs <= r.stays[1].range.startMs)
+    }
+
+    @Test
+    fun curvedRouteDistanceIsWithinTenPercent() {
+        val radius = 300.0
+        val b = builder(51).stay(30 * MIN, intervalMs = 3 * MIN)
+        val accuracies = listOf(20f, 100f, 45f, 80f, 30f, 100f)
+        for (k in 1..18) {
+            val theta = Math.toRadians(15.0 * k)
+            val (lat, lng) = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, radius * kotlin.math.sin(theta), radius * (kotlin.math.cos(theta) - 1))
+            b.move(lat, lng, speedMps = 8.0, intervalMs = 10_000, accuracyM = accuracies[k % accuracies.size])
+        }
+        val pings = b.stay(HOUR, intervalMs = 3 * MIN).build()
+        val trip = run(pings).trips.single()
+        val truth = radius * Math.toRadians(270.0)
+        assertEquals(truth, trip.distanceM, truth * 0.10)
+    }
+
+    @Test
+    fun poorSignalStopDoesNotInflateDriveDistance() {
+        val pings = builder(71)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(0.0, 4_000.0, 12.5)
+            // A 4 min stop in a bad-signal spot: fixes jump 100-270 m every 20 s at 50-98 m accuracy.
+            .hops(4 * MIN, jitterM = 100.0, hopMinM = 100.0, hopMaxM = 270.0, hopEvery = 2, accuracyM = 50f..98f,
+                activity = Activity.IN_VEHICLE)
+            .moveBy(0.0, 4_000.0, 12.5)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val trip = run(pings).trips.single()
+        assertEquals(8_000.0, trip.distanceM, 400.0)
+    }
+
+    @Test
+    fun goodAccuracyJitterDuringAStopDoesNotInflateDriveDistance() {
+        val pings = builder(72)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(0.0, 4_000.0, 12.5)
+            // Jitter that passes the good-accuracy filter: 100-270 m hops at 30-50 m accuracy.
+            .hops(4 * MIN, jitterM = 100.0, hopMinM = 100.0, hopMaxM = 270.0, hopEvery = 2, accuracyM = 30f..50f,
+                activity = Activity.IN_VEHICLE)
+            .moveBy(0.0, 4_000.0, 12.5)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val trip = run(pings).trips.single()
+        assertEquals(8_000.0, trip.distanceM, 400.0)
+    }
+
+    @Test
+    fun jitterWithNoStayIsNotATrip() {
+        val pings = builder(61).wander(3 * MIN, radiusM = 30.0, accuracyM = 10f..20f, activity = Activity.STILL).build()
+        assertTrue(run(pings).trips.isEmpty())
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN

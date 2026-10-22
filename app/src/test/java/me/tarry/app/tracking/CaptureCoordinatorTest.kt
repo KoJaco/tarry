@@ -201,7 +201,10 @@ class CaptureCoordinatorTest {
         coordinator.onFixes(listOf(fix(1_000)))
         coordinator.onActivity(ActivityType.STILL)
         // ~1.1 km away, no geofence event delivered.
+        // The safety net needs two consecutive clearly-outside fixes, at least a minute apart.
         coordinator.onFixes(listOf(fix(300_000, lat = -33.01)))
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+        coordinator.onFixes(listOf(fix(360_000, lat = -33.011)))
 
         assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
         val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
@@ -536,12 +539,24 @@ class CaptureCoordinatorTest {
         stationary()
         coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
         coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
+        coordinator.onFixes(listOf(fix(240_000, lat = -33.011)))
 
         val pings = savedPings()
         assertThat(pings.map { it.timestamp })
-            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000).inOrder()
+            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000, clock.now + 240_000).inOrder()
         assertThat(pings.map { it.source })
-            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+    }
+
+    @Test
+    fun geofenceExitAfterOneOutsideFixStillHasTheLastInsideFixAsDeparturePing() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
+        coordinator.onGeofenceExit()
+
+        assertThat(savedPings().map { it.timestamp })
+            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000).inOrder()
     }
 
     @Test
@@ -576,14 +591,14 @@ class CaptureCoordinatorTest {
     }
 
     @Test
-    fun jitterClassifiedFixBeyondTheStayRadiusStillTripsTheSafetyNet() = runBlocking {
+    fun fixWhoseAccuracyCircleReachesTheStopDoesNotTripTheSafetyNet() = runBlocking {
         stayRadius.radiusM = 50f
         stationary()
-        // ~80 m away: beyond the 50 m stay radius but inside its own 90 m accuracy circle (jitter for the filter).
+        // ~80 m away: beyond the 50 m stay radius but inside its own 90 m accuracy circle, so not clearly outside.
         coordinator.onFixes(listOf(Fix(-33.00072, 151.0, 90f, clock.now + 60_000)))
+        coordinator.onFixes(listOf(Fix(-33.00072, 151.0001, 90f, clock.now + 180_000)))
 
-        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
-        assertThat(savedPings().map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 60_000).inOrder()
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
     }
 
     @Test

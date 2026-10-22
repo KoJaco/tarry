@@ -26,8 +26,12 @@ data class Settings(
     companion object {
         const val DEFAULT_REVIEW_REMINDER_MINUTE = 1050
         const val DEFAULT_STAY_RADIUS_M = 100
+
+        /** 300 m was an option before dogfood 1; a stored 300 now reads as [MAX_STAY_RADIUS_M]. */
+        const val LEGACY_STAY_RADIUS_M = 300
+        const val MAX_STAY_RADIUS_M = 200
         val ALLOWED_ROUNDING_INCREMENTS = setOf(0, 6, 15, 30)
         val ALLOWED_RETENTION_DAYS = setOf(30, 90, 365)
-        val ALLOWED_STAY_RADII_M = setOf(100, 150, 200, 300)
+        val ALLOWED_STAY_RADII_M = setOf(50, 75, 100, 150, 200)
     }
 }

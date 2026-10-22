@@ -9,7 +9,9 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.settings.SettingsContent
@@ -51,20 +53,33 @@ class SettingsUiTest {
     private fun option(text: String) = hasText(text) and radioOption
 
     @Test
-    fun tappingTheRowListsTheFourOptionsAndTheExplanation() {
+    fun tappingTheRowListsTheFiveOptionsAndTheExplanation() {
         show()
         composeRule.onNodeWithText("Stop radius").performClick()
-        composeRule.onAllNodes(radioOption).assertCountEquals(4)
-        for (m in listOf(100, 150, 200, 300)) composeRule.onNode(option("$m m")).assertExists()
+        composeRule.onAllNodes(radioOption).assertCountEquals(5)
+        for (m in listOf(50, 75, 100, 150, 200)) composeRule.onNode(option("$m m")).assertExists()
         composeRule.onNode(option("100 m")).assertIsSelected()
         composeRule.onNodeWithText("How far you must move", substring = true).assertExists()
+    }
+
+    @Test
+    fun everyRadiusHasAUseCaseAndTheWarningShowsOnceUnderTheExplanation() {
+        show()
+        composeRule.onNodeWithText("Stop radius").performClick()
+        composeRule.onNodeWithText("Boats at a berth", substring = true).assertExists()
+        composeRule.onNodeWithText("Most work: shops", substring = true).assertExists()
+        composeRule.onNodeWithText("Farms, quarries", substring = true).assertExists()
+        val warning = "Below 100 m: Android geofences are less reliable"
+        composeRule.onAllNodesWithText(warning, substring = true).assertCountEquals(1)
+        // Not inside any radio option: it belongs to the sheet, not to 50 or 75 m.
+        composeRule.onAllNodes(radioOption and hasText(warning, substring = true)).assertCountEquals(0)
     }
 
     @Test
     fun selectingAnOptionCallsBackAndClosesTheDialog() {
         show()
         composeRule.onNodeWithText("Stop radius").performClick()
-        composeRule.onNode(option("200 m")).performClick()
+        composeRule.onNode(option("200 m")).performScrollTo().performClick()
 
         assertThat(selected).containsExactly(200)
         composeRule.onNodeWithText("How far you must move", substring = true).assertDoesNotExist()
