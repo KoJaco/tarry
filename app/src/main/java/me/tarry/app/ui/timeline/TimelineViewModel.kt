@@ -12,6 +12,14 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import me.tarry.app.R
+import me.tarry.app.segmentation.SegmentationScheduler
+import me.tarry.app.ui.undo.UndoEvent
+import me.tarry.app.ui.undo.UndoEvents
+import me.tarry.core.data.repository.EditResult
+import me.tarry.core.data.repository.TimelineEditor
+import me.tarry.segmentation.SegmentationParams
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
@@ -100,6 +108,8 @@ private fun TimelineItem.typeOrder(): Int = when (this) {
     is TimelineItem.Trip -> 2
 }
 
+private const val DEFAULT_MIN_STAY_MS = 5 * 60_000L
+
 private val RowOrder = compareBy<TimelineItem>({ it.start }, { it.typeOrder() })
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -110,10 +120,27 @@ class TimelineViewModel internal constructor(
     jobs: JobRepository,
     zone: ZoneId,
     private val todayProvider: () -> LocalDate,
+    private val resize: suspend (id: String, start: Long, end: Long) -> EditResult = { _, _, _ -> EditResult.NotFound },
+    private val offerUndo: (UndoEvent) -> Unit = {},
+    private val onEdited: () -> Unit = {},
+    /** Shortest a visit may be resized to; `SegmentationParams.minStayDurationMs`. */
+    val minStayMs: Long = DEFAULT_MIN_STAY_MS,
 ) : ViewModel() {
     @Inject
-    constructor(timeline: TimelineRepository, places: PlaceRepository, jobs: JobRepository) :
-        this(timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) })
+    constructor(
+        timeline: TimelineRepository,
+        places: PlaceRepository,
+        jobs: JobRepository,
+        editor: TimelineEditor,
+        undoEvents: UndoEvents,
+        scheduler: SegmentationScheduler,
+        params: SegmentationParams,
+    ) :
+        this(
+            timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
+            { id, start, end -> editor.resize(id, start, end, params.minStayDurationMs) },
+            undoEvents::offer, scheduler::enqueueNow, params.minStayDurationMs,
+        )
 
     private val _today = MutableStateFlow(todayProvider())
 
@@ -183,6 +210,20 @@ class TimelineViewModel internal constructor(
     /** Jumps to [date] (week strip, date picker). A date after today is clamped to today. */
     fun selectDate(date: LocalDate) {
         _selectedDate.value = if (date > _today.value) _today.value else date
+    }
+
+    /**
+     * A visit edge was dragged and released (phase 3 R2). Trims neighbours in one edit, offers "Visit times changed"
+     * with Undo, and re-runs segmentation over the affected range.
+     */
+    fun resizeVisit(id: String, start: Long, end: Long) {
+        viewModelScope.launch {
+            val result = resize(id, start, end)
+            if (result is EditResult.Ok) {
+                result.undo?.let { offerUndo(UndoEvent(R.string.timeline_undo_visit_times, it)) }
+                onEdited()
+            }
+        }
     }
 
     private companion object {

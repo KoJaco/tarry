@@ -33,6 +33,8 @@ fun TimelineScreen(
         today = today,
         onSelectDate = viewModel::selectDate,
         onEdit = { editTarget = it },
+        onResizeVisit = viewModel::resizeVisit,
+        minStayMs = viewModel.minStayMs,
         modifier = modifier,
     )
     editTarget?.let { target ->

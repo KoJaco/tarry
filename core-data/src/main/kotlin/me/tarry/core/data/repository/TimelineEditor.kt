@@ -259,6 +259,41 @@ class TimelineEditor @Inject constructor(
         EditResult.Ok(undo)
     }
 
+    /**
+     * Drag-to-resize (phase 3 R2): moves the edges to [newStart]/[newEnd] and trims the adjacent previous or next live
+     * visit if the new span overlaps it (never merges or deletes). The visit keeps at least [minDurationMs] (the edge
+     * that moved is clamped), and a trimmed neighbour keeps at least [minDurationMs] too, so the span stops there.
+     * Everything touched is frozen, overlapped frozen trips are unfrozen, the checkpoint is rewound, and one
+     * [Snapshot] undoes it all. No change at all is [EditResult.Ok] with no undo.
+     */
+    suspend fun resize(visitId: String, newStart: Long, newEnd: Long, minDurationMs: Long = MIN_VISIT_MS): EditResult =
+        db.withTransaction {
+            val v = liveVisit(visitId) ?: return@withTransaction EditResult.NotFound
+            var start = newStart
+            var end = newEnd
+            if (end - start < minDurationMs) {
+                if (start != v.start && end == v.end) start = end - minDurationMs else end = start + minDurationMs
+            }
+            val prev = visits.getLastEndingAtOrBefore(v.start)
+            val next = visits.getFirstStartingAtOrAfter(v.end)
+            if (prev != null) start = maxOf(start, if (prev.end - prev.start >= minDurationMs) prev.start + minDurationMs else prev.end)
+            if (next != null) end = minOf(end, if (next.end - next.start >= minDurationMs) next.end - minDurationMs else next.start)
+            if (end - start < minDurationMs) return@withTransaction EditResult.EmptyRange
+            if (start == v.start && end == v.end) return@withTransaction EditResult.Ok()
+            val prevTrim = prev?.takeIf { start < it.end }
+            val nextTrim = next?.takeIf { end > it.start }
+            val from = minOf(v.start, start, prevTrim?.start ?: Long.MAX_VALUE)
+            val to = maxOf(v.end, end, nextTrim?.end ?: Long.MIN_VALUE)
+            val undo = snapshotRange(from, to)
+            val now = clock.nowMs()
+            visits.upsert(v.copy(start = start, end = end, frozen = true, updatedAt = now))
+            prevTrim?.let { visits.upsert(it.copy(end = start, frozen = true, updatedAt = now)) }
+            nextTrim?.let { visits.upsert(it.copy(start = end, frozen = true, updatedAt = now)) }
+            unfreezeTripsOver(from, to)
+            rewindCheckpoint(from)
+            EditResult.Ok(undo)
+        }
+
     /** Splits at [at] (strictly inside the visit) into two frozen [VisitOrigin.SPLIT] visits. [EditResult.Ok.id] is the second. */
     suspend fun split(visitId: String, at: Long): EditResult = db.withTransaction {
         val v = liveVisit(visitId) ?: return@withTransaction EditResult.NotFound
@@ -425,5 +460,8 @@ class TimelineEditor @Inject constructor(
 
     private companion object {
         const val PAD_MS = 1L
+
+        /** Default floor for [resize]; the app passes `SegmentationParams.minStayDurationMs`. */
+        const val MIN_VISIT_MS = 5 * 60_000L
     }
 }

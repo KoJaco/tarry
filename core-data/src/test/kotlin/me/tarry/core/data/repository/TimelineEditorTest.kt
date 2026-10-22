@@ -234,6 +234,125 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
+    fun resizeWithNoNeighbourMovesBothEdgesFreezesAndRewindsTheCheckpoint() = runTest {
+        seedDay()
+        db.visitDao().upsert(visit("D", 300, 360))
+        db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = t0 + 900 * min))
+
+        val r = editor.resize("D", t0 + 290 * min, t0 + 400 * min)
+
+        assertThat(r.undo()).isNotNull()
+        val d = visitById("D")
+        assertThat(d.start).isEqualTo(t0 + 290 * min)
+        assertThat(d.end).isEqualTo(t0 + 400 * min)
+        assertThat(d.frozen).isTrue()
+        assertThat(d.updatedAt).isEqualTo(now)
+        assertThat(checkpoint()).isEqualTo(t0 + 290 * min)
+        assertThat(visitById("C").frozen).isFalse()
+    }
+
+    @Test
+    fun resizeIntoThePreviousVisitTrimsIt() = runTest {
+        seedDay()
+
+        editor.resize("B", t0 + 30 * min, t0 + 130 * min)
+
+        assertThat(visitById("B").start).isEqualTo(t0 + 30 * min)
+        val a = visitById("A")
+        assertThat(a.start).isEqualTo(t0)
+        assertThat(a.end).isEqualTo(t0 + 30 * min)
+        assertThat(a.frozen).isTrue()
+        assertThat(a.deleted).isFalse()
+        assertThat(a.updatedAt).isEqualTo(now)
+    }
+
+    @Test
+    fun resizeIntoTheNextVisitTrimsIt() = runTest {
+        seedDay()
+
+        editor.resize("B", t0 + 70 * min, t0 + 160 * min)
+
+        assertThat(visitById("B").end).isEqualTo(t0 + 160 * min)
+        val c = visitById("C")
+        assertThat(c.start).isEqualTo(t0 + 160 * min)
+        assertThat(c.end).isEqualTo(t0 + 200 * min)
+        assertThat(c.frozen).isTrue()
+    }
+
+    @Test
+    fun resizeKeepsAtLeastTheMinimumOnTheVisitAndOnTheTrimmedNeighbour() = runTest {
+        seedDay()
+
+        // Dragging B's start past its own end leaves 5 min.
+        editor.resize("B", t0 + 135 * min, t0 + 130 * min)
+        assertThat(visitById("B").start).isEqualTo(t0 + 125 * min)
+        assertThat(visitById("B").end).isEqualTo(t0 + 130 * min)
+
+        // Dragging B's start far into A stops 5 min after A's start.
+        editor.resize("B", t0 + 2 * min, t0 + 130 * min)
+        assertThat(visitById("B").start).isEqualTo(t0 + 5 * min)
+        assertThat(visitById("A").end).isEqualTo(t0 + 5 * min)
+
+        // Dragging B's end far into C stops 5 min before C's end.
+        editor.resize("B", t0 + 5 * min, t0 + 500 * min)
+        assertThat(visitById("B").end).isEqualTo(t0 + 195 * min)
+        assertThat(visitById("C").start).isEqualTo(t0 + 195 * min)
+        assertThat(visitById("C").end).isEqualTo(t0 + 200 * min)
+    }
+
+    @Test
+    fun resizeTrimsAFrozenNeighbourAndKeepsItsAnnotations() = runTest {
+        seedDay()
+        editor.setNotes(ItemRef.visit("A"), "keep")
+        now += 10
+
+        editor.resize("B", t0 + 50 * min, t0 + 130 * min)
+
+        val a = visitById("A")
+        assertThat(a.end).isEqualTo(t0 + 50 * min)
+        assertThat(a.frozen).isTrue()
+        assertThat(a.freeNotes).isEqualTo("keep")
+        assertThat(a.jobId).isEqualTo("j1")
+        assertThat(a.updatedAt).isEqualTo(now)
+    }
+
+    @Test
+    fun resizeWithoutChangeWritesNothingAndMissingVisitIsNotFound() = runTest {
+        seedDay()
+        val before = state()
+
+        assertThat(editor.resize("B", t0 + 70 * min, t0 + 130 * min)).isEqualTo(EditResult.Ok())
+        assertThat(editor.resize("nope", 0, 1)).isEqualTo(EditResult.NotFound)
+        assertThat(state()).isEqualTo(before)
+    }
+
+    @Test
+    fun resizeNeverLeavesTwoLiveVisitsOverlapping() = runTest {
+        seedDay()
+        val edges = listOf(-50, 0, 20, 65, 100, 135, 150, 199, 260)
+        for (s in edges) for (e in edges) {
+            for (id in listOf("A", "B", "C")) editor.resize(id, t0 + s * min, t0 + e * min)
+            val live = db.visitDao().getInRange(0, Long.MAX_VALUE).sortedBy { it.start }
+            live.zipWithNext { x, y -> assertThat(x.end).isAtMost(y.start) }
+            live.forEach { assertThat(it.end - it.start).isAtLeast(5 * min) }
+        }
+    }
+
+    @Test
+    fun undoRoundTripResizeIntoBothNeighbours() = runTest {
+        seedDay()
+        assertRoundTrip {
+            editor.resize("B", t0 + 30 * min, t0 + 160 * min)
+        }
+    }
+
+    @Test
+    fun resizeOverAFrozenTripUnfreezesItAndUndoRestoresIt() = runTest {
+        seedDay()
+        assertUnfreezesTripAndUndoes { editor.resize("B", t0 + 65 * min, t0 + 130 * min) }
+    }
+
+    @Test
     fun checkpointIsOnlyEverLowered() = runTest {
         seedDay()
         db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = t0 + 10 * min))

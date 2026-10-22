@@ -3,6 +3,7 @@ package me.tarry.app.ui.timeline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +22,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -35,6 +40,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -44,6 +52,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
@@ -56,6 +67,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.TarryCard
+import me.tarry.app.ui.components.rememberReducedMotion
 import me.tarry.app.ui.theme.JobColors
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
@@ -66,6 +78,11 @@ import kotlin.math.floor
 
 /** Opacity of blocks that do not need review while the "Needs review only" filter is on. */
 internal const val DimmedAlpha = 0.4f
+
+private const val MsPerHour = 3_600_000f
+
+/** A handle drag in flight: [edgeMs] is the snapped, clamped time the edge is at now; [originMs] where it started. */
+private data class ResizeDrag(val visitId: String, val edge: ResizeEdge, val originMs: Long, val edgeMs: Long)
 
 /** Test tag of every hour label in the time column. */
 internal const val HourLabelTag = "timeline_hour_label"
@@ -141,7 +158,15 @@ fun DayCanvas(
     modifier: Modifier = Modifier,
     /** The "Needs review only" filter: everything that does not need review is drawn at [DimmedAlpha]. Nothing is hidden. */
     dimNonReview: Boolean = false,
+    /** Double tap on a visit block (or TalkBack activation): opens the drawer. */
     onOpenVisit: (String) -> Unit = {},
+    /** The visit whose resize handles are shown; a single tap on a visit block selects it. */
+    selectedVisitId: String? = null,
+    onSelectVisit: (String) -> Unit = {},
+    /** A handle drag was released: the visit's new start and end (UTC epoch ms, snapped, already clamped). */
+    onResizeVisit: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
+    /** Shortest a visit may be dragged to, and the least a trimmed neighbour keeps. */
+    minStayMs: Long = DefaultMinStayMs,
     onOpenTrip: (String) -> Unit = {},
     /** The tapped gap block: the gap itself, and for an outage cluster the real gaps it stands for (else empty). */
     onOpenGap: (TimelineItem.Gap, List<TimelineItem.Gap>) -> Unit = { _, _ -> },
@@ -164,6 +189,12 @@ fun DayCanvas(
         maxOf(DayCanvasDefaults.TimeColumn, with(density) { widest.toDp() } + DayCanvasDefaults.LabelGap * 2)
     }
     val ordered = layout.ordered()
+    val haptics = LocalHapticFeedback.current
+    val reducedMotion = rememberReducedMotion()
+    var drag by remember { mutableStateOf<ResizeDrag?>(null) }
+    val dpPerMs = layout.scale / MsPerHour
+    val visitItems = remember(layout) { layout.blocks.mapNotNull { it.item as? TimelineItem.Visit }.sortedBy { it.start } }
+    val handleStart = timeColumn + DayCanvasDefaults.BlockInset
 
     TarryCard(modifier = modifier, contentPadding = PaddingValues(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.l)) {
         Box(
@@ -204,11 +235,21 @@ fun DayCanvas(
             }
             ordered.forEachIndexed { index, placed ->
                 val dimmed = dimNonReview && ((placed as? PlacedBlock)?.item as? TimelineItem.Visit)?.needsReview != true
+                // While a handle is dragged the block follows the finger (neighbours stay put until release).
+                val live = drag?.takeIf { d -> placed is PlacedBlock && d.visitId == placed.item.id }
+                val shown = if (live != null && placed is PlacedBlock) {
+                    val shift = (live.edgeMs - live.originMs) * dpPerMs
+                    val startShift = if (live.edge == ResizeEdge.Start) shift else 0f
+                    val endShift = if (live.edge == ResizeEdge.End) shift else 0f
+                    placed.copy(topDp = placed.topDp + startShift, heightDp = (placed.heightDp - startShift + endShift).coerceAtLeast(1f))
+                } else {
+                    placed
+                }
                 val position = Modifier
-                    .offset(y = placed.topDp.dp)
+                    .offset(y = shown.topDp.dp)
                     .padding(start = timeColumn + DayCanvasDefaults.BlockInset)
                     .fillMaxWidth()
-                    .height(placed.heightDp.dp)
+                    .height(shown.heightDp.dp)
                     .then(if (dimmed) Modifier.alpha(DimmedAlpha) else Modifier)
                 when (placed) {
                     is PlacedBlock -> {
@@ -223,7 +264,12 @@ fun DayCanvas(
                             spokenDescription(placed.item, dayStart, dayEnd, zone, placed.foldedTrips, placed.innerGaps)
                         }
                         when (val item = placed.item) {
-                            is TimelineItem.Visit -> VisitBlock(item, placed, times, description, index, fontScale, dimmed, position) { onOpenVisit(item.id) }
+                            is TimelineItem.Visit -> VisitBlock(
+                                item, shown as? PlacedBlock ?: placed, times, description, index, fontScale, dimmed, position,
+                                selected = item.id == selectedVisitId,
+                                onSelect = { onSelectVisit(item.id) },
+                                onOpen = { onOpenVisit(item.id) },
+                            )
                             is TimelineItem.Gap -> GapBlock(item, placed, times, description, index, fontScale, dimmed, position) { onOpenGap(item, placed.cluster) }
                             is TimelineItem.Trip -> Unit // Trips are placed as PlacedTrip, never as blocks.
                         }
@@ -236,6 +282,55 @@ fun DayCanvas(
                         dimmed,
                         position,
                     ) { onOpenTrip(placed.trip.id) }
+                }
+            }
+            // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
+            val selectedBlock = selectedVisitId?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
+            val selectedVisit = selectedBlock?.item as? TimelineItem.Visit
+            if (selectedBlock != null && selectedVisit != null) {
+                val index = visitItems.indexOfFirst { it.id == selectedVisit.id }
+                val prev = visitItems.getOrNull(index - 1)?.let { Span(it.start, it.end) }
+                val next = visitItems.getOrNull(index + 1)?.let { Span(it.start, it.end) }
+                val span = Span(selectedVisit.start, selectedVisit.end)
+                listOf(ResizeEdge.Start, ResizeEdge.End).forEach { edge ->
+                    val originMs = if (edge == ResizeEdge.Start) span.start else span.end
+                    if (originMs <= dayStart || originMs >= dayEnd) return@forEach
+                    val edgeDp = if (edge == ResizeEdge.Start) selectedBlock.topDp else selectedBlock.topDp + selectedBlock.heightDp
+                    val live = drag?.takeIf { it.visitId == selectedVisit.id && it.edge == edge }
+                    ResizeHandle(
+                        edge = edge,
+                        visitId = selectedVisit.id,
+                        edgeDp = edgeDp,
+                        shiftDp = if (live != null) (live.edgeMs - live.originMs) * dpPerMs else 0f,
+                        start = handleStart,
+                        onDragStart = { drag = ResizeDrag(selectedVisit.id, edge, originMs, originMs) },
+                        onDragTo = { totalDp ->
+                            val current = drag
+                            if (current != null && current.visitId == selectedVisit.id && current.edge == edge) {
+                                val deltaMs = (totalDp / dpPerMs).toLong()
+                                val edgeMs = resizedEdge(edge, originMs, deltaMs, span, prev, next, minStayMs, dayStart, dayEnd)
+                                if (edgeMs != current.edgeMs) {
+                                    if (!reducedMotion) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                    drag = current.copy(edgeMs = edgeMs)
+                                }
+                            }
+                        },
+                        onDragEnd = {
+                            val done = drag
+                            drag = null
+                            if (done != null && done.edgeMs != done.originMs) {
+                                val newStart = if (edge == ResizeEdge.Start) done.edgeMs else span.start
+                                val newEnd = if (edge == ResizeEdge.End) done.edgeMs else span.end
+                                onResizeVisit(selectedVisit.id, newStart, newEnd)
+                            }
+                        },
+                        onDragCancel = { drag = null },
+                    )
+                }
+                drag?.takeIf { it.visitId == selectedVisit.id }?.let { d ->
+                    val edgeDp = (if (d.edge == ResizeEdge.Start) selectedBlock.topDp else selectedBlock.topDp + selectedBlock.heightDp) +
+                        (d.edgeMs - d.originMs) * dpPerMs
+                    ResizeLabel(formats.time(d.edgeMs, zone), edgeDp, handleStart)
                 }
             }
             layout.nowDp?.let { nowDp ->
@@ -255,7 +350,9 @@ private fun VisitBlock(
     fontScale: Float,
     dimmed: Boolean,
     modifier: Modifier,
-    onClick: () -> Unit,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onOpen: () -> Unit,
 ) {
     val c = TarryTheme.colors
     val job: JobColors? = visit.jobName?.let { JobPalette.lookup(visit.jobColorArgb, visit.jobId ?: it).colors(TarryTheme.isDark) }
@@ -264,6 +361,9 @@ private fun VisitBlock(
     val titleColor = job?.text ?: c.ink
     val detailColor = job?.text ?: c.muted
     val unknown = stringResource(R.string.timeline_unknown_place)
+    val openLabel = stringResource(R.string.timeline_edit_visit)
+    val currentSelect by rememberUpdatedState(onSelect)
+    val currentOpen by rememberUpdatedState(onOpen)
     val title = visit.placeLabel ?: unknown
     val oneLine = placed.compact || placed.heightDp < DayCanvasDefaults.OneLineBelowDp * fontScale
     val showChip = !oneLine && job == null && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
@@ -285,8 +385,16 @@ private fun VisitBlock(
         modifier = modifier
             .then(dots)
             .then(look)
-            .clickable(onClickLabel = stringResource(R.string.timeline_edit_visit), role = Role.Button, onClick = onClick)
+            // Single tap selects (confirmed after the double-tap timeout), double tap opens the drawer. A long press is
+            // reserved for multi-select and does nothing yet. TalkBack's activate opens the drawer directly.
+            .pointerInput(Unit) { detectTapGestures(onTap = { currentSelect() }, onDoubleTap = { currentOpen() }) }
             .semantics(mergeDescendants = true) {
+                role = Role.Button
+                onClick(label = openLabel) {
+                    currentOpen()
+                    true
+                }
+                this.selected = selected
                 contentDescription = description
                 traversalIndex = index.toFloat()
                 blockDimmed = dimmed

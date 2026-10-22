@@ -49,6 +49,7 @@
     <string name="timeline_edit_trip">Edit trip</string>
     <string name="timeline_show_details">Show details</string>
     <string name="timeline_new_visit">New visit</string>
+    <string name="timeline_undo_visit_times">Visit times changed</string>
     <string name="timeline_filter_needs_review">Needs review</string>
 
     <string name="timeline_cluster_row">Patchy tracking · %1$s · %2$s</string>
