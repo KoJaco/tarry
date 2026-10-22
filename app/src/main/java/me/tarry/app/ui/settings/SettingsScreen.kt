@@ -99,6 +99,7 @@ fun SettingsContent(
             Picker.RADIUS -> PickerSheet(
                 title = stringResource(R.string.settings_stay_radius),
                 explanation = stringResource(R.string.settings_stay_radius_explanation),
+                warning = stringResource(R.string.settings_stay_radius_small_warning),
                 options = Settings.ALLOWED_STAY_RADII_M.sorted()
                     .map { it to stringResource(R.string.settings_stay_radius_value, it) },
                 details = Settings.ALLOWED_STAY_RADII_M.associateWith { stayRadiusDetail(it) },
@@ -170,16 +171,14 @@ private fun ThemeMode.labelRes(): Int = when (this) {
     ThemeMode.DARK -> R.string.settings_theme_dark
 }
 
-/** One-line use case for a picker option, plus an optional warning shown beneath it. */
-private data class OptionDetail(val useCase: String, val warning: String? = null)
-
+/** One-line use case for a stop radius option. */
 @Composable
-private fun stayRadiusDetail(meters: Int): OptionDetail = when (meters) {
-    50 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_50), stringResource(R.string.settings_stay_radius_small_warning))
-    75 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_75), stringResource(R.string.settings_stay_radius_small_warning))
-    100 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_100))
-    150 -> OptionDetail(stringResource(R.string.settings_stay_radius_use_150))
-    else -> OptionDetail(stringResource(R.string.settings_stay_radius_use_200))
+private fun stayRadiusDetail(meters: Int): String = when (meters) {
+    50 -> stringResource(R.string.settings_stay_radius_use_50)
+    75 -> stringResource(R.string.settings_stay_radius_use_75)
+    100 -> stringResource(R.string.settings_stay_radius_use_100)
+    150 -> stringResource(R.string.settings_stay_radius_use_150)
+    else -> stringResource(R.string.settings_stay_radius_use_200)
 }
 
 /** Bottom sheet of selectable rows (radio semantics, the row is the target). */
@@ -192,7 +191,8 @@ private fun <T> PickerSheet(
     current: T,
     onSelect: (T) -> Unit,
     onDismiss: () -> Unit,
-    details: Map<T, OptionDetail> = emptyMap(),
+    details: Map<T, String> = emptyMap(),
+    warning: String? = null,
 ) {
     val colors = TarryTheme.colors
     val space = TarryTheme.space
@@ -220,6 +220,17 @@ private fun <T> PickerSheet(
                     modifier = Modifier.padding(top = space.xs, bottom = space.s),
                 )
             }
+            if (warning != null) {
+                Text(
+                    warning,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onAlertSoft,
+                    modifier = Modifier
+                        .padding(bottom = space.s)
+                        .background(colors.alertSoft, TarryTheme.shapes.container)
+                        .padding(space.s),
+                )
+            }
             Column(Modifier.selectableGroup()) {
                 for ((value, label) in options) {
                     Row(
@@ -237,20 +248,8 @@ private fun <T> PickerSheet(
                         )
                         Column(Modifier.padding(start = space.l, top = space.xs, bottom = space.xs)) {
                             Text(label, style = MaterialTheme.typography.bodyLarge, color = colors.ink)
-                            val detail = details[value]
-                            if (detail != null) {
-                                Text(detail.useCase, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
-                                if (detail.warning != null) {
-                                    Text(
-                                        detail.warning,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = colors.onAlertSoft,
-                                        modifier = Modifier
-                                            .padding(top = space.xs)
-                                            .background(colors.alertSoft, TarryTheme.shapes.container)
-                                            .padding(space.s),
-                                    )
-                                }
+                            details[value]?.let {
+                                Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
                             }
                         }
                     }

@@ -63,13 +63,16 @@ class SettingsUiTest {
     }
 
     @Test
-    fun everyRadiusHasAUseCaseAndOnlyTheSmallOnesWarn() {
+    fun everyRadiusHasAUseCaseAndTheWarningShowsOnceUnderTheExplanation() {
         show()
         composeRule.onNodeWithText("Stop radius").performClick()
         composeRule.onNodeWithText("Boats at a berth", substring = true).assertExists()
         composeRule.onNodeWithText("Most work: shops", substring = true).assertExists()
         composeRule.onNodeWithText("Farms, quarries", substring = true).assertExists()
-        composeRule.onAllNodesWithText("less reliable below about 100 m", substring = true).assertCountEquals(2)
+        val warning = "Below 100 m: Android geofences are less reliable"
+        composeRule.onAllNodesWithText(warning, substring = true).assertCountEquals(1)
+        // Not inside any radio option: it belongs to the sheet, not to 50 or 75 m.
+        composeRule.onAllNodes(radioOption and hasText(warning, substring = true)).assertCountEquals(0)
     }
 
     @Test
