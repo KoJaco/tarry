@@ -178,11 +178,20 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
         stringResource(session.endReason.labelRes()),
     )
     val state = session.state()
-    Column(verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
-        TarryCard(modifier = Modifier.fillMaxWidth().testTag("session_row_${session.id}")) {
+    val gpxTitle = stringResource(R.string.sessions_export_gpx_row)
+    val csvTitle = stringResource(R.string.sessions_export_csv_row)
+    val gpx = stringResource(R.string.sessions_export_gpx_description, session.id)
+    val csv = stringResource(R.string.sessions_export_csv_description, session.id)
+    // One surface per session: its details on top, its exports below a divider, so they read as one unit.
+    SettingsGroup(modifier = Modifier.testTag("session_card_${session.id}")) {
+        item {
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("session_row_${session.id}")
+                    .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.m),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
+                horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.l),
             ) {
                 Icon(
                     painter = painterResource(state.icon),
@@ -206,24 +215,18 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
                 }
             }
         }
-        val gpxTitle = stringResource(R.string.sessions_export_gpx_row)
-        val csvTitle = stringResource(R.string.sessions_export_csv_row)
-        val gpx = stringResource(R.string.sessions_export_gpx_description, session.id)
-        val csv = stringResource(R.string.sessions_export_csv_description, session.id)
-        SettingsGroup(modifier = Modifier.testTag("session_exports_${session.id}")) {
-            row(
-                gpxTitle,
-                onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.GPX)) },
-                icon = R.drawable.ic_location_pin,
-                contentDescription = gpx,
-            )
-            row(
-                csvTitle,
-                onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.CSV)) },
-                icon = R.drawable.ic_table,
-                contentDescription = csv,
-            )
-        }
+        row(
+            gpxTitle,
+            onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.GPX)) },
+            icon = R.drawable.ic_location_pin,
+            contentDescription = gpx,
+        )
+        row(
+            csvTitle,
+            onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.CSV)) },
+            icon = R.drawable.ic_table,
+            contentDescription = csv,
+        )
     }
 }
 

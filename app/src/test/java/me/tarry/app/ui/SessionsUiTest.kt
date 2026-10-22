@@ -127,13 +127,18 @@ class SessionsUiTest {
     }
 
     @Test
-    fun exportRowsAreStackedClickableRowsBelowTheSession() {
+    fun exportRowsShareTheSessionsSurfaceBelowItsDetails() {
         composeRule.setContent { SessionsContent(listOf(session), false, null, actions) }
-        val group = composeRule.onNodeWithTag("session_exports_7")
-        group.assertExists()
-        composeRule.onNode(hasText("Export GPX") and hasAnyAncestor(hasTestTag("session_exports_7")))
+        val card = hasAnyAncestor(hasTestTag("session_card_7"))
+        // The details and both exports sit on one surface, the details first.
+        composeRule.onNode(hasTestTag("session_row_7") and card).assertExists()
+        composeRule.onNode(hasText("Export CSV") and card).performScrollTo()
+        val detailsBottom = composeRule.onNodeWithTag("session_row_7").fetchSemanticsNode().boundsInRoot.bottom
+        val gpxTop = composeRule.onNode(hasText("Export GPX") and card).fetchSemanticsNode().boundsInRoot.top
+        assertThat(gpxTop).isAtLeast(detailsBottom)
+        composeRule.onNode(hasText("Export GPX") and card)
             .assertHasClickAction().performScrollTo().performClick()
-        composeRule.onNode(hasText("Export CSV") and hasAnyAncestor(hasTestTag("session_exports_7")))
+        composeRule.onNode(hasText("Export CSV") and card)
             .assertHasClickAction().performScrollTo().performClick()
         assertThat(exports).containsExactly(
             ExportRequest.Session(7, ExportFormat.GPX),

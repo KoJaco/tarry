@@ -63,6 +63,11 @@ class SettingsGroupScope internal constructor() {
     ) {
         rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle) }
     }
+
+    /** Free-form content on the group's surface (e.g. a header above its rows); it brings its own padding. */
+    fun item(content: @Composable () -> Unit) {
+        rows += content
+    }
 }
 
 /**
