@@ -169,10 +169,3 @@ class JobsViewModelTest {
         assertThat(awaitState { it.active.size == 1 }.active.single().id).isEqualTo("used")
     }
 }
-
-private object HangingWorkerFactory : WorkerFactory() {
-    override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
-        object : CoroutineWorker(appContext, workerParameters) {
-            override suspend fun doWork(): Result = awaitCancellation()
-        }
-}

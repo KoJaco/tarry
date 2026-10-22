@@ -133,6 +133,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
   - `small` 8 dp: compact blocks under 30 min.
   - These radii were reduced slightly on 2026-10-21, at the owner's request (from 24, 28, 14 and 10).
 - **Elevation:** flat. Surfaces separate by colour (`card` on `paper`), not shadow. Sheets and dialogs use the M3 scrim only. No drop shadows on cards or the bar.
+- **Receded rows:** archived jobs and tags draw at 70 % opacity (`RECEDED_ALPHA`, never below 4.5:1 for `ink` text on `card`) and always carry the word "Archived", never dimming alone.
 
 ## Motion
 - **Standard transitions:** 200 ms, M3 emphasized easing. The day change slides 24 dp and fades.
