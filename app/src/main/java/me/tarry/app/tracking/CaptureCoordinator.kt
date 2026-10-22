@@ -185,6 +185,9 @@ class CaptureCoordinator @Inject constructor(
             if (modeBefore == CaptureMode.STATIONARY && m.mode == CaptureMode.MOVING) {
                 // Departure ping goes in before the triggering fix and does not consume the exit tag.
                 departurePing(open.id, activity, lastSavedBefore)?.let { accepted += it }
+            } else if (modeBefore == CaptureMode.STATIONARY && m.leavingStationary) {
+                // First clearly-outside fix; the exit waits for a second. The last inside fix ends the stay, so save it now.
+                departurePing(open.id, activity, lastSavedBefore)?.let { accepted += it }
             }
             unsavedStationaryFix = null
             val machineSource = m.takeNextPingSource()

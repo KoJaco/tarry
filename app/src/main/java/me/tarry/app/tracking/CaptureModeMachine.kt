@@ -44,6 +44,9 @@ class CaptureModeMachine(
      */
     var stayRadiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
 
+    /** True while STATIONARY and the latest fix was clearly outside the stop (the exit is waiting for a second one). */
+    val leavingStationary: Boolean get() = mode == CaptureMode.STATIONARY && exitBase != null
+
     var mode: CaptureMode = CaptureMode.MOVING
         private set
 

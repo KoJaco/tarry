@@ -543,9 +543,20 @@ class CaptureCoordinatorTest {
 
         val pings = savedPings()
         assertThat(pings.map { it.timestamp })
-            .containsExactly(clock.now + 1_000, clock.now + 180_000, clock.now + 240_000).inOrder()
+            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000, clock.now + 240_000).inOrder()
         assertThat(pings.map { it.source })
-            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
+    }
+
+    @Test
+    fun geofenceExitAfterOneOutsideFixStillHasTheLastInsideFixAsDeparturePing() = runBlocking {
+        stationary()
+        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
+        coordinator.onGeofenceExit()
+
+        assertThat(savedPings().map { it.timestamp })
+            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000).inOrder()
     }
 
     @Test
