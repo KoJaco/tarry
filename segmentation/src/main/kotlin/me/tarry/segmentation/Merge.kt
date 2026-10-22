@@ -5,7 +5,7 @@ import me.tarry.segmentation.geo.haversineMeters
 /**
  * Merges adjacent stays (docs/specs/phase-2b.md T5) over time-ordered [stays] and the stretch's time-ordered
  * [pings]. A pair (a, b) merges unless [distinctPlaces] says they are different known places, and when either
- * the path between them is shorter than [SegmentationParams.minTripDistanceM], or the gap is shorter than
+ * the net displacement between them is smaller than [SegmentationParams.minTripDistanceM], or the gap is shorter than
  * [SegmentationParams.shortTripMergeMs] with centroids within [SegmentationParams.placeMatchRadiusM].
  * A pair separated by a silence longer than [SegmentationParams.maxGapToBridgeMs] never merges (that is a gap).
  * Repeats until no pair qualifies, so chains collapse.
@@ -43,19 +43,25 @@ private fun shouldMerge(
     if (distinctPlaces(a, b)) return false
     // A silence too long to bridge is a signal gap (T7 reports it); merging would hide it.
     if (longestSilence(a, b, pings) > params.maxGapToBridgeMs) return false
-    var path = 0.0
-    var lat = a.lat
-    var lng = a.lng
-    for (p in between(a, b, pings)) {
-        path += haversineMeters(lat, lng, p.lat, p.lng)
-        lat = p.lat
-        lng = p.lng
-    }
-    path += haversineMeters(lat, lng, b.lat, b.lng)
-    if (path < params.minTripDistanceM) return true
+    if (netDisplacement(a, b, pings, params) < params.minTripDistanceM) return true
     val gap = b.range.startMs - a.range.endMs
     return gap < params.shortTripMergeMs &&
         haversineMeters(a.lat, a.lng, b.lat, b.lng) <= params.placeMatchRadiusM
+}
+
+/**
+ * The furthest the pings between [a] and [b] get from [a]'s centroid (and [b]'s centroid itself), using fixes no worse
+ * than [SegmentationParams.goodAccuracyM]. With none that good, all fixes are used after dropping the least accurate
+ * third. Net displacement, not path length: noisy fixes at one spot add up to kilometres of path.
+ */
+private fun netDisplacement(a: StayCandidate, b: StayCandidate, pings: List<Ping>, params: SegmentationParams): Double {
+    val inside = between(a, b, pings)
+    var used = inside.filter { it.accuracyM <= params.goodAccuracyM }
+    if (used.isEmpty() && inside.isNotEmpty()) {
+        used = inside.sortedBy { it.accuracyM }.take(maxOf(1, inside.size - inside.size / 3))
+    }
+    val furthest = used.maxOfOrNull { haversineMeters(a.lat, a.lng, it.lat, it.lng) } ?: 0.0
+    return maxOf(furthest, haversineMeters(a.lat, a.lng, b.lat, b.lng))
 }
 
 /** Longest stretch with no ping from the end of [a] to the start of [b]. */

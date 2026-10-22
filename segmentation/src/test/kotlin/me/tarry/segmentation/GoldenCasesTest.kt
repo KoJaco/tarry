@@ -147,6 +147,95 @@ class GoldenCasesTest {
         assertFalse(r.stays[0].range.overlaps(trip.range))
     }
 
+    @Test
+    fun parkThenWalkIn() {
+        val home = builder(21).stay(30 * MIN, intervalMs = 3 * MIN)
+        home.moveBy(90.0, 5_000.0, 12.5)
+        val parked = home.currentTimeMs
+        val pings = home
+            .wander(15 * MIN, radiusM = 120.0, accuracyM = 30f..98f, activity = Activity.WALKING)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        // The drive ends at the moment the vehicle stopped and the visit starts there, not 15 min later.
+        assertEquals(parked, trip.range.endMs)
+        assertEquals(parked, r.stays[1].range.startMs)
+        assertEquals(5_000.0, trip.distanceM, 250.0)
+    }
+
+    @Test
+    fun marinaJitter() {
+        val pings = builder(5)
+            .hops(40 * MIN)
+            .wander(90_000, radiusM = 40.0, accuracyM = 30f..98f, activity = Activity.IN_VEHICLE)
+            .hops(40 * MIN)
+            .wander(90_000, radiusM = 40.0, accuracyM = 30f..98f, activity = Activity.IN_VEHICLE)
+            .hops(40 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.gaps.isEmpty())
+    }
+
+    @Test
+    fun staleRepeats() {
+        val b = builder(9).stay(30 * MIN, intervalMs = 3 * MIN).spikes(1, accuracyM = 100f, offsetM = 300.0)
+        val spike = b.pingCount - 1
+        val pings = b.stay(30 * MIN, intervalMs = 3 * MIN)
+            .repeatEarlier(spike, count = 8, intervalMs = MIN, accuracyM = 100f)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.gaps.isEmpty())
+        // Without the stale rule the repeats would form a phantom visit, so the case really exercises it.
+        val unfiltered = Segmenter.segment(SegmentationInput(pings.range(), pings), SegmentationParams(maxAccuracyM = 1_000f))
+        assertTrue(unfiltered.stays.size > 1)
+    }
+
+    @Test
+    fun driveThenWalkAway() {
+        val pings = builder(14)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(90.0, 5_000.0, 12.5)
+            .moveBy(90.0, 600.0, 1.4, mode = Activity.WALKING, accuracyM = 15f)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        assertEquals(listOf(TripMode.VEHICLE, TripMode.WALK), r.trips.map { it.mode })
+        val (drive, walk) = r.trips
+        assertEquals(5_000.0, drive.distanceM, 250.0)
+        // The last 200 m of the walk belong to the visit; the rest is its own on-foot trip.
+        assertEquals(400.0, walk.distanceM, 100.0)
+        assertEquals(0, drive.fromStay)
+        assertEquals(1, walk.toStay)
+        assertEquals(drive.range.endMs, walk.range.startMs)
+        assertEquals(walk.range.endMs, r.stays[1].range.startMs)
+    }
+
+    @Test
+    fun trafficStops() {
+        val pings = builder(17)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(0.0, 2_000.0, 12.5).stay(2 * MIN, intervalMs = 30_000, jitterM = 5.0)
+            .moveBy(0.0, 2_000.0, 12.5).stay(3 * MIN, intervalMs = 30_000, jitterM = 5.0)
+            .moveBy(0.0, 2_000.0, 12.5).stay(4 * MIN, intervalMs = 30_000, jitterM = 5.0)
+            .moveBy(0.0, 2_000.0, 12.5)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        assertEquals(8_000.0, trip.distanceM, 300.0)
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN

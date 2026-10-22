@@ -33,10 +33,31 @@ data class SegmentationParams(
     val minGapMs: Long = 60_000L,
     /** A matched place's centroid is only rewritten when it moves further than this. Used by the `:app` glue. */
     val placeMoveThresholdM: Double = 1.0,
+    /**
+     * A stay closes only after at least this many consecutive pings clearly outside it
+     * (`distance - accuracy > stayRadiusM`) that also span [departureMinMs]. Fewer is an outlier and is ignored.
+     */
+    val departureMinFixes: Int = 2,
+    /** The consecutive outside pings that close a stay must span at least this long. */
+    val departureMinMs: Long = 2 * 60_000L,
+    /** Pings at least this accurate (metres, smaller is better) are trusted for displacement and distance. */
+    val goodAccuracyM: Double = 50.0,
+    /**
+     * Movement within this distance of a stay's centroid, between the vehicle stopping (or starting) and the stay,
+     * belongs to the visit. On foot movement beyond it becomes its own WALK trip leg.
+     */
+    val arrivalRadiusM: Double = 200.0,
+    /**
+     * A ping with the same lat/lng as an earlier ping and accuracy at or above this (metres) is a stale repeat: it
+     * carries no position, so it never starts, extends or moves a stay. It still counts as tracking (no gap).
+     * Matches the capture filter's maximum accepted accuracy.
+     */
+    val maxAccuracyM: Float = 100f,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
+        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }

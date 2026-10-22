@@ -34,9 +34,10 @@ class MergeTest {
     @Test
     fun quickReturnToSameSpotMerges() {
         val pings = builder().stay(10 * min).moveBy(90.0, 250.0, 6.25).moveBy(270.0, 250.0, 6.25).stay(10 * min).build()
+        // Changed by dogfood-1: a 250 m out-and-back shorter than departureMinMs is an outlier, not a departure, so
+        // detection already yields one stay and the merge step has nothing to join.
         val stays = detect(pings)
-        assertEquals(2, stays.size)
-        assertTrue(stays[1].range.startMs - stays[0].range.endMs < params.shortTripMergeMs)
+        assertEquals(1, stays.size)
         assertEquals(1, mergeStays(stays, pings, params).size)
     }
 

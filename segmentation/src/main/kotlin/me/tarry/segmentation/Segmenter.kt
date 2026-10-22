@@ -1,7 +1,5 @@
 package me.tarry.segmentation
 
-import me.tarry.segmentation.geo.haversineMeters
-
 /**
  * Pure, deterministic segmentation (docs/specs/phase-2b.md): pings plus frozen and excluded ranges, places,
  * windows and sessions in; stays, trips, gaps and place changes out. Same input, same output.
@@ -29,10 +27,14 @@ object Segmenter {
             .sortedBy { it.timeMs }
             .toList()
 
+        // Stale repeats carry no position: they stay out of stays and trips but still count as tracking (gaps).
+        val stale = staleRepeats(pings, params)
+        val positional = pings.filter { it !in stale }
+
         val stays = ArrayList<StayCandidate>()
         val trips = ArrayList<TripCandidate>()
         for (stretch in input.range.minus(frozen)) {
-            val local = pings.filter { it.timeMs in stretch }
+            val local = positional.filter { it.timeMs in stretch }
             val reachesEnd = stretch.endMs == input.range.endMs
             var detected = detectStays(local, params)
             val last = detected.lastOrNull()
@@ -41,9 +43,13 @@ object Segmenter {
             }
             if (!reachesEnd) detected = detected.map { if (it.open) it.copy(open = false) else it }
             val split = splitStaysByPlace(detected, input.places, params)
-            val merged = mergeStays(split, local, params, distinctKnownPlaces(input.places, params))
+            val merged = attributeArrivals(
+                mergeStays(split, local, params, distinctKnownPlaces(input.places, params)),
+                local,
+                params,
+            )
             val offset = stays.size
-            buildTrips(merged, local).mapTo(trips) { t ->
+            buildTrips(merged, local, params).mapTo(trips) { t ->
                 t.copy(fromStay = t.fromStay?.plus(offset), toStay = t.toStay?.plus(offset))
             }
             stays += merged
@@ -72,23 +78,34 @@ object Segmenter {
                     mayBeOngoing = s.open,
                 )
             },
-            trips = trips.flatMap { cutAround(it, cuts, stays, pings) },
+            trips = trips.flatMap { cutAround(it, cuts, stays, positional, params) },
             gaps = gaps,
             newPlaces = assignment.newPlaces,
             placeUpdates = assignment.updates,
         )
     }
 
+    /** Pings repeating an earlier ping's exact lat/lng at an accuracy of [SegmentationParams.maxAccuracyM] or worse. */
+    private fun staleRepeats(pings: List<Ping>, params: SegmentationParams): Set<Ping> {
+        val seen = HashSet<Pair<Double, Double>>()
+        val stale = HashSet<Ping>()
+        for (p in pings) {
+            if (!seen.add(p.lat to p.lng) && p.accuracyM >= params.maxAccuracyM) stale += p
+        }
+        return stale
+    }
+
     /**
      * The parts of [trip] outside [cuts] (gaps, time outside sessions, excluded time). Only the first part keeps
      * the origin stay and only the last keeps the destination; each part's distance is the ping path inside it
-     * plus the legs to the stays it keeps. Parts that cover no distance (a silence at one spot) are dropped.
+     * plus the legs to the stays it keeps (accuracy-aware, see [pathDistance]). Parts that cover no distance (a silence at one spot) are dropped.
      */
     private fun cutAround(
         trip: TripCandidate,
         cuts: List<TimeRange>,
         stays: List<StayCandidate>,
         pings: List<Ping>,
+        params: SegmentationParams,
     ): List<Trip> {
         if (cuts.none { it.overlaps(trip.range) }) {
             return listOf(Trip(trip.range, trip.fromStay, trip.toStay, trip.distanceM, trip.mode))
@@ -98,11 +115,11 @@ object Segmenter {
             val from = trip.fromStay.takeIf { i == 0 && part.startMs == trip.range.startMs }
             val to = trip.toStay.takeIf { i == parts.lastIndex && part.endMs == trip.range.endMs }
             val path = buildList {
-                from?.let { add(stays[it].lat to stays[it].lng) }
-                pings.filter { it.timeMs > part.startMs && it.timeMs < part.endMs }.forEach { add(it.lat to it.lng) }
-                to?.let { add(stays[it].lat to stays[it].lng) }
+                from?.let { add(stayEdge(stays[it], atEnd = true, pings = pings)) }
+                pings.filter { it.timeMs > part.startMs && it.timeMs < part.endMs }.forEach { add(it.toPathPoint()) }
+                to?.let { add(stayEdge(stays[it], atEnd = false, pings = pings)) }
             }
-            val distance = path.zipWithNext().sumOf { (a, b) -> haversineMeters(a.first, a.second, b.first, b.second) }
+            val distance = pathDistance(path, params)
             if (distance <= 0.0) null else Trip(part, from, to, distance, trip.mode)
         }
     }
