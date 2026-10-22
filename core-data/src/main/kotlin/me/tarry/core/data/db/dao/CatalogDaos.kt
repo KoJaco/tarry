@@ -72,6 +72,10 @@ interface PlaceDao {
     @Query("SELECT * FROM place WHERE deleted = 0 AND defaultJobId = :jobId")
     suspend fun getByDefaultJob(jobId: String): List<Place>
 
+    /** Sets only the default job, so columns segmentation owns (centroid, lastVisitAt) are never overwritten. */
+    @Query("UPDATE place SET defaultJobId = :jobId, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun setDefaultJob(id: String, jobId: String?, updatedAt: Long)
+
     /** Default-tag links of live places that carry [tagId]. */
     @Query("SELECT pdt.* FROM place_default_tag pdt JOIN place p ON p.id = pdt.placeId WHERE pdt.tagId = :tagId AND p.deleted = 0")
     suspend fun getDefaultTagLinksByTag(tagId: String): List<PlaceDefaultTag>

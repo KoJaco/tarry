@@ -48,8 +48,8 @@ class CatalogEditor @Inject constructor(
         val affected = places.getByDefaultJob(jobId)
         val now = clock.nowMs()
         jobs.upsert(job.copy(archived = true, updatedAt = now))
-        affected.forEach { places.upsert(it.copy(defaultJobId = null, updatedAt = now)) }
-        EditResult.Ok(emptySnapshot().copy(jobs = listOf(job), places = affected))
+        affected.forEach { places.setDefaultJob(it.id, null, now) }
+        EditResult.Ok(emptySnapshot().copy(jobs = listOf(job), placeDefaultJobs = affected.associate { it.id to jobId }))
     }
 
     suspend fun unarchiveJob(jobId: String): EditResult = db.withTransaction {

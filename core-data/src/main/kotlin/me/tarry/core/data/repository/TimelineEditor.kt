@@ -79,6 +79,8 @@ data class Snapshot(
     val tags: List<Tag> = emptyList(),
     /** Every default-tag link of the places affected by a tag edit; restore replaces the default tags of exactly the places listed here. */
     val placeDefaultTags: List<PlaceDefaultTag> = emptyList(),
+    /** placeId to the default job it had before a job archive; restore sets only that column, leaving the rest of the place as it is now. */
+    val placeDefaultJobs: Map<String, String> = emptyMap(),
 )
 
 sealed interface EditResult {
@@ -424,6 +426,7 @@ class TimelineEditor @Inject constructor(
         }
         snapshot.places.forEach { places.upsert(it) }
         snapshot.jobs.forEach { jobs.upsert(it) }
+        snapshot.placeDefaultJobs.forEach { (placeId, jobId) -> places.setDefaultJob(placeId, jobId, now) }
         snapshot.tags.forEach { tags.upsert(it) }
         snapshot.placeDefaultTags.map { it.placeId }.distinct().forEach { placeId ->
             places.getDefaultTags(placeId).forEach { places.deleteDefaultTag(placeId, it.tagId) }

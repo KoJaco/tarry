@@ -118,6 +118,22 @@ class CatalogEditorTest : DbTestBase() {
     }
 
     @Test
+    fun archiveJobUndoRestoresOnlyTheDefaultJobNotOtherPlaceColumns() = runTest {
+        db.jobDao().upsert(job("j"))
+        db.placeDao().upsert(place("p", "j"))
+        val result = catalog.archiveJob("j") as EditResult.Ok
+
+        // Segmentation ran in between and moved the place.
+        db.placeDao().upsert(db.placeDao().getById("p")!!.copy(centroidLat = 9.0, lastVisitAt = 5_000))
+        timeline.restore(result.undo!!)
+
+        val p = db.placeDao().getById("p")!!
+        assertThat(p.defaultJobId).isEqualTo("j")
+        assertThat(p.centroidLat).isEqualTo(9.0)
+        assertThat(p.lastVisitAt).isEqualTo(5_000)
+    }
+
+    @Test
     fun unarchiveBringsTheJobBackButNotTheDefaults() = runTest {
         db.jobDao().upsert(job("j"))
         db.placeDao().upsert(place("p", "j"))
