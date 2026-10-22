@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -13,6 +14,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -23,9 +25,11 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -37,6 +41,7 @@ import me.tarry.app.R
 import me.tarry.app.export.ExportFormat
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.ui.components.SecondaryButton
+import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.TarryTheme
@@ -59,6 +64,7 @@ data class SessionsActions(
 )
 
 private val MinTouchTarget = 48.dp
+private val SessionIconSize = 24.dp
 
 /** Stateless sessions list, test-window button (debug only) and export controls. */
 @Composable
@@ -149,6 +155,19 @@ private fun ExportResultText(result: ExportResult?, onDismiss: () -> Unit) {
     }
 }
 
+/** Where a session stands, for its leading icon: still open, ended unexpectedly, or ended normally. */
+private enum class SessionState(val icon: Int, val label: Int) {
+    COMPLETE(R.drawable.ic_session_complete, R.string.sessions_state_complete),
+    KILLED(R.drawable.ic_session_killed, R.string.sessions_state_killed),
+    OPEN(R.drawable.ic_session_open, R.string.sessions_state_open),
+}
+
+private fun SessionListItem.state(): SessionState = when {
+    end == null -> SessionState.OPEN
+    endReason == SessionEndReason.KILLED -> SessionState.KILLED
+    else -> SessionState.COMPLETE
+}
+
 @Composable
 private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Unit) {
     val start = formatSessionInstant(session.start, session.zoneId)
@@ -158,38 +177,51 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
         stringResource(session.trigger.labelRes()),
         stringResource(session.endReason.labelRes()),
     )
-    TarryCard(modifier = Modifier.fillMaxWidth().testTag("session_row_${session.id}")) {
-        Text(
-            stringResource(R.string.sessions_row_title, start, end),
-            style = MaterialTheme.typography.titleSmall,
-            color = TarryTheme.colors.ink,
-        )
-        Text(detail, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
-        Text(
-            pluralStringResource(R.plurals.sessions_row_pings, session.pingCount, session.pingCount),
-            style = MaterialTheme.typography.bodyMedium,
-            color = TarryTheme.colors.muted,
-            modifier = Modifier.testTag("session_pings_${session.id}"),
-        )
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-            modifier = Modifier.padding(top = TarryTheme.space.s),
-        ) {
-            val gpx = stringResource(R.string.sessions_export_gpx_description, session.id)
-            val csv = stringResource(R.string.sessions_export_csv_description, session.id)
-            SecondaryButton(
-                text = stringResource(R.string.sessions_export_gpx),
+    val state = session.state()
+    Column(verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
+        TarryCard(modifier = Modifier.fillMaxWidth().testTag("session_row_${session.id}")) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
+            ) {
+                Icon(
+                    painter = painterResource(state.icon),
+                    contentDescription = stringResource(state.label),
+                    tint = if (state == SessionState.KILLED) TarryTheme.colors.alert else TarryTheme.colors.ink,
+                    modifier = Modifier.size(SessionIconSize).testTag("session_state_${session.id}"),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.sessions_row_title, start, end),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TarryTheme.colors.ink,
+                    )
+                    Text(detail, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
+                    Text(
+                        pluralStringResource(R.plurals.sessions_row_pings, session.pingCount, session.pingCount),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TarryTheme.colors.muted,
+                        modifier = Modifier.testTag("session_pings_${session.id}"),
+                    )
+                }
+            }
+        }
+        val gpxTitle = stringResource(R.string.sessions_export_gpx_row)
+        val csvTitle = stringResource(R.string.sessions_export_csv_row)
+        val gpx = stringResource(R.string.sessions_export_gpx_description, session.id)
+        val csv = stringResource(R.string.sessions_export_csv_description, session.id)
+        SettingsGroup(modifier = Modifier.testTag("session_exports_${session.id}")) {
+            row(
+                gpxTitle,
                 onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.GPX)) },
-                modifier = Modifier
-                    .semantics { contentDescription = gpx }
-                    .testTag("session_export_gpx_${session.id}"),
+                icon = R.drawable.ic_location_pin,
+                contentDescription = gpx,
             )
-            SecondaryButton(
-                text = stringResource(R.string.sessions_export_csv),
+            row(
+                csvTitle,
                 onClick = { onExport(ExportRequest.Session(session.id, ExportFormat.CSV)) },
-                modifier = Modifier
-                    .semantics { contentDescription = csv }
-                    .testTag("session_export_csv_${session.id}"),
+                icon = R.drawable.ic_table,
+                contentDescription = csv,
             )
         }
     }

@@ -1,6 +1,10 @@
 package me.tarry.app.ui
 
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -94,6 +98,43 @@ class SessionsUiTest {
         composeRule.setContent { SessionsContent(listOf(session), false, null, actions) }
         composeRule.onNode(hasContentDescription("Export GPX for session 7")).performScrollTo().performClick()
         composeRule.onNode(hasContentDescription("Export CSV for session 7")).performScrollTo().performClick()
+        assertThat(exports).containsExactly(
+            ExportRequest.Session(7, ExportFormat.GPX),
+            ExportRequest.Session(7, ExportFormat.CSV),
+        ).inOrder()
+    }
+
+    private fun showOne(item: SessionListItem) {
+        composeRule.setContent { SessionsContent(listOf(item), false, null, actions) }
+    }
+
+    @Test
+    fun completedSessionHasACompleteIcon() {
+        showOne(session)
+        composeRule.onNode(hasContentDescription("Completed session")).assertExists()
+    }
+
+    @Test
+    fun killedSessionHasAKilledIcon() {
+        showOne(session.copy(endReason = SessionEndReason.KILLED))
+        composeRule.onNode(hasContentDescription("Session was killed")).assertExists()
+    }
+
+    @Test
+    fun openSessionHasAnInProgressIcon() {
+        showOne(session.copy(end = null, endReason = null))
+        composeRule.onNode(hasContentDescription("Session in progress")).assertExists()
+    }
+
+    @Test
+    fun exportRowsAreStackedClickableRowsBelowTheSession() {
+        composeRule.setContent { SessionsContent(listOf(session), false, null, actions) }
+        val group = composeRule.onNodeWithTag("session_exports_7")
+        group.assertExists()
+        composeRule.onNode(hasText("Export GPX") and hasAnyAncestor(hasTestTag("session_exports_7")))
+            .assertHasClickAction().performScrollTo().performClick()
+        composeRule.onNode(hasText("Export CSV") and hasAnyAncestor(hasTestTag("session_exports_7")))
+            .assertHasClickAction().performScrollTo().performClick()
         assertThat(exports).containsExactly(
             ExportRequest.Session(7, ExportFormat.GPX),
             ExportRequest.Session(7, ExportFormat.CSV),
