@@ -178,4 +178,59 @@ class CaptureModeMachineTest {
 
         assertThat(m.takeNextPingSource()).isEqualTo(PingSource.FUSED)
     }
+
+    @Test
+    fun berthedBoatReportingInVehicleDemotesToStationary() {
+        val m = machine()
+        m.onActivity(ActivityType.IN_VEHICLE)
+        // 20 s fixes hopping a few tens of metres around the berth, noisy accuracy, activity never changes.
+        var step = MachineStep(m.mode, emptyList())
+        var t = 0L
+        val hops = listOf(0.0, 40.0, -30.0, 20.0, -45.0, 35.0, -10.0, 25.0, -20.0, 30.0, 0.0, 15.0, -35.0, 10.0, 5.0, -5.0, 20.0, -15.0)
+        for (north in hops) {
+            step = m.onAcceptedFix(fixAt(t, northM = north, accuracyM = 40f))
+            t += 20_000L
+            if (step.mode == CaptureMode.STATIONARY) break
+        }
+        assertThat(step.mode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(step.effects.filterIsInstance<CaptureEffect.AddStayGeofence>()).hasSize(1)
+        // Still IN_VEHICLE, but no fresh transition: stays STATIONARY while the fixes stay inside the geofence.
+        assertThat(m.onAcceptedFix(fixAt(t, northM = 10.0, accuracyM = 40f)).mode).isEqualTo(CaptureMode.STATIONARY)
+        // A fresh moving transition re-enters MOVING.
+        m.onActivity(ActivityType.STILL)
+        assertThat(m.onActivity(ActivityType.IN_VEHICLE).mode).isEqualTo(CaptureMode.MOVING)
+    }
+
+    @Test
+    fun noProgressNeedsTheFixCountAndTheMinimumDuration() {
+        val m = machine()
+        m.onActivity(ActivityType.IN_VEHICLE)
+        // Many fixes in under the minimum duration: not yet.
+        for (i in 0 until 10) assertThat(m.onAcceptedFix(fixAt(i * 20_000L, northM = (i % 2) * 5.0)).mode).isEqualTo(CaptureMode.MOVING)
+    }
+
+    @Test
+    fun driveWithThreeMinuteTrafficStopStaysMoving() {
+        val m = machine()
+        m.onActivity(ActivityType.IN_VEHICLE)
+        var t = 0L
+        var north = 0.0
+        // Driving 10 m/s.
+        repeat(6) { assertThat(m.onAcceptedFix(fixAt(t, northM = north)).mode).isEqualTo(CaptureMode.MOVING); t += 20_000L; north += 200.0 }
+        // Stopped at the lights for 3 minutes (9 fixes in the same place).
+        repeat(10) { assertThat(m.onAcceptedFix(fixAt(t, northM = north)).mode).isEqualTo(CaptureMode.MOVING); t += 20_000L }
+        // Moves off again.
+        repeat(6) { north += 200.0; assertThat(m.onAcceptedFix(fixAt(t, northM = north)).mode).isEqualTo(CaptureMode.MOVING); t += 20_000L }
+    }
+
+    @Test
+    fun geofenceExitReentersMovingAfterDemotion() {
+        val m = machine()
+        m.onActivity(ActivityType.IN_VEHICLE)
+        var t = 0L
+        while (m.mode == CaptureMode.MOVING && t < 20 * 60_000L) { m.onAcceptedFix(fixAt(t)); t += 20_000L }
+        assertThat(m.mode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(m.onGeofenceExit().mode).isEqualTo(CaptureMode.MOVING)
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.GEOFENCE_EXIT)
+    }
 }

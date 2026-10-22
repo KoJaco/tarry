@@ -5,6 +5,9 @@ enum class FilterDecision(val accepted: Boolean) {
     ACCEPT(true),
     DROP_ACCURACY(false),
     DROP_SPEED(false),
+
+    /** Same position as a recently offered fix with no better accuracy: a re-emitted cached position, not a new reading. */
+    DROP_STALE(false),
     DROP_JITTER(false),
 
     /** Not saved (moved less than [TrackingConfig.movingMinDisplacementM] in MOVING) but still fed to the machine. */
@@ -18,6 +21,11 @@ enum class FilterDecision(val accepted: Boolean) {
  * 1. accuracy worse than [TrackingConfig.maxAccuracyM] is dropped;
  * 2. a fix implying more than [TrackingConfig.maxSpeedMps] from the last accepted fix is dropped
  *    (a fix not newer than the last accepted one is also dropped, as DROP_SPEED, since no speed can be implied);
+ *    (also by `elapsedRealtimeNanos` when both fixes carry it);
+ * 2b. a fix with exactly the lat/lng of one of the last [TrackingConfig.staleRepeatMemory] offered fixes, and no
+ *    better accuracy, is dropped as DROP_STALE. Dogfood showed the fused provider re-emitting its last known position
+ *    with a fresh `Location.time` and accuracy inflated to 100 m, so a time check alone cannot catch these; real
+ *    GPS never repeats a coordinate to 7 decimals;
  * 3. in STATIONARY, a fix inside its own accuracy circle around the last accepted fix is dropped as jitter,
  *    unless [TrackingConfig.stationaryKeepaliveMs] has passed since the last accepted fix (a keepalive ping, so a
  *    long stay is not read as a recording gap);
@@ -28,6 +36,7 @@ enum class FilterDecision(val accepted: Boolean) {
 class PingFilter(private val config: TrackingConfig) {
     var lastAccepted: Fix? = null
         private set
+    private val recent = ArrayDeque<Fix>()
 
     fun offer(fix: Fix, mode: CaptureMode): FilterDecision {
         if (fix.accuracyM > config.maxAccuracyM) return FilterDecision.DROP_ACCURACY
@@ -36,6 +45,16 @@ class PingFilter(private val config: TrackingConfig) {
             val dtMs = fix.timeMs - last.timeMs
             val distance = fix.distanceTo(last)
             if (dtMs <= 0) return FilterDecision.DROP_SPEED
+            val elapsed = fix.elapsedRealtimeNanos
+            val lastElapsed = last.elapsedRealtimeNanos
+            if (elapsed != null && lastElapsed != null && elapsed <= lastElapsed) return FilterDecision.DROP_SPEED
+        }
+        val repeated = recent.any { it.lat == fix.lat && it.lng == fix.lng && fix.accuracyM >= it.accuracyM }
+        remember(fix)
+        if (repeated) return FilterDecision.DROP_STALE
+        if (last != null) {
+            val dtMs = fix.timeMs - last.timeMs
+            val distance = fix.distanceTo(last)
             if (distance / (dtMs / 1000.0) > config.maxSpeedMps) return FilterDecision.DROP_SPEED
             if (mode == CaptureMode.STATIONARY && distance <= fix.accuracyM &&
                 dtMs < config.stationaryKeepaliveMs
@@ -50,8 +69,14 @@ class PingFilter(private val config: TrackingConfig) {
         return FilterDecision.ACCEPT
     }
 
+    private fun remember(fix: Fix) {
+        recent.addLast(fix)
+        while (recent.size > config.staleRepeatMemory) recent.removeFirst()
+    }
+
     /** Forget the last accepted fix (new session). */
     fun reset() {
         lastAccepted = null
+        recent.clear()
     }
 }

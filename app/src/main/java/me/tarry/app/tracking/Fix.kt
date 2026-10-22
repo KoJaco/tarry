@@ -14,6 +14,8 @@ data class Fix(
     val timeMs: Long,
     val speedMps: Float? = null,
     val bearing: Float? = null,
+    /** Monotonic time of the fix (`Location.elapsedRealtimeNanos`), when known; used to spot fixes that are not newer. */
+    val elapsedRealtimeNanos: Long? = null,
 )
 
 /** Great-circle (haversine) distance in metres. */

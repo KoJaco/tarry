@@ -51,4 +51,5 @@ internal fun Location.toFix(): Fix = Fix(
     timeMs = time,
     speedMps = if (hasSpeed()) speed else null,
     bearing = if (hasBearing()) bearing else null,
+    elapsedRealtimeNanos = elapsedRealtimeNanos,
 )
