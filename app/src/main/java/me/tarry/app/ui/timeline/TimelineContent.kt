@@ -18,17 +18,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.flow.filter
+import me.tarry.app.ui.drawer.EditTarget
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
+import androidx.compose.ui.res.stringResource
 import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
@@ -59,7 +65,19 @@ fun TimelineContent(
     onSelectDate: (LocalDate) -> Unit = {},
     zone: ZoneId = ZoneId.systemDefault(),
     nowMs: Long? = null,
+    /** Opens the edit drawer: a tapped visit or trip, or a new manual visit (gap sheet, "+" button). */
+    onEdit: (EditTarget) -> Unit = {},
+    /** A visit's edge was dragged and released: the new start and end (UTC epoch ms, snapped and clamped). */
+    onResizeVisit: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
+    minStayMs: Long = DefaultMinStayMs,
 ) {
+    val scroll = rememberScrollState()
+    // The visit whose resize handles show. Cleared by a day change, a scroll or a tap anywhere else.
+    var selectedVisit by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(date) { selectedVisit = null }
+    LaunchedEffect(scroll) { snapshotFlow { scroll.isScrollInProgress }.filter { it }.collect { selectedVisit = null } }
+    var reviewOnly by rememberSaveable { mutableStateOf(false) }
+    var gapSheetId by rememberSaveable { mutableStateOf<String?>(null) }
     val isToday = date == today
     // Only today has a now-line, and only a started screen needs it to move.
     val clock by rememberMinuteClock(enabled = nowMs == null && isToday)
@@ -68,12 +86,23 @@ fun TimelineContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(scroll)
+            // A tap nothing else consumed (blocks, buttons and handles consume theirs) deselects.
+            .pointerInput(Unit) { detectTapGestures(onTap = { selectedVisit = null }) }
             .padding(horizontal = TarryTheme.space.gutter),
         verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xl),
     ) {
         DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate)
         WeekStrip(date, today, onSelectDate)
+        ReviewRow(
+            reviewOnly = reviewOnly,
+            showToggle = !items.isNullOrEmpty(),
+            onReviewOnlyChange = { reviewOnly = it },
+            onNewVisit = {
+                val (start, end) = firstFreeSlot(date, zone, items.orEmpty().filterIsInstance<TimelineItem.Visit>())
+                onEdit(EditTarget.NewVisit(start, end))
+            },
+        )
         Column(
             modifier = Modifier.fillMaxWidth().daySlide(date),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
@@ -93,7 +122,36 @@ fun TimelineContent(
                         layoutDay(items, bounds, zone, if (isToday) now else -1L, fontScale)
                     }
                     SummaryCard(summarize(items, bounds), isToday)
-                    DayCanvas(layout, bounds.first, bounds.second, zone, now)
+                    DayCanvas(
+                        layout, bounds.first, bounds.second, zone, now,
+                        dimNonReview = reviewOnly,
+                        onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                        selectedVisitId = selectedVisit,
+                        onSelectVisit = { selectedVisit = it },
+                        onResizeVisit = onResizeVisit,
+                        minStayMs = minStayMs,
+                        onOpenTrip = { onEdit(EditTarget.Trip(it)) },
+                        onOpenGap = { gap, _ -> gapSheetId = gap.id },
+                    )
+                    val sheetBlock = gapSheetId?.let { id ->
+                        layout.blocks.firstOrNull { it.item.id == id && it.item is TimelineItem.Gap }
+                    }
+                    val sheetGap = sheetBlock?.item as? TimelineItem.Gap
+                    if (sheetBlock != null && sheetGap != null) {
+                        val from = maxOf(sheetGap.start, bounds.first)
+                        val to = minOf(sheetGap.end, bounds.second)
+                        GapSheet(
+                            gap = sheetGap,
+                            outages = sheetBlock.cluster,
+                            slot = freeSlotForGap(from, to, items.filterIsInstance<TimelineItem.Visit>()),
+                            zone = zone,
+                            onAddVisit = { start, end ->
+                                gapSheetId = null
+                                onEdit(EditTarget.NewVisit(start, end))
+                            },
+                            onDismiss = { gapSheetId = null },
+                        )
+                    }
                 }
             }
         }

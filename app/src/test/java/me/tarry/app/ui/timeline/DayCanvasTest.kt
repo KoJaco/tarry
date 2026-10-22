@@ -6,6 +6,9 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -27,7 +30,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = android.app.Application::class)
+@Config(sdk = [35], application = android.app.Application::class, qualifiers = "w320dp-h1000dp")
 class DayCanvasTest {
     @get:Rule
     val composeRule = createComposeRule()
@@ -321,7 +324,7 @@ class DayCanvasTest {
         // The band is background drawing: no node of its own and no label text overlapping the title.
         composeRule.onNodeWithTag("timeline_row_g").assertDoesNotExist()
         composeRule.onAllNodesWithText("Not tracked · App was closed").assertCountEquals(0)
-        composeRule.onNodeWithText("Needs review").assertIsDisplayed()
+        composeRule.onNode(hasText("Needs review") and hasAnyAncestor(hasTestTag("timeline_row_v")), useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag("timeline_row_v").assert(SemanticsMatcher("one inner band") { it.config[InnerGapHatchKey] == 1 })
     }
 

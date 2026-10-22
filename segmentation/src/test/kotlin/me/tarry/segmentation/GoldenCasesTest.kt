@@ -363,6 +363,24 @@ class GoldenCasesTest {
         assertTrue(run(pings).trips.isEmpty())
     }
 
+    @Test
+    fun frozenAndExcludedRangesStayFreeOfStaysTripsAndGaps() {
+        val pings = builder().stay(HOUR).moveBy(90.0, 6_000.0, 12.5).stay(HOUR).moveBy(90.0, 6_000.0, 12.5).stay(HOUR).build()
+        val baseline = run(pings)
+        assertEquals(3, baseline.stays.size)
+        // The user trimmed the middle visit (frozen, narrower than the detected stay) and deleted the last one (excluded).
+        val frozen = TimeRange(baseline.stays[1].range.startMs + 10 * MIN, baseline.stays[1].range.endMs - 10 * MIN)
+        val excluded = baseline.stays[2].range
+        val r = Segmenter.segment(SegmentationInput(pings.range(), pings, frozen = listOf(frozen), excluded = listOf(excluded)), params)
+        val fixed = listOf(frozen, excluded)
+        assertTrue(r.stays.isNotEmpty())
+        assertTrue(r.stays.none { s -> fixed.any { s.range.overlaps(it) } })
+        assertTrue(r.trips.none { t -> fixed.any { t.range.overlaps(it) } })
+        assertTrue(r.gaps.none { g -> fixed.any { g.range.overlaps(it) } })
+        // The first stay is untouched by the edits.
+        assertEquals(baseline.stays[0].range, r.stays[0].range)
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN

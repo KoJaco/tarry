@@ -54,6 +54,17 @@ interface VisitDao {
 
     @Query("SELECT * FROM visit_tag WHERE visitId = :visitId")
     suspend fun getTags(visitId: String): List<VisitTag>
+
+    @Query("DELETE FROM visit_tag WHERE visitId = :visitId")
+    suspend fun deleteAllTags(visitId: String)
+
+    /** The non-deleted visit that ends last at or before [time] (the previous neighbour of a visit starting at [time]). */
+    @Query("SELECT * FROM visit WHERE deleted = 0 AND `end` <= :time ORDER BY `end` DESC LIMIT 1")
+    suspend fun getLastEndingAtOrBefore(time: Long): Visit?
+
+    /** The non-deleted visit that starts first at or after [time] (the next neighbour of a visit ending at [time]). */
+    @Query("SELECT * FROM visit WHERE deleted = 0 AND start >= :time ORDER BY start LIMIT 1")
+    suspend fun getFirstStartingAtOrAfter(time: Long): Visit?
 }
 
 @Dao
@@ -86,6 +97,9 @@ interface TripDao {
 
     @Query("SELECT * FROM trip_tag WHERE tripId = :tripId")
     suspend fun getTags(tripId: String): List<TripTag>
+
+    @Query("DELETE FROM trip_tag WHERE tripId = :tripId")
+    suspend fun deleteAllTags(tripId: String)
 }
 
 @Dao

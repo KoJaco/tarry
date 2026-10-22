@@ -19,6 +19,9 @@ interface JobDao {
 
     @Query("SELECT * FROM job WHERE deleted = 0 ORDER BY name")
     fun observeAll(): Flow<List<Job>>
+
+    @Query("SELECT * FROM job WHERE deleted = 0")
+    suspend fun getAllActive(): List<Job>
 }
 
 @Dao
@@ -78,4 +81,7 @@ interface TagDao {
 
     @Query("SELECT * FROM tag WHERE groupId = :groupId AND deleted = 0 ORDER BY sortOrder")
     suspend fun getByGroup(groupId: String): List<Tag>
+
+    @Query("SELECT * FROM tag_group WHERE deleted = 0 ORDER BY sortOrder")
+    suspend fun getGroups(): List<TagGroup>
 }

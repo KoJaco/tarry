@@ -64,6 +64,7 @@ object BottomBarTags {
     const val Indicator = "bottomBar.indicator"
 }
 
+
 private val SlotMinHeight = 56.dp
 private val TopBorder = 1.dp
 private val IconBackingWidth = 64.dp

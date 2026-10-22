@@ -2,13 +2,18 @@ package me.tarry.app.ui.timeline
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.tarry.app.ui.drawer.EditDrawer
+import me.tarry.app.ui.drawer.EditTarget
 
-/** Hilt-wired day list. */
+/** Hilt-wired day list. Keeps the open edit target (it survives rotation) and hosts the edit drawer. */
 @Composable
 fun TimelineScreen(
     modifier: Modifier = Modifier,
@@ -17,6 +22,7 @@ fun TimelineScreen(
     val date by viewModel.selectedDate.collectAsStateWithLifecycle()
     val today by viewModel.today.collectAsStateWithLifecycle()
     val items by viewModel.items.collectAsStateWithLifecycle()
+    var editTarget by rememberSaveable(stateSaver = EditTargetSaver) { mutableStateOf<EditTarget?>(null) }
     // After midnight the old "today" would stay selected; re-derive it when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
     TimelineContent(
@@ -26,6 +32,16 @@ fun TimelineScreen(
         onNextDay = viewModel::nextDay,
         today = today,
         onSelectDate = viewModel::selectDate,
+        onEdit = { editTarget = it },
+        onResizeVisit = viewModel::resizeVisit,
+        minStayMs = viewModel.minStayMs,
         modifier = modifier,
     )
+    editTarget?.let { target ->
+        EditDrawer(
+            target = target,
+            onDismiss = { editTarget = null },
+            onRetarget = { editTarget = it },
+        )
+    }
 }

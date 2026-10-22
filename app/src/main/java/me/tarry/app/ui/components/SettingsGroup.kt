@@ -10,6 +10,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
@@ -45,8 +49,19 @@ class SettingsGroupScope internal constructor() {
         @DrawableRes icon: Int? = null,
         subtitle: String? = null,
         value: String? = null,
+        contentDescription: String? = null,
     ) {
-        rows += { GroupedSettingsRow(title, onClick, icon, subtitle, value) }
+        rows += { GroupedSettingsRow(title, onClick, icon, subtitle, value, contentDescription) }
+    }
+
+    /** A row whose whole surface toggles; the [Switch] is a non-interactive indicator. */
+    fun switchRow(
+        title: String,
+        checked: Boolean,
+        onCheckedChange: (Boolean) -> Unit,
+        subtitle: String? = null,
+    ) {
+        rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle) }
     }
 }
 
@@ -77,15 +92,17 @@ private fun GroupedSettingsRow(
     @DrawableRes icon: Int?,
     subtitle: String?,
     value: String?,
+    description: String?,
 ) {
     val space = TarryTheme.space
+    val describe = if (description != null) Modifier.semantics { contentDescription = description } else Modifier
     val frame = if (onClick != null) {
         Modifier.clickable(role = Role.Button, onClick = onClick)
     } else {
         Modifier.semantics(mergeDescendants = true) {}
     }
     Row(
-        modifier = frame
+        modifier = frame.then(describe)
             .fillMaxWidth()
             .heightIn(min = GroupedRowMinHeight)
             .padding(horizontal = space.l, vertical = space.m),
@@ -110,6 +127,38 @@ private fun GroupedSettingsRow(
             Text(value, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
         }
         if (onClick != null) Chevron()
+    }
+}
+
+@Composable
+private fun GroupedSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, subtitle: String?) {
+    val space = TarryTheme.space
+    val colors = TarryTheme.colors
+    Row(
+        modifier = Modifier
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .fillMaxWidth()
+            .heightIn(min = GroupedRowMinHeight)
+            .padding(horizontal = space.l, vertical = space.m),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(space.l),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = colors.ink)
+            if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(
+                checkedTrackColor = colors.ink,
+                checkedThumbColor = colors.paper,
+                checkedBorderColor = colors.ink,
+                uncheckedTrackColor = colors.inset,
+                uncheckedThumbColor = colors.paper,
+                uncheckedBorderColor = colors.outline,
+            ),
+        )
     }
 }
 
