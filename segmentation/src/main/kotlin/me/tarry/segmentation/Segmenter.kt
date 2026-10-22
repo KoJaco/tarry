@@ -85,7 +85,12 @@ object Segmenter {
         )
     }
 
-    /** Pings repeating an earlier ping's exact lat/lng at an accuracy of [SegmentationParams.maxAccuracyM] or worse. */
+    /**
+     * Pings repeating an earlier ping's exact lat/lng at an accuracy of [SegmentationParams.maxAccuracyM] or worse.
+     * "Earlier" means earlier in the pings this run sees, so a run starting after the original fix cannot tell its
+     * repeat is stale; the glue's overlap reload makes that rare, but an incremental run can differ from a full one
+     * for a repeat in the first stretch after its range starts.
+     */
     private fun staleRepeats(pings: List<Ping>, params: SegmentationParams): Set<Ping> {
         val seen = HashSet<Pair<Double, Double>>()
         val stale = HashSet<Ping>()

@@ -23,39 +23,46 @@ internal fun attributeArrivals(
     val out = stays.toMutableList()
     for (i in out.indices) {
         val limit = stays.getOrNull(i + 1)?.range?.startMs ?: Long.MAX_VALUE
-        out[i] = extendEnd(out[i], limit, pings, params)
+        out[i] = extendEnd(out[i], stays.getOrNull(i + 1), limit, pings, params)
     }
     for (i in out.indices) {
         val floor = out.getOrNull(i - 1)?.range?.endMs ?: Long.MIN_VALUE
-        out[i] = extendStart(out[i], floor, pings, params)
+        out[i] = extendStart(out[i], stays.getOrNull(i - 1), floor, pings, params)
     }
     return out
 }
 
-private fun clearlyOutside(p: Ping, stay: StayCandidate, params: SegmentationParams): Boolean =
-    haversineMeters(stay.lat, stay.lng, p.lat, p.lng) - p.accuracyM > params.arrivalRadiusM
+/**
+ * The extension radius toward [neighbour]: [SegmentationParams.arrivalRadiusM], but at most half the distance between
+ * the two centroids, so the walk between nearby places stays a trip. A capped radius is exact (no accuracy slack).
+ */
+private fun clearlyOutside(p: Ping, stay: StayCandidate, neighbour: StayCandidate?, params: SegmentationParams): Boolean {
+    val half = neighbour?.let { haversineMeters(stay.lat, stay.lng, it.lat, it.lng) / 2 } ?: Double.MAX_VALUE
+    val d = haversineMeters(stay.lat, stay.lng, p.lat, p.lng)
+    return if (half < params.arrivalRadiusM) d > half else d - p.accuracyM > params.arrivalRadiusM
+}
 
-private fun extendEnd(stay: StayCandidate, limitMs: Long, pings: List<Ping>, params: SegmentationParams): StayCandidate {
+private fun extendEnd(stay: StayCandidate, next: StayCandidate?, limitMs: Long, pings: List<Ping>, params: SegmentationParams): StayCandidate {
     var end = stay.range.endMs
     var k = pings.indexOfFirst { it.timeMs > end }
     if (k < 0) return stay
     while (k < pings.size) {
         val p = pings[k]
         if (p.timeMs >= limitMs || p.timeMs - end > params.maxGapToBridgeMs) break
-        if (p.activity == Activity.IN_VEHICLE || clearlyOutside(p, stay, params)) break
+        if (p.activity == Activity.IN_VEHICLE || clearlyOutside(p, stay, next, params)) break
         end = p.timeMs
         k++
     }
     return if (end == stay.range.endMs) stay else stay.copy(range = TimeRange(stay.range.startMs, end))
 }
 
-private fun extendStart(stay: StayCandidate, floorMs: Long, pings: List<Ping>, params: SegmentationParams): StayCandidate {
+private fun extendStart(stay: StayCandidate, prev: StayCandidate?, floorMs: Long, pings: List<Ping>, params: SegmentationParams): StayCandidate {
     var start = stay.range.startMs
     var k = pings.indexOfLast { it.timeMs < start }
     while (k >= 0) {
         val p = pings[k]
         if (p.timeMs <= floorMs || start - p.timeMs > params.maxGapToBridgeMs) break
-        if (clearlyOutside(p, stay, params)) break
+        if (clearlyOutside(p, stay, prev, params)) break
         start = p.timeMs
         if (p.activity == Activity.IN_VEHICLE) break // the vehicle stopped here
         k--

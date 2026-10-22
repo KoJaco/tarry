@@ -236,6 +236,59 @@ class GoldenCasesTest {
         assertEquals(8_000.0, trip.distanceM, 300.0)
     }
 
+    @Test
+    fun activityLagAfterDrivingIsOneVehicleTrip() {
+        val pings = builder(31)
+            .stay(30 * MIN, intervalMs = 3 * MIN)
+            .moveBy(90.0, 5_000.0, 12.5)
+            // Recognition lags: the car keeps rolling for ~800 m after IN_VEHICLE ended.
+            .moveBy(90.0, 800.0, 12.5, mode = Activity.WALKING)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        assertEquals(5_800.0, trip.distanceM, 400.0)
+    }
+
+    @Test
+    fun walkBetweenTwoNearbyPlacesStaysATrip() {
+        val pings = builder(41)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(90.0, 170.0, 0.9, mode = Activity.WALKING, accuracyM = 20f)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val walk = r.trips.single()
+        // Arrival attribution is capped at half the distance between the stays, so the walk is not swallowed.
+        assertTrue(walk.range.durationMs >= 20_000)
+        assertTrue(r.stays[0].range.endMs <= walk.range.startMs && walk.range.endMs <= r.stays[1].range.startMs)
+    }
+
+    @Test
+    fun curvedRouteDistanceIsWithinTenPercent() {
+        val radius = 300.0
+        val b = builder(51).stay(30 * MIN, intervalMs = 3 * MIN)
+        val accuracies = listOf(20f, 100f, 45f, 80f, 30f, 100f)
+        for (k in 1..18) {
+            val theta = Math.toRadians(15.0 * k)
+            val (lat, lng) = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, radius * kotlin.math.sin(theta), radius * (kotlin.math.cos(theta) - 1))
+            b.move(lat, lng, speedMps = 8.0, intervalMs = 10_000, accuracyM = accuracies[k % accuracies.size])
+        }
+        val pings = b.stay(HOUR, intervalMs = 3 * MIN).build()
+        val trip = run(pings).trips.single()
+        val truth = radius * Math.toRadians(270.0)
+        assertEquals(truth, trip.distanceM, truth * 0.10)
+    }
+
+    @Test
+    fun jitterWithNoStayIsNotATrip() {
+        val pings = builder(61).wander(3 * MIN, radiusM = 30.0, accuracyM = 10f..20f, activity = Activity.STILL).build()
+        assertTrue(run(pings).trips.isEmpty())
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN

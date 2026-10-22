@@ -53,11 +53,18 @@ data class SegmentationParams(
      * Matches the capture filter's maximum accepted accuracy.
      */
     val maxAccuracyM: Float = 100f,
+    /** A vehicle-to-stay tail only becomes a WALK leg when its average speed is at most this (m/s). */
+    val walkMaxSpeedMps: Double = 2.5,
+    /**
+     * Trip distance counts any hop at least this fast (m/s) however poor the accuracy: it is travel, and dropping it
+     * turns curves into chords. Slower hops count only when longer than the two fixes' combined accuracy.
+     */
+    val movingSpeedMps: Double = 5.0,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
-        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0)
+        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }

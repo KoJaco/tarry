@@ -28,7 +28,10 @@ internal fun buildTrips(
 ): List<TripCandidate> {
     val trips = ArrayList<TripCandidate>()
     if (stays.isEmpty()) {
-        if (pings.size >= 2) {
+        val trusted = pings.filter { it.accuracyM <= params.goodAccuracyM }.ifEmpty { pings }
+        val first = trusted.firstOrNull()
+        val furthest = first?.let { f -> trusted.maxOf { haversineMeters(f.lat, f.lng, it.lat, it.lng) } } ?: 0.0
+        if (pings.size >= 2 && furthest >= params.minTripDistanceM) {
             trips += trip(pings.first().timeMs, pings.last().timeMs, null, null, pings, null, null, params, pings)
         }
         return trips
@@ -54,9 +57,9 @@ internal fun buildTrips(
 }
 
 /** A point on a trip path; stay centroids have accuracy 0. */
-internal data class PathPoint(val lat: Double, val lng: Double, val accuracyM: Float)
+internal data class PathPoint(val lat: Double, val lng: Double, val accuracyM: Float, val timeMs: Long)
 
-internal fun Ping.toPathPoint() = PathPoint(lat, lng, accuracyM)
+internal fun Ping.toPathPoint() = PathPoint(lat, lng, accuracyM, timeMs)
 
 /**
  * Where a trip meets [stay]: the stay's own edge ping (its end when [atEnd], else its start) from [pings], so a stay
@@ -64,23 +67,23 @@ internal fun Ping.toPathPoint() = PathPoint(lat, lng, accuracyM)
  */
 internal fun stayEdge(stay: StayCandidate, atEnd: Boolean, pings: List<Ping>): PathPoint {
     val at = if (atEnd) stay.range.endMs else stay.range.startMs
-    return pings.firstOrNull { it.timeMs == at }?.toPathPoint() ?: PathPoint(stay.lat, stay.lng, 0f)
+    return pings.firstOrNull { it.timeMs == at }?.toPathPoint() ?: PathPoint(stay.lat, stay.lng, 0f, at)
 }
 
 /**
- * Length of the path through [points], counting only hops longer than the two fixes' combined accuracy (shorter
- * ones are noise) and skipping the interior fixes worse than [SegmentationParams.goodAccuracyM] when better ones
- * exist. The first and last point always stay.
+ * Length of the path through [points]. A hop counts when it is at least [SegmentationParams.movingSpeedMps] (travel
+ * stays whole however poor the accuracy, so curves are not cut into chords) or longer than the two fixes' combined
+ * accuracy. A slower, shorter hop is noise: it is skipped and the next one is measured from the last counted point.
  */
 internal fun pathDistance(points: List<PathPoint>, params: SegmentationParams): Double {
     if (points.size < 2) return 0.0
-    val good = points.subList(1, points.lastIndex).filter { it.accuracyM <= params.goodAccuracyM }
-    val used = if (good.isEmpty()) points else listOf(points.first()) + good + points.last()
     var distance = 0.0
-    var prev = used.first()
-    for (p in used.drop(1)) {
+    var prev = points.first()
+    for (p in points.drop(1)) {
         val hop = haversineMeters(prev.lat, prev.lng, p.lat, p.lng)
-        if (hop > prev.accuracyM + p.accuracyM) {
+        val seconds = (p.timeMs - prev.timeMs) / 1000.0
+        val moving = seconds > 0 && hop / seconds >= params.movingSpeedMps
+        if (moving || hop > prev.accuracyM + p.accuracyM) {
             distance += hop
             prev = p
         }
@@ -112,11 +115,21 @@ private fun trip(
 
     // The vehicle part ends far from the stay, then on foot: two legs.
     val lastVehicle = inside.indexOfLast { it.activity == Activity.IN_VEHICLE }
+    // Only when the tail really is walking: mostly WALKING fixes at a walking pace. Activity recognition lags, so a
+    // car still rolling after IN_VEHICLE ends stays part of the VEHICLE trip.
     if (toStay != null && lastVehicle >= 0 && lastVehicle < inside.lastIndex &&
         inside.count { it.activity == Activity.IN_VEHICLE } >= 2 &&
         haversineMeters(inside[lastVehicle].lat, inside[lastVehicle].lng, toStay.lat, toStay.lng) > params.arrivalRadiusM
     ) {
         val stop = inside[lastVehicle]
+        val tail = inside.subList(lastVehicle + 1, inside.size)
+        val tailSeconds = (toStay.range.startMs - stop.timeMs) / 1000.0
+        val tailSpeed = haversineMeters(stop.lat, stop.lng, toStay.lat, toStay.lng) / maxOf(tailSeconds, 1.0)
+        val walking = tail.count { it.activity == Activity.WALKING } * 2 > tail.size && tailSpeed <= params.walkMaxSpeedMps
+        if (!walking) {
+            val path = listOfNotNull(fromEdge()) + inside.map { it.toPathPoint() } + listOfNotNull(toEdge())
+            return listOf(TripCandidate(TimeRange(startMs, endMs), from, to, pathDistance(path, params), TripMode.VEHICLE))
+        }
         val driven = inside.subList(0, lastVehicle + 1)
         val walked = inside.subList(lastVehicle + 1, inside.size)
         val drive = listOfNotNull(fromEdge()) + driven.map { it.toPathPoint() }
