@@ -364,6 +364,19 @@ class TimelineEditingUiTest {
     }
 
     @Test
+    fun whileSelectingTripsAndGapsExposeNoOpenActionAndTheCountIsAPoliteLiveRegion() {
+        showSelectable(listOf(review, trip, labelled, gap))
+        assertThat(tag("timeline_row_trip").fetchSemanticsNode().config.contains(SemanticsActions.OnClick)).isTrue()
+
+        longPress("review")
+
+        assertThat(tag("timeline_row_trip").fetchSemanticsNode().config.contains(SemanticsActions.OnClick)).isFalse()
+        assertThat(tag("timeline_row_gap").fetchSemanticsNode().config.contains(SemanticsActions.OnClick)).isFalse()
+        val count = composeRule.onNodeWithText("1 selected").fetchSemanticsNode().config
+        assertThat(count[SemanticsProperties.LiveRegion]).isEqualTo(androidx.compose.ui.semantics.LiveRegionMode.Polite)
+    }
+
+    @Test
     fun selectionBarOffersEveryActionAndCancelExits() {
         showSelectable(listOf(review))
         longPress("review")

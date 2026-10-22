@@ -72,6 +72,7 @@
     <string name="edit_error_empty_range">The times need to leave this visit at least a moment long, and a split has to fall inside it.</string>
     <string name="edit_error_not_found">There is nothing to do that with, for example no visit to merge with.</string>
     <string name="edit_error_blank_name">Enter a name first.</string>
+    <string name="edit_error_in_use">That is still in use, so it cannot be removed.</string>
 
     <string name="edit_undo_trimmed">Visit trimmed</string>
     <string name="edit_undo_split">Visit split</string>

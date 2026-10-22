@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import me.tarry.app.R
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
+import me.tarry.app.ui.undo.noticeRes
 import me.tarry.core.data.repository.CatalogEditor
 import me.tarry.core.data.repository.EditResult
 import me.tarry.core.data.repository.TagRepository
@@ -57,46 +58,53 @@ class TagsViewModel @Inject constructor(
 
     // region groups
 
-    fun createGroup(name: String) = viewModelScope.launch { catalog.createTagGroup(name) }
+    fun createGroup(name: String) = viewModelScope.launch { report(catalog.createTagGroup(name)) }
 
-    fun renameGroup(groupId: String, name: String) = viewModelScope.launch { catalog.renameTagGroup(groupId, name) }
+    fun renameGroup(groupId: String, name: String) = viewModelScope.launch { report(catalog.renameTagGroup(groupId, name)) }
 
     /** [colorArgb] is a `JobPalette` key, or 0 for none. */
-    fun setGroupColour(groupId: String, colorArgb: Int) = viewModelScope.launch { catalog.setTagGroupColour(groupId, colorArgb) }
+    fun setGroupColour(groupId: String, colorArgb: Int) = viewModelScope.launch { report(catalog.setTagGroupColour(groupId, colorArgb)) }
 
     fun archiveAll(groupId: String) = viewModelScope.launch {
         val result = catalog.archiveAllTags(groupId)
         if (result is EditResult.Ok) result.undo?.let { undoEvents.offer(UndoEvent(R.string.tags_undo_archived_all, it)) }
+        else report(result)
     }
 
-    fun deleteGroup(groupId: String) = viewModelScope.launch { catalog.deleteTagGroup(groupId) }
+    fun deleteGroup(groupId: String) = viewModelScope.launch { report(catalog.deleteTagGroup(groupId)) }
 
-    fun reorderGroups(orderedIds: List<String>) = viewModelScope.launch { catalog.reorderTagGroups(orderedIds) }
+    fun reorderGroups(orderedIds: List<String>) = viewModelScope.launch { report(catalog.reorderTagGroups(orderedIds)) }
 
     // endregion
 
     // region tags
 
-    fun createTag(groupId: String, name: String) = viewModelScope.launch { timeline.createTag(name, groupId) }
+    fun createTag(groupId: String, name: String) = viewModelScope.launch { report(timeline.createTag(name, groupId)) }
 
-    fun renameTag(tagId: String, name: String) = viewModelScope.launch { catalog.renameTag(tagId, name) }
+    fun renameTag(tagId: String, name: String) = viewModelScope.launch { report(catalog.renameTag(tagId, name)) }
 
     fun archiveTag(tagId: String) = viewModelScope.launch {
         val result = catalog.archiveTag(tagId)
         if (result is EditResult.Ok) result.undo?.let { undoEvents.offer(UndoEvent(R.string.tags_undo_archived, it)) }
+        else report(result)
     }
 
-    fun unarchiveTag(tagId: String) = viewModelScope.launch { catalog.unarchiveTag(tagId) }
+    fun unarchiveTag(tagId: String) = viewModelScope.launch { report(catalog.unarchiveTag(tagId)) }
 
-    fun deleteTag(tagId: String) = viewModelScope.launch { catalog.deleteTag(tagId) }
+    fun deleteTag(tagId: String) = viewModelScope.launch { report(catalog.deleteTag(tagId)) }
 
     /** [activeIds] is the new order of the group's active tags; its archived tags keep their place after them. */
     fun reorderTags(groupId: String, activeIds: List<String>) = viewModelScope.launch {
         val archivedIds = tags.tagsInGroup(groupId).filter { it.archived }.map { it.id }
-        catalog.reorderTags(groupId, activeIds + archivedIds)
+        report(catalog.reorderTags(groupId, activeIds + archivedIds))
     }
 
     // endregion
+
+    /** A refused edit (in use, not found, blank name) shows a short message instead of doing nothing. */
+    private fun report(result: EditResult) {
+        result.noticeRes()?.let(undoEvents::notice)
+    }
 
     private companion object {
         const val SUBSCRIPTION_TIMEOUT_MS = 5_000L

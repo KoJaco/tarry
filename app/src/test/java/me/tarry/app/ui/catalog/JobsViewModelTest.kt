@@ -168,4 +168,23 @@ class JobsViewModelTest {
 
         assertThat(awaitState { it.active.size == 1 }.active.single().id).isEqualTo("used")
     }
+
+    @Test
+    fun aRefusedDeleteOrBlankRenameShowsANoticeWithNoUndoAction() = runBlocking<Unit> {
+        db.jobDao().upsert(job("used"))
+        db.visitDao().upsert(
+            Visit(id = "v", placeId = null, start = 0, end = 1000, zoneId = "UTC", jobId = "used", origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0),
+        )
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.delete("used")
+
+        val event = withTimeout(10_000) { offered.await() }
+        assertThat(event.message).isEqualTo(R.string.edit_error_in_use)
+        assertThat(event.snapshot).isNull()
+
+        val blank = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+        viewModel.rename("used", "  ")
+        assertThat(withTimeout(10_000) { blank.await() }.message).isEqualTo(R.string.edit_error_blank_name)
+    }
 }

@@ -50,7 +50,7 @@ class SegmentationSchedulerTest {
     private fun infos(name: String): List<WorkInfo> = workManager.getWorkInfosForUniqueWork(name).get()
 
     @Test
-    fun enqueueNowChainsASecondRequestBehindTheRunInProgress() {
+    fun enqueueNowChainsASecondRequestBehindTheFirstRunStillPending() {
         scheduler.enqueueNow()
         val first = infos(SegmentationScheduler.NOW).single()
         scheduler.enqueueNow()
@@ -60,7 +60,7 @@ class SegmentationSchedulerTest {
         assertThat(all).hasSize(2)
         val second = all.single { it.id != first.id }
         assertThat(second.state).isEqualTo(WorkInfo.State.BLOCKED)
-        assertThat(all.single { it.id == first.id }.state).isNotEqualTo(WorkInfo.State.BLOCKED)
+        assertThat(all.single { it.id == first.id }.state).isAnyOf(WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING)
         assertThat(SegmentationScheduler.NOW).isEqualTo("segmentation-now")
     }
 

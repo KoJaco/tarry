@@ -13,6 +13,7 @@ import me.tarry.app.R
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
+import me.tarry.app.ui.undo.noticeRes
 import me.tarry.core.data.repository.CatalogEditor
 import me.tarry.core.data.repository.EditResult
 import me.tarry.core.data.repository.JobRepository
@@ -48,20 +49,26 @@ class JobsViewModel @Inject constructor(
     /** What blocks Delete: live visits, trips and place defaults using the job. */
     suspend fun uses(jobId: String): Int = catalog.jobUses(jobId)
 
-    fun create(name: String) = viewModelScope.launch { timeline.createJob(name, JobPalette.slots.map { it.key }) }
+    fun create(name: String) = viewModelScope.launch { report(timeline.createJob(name, JobPalette.slots.map { it.key })) }
 
-    fun rename(jobId: String, name: String) = viewModelScope.launch { catalog.renameJob(jobId, name) }
+    fun rename(jobId: String, name: String) = viewModelScope.launch { report(catalog.renameJob(jobId, name)) }
 
-    fun setColour(jobId: String, colorArgb: Int) = viewModelScope.launch { catalog.setJobColour(jobId, colorArgb) }
+    fun setColour(jobId: String, colorArgb: Int) = viewModelScope.launch { report(catalog.setJobColour(jobId, colorArgb)) }
 
     fun archive(jobId: String) = viewModelScope.launch {
         val result = catalog.archiveJob(jobId)
         if (result is EditResult.Ok) result.undo?.let { undoEvents.offer(UndoEvent(R.string.jobs_undo_archived, it)) }
+        else report(result)
     }
 
-    fun unarchive(jobId: String) = viewModelScope.launch { catalog.unarchiveJob(jobId) }
+    fun unarchive(jobId: String) = viewModelScope.launch { report(catalog.unarchiveJob(jobId)) }
 
-    fun delete(jobId: String) = viewModelScope.launch { catalog.deleteJob(jobId) }
+    fun delete(jobId: String) = viewModelScope.launch { report(catalog.deleteJob(jobId)) }
+
+    /** A refused edit (in use, not found, blank name) shows a short message instead of doing nothing. */
+    private fun report(result: EditResult) {
+        result.noticeRes()?.let(undoEvents::notice)
+    }
 
     private companion object {
         const val SUBSCRIPTION_TIMEOUT_MS = 5_000L

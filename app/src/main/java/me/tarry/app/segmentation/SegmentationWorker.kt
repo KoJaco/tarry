@@ -15,7 +15,8 @@ import me.tarry.core.data.db.dao.TrackingSessionDao
 
 /**
  * Runs one segmentation pass. Retries a failed pass up to [MAX_RETRIES] times, then gives up until the next trigger
- * and records the failure in [TrackingStatusStore] so the Sessions screen can show it (rule 6).
+ * and records the failure in [TrackingStatusStore] so the Sessions screen can show it (rule 6). The give-up itself
+ * returns success so that runs chained behind it still execute.
  *
  * A periodic run that finds no open session and no active window cancels the periodic work after its pass: capture ended by a path that
  * never called the trigger (crash recovery, for example) must not leave it running.
@@ -48,7 +49,9 @@ class SegmentationWorker @AssistedInject constructor(
                     statusStore.recordSegmentationFailure(clock.nowMs(), e.message ?: e::class.java.simpleName)
                     stopPeriodicIfCaptureEnded()
                 }
-                Result.failure()
+                // success, not failure: the failure is recorded above, and a FAILED run would mark every run appended
+                // behind it (APPEND_OR_REPLACE in [SegmentationScheduler.enqueueNow]) FAILED too, so they would never run.
+                Result.success()
             }
         }
 

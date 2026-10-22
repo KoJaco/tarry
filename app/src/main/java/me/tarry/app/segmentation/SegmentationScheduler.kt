@@ -34,9 +34,12 @@ class SegmentationScheduler @Inject constructor(
     /**
      * One-time run now. APPEND_OR_REPLACE: a request made while a run is in progress is chained behind it (the run may
      * already have read its inputs, so it does not cover the new edit); [SegmentationRunner] serialises the runs. A
-     * failed or cancelled predecessor is replaced, not chained onto.
+     * chain that is already failed or cancelled when this is called is replaced rather than appended to (a chain whose
+     * predecessor fails later would fail its dependents, which is why [SegmentationWorker] never returns failure).
+     * N quick edits therefore mean N serial runs; each is cheap, and coalescing them would risk skipping an edit.
      */
     fun enqueueNow() {
+        // Each call appends one more run to the chain (see above); the runner mutex keeps them from overlapping.
         workManager.enqueueUniqueWork(NOW, ExistingWorkPolicy.APPEND_OR_REPLACE, OneTimeWorkRequestBuilder<SegmentationWorker>().build())
     }
 

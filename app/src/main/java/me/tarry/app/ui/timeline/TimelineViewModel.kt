@@ -18,6 +18,7 @@ import me.tarry.app.R
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
+import me.tarry.app.ui.undo.noticeRes
 import me.tarry.app.ui.drawer.JobOption
 import me.tarry.app.ui.drawer.TagGroupOption
 import me.tarry.app.ui.drawer.TagOption
@@ -240,6 +241,19 @@ class TimelineViewModel internal constructor(
     /** Ids of the selected visits, in selection order. Selecting mode is exactly "not empty". */
     val selection: StateFlow<Set<String>> = _selection
 
+    init {
+        // A selected visit can vanish under us (undo, re-segmentation, delete): drop it, and leave the mode when none remain.
+        viewModelScope.launch {
+            items.collect { rows ->
+                if (rows == null) return@collect
+                val live = rows.mapNotNullTo(HashSet()) { (it as? TimelineItem.Visit)?.id }
+                val current = _selection.value
+                val kept = current.filterTo(linkedSetOf()) { it in live }
+                if (kept.size != current.size) _selection.value = kept
+            }
+        }
+    }
+
     /** Long press on a visit: enters selection mode with it selected. */
     fun startSelection(visitId: String) {
         if (_selection.value.isEmpty()) _selection.value = linkedSetOf(visitId)
@@ -280,27 +294,42 @@ class TimelineViewModel internal constructor(
 
     /** "New job…" from the bulk picker: creates the job, then sets it on every selected visit. */
     fun bulkSetNewJob(name: String) {
-        val ids = _selection.value.toList()
-        if (ids.isEmpty()) return
+        val ids = takeSelection() ?: return
         viewModelScope.launch {
-            val newId = (createJob(name) as? EditResult.Ok)?.id
-            if (newId != null) runBulk(ids, AnnotationOp.SetJob(newId))
+            val created = createJob(name)
+            val newId = (created as? EditResult.Ok)?.id
+            if (newId != null) runBulk(ids, AnnotationOp.SetJob(newId)) else notifyRefused(created)
         }
     }
 
     /** One editor call over every selected id, one undo event, then back to normal mode. Annotations do not re-segment. */
     private fun applyBulk(op: AnnotationOp) {
-        val ids = _selection.value.toList()
-        if (ids.isEmpty()) return
+        val ids = takeSelection() ?: return
         viewModelScope.launch { runBulk(ids, op) }
+    }
+
+    /**
+     * Captures the selected ids and leaves selection mode in the same synchronous step, so a second tap on a bar action
+     * (before the launched edit has run) finds nothing selected instead of running the bulk twice. Null when empty.
+     */
+    private fun takeSelection(): List<String>? {
+        val ids = _selection.value.toList()
+        if (ids.isEmpty()) return null
+        clearSelection()
+        return ids
     }
 
     private suspend fun runBulk(ids: List<String>, op: AnnotationOp) {
         val result = bulk(ids.map { ItemRef.visit(it) }, op)
         if (result is EditResult.Ok) {
             result.undo?.let { offerUndo(UndoEvent(R.plurals.selection_undo_updated, it, count = ids.size)) }
+        } else {
+            notifyRefused(result)
         }
-        clearSelection()
+    }
+
+    private fun notifyRefused(result: EditResult) {
+        result.noticeRes()?.let { offerUndo(UndoEvent(it, null)) }
     }
 
     // endregion

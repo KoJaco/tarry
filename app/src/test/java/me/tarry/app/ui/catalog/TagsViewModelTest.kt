@@ -226,4 +226,17 @@ class TagsViewModelTest {
         assertThat(state.groups.single().id).isEqualTo("g")
         assertThat(state.groups.single().tags.map { it.id }).containsExactly("used")
     }
+
+    @Test
+    fun aRefusedTagEditShowsANoticeWithNoUndoAction() = runBlocking<Unit> {
+        group("g", 0)
+        tag("t", "g", 0)
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.renameTag("t", "  ")
+
+        val event = withTimeout(10_000) { offered.await() }
+        assertThat(event.message).isEqualTo(R.string.edit_error_blank_name)
+        assertThat(event.snapshot).isNull()
+    }
 }

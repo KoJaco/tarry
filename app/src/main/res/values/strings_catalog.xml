@@ -49,8 +49,8 @@
     <string name="tags_delete_group_title">Delete group %1$s?</string>
     <string name="tags_delete_group_body">The group is removed. This cannot be undone.</string>
     <plurals name="tags_delete_group_blocked">
-        <item quantity="one">Cannot delete: the group still has %1$d tag. Delete its tags first.</item>
-        <item quantity="other">Cannot delete: the group still has %1$d tags. Delete its tags first.</item>
+        <item quantity="one">Cannot delete: the group still has %1$d tag, counting archived ones. Delete its tags first.</item>
+        <item quantity="other">Cannot delete: the group still has %1$d tags, counting archived ones. Delete its tags first.</item>
     </plurals>
     <string name="tags_delete_tag_title">Delete tag %1$s?</string>
     <string name="tags_delete_tag_body">The tag is removed from your list. This cannot be undone.</string>

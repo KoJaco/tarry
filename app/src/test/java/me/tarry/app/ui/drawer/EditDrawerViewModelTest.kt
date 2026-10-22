@@ -193,7 +193,7 @@ class EditDrawerViewModelTest {
 
         val event = withTimeout(10_000) { offered.await() }
         assertThat(event.message).isEqualTo(R.string.edit_undo_deleted)
-        assertThat(event.snapshot.visits.map { it.id }).contains("v")
+        assertThat(event.snapshot!!.visits.map { it.id }).contains("v")
         assertThat(timeline.visit("v")!!.deleted).isTrue()
         assertThat(withTimeout(10_000) { viewModel.events.first() }).isEqualTo(EditDrawerEvent.Dismiss)
         assertThat(workManager.getWorkInfosForUniqueWork(SegmentationScheduler.NOW).get()).hasSize(1)
@@ -418,7 +418,6 @@ class EditDrawerViewModelTest {
         awaitState { it.ownJob == null }
         assertThat(timeline.trip("t")!!.attributedJobId).isNull()
     }
-
 
     @Test
     fun archivedJobsAreHiddenFromThePickerUnlessCurrentOrThePlaceDefault() = runBlocking<Unit> {

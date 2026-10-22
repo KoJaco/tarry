@@ -293,8 +293,8 @@ fun DayCanvas(
                                 onLongPress = { onLongPressVisit(item.id) },
                                 onToggle = { onToggleVisit(item.id) },
                             )
-                            // Trips and gaps are not selectable: while selecting, a tap on them does nothing.
-                            is TimelineItem.Gap -> GapBlock(item, placed, times, description, index, fontScale, dimmed, position) { if (!selecting) onOpenGap(item, placed.cluster) }
+                            // Trips and gaps are not selectable: while selecting they are disabled, so they expose no "Open" action either.
+                            is TimelineItem.Gap -> GapBlock(item, placed, times, description, index, fontScale, dimmed, position, enabled = !selecting) { onOpenGap(item, placed.cluster) }
                             is TimelineItem.Trip -> Unit // Trips are placed as PlacedTrip, never as blocks.
                         }
                     }
@@ -305,7 +305,8 @@ fun DayCanvas(
                         index,
                         dimmed,
                         position,
-                    ) { if (!selecting) onOpenTrip(placed.trip.id) }
+                        enabled = !selecting,
+                    ) { onOpenTrip(placed.trip.id) }
                 }
             }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
@@ -585,6 +586,7 @@ private fun GapBlock(
     fontScale: Float,
     dimmed: Boolean,
     modifier: Modifier,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val c = TarryTheme.colors
@@ -596,7 +598,8 @@ private fun GapBlock(
             .background(c.alertSoft)
             .hatch(c.alert.copy(alpha = DayCanvasDefaults.HatchAlpha))
             .border(DayCanvasDefaults.BorderWidth, c.alert, shape)
-            .clickable(onClickLabel = stringResource(R.string.timeline_show_details), role = Role.Button, onClick = onClick)
+            // Not merely disabled: a disabled clickable still exposes its click action, so it is left off while selecting.
+            .then(if (enabled) Modifier.clickable(onClickLabel = stringResource(R.string.timeline_show_details), role = Role.Button, onClick = onClick) else Modifier)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = index.toFloat()
@@ -642,6 +645,7 @@ private fun TripRow(
     index: Int,
     dimmed: Boolean,
     modifier: Modifier,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val c = TarryTheme.colors
@@ -653,7 +657,7 @@ private fun TripRow(
     )
     Row(
         modifier = modifier
-            .clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick)
+            .then(if (enabled) Modifier.clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick) else Modifier)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = index.toFloat()

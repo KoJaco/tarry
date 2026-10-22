@@ -25,7 +25,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
@@ -83,7 +85,10 @@ fun SelectionBar(
             text = stringResource(R.string.selection_count, count),
             style = MaterialTheme.typography.titleSmall,
             color = c.ink,
-            modifier = Modifier.semantics { heading() },
+            modifier = Modifier.semantics {
+                heading()
+                liveRegion = LiveRegionMode.Polite // the count change is announced as visits are toggled
+            },
         )
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),

@@ -381,11 +381,11 @@ private fun ArchivedTagRow(tag: TagRow, onUnarchive: () -> Unit, onMenu: () -> U
             itemVerticalAlignment = Alignment.CenterVertically,
         ) {
             Row(
-                modifier = Modifier.receded(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(space.s),
             ) {
-                TagChip(tag, onClick = onMenu)
+                // Only the chip recedes; the marker stays at full opacity so "Archived" keeps 4.5:1 contrast (WCAG 1.4.3).
+                Box(Modifier.receded()) { TagChip(tag, onClick = onMenu) }
                 Text(
                     stringResource(R.string.tags_archived_marker),
                     style = MaterialTheme.typography.labelMedium,
