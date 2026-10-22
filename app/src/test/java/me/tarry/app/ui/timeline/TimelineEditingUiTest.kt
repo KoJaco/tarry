@@ -5,6 +5,13 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
@@ -106,6 +113,17 @@ class TimelineEditingUiTest {
         tag("timeline_row_trip").performClick()
         composeRule.waitForIdle()
         assertThat(targets).containsExactly(EditTarget.Visit("review"), EditTarget.Trip("trip")).inOrder()
+    }
+
+    @Test
+    fun visitBlockIsFocusableAndEnterOpensTheDrawerTarget() {
+        show(listOf(review, trip))
+        tag("timeline_row_review").assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Focused))
+        tag("timeline_row_review").requestFocus()
+        tag("timeline_row_review").assertIsFocused()
+        tag("timeline_row_review").performKeyInput { pressKey(Key.Enter) }
+        composeRule.waitForIdle()
+        assertThat(targets).containsExactly(EditTarget.Visit("review"))
     }
 
     @Test

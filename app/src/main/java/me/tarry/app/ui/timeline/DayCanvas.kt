@@ -42,6 +42,13 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.focusable
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -376,6 +383,7 @@ private fun VisitBlock(
     val summaryRoom = d.BlockPaddingV.value * 2 + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale +
         (if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f) + d.SummaryLineDp * fontScale
     val showSummary = notTracked != null && !oneLine && placed.heightDp >= summaryRoom
+    var focused by remember { mutableStateOf(false) }
     val look = if (job != null) {
         Modifier.clip(shape).background(container).border(DayCanvasDefaults.BorderWidth, job.border, shape)
     } else {
@@ -388,6 +396,15 @@ private fun VisitBlock(
             // Single tap selects (confirmed after the double-tap timeout), double tap opens the drawer. A long press is
             // reserved for multi-select and does nothing yet. TalkBack's activate opens the drawer directly.
             .pointerInput(Unit) { detectTapGestures(onTap = { currentSelect() }, onDoubleTap = { currentOpen() }) }
+            // Keyboard / switch access (WCAG 2.1.1): focusable, with a visible ink ring; Enter or Space opens the drawer.
+            .onFocusChanged { focused = it.isFocused }
+            .focusable()
+            .then(if (focused) Modifier.border(DayCanvasDefaults.BorderWidth * 2, c.ink, shape) else Modifier)
+            .onKeyEvent { e ->
+                val activate = e.key == Key.Enter || e.key == Key.NumPadEnter || e.key == Key.Spacebar
+                if (activate && e.type == KeyEventType.KeyUp) currentOpen()
+                activate
+            }
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 onClick(label = openLabel) {
