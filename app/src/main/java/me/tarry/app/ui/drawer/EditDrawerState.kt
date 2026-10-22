@@ -45,6 +45,8 @@ data class EditDrawerState(
     /** Visit: the place name, address or coordinates; null when the visit has no place. */
     val placeLabel: String? = null,
     val placeLabelIsCoordinates: Boolean = false,
+    /** The place's own name (blank-free), null when unnamed; seeds the rename dialog. */
+    val placeName: String? = null,
     val hasPlace: Boolean = false,
     val placeIgnored: Boolean = false,
     val tripMode: TripMode = TripMode.UNKNOWN,
@@ -87,6 +89,7 @@ class EditDrawerActions(
     val onBillable: (Boolean) -> Unit = {},
     val onNotes: (String) -> Unit = {},
     val onSetPlaceDefault: (Boolean) -> Unit = {},
+    val onRenamePlace: (String) -> Unit = {},
     val onTrimStart: (Long) -> Unit = {},
     val onTrimEnd: (Long) -> Unit = {},
     val onSplit: (Long) -> Unit = {},

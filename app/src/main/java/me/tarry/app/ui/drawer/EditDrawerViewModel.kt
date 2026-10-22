@@ -174,6 +174,12 @@ class EditDrawerViewModel @Inject constructor(
         )
     }
 
+    /** Names the visit's place; a blank name clears it so the address label shows again. */
+    fun renamePlace(name: String) = viewModelScope.launch {
+        val place = item()?.place ?: return@launch
+        finish(editor.renamePlace(place.id, name))
+    }
+
     // endregion
 
     // region structural edits
@@ -262,6 +268,7 @@ class EditDrawerViewModel @Inject constructor(
             return EditDrawerState(
                 kind = EditKind.VISIT, id = v.id, start = v.start, end = v.end, zoneId = v.zoneId,
                 placeLabel = place?.displayLabel(), placeLabelIsCoordinates = place?.labelIsCoordinates() ?: false,
+                placeName = place?.name?.takeIf { it.isNotBlank() },
                 hasPlace = place != null, placeIgnored = place?.ignored ?: false,
                 jobs = catalog.jobs, tagGroups = catalog.tagGroups, places = catalog.places,
                 ownJob = job(v.jobId), placeJob = job(place?.defaultJobId),

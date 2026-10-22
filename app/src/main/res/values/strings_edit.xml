@@ -7,7 +7,7 @@
 
     <string name="edit_section_job">Job</string>
     <string name="edit_section_tags">Tags</string>
-    <string name="edit_section_billable">Billable</string>
+    <string name="edit_section_toggles">Toggles</string>
     <string name="edit_section_notes">Notes</string>
     <string name="edit_section_time">Time</string>
     <string name="edit_section_attribution">Attribution</string>
@@ -27,6 +27,9 @@
     <string name="edit_tags_from_place">From place</string>
     <string name="edit_tags_empty">No tags yet. Add one to start labelling.</string>
     <string name="edit_tag_new">New tag</string>
+    <string name="edit_rename_place">Rename place</string>
+    <string name="edit_rename_place_title">Name this place</string>
+    <string name="edit_rename_place_label">Place name</string>
     <string name="edit_tag_new_title">New tag</string>
     <string name="edit_tag_name_label">Tag name</string>
 

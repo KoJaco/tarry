@@ -458,6 +458,17 @@ class TimelineEditor @Inject constructor(
         if (editStart < current) checkpoints.upsert(SegmentationCheckpoint(processedUntil = editStart))
     }
 
+    // region place naming
+
+    /** Sets [Place.name]; a blank [name] clears it so the address label shows again. */
+    suspend fun renamePlace(placeId: String, name: String?): EditResult = db.withTransaction {
+        val place = places.getById(placeId)?.takeUnless { it.deleted } ?: return@withTransaction EditResult.NotFound
+        places.upsert(place.copy(name = name?.trim()?.takeIf { it.isNotEmpty() }, updatedAt = clock.nowMs()))
+        EditResult.Ok()
+    }
+
+    // endregion
+
     private companion object {
         const val PAD_MS = 1L
 

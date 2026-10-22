@@ -59,6 +59,7 @@ fun EditDrawer(
             onBillable = { viewModel.setBillable(it) },
             onNotes = { viewModel.setNotes(it) },
             onSetPlaceDefault = { viewModel.setPlaceDefault(it) },
+            onRenamePlace = { viewModel.renamePlace(it) },
             onTrimStart = { viewModel.trimStart(it) },
             onTrimEnd = { viewModel.trimEnd(it) },
             onSplit = { viewModel.split(it) },

@@ -214,10 +214,17 @@ internal fun PlacePickerSheet(
     }
 }
 
-/** A one-field dialog for "New job…" and "New tag". Save is disabled while the name is blank. */
+/** A one-field dialog for "New job…", "New tag" and "Rename place". Save is disabled while the name is blank, unless [allowBlank]. */
 @Composable
-internal fun NameDialog(title: String, label: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by remember { mutableStateOf("") }
+internal fun NameDialog(
+    title: String,
+    label: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit,
+    initial: String = "",
+    allowBlank: Boolean = false,
+) {
+    var name by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container,
@@ -225,7 +232,7 @@ internal fun NameDialog(title: String, label: String, onConfirm: (String) -> Uni
         title = { Text(title, style = MaterialTheme.typography.titleLarge, color = TarryTheme.colors.ink) },
         text = { InsetTextField(name, { name = it }, label) },
         confirmButton = {
-            PrimaryButton(stringResource(R.string.edit_dialog_save), onClick = { onConfirm(name.trim()) }, enabled = name.isNotBlank())
+            PrimaryButton(stringResource(R.string.edit_dialog_save), onClick = { onConfirm(name.trim()) }, enabled = allowBlank || name.isNotBlank())
         },
         dismissButton = { TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onDismiss) },
     )

@@ -2,6 +2,7 @@ package me.tarry.app.ui.drawer
 
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -13,10 +14,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -47,9 +45,8 @@ import me.tarry.app.ui.components.DestructiveButton
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
-import me.tarry.app.ui.components.SettingsSwitchRow
+import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.TarryChip
-import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.timeline.formatDistance
 import me.tarry.app.ui.timeline.formatDuration
@@ -67,6 +64,7 @@ private sealed interface DrawerDialog {
     data object JobPicker : DrawerDialog
     data object NewJob : DrawerDialog
     data object NewTag : DrawerDialog
+    data object RenamePlace : DrawerDialog
     data object PlacePicker : DrawerDialog
     data object ConfirmReset : DrawerDialog
     data object TrimStart : DrawerDialog
@@ -95,24 +93,23 @@ fun EditDrawerContent(
             .padding(bottom = space.l),
         verticalArrangement = Arrangement.spacedBy(space.xl),
     ) {
-        DrawerHeader(state)
+        DrawerHeader(state, onRename = { dialog = DrawerDialog.RenamePlace })
         when (state.kind) {
             EditKind.NEW_VISIT -> Unit
             EditKind.TRIP -> {
                 ErrorBanner(state.error)
                 AttributionSection(state) { dialog = DrawerDialog.JobPicker }
                 TagsSection(state, actions, onNewTag = { dialog = DrawerDialog.NewTag })
-                BillableSection(state, actions)
                 NotesSection(state, actions)
+                TogglesSection(state, actions)
                 val addStop = stringResource(R.string.edit_trip_add_stop)
                 SettingsGroup { row(title = addStop, onClick = actions.onAddStop) }
             }
             EditKind.VISIT -> {
                 JobSection(state) { dialog = DrawerDialog.JobPicker }
                 TagsSection(state, actions, onNewTag = { dialog = DrawerDialog.NewTag })
-                BillableSection(state, actions)
                 NotesSection(state, actions)
-                if (state.hasPlace) PlaceDefaultRow(state, actions)
+                TogglesSection(state, actions)
                 TimeSection(state, actions, onOpen = { dialog = it })
             }
         }
@@ -123,7 +120,7 @@ fun EditDrawerContent(
 // region header
 
 @Composable
-private fun DrawerHeader(state: EditDrawerState) {
+private fun DrawerHeader(state: EditDrawerState, onRename: () -> Unit) {
     val formats = rememberTimeFormats()
     val zone = rememberZone(state.zoneId)
     val range = stringResource(R.string.timeline_time_range, formats.time(state.start, zone), formats.time(state.end, zone))
@@ -139,12 +136,24 @@ private fun DrawerHeader(state: EditDrawerState) {
         stringResource(R.string.edit_header_range, range, duration)
     }
     Column(verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = TarryTheme.colors.ink,
-            modifier = Modifier.semantics { heading() },
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                color = TarryTheme.colors.ink,
+                modifier = Modifier.weight(1f).semantics { heading() },
+            )
+            if (state.kind == EditKind.VISIT && state.hasPlace) {
+                IconCircleButton(
+                    icon = R.drawable.ic_edit,
+                    contentDescription = stringResource(R.string.edit_rename_place),
+                    onClick = onRename,
+                )
+            }
+        }
         Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
         if (state.needsReview) {
             Text(
@@ -227,24 +236,52 @@ private fun TagsSection(state: EditDrawerState, actions: EditDrawerActions, onNe
                 color = TarryTheme.colors.muted,
             )
         }
-        TertiaryButton(stringResource(R.string.edit_tag_new), onClick = onNewTag)
+        NewTagSurface(onClick = onNewTag)
+    }
+}
+
+/** Always-visible inset surface, the same treatment as the notes field, with a centred "+" and "New tag". */
+@Composable
+private fun NewTagSurface(onClick: () -> Unit) {
+    val label = stringResource(R.string.edit_tag_new)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(TarryTheme.shapes.card)
+            .background(TarryTheme.colors.inset)
+            .clickable(role = Role.Button, onClick = onClick)
+            .heightIn(min = CheckRowMinHeight)
+            .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s, Alignment.CenterHorizontally),
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_plus),
+            contentDescription = null,
+            tint = TarryTheme.colors.ink,
+            modifier = Modifier.size(ErrorIconSize),
+        )
+        Text(label, style = MaterialTheme.typography.titleSmall, color = TarryTheme.colors.ink)
     }
 }
 
 @Composable
-private fun BillableSection(state: EditDrawerState, actions: EditDrawerActions) {
-    val subtitle = when {
+private fun TogglesSection(state: EditDrawerState, actions: EditDrawerActions) {
+    val billableSubtitle = when {
         !state.billableInherited -> null
         state.resolvedBillable -> stringResource(R.string.edit_billable_from_place_yes)
         else -> stringResource(R.string.edit_billable_from_place_no)
     }
-    Section(R.string.edit_section_billable) {
-        SettingsSwitchRow(
-            title = stringResource(R.string.edit_billable_title),
-            checked = state.resolvedBillable,
-            onCheckedChange = actions.onBillable,
-            subtitle = subtitle,
-        )
+    val billable = stringResource(R.string.edit_billable_title)
+    val setDefault = stringResource(R.string.edit_set_default)
+    val setDefaultHint = stringResource(R.string.edit_set_default_hint)
+    Section(R.string.edit_section_toggles) {
+        SettingsGroup {
+            switchRow(billable, state.resolvedBillable, actions.onBillable, subtitle = billableSubtitle)
+            if (state.kind == EditKind.VISIT && state.hasPlace) {
+                switchRow(setDefault, state.isPlaceDefault, actions.onSetPlaceDefault, subtitle = setDefaultHint)
+            }
+        }
     }
 }
 
@@ -272,45 +309,6 @@ private fun NotesSection(state: EditDrawerState, actions: EditDrawerActions) {
             singleLine = false,
             minLines = 3,
             modifier = Modifier.onFocusChanged { if (!it.isFocused && latest != saved) onNotes(latest) },
-        )
-    }
-}
-
-@Composable
-private fun PlaceDefaultRow(state: EditDrawerState, actions: EditDrawerActions) {
-    Column(verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(TarryTheme.shapes.card)
-                .background(TarryTheme.colors.card)
-                .toggleable(value = state.isPlaceDefault, role = Role.Checkbox, onValueChange = actions.onSetPlaceDefault)
-                .heightIn(min = CheckRowMinHeight)
-                .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.s),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
-        ) {
-            Checkbox(
-                checked = state.isPlaceDefault,
-                onCheckedChange = null,
-                colors = CheckboxDefaults.colors(
-                    checkedColor = TarryTheme.colors.ink,
-                    checkmarkColor = TarryTheme.colors.onInk,
-                    uncheckedColor = TarryTheme.colors.outline,
-                ),
-            )
-            Text(
-                stringResource(R.string.edit_set_default),
-                style = MaterialTheme.typography.titleSmall,
-                color = TarryTheme.colors.ink,
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Text(
-            stringResource(R.string.edit_set_default_hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = TarryTheme.colors.muted,
-            modifier = Modifier.padding(horizontal = TarryTheme.space.m),
         )
     }
 }
@@ -434,6 +432,19 @@ private fun DrawerDialogs(
             label = stringResource(R.string.edit_tag_name_label),
             onConfirm = {
                 actions.onCreateTag(it)
+                onClose()
+            },
+            onDismiss = onClose,
+        )
+    }
+    if (dialog == DrawerDialog.RenamePlace) {
+        NameDialog(
+            title = stringResource(R.string.edit_rename_place_title),
+            label = stringResource(R.string.edit_rename_place_label),
+            initial = state.placeName.orEmpty(),
+            allowBlank = true,
+            onConfirm = {
+                actions.onRenamePlace(it)
                 onClose()
             },
             onDismiss = onClose,

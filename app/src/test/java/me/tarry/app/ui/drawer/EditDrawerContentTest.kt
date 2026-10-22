@@ -4,18 +4,25 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.assertNotTruncated
 import me.tarry.app.ui.theme.TarryTheme
@@ -191,15 +198,69 @@ class EditDrawerContentTest {
     }
 
     @Test
-    fun setAsDefaultIsACheckboxThatReportsTheNewValue() {
+    fun setAsDefaultIsASwitchThatReportsTheNewValue() {
         var value: Boolean? = null
         show(visit(), EditDrawerActions(onSetPlaceDefault = { value = it }))
         composeRule.onNodeWithText("Set as default for this place")
             .performScrollTo()
-            .assert(role(Role.Checkbox))
+            .assert(role(Role.Switch))
             .assertIsOff()
             .performClick()
         assertThat(value).isTrue()
+    }
+
+
+    @Test
+    fun sectionsAreOrderedJobTagsNotesTogglesTime() {
+        show(visit())
+        val order = composeRule.onAllNodes(heading()).fetchSemanticsNodes()
+            .mapNotNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull() }
+            .filter { it in setOf("Job", "Tags", "Notes", "Toggles", "Time") }
+        assertThat(order).containsExactly("Job", "Tags", "Notes", "Toggles", "Time").inOrder()
+    }
+
+    @Test
+    fun newTagSurfaceIsAlwaysVisibleAndClickable() {
+        show(visit())
+        composeRule.onNode(hasText("New tag") and hasClickAction()).assertExists().assert(role(Role.Button))
+    }
+
+    @Test
+    fun newTagSurfaceShowsEvenWithNoTagGroups() {
+        show(visit().copy(tagGroups = emptyList()))
+        composeRule.onNode(hasText("New tag") and hasClickAction()).assertExists()
+    }
+
+    @Test
+    fun togglesGroupHoldsBothSwitches() {
+        show(visit())
+        composeRule.onNodeWithText("Billable").assert(role(Role.Switch))
+        composeRule.onNodeWithText("Set as default for this place").assert(role(Role.Switch))
+    }
+
+    @Test
+    fun tripTogglesHaveBillableOnly() {
+        val trip = EditDrawerState(kind = EditKind.TRIP, id = "t", start = at(11), end = at(11, 25), zoneId = zone.id)
+        show(trip)
+        composeRule.onNodeWithText("Billable").assert(role(Role.Switch))
+        composeRule.onNodeWithText("Set as default for this place").assertDoesNotExist()
+    }
+
+    // Note: a TextField inside a dialog never goes idle under Robolectric, so the dialogs themselves are not opened here.
+    // What they write is covered by EditDrawerViewModelTest and TimelineEditorTest.
+    @Test
+    fun renamePencilIsAnAccessibleFortyEightDpButtonNextToTheName() {
+        show(visit())
+        composeRule.onNodeWithContentDescription("Rename place")
+            .assertHasClickAction()
+            .assertWidthIsAtLeast(48.dp)
+            .assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun noRenamePencilForTripsOrPlacelessVisits() {
+        show(visit().copy(hasPlace = false, placeLabel = null))
+        composeRule.onNodeWithContentDescription("Rename place").assertDoesNotExist()
     }
 
     @Test
@@ -245,6 +306,7 @@ class EditDrawerContentTest {
         composeRule.onNodeWithText("From place: Acme", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("From place: billable", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("Set as default for this place", useUnmergedTree = true).performScrollTo().assertNotTruncated()
+        composeRule.onNodeWithText("New tag", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("Trim start", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("Merge with previous", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("Reset to detected", useUnmergedTree = true).performScrollTo().assertNotTruncated()

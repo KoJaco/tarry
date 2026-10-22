@@ -331,6 +331,26 @@ class EditDrawerViewModelTest {
     }
 
     @Test
+    fun renamingThePlaceWritesTheNameAndBlankClearsIt() = runBlocking<Unit> {
+        seed(visit("v", 0, 60))
+        places.save(place().copy(address = "1 Main St"))
+        viewModel.load(EditTarget.Visit("v"))
+        assertThat(awaitState().placeLabel).isEqualTo("Office")
+
+        viewModel.renamePlace("  Smith site ")
+
+        val named = awaitState { it.placeLabel == "Smith site" }
+        assertThat(named.placeName).isEqualTo("Smith site")
+        assertThat(places.place("p")!!.name).isEqualTo("Smith site")
+
+        viewModel.renamePlace("   ")
+
+        val cleared = awaitState { it.placeName == null }
+        assertThat(cleared.placeLabel).isEqualTo("1 Main St")
+        assertThat(places.place("p")!!.name).isNull()
+    }
+
+    @Test
     fun newTagIsCreatedSelectedAndToggleable() = runBlocking<Unit> {
         seed(visit("v", 0, 60))
         viewModel.load(EditTarget.Visit("v"))

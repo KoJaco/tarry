@@ -160,6 +160,19 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
+    fun renamePlaceSetsTrimsAndClearsTheName() = runTest {
+        seedDay()
+
+        assertThat(editor.renamePlace("p1", "  Smith site ")).isEqualTo(EditResult.Ok())
+        assertThat(db.placeDao().getById("p1")!!.name).isEqualTo("Smith site")
+        assertThat(db.placeDao().getById("p1")!!.updatedAt).isEqualTo(now)
+
+        editor.renamePlace("p1", "   ")
+        assertThat(db.placeDao().getById("p1")!!.name).isNull()
+        assertThat(editor.renamePlace("nope", "x")).isEqualTo(EditResult.NotFound)
+    }
+
+    @Test
     fun createJobTakesTheNextUnusedPaletteColour() = runTest {
         val palette = listOf(10, 20, 30)
 
