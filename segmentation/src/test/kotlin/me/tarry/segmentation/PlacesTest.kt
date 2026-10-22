@@ -125,4 +125,32 @@ class PlacesTest {
     private companion object {
         const val HOUR = 3_600_000L
     }
+
+    /** A one-ping run at another place must not become a zero-length stay, however far off the next run starts. */
+    @Test
+    fun aSinglePingRunIsNeverAZeroLengthStay() {
+        val b = offsetMeters(boat1.first, boat1.second, 0.0, 40.0)
+        fun ping(minute: Int, at: Pair<Double, Double>) = Ping(t0 + minute * 60_000L, at.first, at.second, 8f, Activity.STILL, 1)
+        val pings = (0..10).map { ping(it, boat1) } + ping(11, b) + (17..30).map { ping(it, boat1) }
+        val stay = StayCandidate(
+            range = TimeRange(pings.first().timeMs, pings.last().timeMs),
+            lat = boat1.first, lng = boat1.second, pings = pings, bridged = false, open = false,
+        )
+        val places = listOf(
+            KnownPlace("a", boat1.first, boat1.second, radiusM = 18f),
+            KnownPlace("b", b.first, b.second, radiusM = 18f),
+        )
+        val out = splitStaysByPlace(listOf(stay), places, params)
+        assertTrue(out.all { it.range.durationMs >= params.minStayDurationMs })
+    }
+
+    /** Places inside each other's reach are one site to GPS; tight places and distant ones stay distinct. */
+    @Test
+    fun placesAreIndistinguishableOnlyWhenGpsCannotSeparateThem() {
+        fun at(id: String, east: Double, r: Float) =
+            offsetMeters(boat1.first, boat1.second, 0.0, east).let { KnownPlace(id, it.first, it.second, r) }
+        assertTrue(indistinguishablePlaces(at("a", 0.0, 75f), at("b", 70.0, 75f), params))
+        assertTrue(!indistinguishablePlaces(at("a", 0.0, 75f), at("b", 300.0, 75f), params))
+        assertTrue(!indistinguishablePlaces(at("a", 0.0, 18f), at("b", 40.0, 18f), params))
+    }
 }

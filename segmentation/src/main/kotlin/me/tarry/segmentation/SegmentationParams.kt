@@ -66,11 +66,17 @@ data class SegmentationParams(
      * poor fixes) fails it however fast or accurate the hops look; driving, curves included, passes.
      */
     val movingMinEfficiency: Double = 0.35,
+    /**
+     * Two known places whose centroids are closer than this many [stayRadiusM] (or within each other's radius) are
+     * indistinguishable by GPS: a stay is never split between them and stays matched to them merge. Tight places
+     * (radius below [stayRadiusM]) are exempt: the user made them small to separate neighbours.
+     */
+    val indistinguishablePlaceFactor: Double = 2.0,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
-        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
+        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }

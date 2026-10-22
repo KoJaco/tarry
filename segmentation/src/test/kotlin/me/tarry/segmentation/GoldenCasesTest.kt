@@ -181,6 +181,50 @@ class GoldenCasesTest {
         assertTrue(r.gaps.isEmpty())
     }
 
+    /** The marina shape with a phantom place 70 m from the real one: GPS cannot tell them apart, so one stay. */
+    @Test
+    fun marinaJitterWithTwoNearbyKnownPlaces() {
+        // The boat sits at A, drifts to the other side of the marina (B, 70 m east) for 16 min, and comes back.
+        val a = SYDNEY_LAT to SYDNEY_LNG
+        val b = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 0.0, 70.0)
+        val pings = builder(5)
+            .hops(40 * MIN)
+            .wander(90_000, radiusM = 40.0, accuracyM = 30f..98f, activity = Activity.IN_VEHICLE)
+            .move(b.first, b.second, speedMps = 1.0, mode = Activity.STILL, accuracyM = 30f)
+            .hops(16 * MIN)
+            .move(a.first, a.second, speedMps = 1.0, mode = Activity.STILL, accuracyM = 30f)
+            .hops(75 * MIN)
+            .build()
+        val places = listOf(
+            KnownPlace("main", a.first, a.second, radiusM = 75f),
+            KnownPlace("phantom", b.first, b.second, radiusM = 75f),
+        )
+        val r = run(pings, places)
+        assertEquals(1, r.stays.size)
+        assertEquals(PlaceRef.Existing("main"), r.stays.single().place)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.newPlaces.isEmpty())
+    }
+
+    /** Places far enough apart for GPS to separate still split a day into two stays around a real walk. */
+    @Test
+    fun twoKnownPlaces300mApartWithAFiveMinuteWalkStayTwoStays() {
+        val a = SYDNEY_LAT to SYDNEY_LNG
+        val b = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 0.0, 300.0)
+        val pings = builder(61)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(90.0, 300.0, 1.0, mode = Activity.WALKING, accuracyM = 15f)
+            .stay(HOUR, intervalMs = 3 * MIN)
+            .build()
+        val places = listOf(
+            KnownPlace("a", a.first, a.second, radiusM = 75f),
+            KnownPlace("b", b.first, b.second, radiusM = 75f),
+        )
+        val r = run(pings, places)
+        assertEquals(2, r.stays.size)
+        assertEquals(listOf(PlaceRef.Existing("a"), PlaceRef.Existing("b")), r.stays.map { it.place })
+    }
+
     @Test
     fun staleRepeats() {
         val b = builder(9).stay(30 * MIN, intervalMs = 3 * MIN).spikes(1, accuracyM = 100f, offsetM = 300.0)

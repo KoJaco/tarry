@@ -89,6 +89,28 @@ class SegmenterInvariantsTest {
         }
     }
 
+    /** Every stay is at least the minimum stay long, unless it is the ongoing open stay at the end of the range. */
+    @Test
+    fun everyStayIsAtLeastTheMinimumDuration() {
+        for (c in cases()) {
+            // Known places near the trace's start exercise the split-by-place step too.
+            val first = c.input.pings.first()
+            val places = listOf(
+                KnownPlace("p1", first.lat, first.lng, 75f),
+                KnownPlace("p2", first.lat + 0.0006, first.lng, 75f),
+                KnownPlace("p3", first.lat, first.lng + 0.001, 20f),
+            )
+            for (input in listOf(c.input, c.input.copy(places = places))) {
+                for (s in Segmenter.segment(input, params).stays) {
+                    assertTrue(
+                        "seed ${c.seed}: stay ${s.range} shorter than the minimum",
+                        s.mayBeOngoing || s.range.durationMs >= params.minStayDurationMs,
+                    )
+                }
+            }
+        }
+    }
+
     @Test
     fun everythingIsInsideTheInputRange() {
         for (c in cases()) {

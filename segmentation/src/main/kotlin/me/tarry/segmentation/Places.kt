@@ -25,6 +25,35 @@ internal fun matchPlace(lat: Double, lng: Double, places: List<KnownPlace>): Kno
 internal fun KnownPlace.isTight(params: SegmentationParams): Boolean = radiusM < params.stayRadiusM
 
 /**
+ * True when GPS cannot tell [a] and [b] apart: one lies within the other's radius, or neither is tight (see [isTight];
+ * the user shrank a tight place on purpose to separate neighbours) and their centroids are closer than
+ * [SegmentationParams.indistinguishablePlaceFactor] times [SegmentationParams.stayRadiusM].
+ */
+internal fun indistinguishablePlaces(a: KnownPlace, b: KnownPlace, params: SegmentationParams): Boolean {
+    val d = haversineMeters(a.lat, a.lng, b.lat, b.lng)
+    if (d <= maxOf(a.radiusM, b.radiusM)) return true
+    return !a.isTight(params) && !b.isTight(params) && d < params.indistinguishablePlaceFactor * params.stayRadiusM
+}
+
+/** Place id to cluster label (the smallest id of its connected [indistinguishablePlaces] component). */
+private fun clusterLabels(placesInStay: List<KnownPlace>, params: SegmentationParams): Map<String, String> {
+    val label = placesInStay.associate { it.id to it.id }.toMutableMap()
+    var changed = true
+    while (changed) {
+        changed = false
+        for (a in placesInStay) for (b in placesInStay) {
+            val la = label.getValue(a.id)
+            val lb = label.getValue(b.id)
+            if (la < lb && indistinguishablePlaces(a, b, params)) {
+                for (k in label.keys) if (label.getValue(k) == lb) label[k] = la
+                changed = true
+            }
+        }
+    }
+    return label
+}
+
+/**
  * True when [a] and [b] are at different places: two different known places, or a tight known place and no place.
  * No place next to a default-sized place is not a difference (see [isTight]).
  */
@@ -36,7 +65,7 @@ internal fun distinctKnownPlaces(
     val pb = matchPlace(b.lat, b.lng, places)
     when {
         pa == null && pb == null -> false
-        pa != null && pb != null -> pa.id != pb.id
+        pa != null && pb != null -> pa.id != pb.id && !indistinguishablePlaces(pa, pb, params)
         else -> (pa ?: pb)!!.isTight(params)
     }
 }
@@ -45,9 +74,12 @@ internal fun distinctKnownPlaces(
  * Splits a stay whose pings dwell in different known places, so two boats 40 m apart become two stays once each
  * has its own small place (a 60 m stay radius alone would keep them together).
  *
+ * Places GPS cannot tell apart (see [indistinguishablePlaces]) share one label, so a stay is never split between
+ * them; [assignPlaces] then gives the whole stay the known place nearest its centroid.
+ *
  * Each ping is labelled with its matching place (or none; unplaced pings take a neighbouring label unless the stay
- * touches a tight place, see [isTight]). Consecutive pings with the same label form runs;
- * a run spans from its first ping to the next run's first ping. Runs shorter than
+ * touches a tight place, see [isTight]). Consecutive pings with the same label form runs; a run's extent is its
+ * first to its last ping, which is also the range of the stay it becomes. Runs shorter than
  * [SegmentationParams.minStayDurationMs] are absorbed into their longer neighbour, shortest first, so
  * accuracy noise at a place's edge does not split anything. What remains, if more than one run, becomes
  * separate stays. Stays with no ping in any known place are returned unchanged.
@@ -65,12 +97,10 @@ private class Run(val label: String?, val pings: MutableList<Ping>)
 
 private fun split(stay: StayCandidate, places: List<KnownPlace>, params: SegmentationParams): List<StayCandidate> {
     val matched = stay.pings.map { matchPlace(it.lat, it.lng, places) }
+    val cluster = clusterLabels(matched.filterNotNull().distinctBy { it.id }, params)
+    val ids = matched.map { it?.let { p -> cluster.getValue(p.id) } }
     // Without a tight place in this stay, pings in no place belong with the place next to them (see [isTight]).
-    val labels = if (matched.any { it != null && it.isTight(params) }) {
-        matched.map { it?.id }
-    } else {
-        absorbUnplaced(matched.map { it?.id })
-    }
+    val labels = if (matched.any { it != null && it.isTight(params) }) ids else absorbUnplaced(ids)
     if (labels.distinct().size < 2) return listOf(stay)
 
     val runs = ArrayList<Run>()
@@ -78,8 +108,8 @@ private fun split(stay: StayCandidate, places: List<KnownPlace>, params: Segment
         val last = runs.lastOrNull()
         if (last != null && last.label == labels[i]) last.pings += ping else runs += Run(labels[i], arrayListOf(ping))
     }
-    fun span(i: Int): Long =
-        (runs.getOrNull(i + 1)?.pings?.first()?.timeMs ?: runs[i].pings.last().timeMs) - runs[i].pings.first().timeMs
+    // The run's own extent, not the time to the next run: a one-ping run is a zero-length stay however far off the next is.
+    fun span(i: Int): Long = runs[i].pings.last().timeMs - runs[i].pings.first().timeMs
 
     while (runs.size > 1) {
         val shortest = runs.indices.minBy(::span)
