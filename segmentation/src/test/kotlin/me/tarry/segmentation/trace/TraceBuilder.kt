@@ -89,6 +89,7 @@ class TraceBuilder(
         intervalMs: Long = 20_000,
         mode: Activity = Activity.IN_VEHICLE,
         accuracyM: Float = 25f,
+        jitterM: Double = 0.0,
     ) = apply {
         require(speedMps > 0 && intervalMs > 0)
         val distance = haversineMeters(lat, lng, toLat, toLng)
@@ -98,7 +99,12 @@ class TraceBuilder(
             val f = k.toDouble() / steps
             val pLat = if (k == steps) toLat else lat + (toLat - lat) * f
             val pLng = if (k == steps) toLng else lng + (toLng - lng) * f
-            add(timeMs + k * intervalMs, pLat, pLng, accuracyM, mode)
+            if (jitterM > 0.0 && k != steps) {
+                val (jLat, jLng) = destination(pLat, pLng, random.nextDouble() * 360.0, random.nextDouble() * jitterM)
+                add(timeMs + k * intervalMs, jLat, jLng, accuracyM, mode)
+            } else {
+                add(timeMs + k * intervalMs, pLat, pLng, accuracyM, mode)
+            }
         }
         timeMs += steps * intervalMs
         lat = toLat
@@ -112,9 +118,10 @@ class TraceBuilder(
         intervalMs: Long = 20_000,
         mode: Activity = Activity.IN_VEHICLE,
         accuracyM: Float = 25f,
+        jitterM: Double = 0.0,
     ) = apply {
         val (toLat, toLng) = destination(lat, lng, bearingDeg, distanceM)
-        move(toLat, toLng, speedMps, intervalMs, mode, accuracyM)
+        move(toLat, toLng, speedMps, intervalMs, mode, accuracyM, jitterM)
     }
 
     /**

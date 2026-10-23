@@ -105,6 +105,12 @@ data class SegmentationParams(
     val placeNoiseFactor: Double = 4.0,
     /** Upper bound on any noise-scaled radius. */
     val placeMaxRadiusM: Double = 300.0,
+    /** Directed-walk test (arrival attribution): the window of fixes it looks at. */
+    val directedWindowMs: Long = 60_000L,
+    /** ...the least net speed (m/s) over the window; pottering is slower. */
+    val directedMinSpeedMps: Double = 0.6,
+    /** ...and the least net displacement / path length over the window. */
+    val directedMinEfficiency: Double = 0.5,
     /** Net displacement between stays uses this quantile of the fixes in between, not the single furthest fix. */
     val robustDisplacementQuantile: Double = 0.8,
 ) {

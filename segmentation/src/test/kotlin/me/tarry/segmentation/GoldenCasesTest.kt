@@ -559,6 +559,57 @@ class GoldenCasesTest {
         assertEquals(first.place, last.place)
     }
 
+    /** Real day 3: a directed GPS-grade walk between two places is its own trip; pottering stays in the visits. */
+    @Test
+    fun walkBetweenTwoPlacesKeepsItsDuration() {
+        val walkMs = (470.0 / 1.2 * 1000).toLong()
+        val b = builder(31).stay(30 * MIN, intervalMs = 20_000, jitterM = 6.0, accuracyM = 12f, activity = Activity.STILL)
+        b.wander(3 * MIN, radiusM = 60.0, accuracyM = 7f..22f)
+        val leaveOut = b.currentTimeMs
+        b.moveBy(90.0, 470.0, 1.2, intervalMs = 10_000, mode = Activity.WALKING, accuracyM = 12f, jitterM = 8.0)
+        val arriveOut = b.currentTimeMs
+        b.wander(3 * MIN, radiusM = 60.0, accuracyM = 7f..22f)
+        b.stay(20 * MIN, intervalMs = 20_000, jitterM = 6.0, accuracyM = 12f, activity = Activity.STILL)
+        b.wander(2 * MIN, radiusM = 80.0, accuracyM = 7f..22f)
+        val leaveBack = b.currentTimeMs
+        b.moveBy(270.0, 470.0, 1.2, intervalMs = 10_000, mode = Activity.WALKING, accuracyM = 12f, jitterM = 8.0)
+        val arriveBack = b.currentTimeMs
+        b.wander(2 * MIN, radiusM = 40.0, accuracyM = 7f..22f)
+        val pings = b.stay(30 * MIN, intervalMs = 20_000, jitterM = 6.0, accuracyM = 12f, activity = Activity.STILL).build()
+        val r = run(pings)
+        assertEquals(3, r.stays.size)
+        assertEquals(2, r.trips.size)
+        for (t in r.trips) {
+            assertEquals(walkMs.toDouble(), t.range.durationMs.toDouble(), 1.5 * MIN)
+            assertEquals(470.0, t.distanceM, 470.0 * 0.15)
+            assertEquals(TripMode.WALK, t.mode)
+        }
+        assertEquals(leaveOut.toDouble(), r.trips[0].range.startMs.toDouble(), 1.5 * MIN)
+        assertEquals(arriveOut.toDouble(), r.trips[0].range.endMs.toDouble(), 1.5 * MIN)
+        assertEquals(leaveBack.toDouble(), r.trips[1].range.startMs.toDouble(), 1.5 * MIN)
+        assertEquals(arriveBack.toDouble(), r.trips[1].range.endMs.toDouble(), 1.5 * MIN)
+        // The pottering is inside the visits.
+        assertTrue(r.stays[0].range.endMs >= leaveOut - 1.5 * MIN)
+        assertTrue(r.stays[1].range.startMs <= arriveOut + 1.5 * MIN && r.stays[1].range.endMs >= leaveBack - 1.5 * MIN)
+        assertTrue(r.stays[2].range.startMs <= arriveBack + 1.5 * MIN)
+    }
+
+    /** A vehicle trip still absorbs the walk-in tail: the drive ends where the vehicle stopped. */
+    @Test
+    fun vehicleTripStillAbsorbsWalkInTail() {
+        val b = builder(32).stay(30 * MIN, intervalMs = 3 * MIN)
+        b.moveBy(90.0, 4_000.0, 12.5, accuracyM = 15f)
+        val parked = b.currentTimeMs
+        b.moveBy(90.0, 150.0, 1.2, intervalMs = 10_000, mode = Activity.WALKING, accuracyM = 12f, jitterM = 6.0)
+        val pings = b.stay(HOUR, intervalMs = 3 * MIN).build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        assertEquals(parked, trip.range.endMs)
+        assertEquals(parked, r.stays[1].range.startMs)
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN

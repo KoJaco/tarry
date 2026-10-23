@@ -36,7 +36,8 @@ class SegmentationUpgrade @Inject constructor(
          * 3 = indistinguishable known places never split a stay, no zero-length stays;
          * 4 = dogfood-2 B2 (spike rejection, anchor-aware noise, coherent departures, noise-scaled places and merge);
          * 5 = dogfood-2 review (good-accuracy fixes are never anchors, smoothed positions for detection only, departure span cap).
+         * 6 = dogfood-3 (directed walks stay in the trip; arrival radius only absorbs pottering and vehicle walk-in).
          */
-        const val SEGMENTATION_VERSION = 5
+        const val SEGMENTATION_VERSION = 6
     }
 }
