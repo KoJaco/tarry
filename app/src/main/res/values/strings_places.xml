@@ -60,7 +60,10 @@
     <string name="place_radius_decrease">Decrease radius by 5 metres</string>
     <string name="place_radius_increase">Increase radius by 5 metres</string>
     <string name="place_radius_slider_label">Radius</string>
-    <string name="place_radius_state">%1$d metres</string>
+    <plurals name="place_radius_state">
+        <item quantity="one">%1$d metre</item>
+        <item quantity="other">%1$d metres</item>
+    </plurals>
     <string name="place_radius_loading">Counting visits…</string>
     <plurals name="place_radius_stay">
         <item quantity="one">%1$d detected visit stays here</item>

@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CompletableDeferred
 import me.tarry.app.segmentation.PreviewCentre
 import me.tarry.app.segmentation.PreviewVisit
 import me.tarry.app.segmentation.RadiusPreviewInput
@@ -44,6 +45,7 @@ class PlaceDetailScreenTest {
     private val merged = mutableListOf<String>()
     private var deleted = 0
     private var preview: MergePreview? = MergePreview(120f, capped = false)
+    private var mergeGate: CompletableDeferred<MergePreview?>? = null
     private val centre = PreviewCentre(0.0, 0.0)
     private var input: RadiusPreviewInput? = RadiusPreviewInput("p", centre, emptyMap(), listOf(PreviewVisit("p", false, 0.0, 0.0)))
 
@@ -53,7 +55,7 @@ class PlaceDetailScreenTest {
                 load = load,
                 onClose = { closed++ },
                 loadRadiusInput = { input },
-                loadMergePreview = { preview },
+                loadMergePreview = { mergeGate?.await() ?: preview },
                 onRename = {}, onSetJob = {}, onSetBillable = {}, onSetTags = {}, onSetIgnored = {},
                 onSaveRadius = { saved += it },
                 onMerge = { merged += it },
@@ -132,6 +134,20 @@ class PlaceDetailScreenTest {
         composeRule.onNode(hasText("Merge") and hasClickAction()).performClick()
 
         assertThat(merged).containsExactly("q")
+    }
+
+    @Test
+    fun mergeConfirmStaysDisabledUntilThePreviewHasLoaded() {
+        val gate = CompletableDeferred<MergePreview?>()
+        mergeGate = gate
+        show()
+        composeRule.onNodeWithText("Merge into…").performScrollTo().performClick()
+        composeRule.onNodeWithText("Depot").performClick()
+
+        composeRule.onNode(hasText("Merge") and hasClickAction()).assertIsNotEnabled()
+        gate.complete(MergePreview(120f, capped = false))
+        composeRule.waitForIdle()
+        composeRule.onNode(hasText("Merge") and hasClickAction()).assertIsEnabled()
     }
 
     @Test

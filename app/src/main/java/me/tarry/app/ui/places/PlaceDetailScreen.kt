@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -222,6 +223,7 @@ fun PlaceDetailContent(
                         confirmLabel = stringResource(R.string.place_merge_confirm),
                         onConfirm = { onMerge(target.id); closeDialog() },
                         onDismiss = closeDialog,
+                        confirmEnabled = merge != null,
                     )
                 }
             }
@@ -286,7 +288,7 @@ private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DefaultTagsSheet(groups: List<TagGroupOption>, initial: Set<String>, onSave: (Set<String>) -> Unit, onDismiss: () -> Unit) {
-    var picked by remember { mutableStateOf(initial) }
+    var picked by rememberSaveable(stateSaver = TagSetSaver) { mutableStateOf(initial) }
     SheetFrame(stringResource(R.string.place_default_tags_title), onDismiss) {
         if (groups.isEmpty()) {
             Text(stringResource(R.string.edit_tags_empty), style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
@@ -311,3 +313,6 @@ private fun DefaultTagsSheet(groups: List<TagGroupOption>, initial: Set<String>,
         TertiaryButton(stringResource(R.string.place_radius_cancel), onClick = onDismiss, modifier = Modifier.fillMaxWidth())
     }
 }
+
+/** Survives rotation and process death: the picked tag ids as a list. */
+private val TagSetSaver = listSaver<Set<String>, String>(save = { it.toList() }, restore = { it.toSet() })

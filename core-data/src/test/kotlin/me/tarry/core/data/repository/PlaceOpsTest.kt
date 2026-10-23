@@ -271,6 +271,10 @@ class PlaceOpsTest : DbTestBase() {
         assertThat(editor.mergePlaces("s", "gone")).isEqualTo(EditResult.NotFound)
         assertThat(editor.previewMerge("s", "s")).isNull()
         assertThat(editor.previewMerge("s", "gone")).isNull()
+        // A live place that is itself marked merged away is not a valid target either.
+        save(place("m").copy(mergedIntoId = "t"))
+        assertThat(editor.mergePlaces("s", "m")).isEqualTo(EditResult.NotFound)
+        assertThat(editor.previewMerge("s", "m")).isNull()
         assertThat(placeById("s").deleted).isFalse()
     }
 
@@ -342,9 +346,62 @@ class PlaceOpsTest : DbTestBase() {
         val undo = undoOf(editor.deletePlace("p"))
         // The re-run detects the stay again under a new place.
         save(visit("rerun", 40, 90, "q").copy(updatedAt = now))
+        // Note: undoing after a re-run can leave the re-run's new place ("q") with no live visits, because restore only soft-deletes
+        // visits. That orphan is intentional here: segmentation's orphan-place prune is the safety net, not undo.
         editor.restore(undo)
 
         assertThat(state()).isEqualTo(before)
+    }
+
+    // endregion
+
+    // region ignore and retention floor
+
+    @Test
+    fun setPlaceIgnoredWorksWithoutVisitsAndUndoRestoresTheRow() = runTest {
+        save(place("p"))
+        val before = placeById("p")
+
+        val undo = undoOf(editor.setPlaceIgnored("p", true))
+
+        assertThat(placeById("p").ignored).isTrue()
+        assertThat(placeById("p").updatedAt).isEqualTo(now)
+        editor.restore(undo)
+        assertThat(placeById("p")).isEqualTo(before)
+        assertThat(editor.setPlaceIgnored("p", false)).isEqualTo(EditResult.Ok()) // no change, no undo
+    }
+
+    @Test
+    fun setPlaceIgnoredAndBulkIgnoreRefuseMissingOrDeletedPlaces() = runTest {
+        save(place("gone").copy(deleted = true), visit("v", 0, 30, "gone"))
+        assertThat(editor.setPlaceIgnored("nope", true)).isEqualTo(EditResult.NotFound)
+        assertThat(editor.setPlaceIgnored("gone", true)).isEqualTo(EditResult.NotFound)
+        assertThat(editor.bulk(listOf(ItemRef.visit("v")), AnnotationOp.IgnorePlace())).isEqualTo(EditResult.NotFound)
+        assertThat(placeById("gone").ignored).isFalse()
+    }
+
+    @Test
+    fun rewindNeverGoesEarlierThanTheRetentionFloor() = runTest {
+        val floor = t0 + 60 * min
+        val clamped = TimelineEditor(
+            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+            db.segmentationCheckpointDao(), EditClock { now }, RewindFloor { floor },
+        )
+        save(place("p"), visit("old", 0, 30, "p"), visit("recent", 100, 160, "p"))
+        setCheckpoint(t0 + 900 * min)
+
+        val undo = undoOf(clamped.setPlaceRadius("p", 120f)) // earliest unfrozen is "old", before the floor
+        assertThat(checkpoint()).isEqualTo(floor)
+
+        setCheckpoint(t0 + 900 * min)
+        clamped.restore(undo)
+        assertThat(checkpoint()).isEqualTo(floor)
+
+        // A start already after the floor is untouched.
+        db.visitDao().upsert(visitById("old").copy(deleted = true))
+        setCheckpoint(t0 + 900 * min)
+        clamped.setPlaceRadius("p", 150f)
+        assertThat(checkpoint()).isEqualTo(t0 + 100 * min)
     }
 
     // endregion

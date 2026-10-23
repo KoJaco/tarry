@@ -1,6 +1,9 @@
 package me.tarry.app.ui.places
 
 import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
@@ -56,6 +59,8 @@ class PlaceDetailViewModelTest {
     private lateinit var workManager: WorkManager
     private lateinit var undoEvents: UndoEvents
     private lateinit var viewModel: PlaceDetailViewModel
+    private lateinit var scheduler: SegmentationScheduler
+    private lateinit var timeline: TimelineEditor
 
     @Before
     fun setUp() {
@@ -64,23 +69,25 @@ class PlaceDetailViewModelTest {
         db = Room.inMemoryDatabaseBuilder(context, TarryDatabase::class.java).allowMainThreadQueries().build()
         WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setWorkerFactory(HangingWorkerFactory).build())
         workManager = WorkManager.getInstance(context)
-        val scheduler = SegmentationScheduler(context, TrackingConfig())
-        val timeline = TimelineEditor(
+        scheduler = SegmentationScheduler(context, TrackingConfig())
+        timeline = TimelineEditor(
             db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
             db.segmentationCheckpointDao(), EditClock { NOW },
         )
         undoEvents = UndoEvents(timeline, scheduler)
-        viewModel = PlaceDetailViewModel(
-            PlaceRepository(db.placeDao()),
-            TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao()),
-            JobRepository(db.jobDao()),
-            TagRepository(db.tagDao()),
-            timeline,
-            PlaceRadiusPreviewLoader(db.placeDao(), db.visitDao(), db.locationPingDao()),
-            undoEvents,
-            scheduler,
-        )
+        viewModel = newViewModel()
     }
+
+    private fun newViewModel() = PlaceDetailViewModel(
+        PlaceRepository(db.placeDao()),
+        TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao()),
+        JobRepository(db.jobDao()),
+        TagRepository(db.tagDao()),
+        timeline,
+        PlaceRadiusPreviewLoader(db.placeDao(), db.visitDao(), db.locationPingDao()),
+        undoEvents,
+        scheduler,
+    )
 
     @After
     fun tearDown() {
@@ -165,7 +172,7 @@ class PlaceDetailViewModelTest {
     }
 
     @Test
-    fun ignoreIsToggledThroughAVisitOfThePlace() = runBlocking<Unit> {
+    fun ignoreIsToggledDirectly() = runBlocking<Unit> {
         db.placeDao().upsert(place("p"))
         db.visitDao().upsert(visit("v", "p"))
         viewModel.load("p")
@@ -177,14 +184,34 @@ class PlaceDetailViewModelTest {
     }
 
     @Test
-    fun ignoreOnAPlaceWithNoVisitsShowsANotice() = runBlocking<Unit> {
+    fun aPlaceWithNoVisitsCanBeIgnored() = runBlocking<Unit> {
         db.placeDao().upsert(place("p"))
         viewModel.load("p")
+
+        viewModel.setIgnored(true).join()
+
+        assertThat(ready { it.ignored }.ignored).isTrue()
+    }
+
+    @Test
+    fun clearingTheViewModelRightAfterASaveStillOffersUndoAndEnqueues() = runBlocking<Unit> {
+        db.placeDao().upsert(place("p", radius = 75f))
+        db.visitDao().upsert(visit("v", "p"))
+        val store = ViewModelStore()
+        val vm = ViewModelProvider(store, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = newViewModel() as T
+        })[PlaceDetailViewModel::class.java]
+        vm.load("p")
         val event = nextEvent()
 
-        viewModel.setIgnored(true)
+        vm.setRadius(120f)
+        store.clear() // the screen is left right after the tap
 
-        assertThat(withTimeout(10_000) { event.await() }.message).isEqualTo(R.string.edit_error_not_found)
+        val offered = withTimeout(10_000) { event.await() }
+        assertThat(offered.message).isEqualTo(R.string.places_undo_radius)
+        assertThat(db.placeDao().getById("p")!!.radiusM).isEqualTo(120f)
+        assertThat(enqueued()).isEqualTo(1)
     }
 
     @Test

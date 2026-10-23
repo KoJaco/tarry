@@ -1,9 +1,11 @@
 package me.tarry.app.ui.places
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -53,7 +55,7 @@ fun PlaceRadiusSheet(
     val colors = TarryTheme.colors
     val valueText = stringResource(R.string.place_radius_value, radius.roundToInt())
     val sliderLabel = stringResource(R.string.place_radius_slider_label)
-    val sliderState = stringResource(R.string.place_radius_state, radius.roundToInt())
+    val sliderState = pluralStringResource(R.plurals.place_radius_state, radius.roundToInt(), radius.roundToInt())
     SheetFrame(stringResource(R.string.place_radius_title), onDismiss) {
         Text(valueText, style = MaterialTheme.typography.headlineMedium, color = colors.ink)
         Row(
@@ -100,7 +102,14 @@ fun PlaceRadiusSheet(
                 CountLines(counts)
             }
             if (radius < SMALL_RADIUS_HINT_M) {
-                Text(stringResource(R.string.place_radius_small_hint), style = MaterialTheme.typography.bodyMedium, color = colors.onAlertSoft)
+                Text(
+                    stringResource(R.string.place_radius_small_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.onAlertSoft,
+                    modifier = Modifier
+                        .background(colors.alertSoft, TarryTheme.shapes.small)
+                        .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.xs),
+                )
             }
             Text(stringResource(R.string.place_radius_defaults_note), style = MaterialTheme.typography.bodyMedium, color = colors.muted)
         }

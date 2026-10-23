@@ -122,7 +122,7 @@ fun TarryApp(
         sessionsContent = { SessionsScreen() },
         jobsContent = { JobsScreen() },
         tagsContent = { TagsScreen() },
-        placesContent = { PlacesScreen(onOpenPlace = { backStack.add(PlaceDetailRoute(it)) }) },
+        placesContent = { PlacesScreen(onOpenPlace = { if (backStack.lastOrNull() != PlaceDetailRoute(it)) backStack.add(PlaceDetailRoute(it)) }) },
         placeDetailContent = { id ->
             PlaceDetailScreen(
                 placeId = id,

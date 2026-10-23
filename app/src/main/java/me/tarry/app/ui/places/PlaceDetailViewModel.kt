@@ -5,7 +5,10 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import me.tarry.app.R
 import me.tarry.app.segmentation.PlaceRadiusPreviewLoader
 import me.tarry.app.segmentation.RadiusPreviewInput
@@ -31,9 +35,7 @@ import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.Tag
 import me.tarry.core.data.db.entity.TagGroup
-import me.tarry.core.data.repository.AnnotationOp
 import me.tarry.core.data.repository.EditResult
-import me.tarry.core.data.repository.ItemRef
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.MergePreview
 import me.tarry.core.data.repository.PlaceRepository
@@ -152,36 +154,32 @@ class PlaceDetailViewModel @Inject constructor(
         }
     }
 
-    /** Ignore is set through one of the place's visits (the editor's bulk op); a place with none cannot be toggled. */
+    /** Sets `Place.ignored` directly, so it works for a place with no live visits too. */
     fun setIgnored(ignored: Boolean) = viewModelScope.launch {
         val id = placeId.value ?: return@launch
-        val visit = timeline.liveVisitsAt(id).firstOrNull()
-        if (visit == null) {
-            undoEvents.notice(R.string.edit_error_not_found)
-        } else {
-            report(editor.bulk(listOf(ItemRef.visit(visit.id)), AnnotationOp.IgnorePlace(ignored)))
-        }
+        report(editor.setPlaceIgnored(id, ignored))
     }
 
     /** The visits and pings the radius sheet counts from; null when the place is gone. */
     suspend fun radiusInput(): RadiusPreviewInput? = placeId.value?.let { preview.load(it) }
 
-    fun setRadius(radiusM: Float) = viewModelScope.launch {
-        val id = placeId.value ?: return@launch
-        structural(editor.setPlaceRadius(id, radiusM), R.string.places_undo_radius)
-    }
+    fun setRadius(radiusM: Float) = durably { id -> structural(editor.setPlaceRadius(id, radiusM), R.string.places_undo_radius) }
 
     suspend fun previewMerge(targetId: String): MergePreview? = placeId.value?.let { editor.previewMerge(it, targetId) }
 
-    fun merge(targetId: String) = viewModelScope.launch {
-        val id = placeId.value ?: return@launch
-        structural(editor.mergePlaces(id, targetId), R.string.places_undo_merged)
-    }
+    fun merge(targetId: String) = durably { id -> structural(editor.mergePlaces(id, targetId), R.string.places_undo_merged) }
 
     /** The screen closes itself once the place leaves the live list. */
-    fun delete() = viewModelScope.launch {
-        val id = placeId.value ?: return@launch
-        structural(editor.deletePlace(id), R.string.places_undo_deleted)
+    fun delete() = durably { id -> structural(editor.deletePlace(id), R.string.places_undo_deleted) }
+
+    /**
+     * Structural edits must finish their undo offer and re-run request even if the screen is left right after the tap
+     * (which clears this ViewModel and cancels [viewModelScope]), so they run non-cancellably. The coroutine starts
+     * atomically so a tap followed at once by a clear is not dropped.
+     */
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun durably(block: suspend (String) -> Unit) = viewModelScope.launch(start = CoroutineStart.ATOMIC) {
+        withContext(NonCancellable) { placeId.value?.let { block(it) } }
     }
 
     private fun structural(result: EditResult, @StringRes undoMessage: Int) {

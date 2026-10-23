@@ -32,6 +32,14 @@ fun interface EditClock {
     fun nowMs(): Long
 }
 
+/**
+ * Earliest instant a place op may rewind segmentation to: the start of the raw-ping retention window (0 when pings are
+ * kept forever). Older pings are purged, so re-detecting before it would only erase history. Same window as `SegmentationUpgrade`.
+ */
+fun interface RewindFloor {
+    suspend fun floorMs(): Long
+}
+
 enum class ItemType { VISIT, TRIP }
 
 /** A visit or a trip, for ops (and bulk ops) that accept either. */
@@ -136,6 +144,7 @@ class TimelineEditor @Inject constructor(
     private val tags: TagDao,
     private val checkpoints: SegmentationCheckpointDao,
     private val clock: EditClock,
+    private val rewindFloor: RewindFloor = RewindFloor { 0L },
 ) {
     // region annotations
 
@@ -161,7 +170,7 @@ class TimelineEditor @Inject constructor(
         val visitRows = items.filter { it.type == ItemType.VISIT }.map { visits.getById(it.id)?.takeUnless { v -> v.deleted } ?: return@withTransaction EditResult.NotFound }
         val tripRows = items.filter { it.type == ItemType.TRIP }.map { trips.getById(it.id)?.takeUnless { t -> t.deleted } ?: return@withTransaction EditResult.NotFound }
         val placeRows = if (op is AnnotationOp.IgnorePlace) {
-            visitRows.mapNotNull { it.placeId }.distinct().map { places.getById(it) ?: return@withTransaction EditResult.NotFound }
+            visitRows.mapNotNull { it.placeId }.distinct().map { livePlace(it) ?: return@withTransaction EditResult.NotFound }
         } else {
             emptyList()
         }
@@ -218,6 +227,19 @@ class TimelineEditor @Inject constructor(
                 }
             }
         }
+        EditResult.Ok(undo)
+    }
+
+    /**
+     * Sets `Place.ignored` directly, so a place with no live visits can be ignored too. Re-reads the row inside the
+     * transaction (segmentation rewrites centroid and lastVisitAt). The undo restores the row as it was. No change is
+     * [EditResult.Ok] without an undo. Does not freeze or rewind anything.
+     */
+    suspend fun setPlaceIgnored(placeId: String, ignored: Boolean): EditResult = db.withTransaction {
+        val place = livePlace(placeId) ?: return@withTransaction EditResult.NotFound
+        if (place.ignored == ignored) return@withTransaction EditResult.Ok()
+        val undo = Snapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), places = listOf(place))
+        places.upsert(place.copy(ignored = ignored, updatedAt = clock.nowMs()))
         EditResult.Ok(undo)
     }
 
@@ -467,7 +489,7 @@ class TimelineEditor @Inject constructor(
             snapshot.tripTags.filter { it.tripId == t.id }.forEach { trips.upsertTag(it) }
         }
         snapshot.exclusions.forEach { excluded.upsert(it) }
-        snapshot.range?.let { rewindCheckpoint(it.first) }
+        snapshot.range?.let { rewindCheckpoint(if (snapshot.places.isNotEmpty()) maxOf(it.first, rewindFloor.floorMs()) else it.first) }
         EditResult.Ok()
     }
 
@@ -600,7 +622,7 @@ class TimelineEditor @Inject constructor(
     private suspend fun calcMerge(sourceId: String, targetId: String): MergeCalc? {
         if (sourceId == targetId) return null
         val source = livePlace(sourceId) ?: return null
-        val target = livePlace(targetId) ?: return null
+        val target = livePlace(targetId)?.takeIf { it.mergedIntoId == null } ?: return null
         val ds = visits.durationAt(source.id)
         val dt = visits.durationAt(target.id)
         val (ws, wt) = if (ds + dt == 0L) 1.0 to 1.0 else ds.toDouble() to dt.toDouble()
@@ -621,9 +643,9 @@ class TimelineEditor @Inject constructor(
 
     private suspend fun livePlace(id: String): Place? = places.getById(id)?.takeUnless { it.deleted }
 
-    /** Pulls the checkpoint back to [from] (the earliest unfrozen visit the op touched; null means nothing to re-detect) so the next run reprocesses it. */
+    /** Pulls the checkpoint back to [from] (the earliest unfrozen visit the op touched; null means nothing to re-detect) so the next run reprocesses it, but never before [RewindFloor] (purged pings). */
     private suspend fun rewindForPlaces(from: Long?) {
-        if (from != null) rewindCheckpoint(from)
+        if (from != null) rewindCheckpoint(maxOf(from, rewindFloor.floorMs()))
     }
 
     /**
