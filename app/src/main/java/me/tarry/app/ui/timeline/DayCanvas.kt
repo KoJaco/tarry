@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -129,8 +128,14 @@ private object DayCanvasDefaults {
     val GapPaddingV = 4.dp
     val GapIconSize = 20.dp
     val TripIconSize = 16.dp
-    /** Least width of a trip chip, so it is also a 48 dp wide touch target. */
-    val TripChipMinWidth = 48.dp
+    /** Least height and width of a trip's touch target. It may extend invisibly over the neighbouring visits' edges. */
+    val TripTouch = 48.dp
+
+    /** Half-length of a 15-minute tick, centred on the rail. */
+    val QuarterTickHalf = 3.dp
+
+    /** Alpha of a 15-minute tick relative to the hour rule (both `divider`). */
+    const val QuarterTickAlpha = 0.6f
     val InnerGapIconSize = 16.dp
     /** Radius of the outage dot that sits on a visit block's left border. */
     val InnerGapDotRadius = 2.5.dp
@@ -234,6 +239,13 @@ fun DayCanvas(
                         drawLine(c.divider, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
                     }
                     drawLine(c.divider, Offset(railX, 0f), Offset(railX, size.height), strokeWidth = stroke)
+                    // :15 / :30 / :45 ticks on the rail: drawn only, so they are neither focusable nor spoken.
+                    val tick = DayCanvasDefaults.QuarterTickHalf.toPx()
+                    val tickColor = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
+                    layout.quarterMarks.forEach { dp ->
+                        val y = dp.dp.toPx()
+                        drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
+                    }
                 }
                 .semantics { isTraversalGroup = true },
         ) {
@@ -256,8 +268,8 @@ fun DayCanvas(
                         },
                 )
             }
-            // Blocks first, trips after: a chip overlays visit edges and must sit above (and win taps over) the visits.
-            // Resize handles are composed after both, so they win over a chip. The index is the time-order traversal index.
+            // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
+            // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.
             ordered.withIndex().sortedBy { it.value is PlacedTrip }.forEach { (index, placed) ->
                 val dimmed = dimNonReview && ((placed as? PlacedBlock)?.item as? TimelineItem.Visit)?.needsReview != true
                 // While a handle is dragged the block follows the finger (neighbours stay put until release).
@@ -309,9 +321,11 @@ fun DayCanvas(
                         spokenDescription(placed.trip, dayStart, dayEnd, zone),
                         index,
                         dimmed,
-                        position,
+                        placed.topDp,
+                        placed.heightDp,
+                        timeColumn + DayCanvasDefaults.BlockInset,
                         enabled = !selecting,
-                        chip = placed.chip,
+                        iconOnly = placed.iconOnly,
                     ) { onOpenTrip(placed.trip.id) }
                 }
             }
@@ -644,10 +658,10 @@ private fun GapBlock(
 }
 
 /**
- * A trip: mode icon + compact text on the canvas, no outline and no indent (as before dogfood-2 B3). A long trip is a
- * full-height row on its true span. A short one ([chip]) is centred on its span over the visit edges; only the inner
- * element is the (>= 48 dp tall) touch target, so taps beside it still reach the visits. The chip has the card colour
- * behind it, for legibility over a visit edge, and sits at the end of the column, clear of the visits' own text.
+ * A trip: mode icon + compact text on the canvas, left-aligned at the visit column's content inset, no outline, no
+ * fill. It sits in its slot ([slotTopDp], [slotHeightDp]) between the visits and never paints over them. The touch
+ * target is at least 48 dp tall and wide and is centred on the slot, so it may reach invisibly over the neighbours'
+ * edges. With [iconOnly] the slot is too small for text and only the icon is drawn (the description still speaks it all).
  */
 @Composable
 private fun TripRow(
@@ -656,34 +670,41 @@ private fun TripRow(
     description: String,
     index: Int,
     dimmed: Boolean,
-    modifier: Modifier,
+    slotTopDp: Float,
+    slotHeightDp: Float,
+    start: Dp,
     enabled: Boolean,
-    chip: Boolean,
+    iconOnly: Boolean,
     onClick: () -> Unit,
 ) {
     val c = TarryTheme.colors
     val text = stringResource(R.string.timeline_trip_compact, formatDistance(trip.distanceM), formatDuration(times.durationMs))
-    Box(modifier = modifier, contentAlignment = if (chip) Alignment.CenterEnd else Alignment.CenterStart) {
-        Row(
-            modifier = (if (chip) Modifier.fillMaxHeight().widthIn(min = DayCanvasDefaults.TripChipMinWidth) else Modifier.fillMaxSize())
-                .then(if (chip) Modifier.clip(TarryTheme.shapes.pill).background(c.card) else Modifier)
-                .then(if (enabled) Modifier.clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick) else Modifier)
-                .semantics(mergeDescendants = true) {
-                    contentDescription = description
-                    traversalIndex = index.toFloat()
-                    blockDimmed = dimmed
-                }
-                .testTag("timeline_row_${trip.id}")
-                .padding(horizontal = TarryTheme.space.m),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-        ) {
-            Icon(
-                painter = painterResource(trip.mode.iconRes()),
-                contentDescription = null,
-                tint = c.muted,
-                modifier = Modifier.size(DayCanvasDefaults.TripIconSize),
-            )
+    val touch = maxOf(slotHeightDp.dp, DayCanvasDefaults.TripTouch)
+    Row(
+        modifier = Modifier
+            .offset(y = slotTopDp.dp + (slotHeightDp.dp - touch) / 2)
+            .padding(start = start)
+            .height(touch)
+            .widthIn(min = DayCanvasDefaults.TripTouch)
+            .then(if (dimmed) Modifier.alpha(DimmedAlpha) else Modifier)
+            .then(if (enabled) Modifier.clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick) else Modifier)
+            .semantics(mergeDescendants = true) {
+                contentDescription = description
+                traversalIndex = index.toFloat()
+                blockDimmed = dimmed
+            }
+            .testTag("timeline_row_${trip.id}")
+            .padding(horizontal = TarryTheme.space.m),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+    ) {
+        Icon(
+            painter = painterResource(trip.mode.iconRes()),
+            contentDescription = null,
+            tint = c.muted,
+            modifier = Modifier.size(DayCanvasDefaults.TripIconSize),
+        )
+        if (!iconOnly) {
             Text(
                 text = text,
                 style = MaterialTheme.typography.bodySmall,
@@ -694,7 +715,6 @@ private fun TripRow(
         }
     }
 }
-
 
 /** Walk and drive have their own glyph; an unknown mode gets the neutral route icon, never the car. */
 internal fun TripMode.iconRes(): Int = when (this) {

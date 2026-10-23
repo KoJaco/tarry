@@ -12,6 +12,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
+import androidx.compose.ui.test.onRoot
 import me.tarry.app.R
 import me.tarry.app.ui.drawer.EditTarget
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -185,40 +187,68 @@ class DayCanvasTest {
         )
     }
 
-    @Test
-    fun shortTripBetweenTwoVisitsIsAnIconChipOverTheBoundaryAndOpensTheTrip() {
-        val targets = mutableListOf<EditTarget>()
+    private fun showTrips(
+        vararg items: TimelineItem,
+        fontScale: Float = 1f,
+        targets: MutableList<EditTarget> = mutableListOf(),
+        resizes: MutableList<Triple<String, Long, Long>> = mutableListOf(),
+    ) {
         composeRule.setContent {
-            TarryTheme {
-                TimelineContent(
-                    date,
-                    listOf(
-                        TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
-                        TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.WALK),
-                        TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
-                    ),
-                    {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = { targets += it },
-                )
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
+                TarryTheme {
+                    TimelineContent(
+                        date,
+                        items.toList(),
+                        {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = { targets += it },
+                        onResizeVisit = { id, st, en -> resizes += Triple(id, st, en) },
+                    )
+                }
             }
         }
+    }
+
+    private fun bounds(tag: String) = composeRule.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+
+    @Test
+    fun shortTripsSitLeftAlignedBetweenTheVisitsWithoutOverlap_andOpenTheTrip() {
+        val targets = mutableListOf<EditTarget>()
+        showTrips(
+            TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+            TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.WALK),
+            TimelineItem.Visit("b", at(9, 47), at(11, 0), "B"),
+            TimelineItem.Trip("u", at(11, 0), at(11, 1), 90f, TripMode.WALK),
+            TimelineItem.Visit("c", at(11, 1), at(12, 0), "C"),
+            targets = targets,
+        )
         val chip = composeRule.onNodeWithTag("timeline_row_t")
         chip.assertExists().assertHasClickAction()
         composeRule.onNodeWithText("800 m · 7 min").assertExists()
+        composeRule.onNodeWithText("90 m · 1 min").assertExists()
         chip.assert(
             SemanticsMatcher("labelled") {
                 val d = it.config[SemanticsProperties.ContentDescription].single()
                 d.contains("Walk") && d.contains("9:40") && d.contains("9:47")
             },
         )
-        val t = chip.getUnclippedBoundsInRoot()
+        val a = bounds("timeline_row_a")
+        val b = bounds("timeline_row_b")
+        val c = bounds("timeline_row_c")
+        val t = bounds("timeline_row_t")
+        val u = bounds("timeline_row_u")
+        // Left-aligned at the visit column's start, with a touch target of at least 48 dp each way.
+        assertThat(t.left.value).isWithin(0.5f).of(a.left.value)
+        assertThat(u.left.value).isWithin(0.5f).of(a.left.value)
         assertThat(t.height.value).isAtLeast(48f - 0.01f)
-        // The chip is centred on the 9:40-9:47 span (9:43:30), over the visit edges; the visits keep their true spans.
-        val a = composeRule.onNodeWithTag("timeline_row_a").getUnclippedBoundsInRoot()
-        val b = composeRule.onNodeWithTag("timeline_row_b").getUnclippedBoundsInRoot()
-        assertThat(((t.top + t.bottom) / 2 - a.top).value).isWithin(0.5f).of(43.5f * 72f / 60)
-        assertThat(t.top < a.bottom && t.bottom > b.top).isTrue()
-        assertThat((a.bottom - a.top).value).isWithin(0.5f).of(40 * 72f / 60)
-        assertThat((b.top - a.top).value).isWithin(0.5f).of(47 * 72f / 60)
+        assertThat(u.height.value).isAtLeast(48f - 0.01f)
+        assertThat(t.width.value).isAtLeast(48f - 0.01f)
+        // The slots between the visits are exactly one trip row (24 dp); the visits do not overlap them.
+        assertThat((b.top - a.bottom).value).isWithin(0.5f).of(24f)
+        assertThat((c.top - b.bottom).value).isWithin(0.5f).of(24f)
+        // The touch target is centred on the slot.
+        assertThat(((t.top + t.bottom) / 2 - (a.bottom + b.top) / 2).value).isWithin(0.5f).of(0f)
+        // The visits' far edges stay on time: a starts at 9:00, c ends at 12:00.
+        assertThat((c.bottom - a.top).value).isWithin(0.5f).of(180 * 144f / 60)
         chip.performClick()
         assertThat(targets).containsExactly(EditTarget.Trip("t"))
     }
@@ -235,38 +265,46 @@ class DayCanvasTest {
             TimelineItem.Visit("v4", at(8, 33), at(8, 58), "Shop"),
             TimelineItem.Trip("f", at(8, 58), at(9, 0), 300f, TripMode.WALK),
             TimelineItem.Visit("nine", at(9, 0), at(10, 0), "Nine"),
+            TimelineItem.Visit("ten", at(10, 0), at(11, 0), "Ten"),
         )
         show(items)
-        val nine = composeRule.onNodeWithTag("timeline_row_nine").fetchSemanticsNode().boundsInRoot
-        val label = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true).fetchSemanticsNodes()
-            .first { node -> node.config[SemanticsProperties.Text].single().text.startsWith("9") }
-            .boundsInRoot
-        // The label sits on the 9:00 rule (its top is half a line above it), which is the visit top edge.
-        assertThat(label.top + 8f * composeRule.density.density).isWithin(1f).of(nine.top)
-        // Every visit starting on an hour or at a known minute is at its time, relative to the 7:00 block.
-        val v1 = composeRule.onNodeWithTag("timeline_row_v1").fetchSemanticsNode().boundsInRoot
         val density = composeRule.density.density
-        assertThat((nine.top - v1.top) / density).isWithin(0.5f).of(2 * 72f)
+        val nine = composeRule.onNodeWithTag("timeline_row_nine").fetchSemanticsNode().boundsInRoot
+        fun labelTop(prefix: String) = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true).fetchSemanticsNodes()
+            .first { node -> node.config[SemanticsProperties.Text].single().text.startsWith(prefix) }
+            .boundsInRoot.top + 8f * density
+        // 9:00 follows a trip, so it may be trimmed by at most 12 dp; 10:00 does not, so it is exactly on its rule.
+        assertThat(nine.top - labelTop("9")).isAtLeast(-1f)
+        assertThat(nine.top - labelTop("9")).isAtMost(12f * density + 1f)
+        val ten = composeRule.onNodeWithTag("timeline_row_ten").fetchSemanticsNode().boundsInRoot
+        assertThat(labelTop("10")).isWithin(1f).of(ten.top)
+        // 7:00 to 10:00 is three hours at 144 dp, whatever the trips in between did.
+        val v1 = composeRule.onNodeWithTag("timeline_row_v1").fetchSemanticsNode().boundsInRoot
+        assertThat((ten.top - v1.top) / density).isWithin(0.5f).of(3 * 144f)
     }
 
     @Test
-    fun tappingAVisitAwayFromTheChipSelectsTheVisit_andTheChipStillOpensTheTrip() {
+    fun fifteenMinuteTicksAreDrawnOnlyAndNeverInTheSemanticsTree() {
+        show(listOf(TimelineItem.Visit("a", at(9, 0), at(11, 0), "A")), today = date.plusDays(1))
+        // Nothing in the tree is a tiny tick-sized element; the ticks are painted, not nodes.
+        val tiny = composeRule.onAllNodes(
+            SemanticsMatcher("tick-sized") { it.size.height <= 3 && it.size.width in 1..24 },
+            useUnmergedTree = true,
+        )
+        tiny.assertCountEquals(0)
+    }
+
+    @Test
+    fun tappingAVisitAwayFromTheTripSelectsTheVisit_andTheTripStillOpensTheTrip() {
         val targets = mutableListOf<EditTarget>()
-        composeRule.setContent {
-            TarryTheme {
-                TimelineContent(
-                    date,
-                    listOf(
-                        TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
-                        TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.WALK),
-                        TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
-                    ),
-                    {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = { targets += it },
-                )
-            }
-        }
-        // A tap at the left of the visit, level with the chip, is the visit's (the chip hugs the end of the column).
-        composeRule.onNodeWithTag("timeline_row_b").performTouchInput { click(Offset(8f, 4f)) }
+        showTrips(
+            TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+            TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.WALK),
+            TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
+            targets = targets,
+        )
+        // A tap at the right-hand end of the visit, level with the trip, is the visit's (the trip hugs the left).
+        composeRule.onNodeWithTag("timeline_row_b").performTouchInput { click(Offset(width - 8f, 4f)) }
         composeRule.mainClock.advanceTimeBy(500)
         composeRule.waitForIdle()
         assertThat(targets).isEmpty()
@@ -277,32 +315,25 @@ class DayCanvasTest {
     }
 
     @Test
-    fun aSelectedVisitsHandleBeatsAnOverlappingChip() {
+    fun aSelectedVisitsHandleBeatsATripsTouchTarget() {
         val resizes = mutableListOf<Triple<String, Long, Long>>()
         val targets = mutableListOf<EditTarget>()
-        composeRule.setContent {
-            TarryTheme {
-                TimelineContent(
-                    date,
-                    listOf(
-                        TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
-                        TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.WALK),
-                        TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
-                    ),
-                    {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = { targets += it },
-                    onResizeVisit = { id, st, en -> resizes += Triple(id, st, en) },
-                )
-            }
-        }
-        composeRule.onNodeWithTag("timeline_row_b").performClick()
+        showTrips(
+            TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+            TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.WALK),
+            TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
+            targets = targets,
+            resizes = resizes,
+        )
+        composeRule.onNodeWithTag("timeline_row_b").performTouchInput { click(Offset(width - 8f, 4f)) }
         composeRule.mainClock.advanceTimeBy(500)
         composeRule.waitForIdle()
         val handle = composeRule.onNodeWithTag(handleTag(ResizeEdge.Start, "b"))
         handle.assertExists()
-        // The b start handle (9:47) sits inside the chip's band; it is composed above the chip.
-        val chip = composeRule.onNodeWithTag("timeline_row_t").fetchSemanticsNode().boundsInRoot
+        // The b start handle sits inside the trip's 48 dp touch band; it is composed above the trip.
+        val trip = composeRule.onNodeWithTag("timeline_row_t").fetchSemanticsNode().boundsInRoot
         val h = handle.fetchSemanticsNode().boundsInRoot
-        assertThat(h.top < chip.bottom && h.bottom > chip.top).isTrue()
+        assertThat(h.top < trip.bottom && h.bottom > trip.top).isTrue()
         handle.performTouchInput {
             down(center)
             moveBy(Offset(0f, 12f))
@@ -315,32 +346,42 @@ class DayCanvasTest {
     }
 
     @Test
-    fun chipKeepsA48dpTouchTargetAndVisitsStayOnTimeAtFontScale2() {
-        composeRule.setContent {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
-                TarryTheme {
-                    TimelineContent(
-                        date,
-                        listOf(
-                            TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
-                            TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.UNKNOWN),
-                            TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
-                        ),
-                        {}, {}, today = date, zone = zone, nowMs = at(20),
-                    )
-                }
-            }
-        }
+    fun tripKeepsA48dpTouchTargetAtFontScale2_andShowsTextWhenTrimmingMakesRoom() {
+        showTrips(
+            TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+            TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.UNKNOWN),
+            TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
+            fontScale = 2f,
+        )
         val t = composeRule.onNodeWithTag("timeline_row_t").assertHasClickAction().getUnclippedBoundsInRoot()
         assertThat(t.height.value).isAtLeast(48f - 0.01f)
-        val a = composeRule.onNodeWithTag("timeline_row_a").getUnclippedBoundsInRoot()
-        val b = composeRule.onNodeWithTag("timeline_row_b").getUnclippedBoundsInRoot()
-        // 144 dp per hour at font scale 2: b starts 47 min after a, exactly.
-        assertThat((b.top - a.top).value).isWithin(0.5f).of(47 * 144f / 60)
+        composeRule.onNodeWithText("800 m · 7 min").assertExists()
+        val a = bounds("timeline_row_a")
+        val b = bounds("timeline_row_b")
+        // 288 dp per hour at font scale 2; the 7 min trip (33.6 dp) needs 48, so each visit gives 7.2 dp.
+        assertThat((b.top - a.top).value).isWithin(0.5f).of(47 * 288f / 60 + 7.2f)
+        assertThat((b.top - a.bottom).value).isWithin(0.5f).of(48f)
     }
 
-
+    @Test
+    fun tripWithTooLittleRoomIsIconOnlyButStillATouchTargetWithItsFullLabel() {
+        showTrips(
+            TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+            TimelineItem.Trip("t", at(9, 40), at(9, 41), 800f, TripMode.WALK),
+            TimelineItem.Visit("b", at(9, 41), at(10, 30), "B"),
+            fontScale = 2f,
+        )
+        composeRule.onNodeWithText("800 m · 1 min").assertDoesNotExist()
+        val t = composeRule.onNodeWithTag("timeline_row_t").assertHasClickAction().getUnclippedBoundsInRoot()
+        assertThat(t.height.value).isAtLeast(48f - 0.01f)
+        composeRule.onNodeWithTag("timeline_row_t").assert(
+            SemanticsMatcher("full label") {
+                val d = it.config[SemanticsProperties.ContentDescription].single()
+                d.contains("Walk") && d.contains("9:40") && d.contains("9:41")
+            },
+        )
+        assertThat(t.left.value).isWithin(0.5f).of(bounds("timeline_row_a").left.value)
+    }
 
     @Test
     fun unknownTripModeUsesTheNeutralRouteIconNotTheCar() {

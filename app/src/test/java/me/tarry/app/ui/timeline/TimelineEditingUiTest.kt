@@ -22,6 +22,8 @@ import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
@@ -224,9 +226,9 @@ class TimelineEditingUiTest {
 
         handle(ResizeEdge.End, "review").performTouchInput {
             down(center)
-            moveBy(Offset(0f, 31f))
+            moveBy(Offset(0f, 62f))
         }
-        // 31 dp at 72 dp/h is 25.8 min, which snaps to 10:25. Nothing is committed while the finger is down.
+        // 62 dp at 144 dp/h is 25.8 min, which snaps to 10:25. Nothing is committed while the finger is down.
         tag(ResizeLabelTag).assertTextContains("10:25", substring = true)
         assertThat(resizes).isEmpty()
         handle(ResizeEdge.End, "review").performTouchInput { up() }
@@ -242,7 +244,7 @@ class TimelineEditingUiTest {
         select("review")
         handle(ResizeEdge.Start, "review").performTouchInput {
             down(center)
-            moveBy(Offset(0f, -36f))
+            moveBy(Offset(0f, -72f))
             up()
         }
         composeRule.waitForIdle()
@@ -404,7 +406,7 @@ class TimelineEditingUiTest {
         show(listOf(review, labelled))
         tag("timeline_filter_review").assertIsOff().assertHasClickAction()
         assertThat(tag("timeline_filter_review").fetchSemanticsNode().config[SemanticsProperties.Role]).isEqualTo(Role.Switch)
-        composeRule.onNodeWithText("Needs review").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Needs review").onFirst().assertIsDisplayed()
         tag("timeline_filter_review").performClick()
         tag("timeline_filter_review").assertIsOn()
         tag("timeline_filter_review").performClick()

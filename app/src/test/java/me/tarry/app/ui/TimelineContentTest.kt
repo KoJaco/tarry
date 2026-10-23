@@ -126,8 +126,8 @@ class TimelineContentTest {
 
     @Test
     fun shortVisitIsOneLineWithDuration() {
-        show(listOf(TimelineItem.Visit("v", at(9, 0), at(9, 45), null)))
-        composeRule.onNodeWithText("Unknown place · 45 min").assertExists()
+        show(listOf(TimelineItem.Visit("v", at(9, 0), at(9, 20), null)))
+        composeRule.onNodeWithText("Unknown place · 20 min").assertExists()
     }
 
     @Test
