@@ -157,6 +157,7 @@ class TrackingControllerTest {
     fun windowEndClosesSessionAndCallsSegmentationTrigger() = runBlocking {
         controller.reconcile()
         coordinator.begin(SessionTrigger.SCHEDULE)
+        stayFrom(clock.now)
         clock.now = mondayAt(17).toEpochMilli()
 
         controller.reconcile(ReconcileSource.ALARM)
@@ -174,6 +175,7 @@ class TrackingControllerTest {
         assertThat(segmentation.captureStops).isEqualTo(0)
 
         coordinator.begin(SessionTrigger.SCHEDULE)
+        stayFrom(clock.now)
         clock.now = mondayAt(17).toEpochMilli()
         controller.reconcile(ReconcileSource.ALARM)
 
@@ -463,5 +465,129 @@ class TrackingControllerTest {
         controller.reconcile(ReconcileSource.ALARM)
 
         assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE).single().start).isEqualTo(mondayAt(11).toEpochMilli())
+    }
+
+    /** One fix and STILL at [atMs]: STATIONARY with the stay starting there. */
+    private suspend fun stayFrom(atMs: Long) {
+        coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, atMs)))
+        coordinator.onActivity(ActivityType.STILL)
+    }
+
+    private suspend fun awaitSessionEnd() = kotlinx.coroutines.withTimeout(5_000) {
+        while (coordinator.isActive) kotlinx.coroutines.delay(10)
+    }
+
+    @Test
+    fun windowEndWhileMovingKeepsTheSessionOpenFinishingUpWithTheCapAsTheOnlyAlarm() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        val stopsBefore = launcher.stopCalls
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isTrue()
+        assertThat(launcher.stopCalls).isEqualTo(stopsBefore)
+        assertThat(sessions().single().end).isNull()
+        assertThat(store.current().finishingUp).isTrue()
+        assertThat(segmentation.windowEnds).isEqualTo(0)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17).plusMillis(config.windowEndGraceMaxMs))
+    }
+
+    @Test
+    fun windowEndWithAYoungStayKeepsTheSessionOpenUntilTheStayIsTenMinutesOld() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        // Arrived 5 minutes before the window end.
+        clock.now = mondayAt(16, 55).toEpochMilli()
+        stayFrom(clock.now)
+        clock.now = mondayAt(17).toEpochMilli()
+
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isTrue()
+        assertThat(store.current().finishingUp).isTrue()
+
+        // A fix once the stay is 11 minutes old confirms it: the session ends by itself, no timer involved.
+        clock.now = mondayAt(17, 6).toEpochMilli()
+        coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, clock.now)))
+        awaitSessionEnd()
+
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun windowEndWithAnEstablishedStayStopsAtOnce() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(16, 30).toEpochMilli()
+        stayFrom(clock.now)
+        clock.now = mondayAt(17).toEpochMilli()
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(store.current().finishingUp).isFalse()
+    }
+
+    @Test
+    fun graceCapEndsTheSessionEvenIfCaptureIsStillMoving() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isTrue()
+
+        clock.now = mondayAt(17).toEpochMilli() + config.windowEndGraceMaxMs
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun manualSessionAndPauseAreNeverGivenGrace() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.MANUAL)
+        clock.now = mondayAt(17).toEpochMilli()
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(store.current().finishingUp).isFalse()
+    }
+
+    @Test
+    fun pauseDuringGraceStopsImmediately() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isTrue()
+
+        controller.pause(PauseKind.PAUSE_1H)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.USER_PAUSE)
+    }
+
+    @Test
+    fun staleActivityEventFromTheReceiverIsIgnored() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, clock.now + 1)))
+
+        controller.onActivity(ActivityType.STILL, eventAgeMs = config.arStaleMs + 1)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
+
+        controller.onActivity(ActivityType.STILL, eventAgeMs = 1_000)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
     }
 }

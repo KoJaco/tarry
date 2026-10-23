@@ -70,8 +70,10 @@ class TrackingService : Service() {
         }
         if (notificationJob == null) {
             notificationJob = serviceScope.launch {
-                statusStore.status.map { it.captureMode }.filterNotNull().distinctUntilChanged()
-                    .collect { notifications.update(it) }
+                statusStore.status
+                    .map { s -> s.captureMode?.let { it to s.finishingUp } }
+                    .filterNotNull().distinctUntilChanged()
+                    .collect { (mode, finishing) -> notifications.update(mode, finishing) }
             }
         }
         captureScope.launch { controller.onServiceStarted(trigger) }

@@ -50,9 +50,7 @@ class ReplayCaptureTest {
                 val modeNow = machine.mode
                 val decision = filter.offer(row.fix, modeNow)
                 decisions.merge(decision, 1, Int::plus)
-                if (decision.accepted || decision == FilterDecision.DROP_DISPLACEMENT ||
-                    decision == FilterDecision.DROP_JITTER
-                ) {
+                if (decision.accepted) {
                     machine.onAcceptedFix(row.fix)
                 }
                 if (machine.mode != before) {

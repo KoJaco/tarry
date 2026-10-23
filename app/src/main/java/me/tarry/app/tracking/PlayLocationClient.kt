@@ -28,7 +28,12 @@ class PlayLocationClient @Inject constructor(
             }
         }
         val request = LocationRequest.Builder(params.priority.toPlayPriority(), params.intervalMs)
-            .apply { if (params.maxUpdateDelayMs > 0) setMaxUpdateDelayMillis(params.maxUpdateDelayMs) }
+            .setMinUpdateIntervalMillis(params.minUpdateIntervalMs ?: params.intervalMs)
+            .setWaitForAccurateLocation(params.waitForAccurateLocation)
+            .apply {
+                if (params.maxUpdateDelayMs > 0) setMaxUpdateDelayMillis(params.maxUpdateDelayMs)
+                params.maxUpdateAgeMs?.let { setMaxUpdateAgeMillis(it) }
+            }
             .build()
         // A missing permission throws SecurityException here or fails the task; both reach the collector.
         client.requestLocationUpdates(request, callback, Looper.getMainLooper())
@@ -41,6 +46,7 @@ internal fun LocationPriority.toPlayPriority(): Int = when (this) {
     LocationPriority.PASSIVE -> Priority.PRIORITY_PASSIVE
     LocationPriority.LOW_POWER -> Priority.PRIORITY_LOW_POWER
     LocationPriority.BALANCED -> Priority.PRIORITY_BALANCED_POWER_ACCURACY
+    LocationPriority.HIGH_ACCURACY -> Priority.PRIORITY_HIGH_ACCURACY
 }
 
 internal fun Location.toFix(): Fix = Fix(

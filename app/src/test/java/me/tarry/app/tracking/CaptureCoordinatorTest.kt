@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.LocationPing
@@ -154,20 +155,6 @@ class CaptureCoordinatorTest {
 
         val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
         assertThat(pings.map { it.source }).containsExactly(PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
-    }
-
-    @Test
-    fun exitThenDisplacementDroppedFixThenSavedFixDoesNotCarryTheExitTag() = runBlocking {
-        coordinator.begin(SessionTrigger.SCHEDULE)
-        coordinator.onFixes(listOf(fix(1_000)))
-        coordinator.onActivity(ActivityType.STILL)
-        coordinator.onGeofenceExit()
-        // ~11 m from the last saved fix: dropped by the 25 m displacement gate.
-        coordinator.onFixes(listOf(fix(60_000, lat = -33.0001)))
-        coordinator.onFixes(listOf(fix(120_000, lat = -33.01)))
-
-        val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
-        assertThat(pings.map { it.source }).containsExactly(PingSource.FUSED, PingSource.FUSED).inOrder()
     }
 
     @Test
@@ -360,7 +347,7 @@ class CaptureCoordinatorTest {
     }
 
     @Test
-    fun noActivityRecognitionSubDisplacementFixesStillDriveHeartbeatAndStationaryRule() = runBlocking {
+    fun noActivityRecognitionTinyDriftFixesStillDriveHeartbeatAndStationaryRule() = runBlocking {
         // Fused now delivers every fix (no request-level distance filter), so a stationary phone is still heard.
         val noAr = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, FakeActivityClient(available = false), geofence, stayRadius,
@@ -378,18 +365,8 @@ class CaptureCoordinatorTest {
 
         assertThat(store.current().lastHeartbeatMs).isEqualTo(lastTime)
         assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
-        assertThat(trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)).hasSize(1)
+        assertThat(trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)).isNotEmpty()
         assertThat(location.requests.last().intervalMs).isEqualTo(config.stationaryFixIntervalMs)
-    }
-
-    @Test
-    fun movingFixBeyondTheDisplacementIsSavedFromTheLastSavedPing() = runBlocking {
-        coordinator.begin(SessionTrigger.SCHEDULE)
-        // 0.0001 deg of latitude is about 11 m; 0.0003 is about 33 m from the first.
-        coordinator.onFixes(listOf(fix(0), fix(20_000, lat = -33.0001), fix(40_000, lat = -33.0003)))
-
-        val pings = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
-        assertThat(pings.map { it.timestamp }).containsExactly(clock.now, clock.now + 40_000).inOrder()
     }
 
     @Test
@@ -519,78 +496,6 @@ class CaptureCoordinatorTest {
     private suspend fun savedPings() = trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)
 
     @Test
-    fun leavingStationaryByActivitySavesTheLastJitterFixAsAFusedPing() = runBlocking {
-        stationary()
-        coordinator.onFixes(listOf(fix(60_000, lat = -33.00003), fix(120_000, lat = -33.00004)))
-        assertThat(savedPings()).hasSize(1)
-
-        coordinator.onActivity(ActivityType.WALKING)
-
-        val pings = savedPings()
-        assertThat(pings.map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 120_000).inOrder()
-        assertThat(pings.last().source).isEqualTo(PingSource.FUSED)
-        assertThat(pings.last().zoneId).isEqualTo("Australia/Sydney")
-        // The departure ping keeps the activity from before the transition.
-        assertThat(pings.last().activity).isEqualTo(ActivityType.STILL)
-    }
-
-    @Test
-    fun safetyNetSavesTheDeparturePingBeforeTheExitTaggedTriggeringFix() = runBlocking {
-        stationary()
-        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
-        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
-        coordinator.onFixes(listOf(fix(240_000, lat = -33.011)))
-
-        val pings = savedPings()
-        assertThat(pings.map { it.timestamp })
-            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000, clock.now + 240_000).inOrder()
-        assertThat(pings.map { it.source })
-            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
-    }
-
-    @Test
-    fun geofenceExitAfterOneOutsideFixStillHasTheLastInsideFixAsDeparturePing() = runBlocking {
-        stationary()
-        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
-        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
-        coordinator.onGeofenceExit()
-
-        assertThat(savedPings().map { it.timestamp })
-            .containsExactly(clock.now + 1_000, clock.now + 120_000, clock.now + 180_000).inOrder()
-    }
-
-    @Test
-    fun geofenceExitSavesTheDeparturePingAndStillTagsTheNextFix() = runBlocking {
-        stationary()
-        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
-        coordinator.onGeofenceExit()
-        coordinator.onFixes(listOf(fix(180_000, lat = -33.01)))
-
-        assertThat(savedPings().map { it.source })
-            .containsExactly(PingSource.FUSED, PingSource.FUSED, PingSource.GEOFENCE_EXIT).inOrder()
-    }
-
-    @Test
-    fun noDeparturePingWhenTheLastDeliveredFixWasAlreadySaved() = runBlocking {
-        stationary()
-        coordinator.onActivity(ActivityType.WALKING)
-
-        assertThat(savedPings()).hasSize(1)
-    }
-
-    @Test
-    fun keepaliveSaveClearsTheRememberedFix() = runBlocking {
-        stationary()
-        coordinator.onFixes(listOf(fix(60_000, lat = -33.00003)))
-        coordinator.onFixes(listOf(fix(1_000 + config.stationaryKeepaliveMs, lat = -33.00004)))
-        assertThat(savedPings()).hasSize(2)
-
-        coordinator.onActivity(ActivityType.WALKING)
-
-        assertThat(savedPings()).hasSize(2)
-    }
-
-    @Test
     fun fixWhoseAccuracyCircleReachesTheStopDoesNotTripTheSafetyNet() = runBlocking {
         stayRadius.radiusM = 50f
         stationary()
@@ -602,15 +507,84 @@ class CaptureCoordinatorTest {
     }
 
     @Test
-    fun endingTheSessionSavesTheRememberedStationaryFixFirst() = runBlocking {
+    fun everyFixInsideTheCapsIsSavedEvenTinyJitterInStationary() = runBlocking {
         stationary()
-        coordinator.onFixes(listOf(fix(120_000, lat = -33.00004)))
+        coordinator.onFixes(listOf(fix(61_000, lat = -33.00003), fix(121_000, lat = -33.00003), fix(181_000, lat = -33.00004)))
+
+        assertThat(savedPings().map { it.timestamp })
+            .containsExactly(clock.now + 1_000, clock.now + 61_000, clock.now + 121_000, clock.now + 181_000).inOrder()
+    }
+
+    @Test
+    fun aSpikeIsSavedAndTheReturnToTheStayIsNotLostToTheSpeedCap() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        // ~3.3 km away and back 20 s later: both are kept.
+        coordinator.onFixes(listOf(fix(0), fix(60_000, lat = -33.03), fix(80_000, lat = -33.0001)))
+
+        assertThat(savedPings().map { it.timestamp })
+            .containsExactly(clock.now, clock.now + 60_000, clock.now + 80_000).inOrder()
+    }
+
+    private fun speedFix(offsetMs: Long, speed: Float?) = Fix(-33.0, 151.0, 10f, clock.now + offsetMs, speedMps = speed)
+
+    @Test
+    fun fixSpeedInfersVehicleActivityWhenTheActivityIsStillOrUnknown() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        // Unknown activity: 10 m/s is a vehicle, 2 m/s is moving but not enough to call it a vehicle, 0.5 is not moving.
+        coordinator.onFixes(listOf(speedFix(1_000, 10f), speedFix(2_000, 2f), speedFix(3_000, 0.5f), speedFix(4_000, null)))
+        coordinator.onActivity(ActivityType.STILL)
+        coordinator.onFixes(listOf(speedFix(5_000, 10f), speedFix(6_000, 2f)))
+        coordinator.onActivity(ActivityType.WALKING)
+        coordinator.onFixes(listOf(speedFix(7_000, 10f)))
+
+        assertThat(savedPings().map { it.activity }).containsExactly(
+            ActivityType.IN_VEHICLE, null, null, null,
+            ActivityType.IN_VEHICLE, ActivityType.STILL,
+            ActivityType.WALKING,
+        ).inOrder()
+    }
+
+    @Test
+    fun staleActivityEventIsLoggedButNotApplied() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
         val id = coordinator.activeSessionId!!
 
-        coordinator.end(SessionEndReason.SCHEDULE_END)
+        coordinator.onActivity(ActivityType.STILL, eventAgeMs = config.arStaleMs + 1)
 
-        val pings = trackingRepo.pingsForSession(id)
-        assertThat(pings.map { it.timestamp }).containsExactly(clock.now + 1_000, clock.now + 120_000).inOrder()
-        assertThat(pings.last().source).isEqualTo(PingSource.FUSED)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
+        val log = store.arLogs.first().getValue(id)
+        assertThat(log.count).isEqualTo(1)
+        assertThat(log.ignored).isEqualTo(1)
+        assertThat(log.lastType).isEqualTo(ActivityType.STILL)
+        assertThat(log.lastReceiptMs).isEqualTo(clock.now)
+        assertThat(log.lastEventMs).isEqualTo(clock.now - config.arStaleMs - 1)
+    }
+
+    @Test
+    fun freshActivityEventIsAppliedAndCountedPerSession() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        val id = coordinator.activeSessionId!!
+
+        coordinator.onActivity(ActivityType.WALKING, eventAgeMs = 4_000)
+        coordinator.onActivity(ActivityType.STILL, eventAgeMs = 2_000)
+
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+        val log = store.arLogs.first().getValue(id)
+        assertThat(log.count).isEqualTo(2)
+        assertThat(log.ignored).isEqualTo(0)
+        assertThat(log.lastType).isEqualTo(ActivityType.STILL)
+        assertThat(log.lastEventMs).isEqualTo(clock.now - 2_000)
+    }
+
+    @Test
+    fun settledOnlyAfterTheStayHasLastedTheSettleTime() = runBlocking {
+        stationary()
+        assertThat(coordinator.isSettled()).isFalse()
+        clock.now += config.windowEndSettleMs + 1_000 - 1
+        assertThat(coordinator.isSettled()).isFalse()
+        clock.now += 1
+        assertThat(coordinator.isSettled()).isTrue()
     }
 }

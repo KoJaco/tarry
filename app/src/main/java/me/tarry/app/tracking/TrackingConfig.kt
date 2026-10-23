@@ -1,6 +1,6 @@
 package me.tarry.app.tracking
 
-enum class LocationPriority { PASSIVE, LOW_POWER, BALANCED }
+enum class LocationPriority { PASSIVE, LOW_POWER, BALANCED, HIGH_ACCURACY }
 
 /**
  * Every tracking tunable (AGENTS rule 5). Defaults come from docs/specs/tarry-mvp.md
@@ -17,10 +17,9 @@ data class TrackingConfig(
     val stationaryExitFixes: Int = 2,
     val stationaryExitMinMs: Long = 60_000L,
     // STATIONARY location request. The stay geofence radius is a user setting (Settings.stayGeofenceRadiusM).
-    val stationaryPriority: LocationPriority = LocationPriority.LOW_POWER,
-    val stationaryFixIntervalMs: Long = 3 * 60_000L,
-    /** In STATIONARY, a jitter fix is still saved once this long has passed since the last saved ping. */
-    val stationaryKeepaliveMs: Long = 10 * 60_000L,
+    // Accuracy first, battery later (dogfood-2): both modes use GPS, the mode only sets the interval.
+    val stationaryPriority: LocationPriority = LocationPriority.HIGH_ACCURACY,
+    val stationaryFixIntervalMs: Long = 60_000L,
     /**
      * Demotion of MOVING without displacement (a berthed boat or a parked car can keep reporting a moving activity).
      * After [noProgressFixes] consecutive accepted fixes that all stay within the stay radius times
@@ -32,10 +31,14 @@ data class TrackingConfig(
     val noProgressRadiusFactor: Float = 1f,
     val noProgressMinDurationMs: Long = 5 * 60_000L,
     // MOVING location request.
-    val movingPriority: LocationPriority = LocationPriority.BALANCED,
-    val movingIntervalMs: Long = 20_000L,
-    val movingMinDisplacementM: Float = 25f,
-    val movingMaxUpdateDelayMs: Long = 2 * 60_000L,
+    val movingPriority: LocationPriority = LocationPriority.HIGH_ACCURACY,
+    val movingIntervalMs: Long = 10_000L,
+    /** No batching: fixes are delivered as they arrive. */
+    val movingMaxUpdateDelayMs: Long = 0L,
+    /** Wait for an accurate fix instead of delivering a cached coarse one as new. */
+    val waitForAccurateLocation: Boolean = true,
+    /** Max age of a delivered fix; 0 means no stale cached fix is delivered as an update. */
+    val maxUpdateAgeMs: Long = 0L,
     // Ping filters.
     val maxAccuracyM: Float = 100f,
     val maxSpeedMps: Float = 70f,
@@ -44,6 +47,23 @@ data class TrackingConfig(
      * re-emits its last known position with a fresh timestamp and an inflated accuracy when it has no new reading.
      */
     val staleRepeatMemory: Int = 8,
+    /**
+     * Capture keeps every fix inside the accuracy and speed caps. A kept fix more than [spikeMinM] from the one before
+     * it, followed by a fix back within [spikeReturnM] of that earlier one, is a spike: the spike stops being the
+     * comparison point (it is still saved; segmentation decides what is noise).
+     */
+    val spikeMinM: Float = 500f,
+    val spikeReturnM: Float = 150f,
+    // Activity Recognition diagnostics.
+    /** A transition event older than this when received (by its elapsed-realtime stamp) is logged but ignored. */
+    val arStaleMs: Long = 5 * 60_000L,
+    /** A fix at or above this speed while the last activity is STILL or unknown marks the ping's activity as inferred. */
+    val movingSpeedMps: Float = 1.0f,
+    /** Inferred activity is IN_VEHICLE from this speed; between [movingSpeedMps] and here the activity is left as is. */
+    val vehicleSpeedMps: Float = 4.0f,
+    // Window-end grace: keep a session open past the schedule end until a stay this long is confirmed.
+    val windowEndSettleMs: Long = 10 * 60_000L,
+    val windowEndGraceMaxMs: Long = 2 * 60 * 60_000L,
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,

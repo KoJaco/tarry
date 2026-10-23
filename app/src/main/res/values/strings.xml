@@ -59,6 +59,7 @@
     <string name="tracking_notification_title">Tarry is tracking</string>
     <string name="tracking_notification_moving">Recording while you move</string>
     <string name="tracking_notification_stationary">Waiting at your current location</string>
+    <string name="tracking_notification_finishing">Finishing up…</string>
     <string name="tracking_action_pause_1h">Pause 1 h</string>
     <string name="tracking_action_stop">Stop</string>
 
@@ -149,6 +150,8 @@
         <item quantity="one">%1$d ping</item>
         <item quantity="other">%1$d pings</item>
     </plurals>
+    <string name="sessions_row_activity_none">Activity transitions: none</string>
+    <string name="sessions_row_activity">Activity transitions: %1$d (%2$d ignored as stale). Last: %3$s at %4$s, received %5$s</string>
     <string name="sessions_trigger_schedule">Scheduled</string>
     <string name="sessions_trigger_manual">Manual</string>
     <string name="sessions_end_reason_none">Still open</string>

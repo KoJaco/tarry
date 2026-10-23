@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.export.ExportFormat
 import me.tarry.app.export.ExportRequest
+import me.tarry.app.tracking.ArSessionLog
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.TarryCard
@@ -212,6 +213,12 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
                         color = TarryTheme.colors.muted,
                         modifier = Modifier.testTag("session_pings_${session.id}"),
                     )
+                    Text(
+                        activityLogText(session.activityLog, session.zoneId),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TarryTheme.colors.muted,
+                        modifier = Modifier.testTag("session_activity_${session.id}"),
+                    )
                 }
             }
         }
@@ -374,4 +381,20 @@ private fun SegmentationStatusText(state: SegmentationUi) {
             .semantics { liveRegion = LiveRegionMode.Polite }
             .testTag("sessions_segmentation_status"),
     )
+}
+
+private val ArTimeFormat: DateTimeFormatter = DateTimeFormatter.ofLocalizedTime(FormatStyle.MEDIUM)
+
+/** Activity Recognition diagnostics for a session: how many transitions arrived and the last one (type, event time, receipt time). */
+@Composable
+private fun activityLogText(log: ArSessionLog?, zoneId: String): String {
+    if (log == null) return stringResource(R.string.sessions_row_activity_none)
+    val zone = try {
+        ZoneId.of(zoneId)
+    } catch (e: DateTimeException) {
+        ZoneId.systemDefault()
+    }
+    val event = ArTimeFormat.format(Instant.ofEpochMilli(log.lastEventMs).atZone(zone))
+    val receipt = ArTimeFormat.format(Instant.ofEpochMilli(log.lastReceiptMs).atZone(zone))
+    return stringResource(R.string.sessions_row_activity, log.count, log.ignored, log.lastType.name, event, receipt)
 }

@@ -17,7 +17,8 @@ class CaptureModeMachineTest {
     /** Two consecutive fixes clearly outside the geofence, a minute apart (the sustained safety net). Returns the second step. */
     private fun leaveGeofence(m: CaptureModeMachine, northM: Double): MachineStep {
         m.onAcceptedFix(fixAt(min, northM = northM))
-        return m.onAcceptedFix(fixAt(2 * min, northM = northM))
+        // A distinct coordinate: an exact repeat is never exit evidence.
+        return m.onAcceptedFix(fixAt(2 * min, northM = northM + 10.0))
     }
 
     @Test
@@ -285,5 +286,68 @@ class CaptureModeMachineTest {
         m.onActivity(ActivityType.STILL)
         assertThat(m.onAcceptedFix(fixAt(3 * min, northM = 500.0)).mode).isEqualTo(CaptureMode.STATIONARY)
         assertThat(m.onAcceptedFix(fixAt(6 * min, northM = 1500.0)).mode).isEqualTo(CaptureMode.MOVING)
+    }
+
+    @Test
+    fun exactRepeatsOfAnOutsideAnchorNeverExitStationary() {
+        val m = machine()
+        // Network fixes alternate between two exact anchors 500 m apart while the phone sits still.
+        var t = 0L
+        repeat(4) {
+            m.onAcceptedFix(fixAt(t, northM = 0.0)); t += 20_000L
+            m.onAcceptedFix(fixAt(t, northM = 500.0)); t += 20_000L
+        }
+        m.onAcceptedFix(fixAt(t, northM = 0.0)); t += 20_000L
+        m.onActivity(ActivityType.STILL)
+        assertThat(m.mode).isEqualTo(CaptureMode.STATIONARY)
+        // Five more minutes of the same two coordinates, ending on the outside one for a long run.
+        repeat(10) {
+            m.onAcceptedFix(fixAt(t, northM = 500.0)); t += 30_000L
+        }
+        assertThat(m.mode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(m.leavingStationary).isFalse()
+    }
+
+    @Test
+    fun aRepeatOfTheFirstOutsideFixDoesNotCountAsTheSecond() {
+        val m = machine()
+        m.onAcceptedFix(fixAt(0))
+        m.onActivity(ActivityType.STILL)
+        assertThat(m.onAcceptedFix(fixAt(3 * min, northM = 500.0)).mode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(m.onAcceptedFix(fixAt(6 * min, northM = 500.0)).mode).isEqualTo(CaptureMode.STATIONARY)
+        // A different, real fix is the second piece of evidence (GPS-confirmed exit).
+        assertThat(m.onAcceptedFix(fixAt(7 * min, northM = 1500.0)).mode).isEqualTo(CaptureMode.MOVING)
+        assertThat(m.takeNextPingSource()).isEqualTo(PingSource.GEOFENCE_EXIT)
+    }
+
+    @Test
+    fun locationRequestsAreHighAccuracyWithoutBatchingAndMatchedIntervals() {
+        val moving = CaptureModeMachine(config).start().effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
+        assertThat(moving.priority).isEqualTo(LocationPriority.HIGH_ACCURACY)
+        assertThat(moving.intervalMs).isEqualTo(10_000L)
+        assertThat(moving.minUpdateIntervalMs).isEqualTo(10_000L)
+        assertThat(moving.maxUpdateDelayMs).isEqualTo(0L)
+        assertThat(moving.waitForAccurateLocation).isTrue()
+        assertThat(moving.maxUpdateAgeMs).isEqualTo(0L)
+
+        val m = machine()
+        m.onAcceptedFix(fixAt(0))
+        val stationary = m.onActivity(ActivityType.STILL).effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
+        assertThat(stationary.priority).isEqualTo(LocationPriority.HIGH_ACCURACY)
+        assertThat(stationary.intervalMs).isEqualTo(60_000L)
+        assertThat(stationary.minUpdateIntervalMs).isEqualTo(60_000L)
+        assertThat(stationary.maxUpdateDelayMs).isEqualTo(0L)
+        assertThat(stationary.waitForAccurateLocation).isTrue()
+        assertThat(stationary.maxUpdateAgeMs).isEqualTo(0L)
+    }
+
+    @Test
+    fun stationarySinceIsTheEntryFixTimeAndClearsWhenMoving() {
+        val m = machine()
+        m.onAcceptedFix(fixAt(5_000))
+        m.onActivity(ActivityType.STILL)
+        assertThat(m.stationarySinceMs).isEqualTo(5_000L)
+        m.onGeofenceExit()
+        assertThat(m.stationarySinceMs).isNull()
     }
 }
