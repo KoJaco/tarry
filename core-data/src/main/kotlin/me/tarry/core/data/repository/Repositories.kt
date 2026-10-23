@@ -108,6 +108,9 @@ class PlaceRepository @Inject constructor(private val places: PlaceDao) {
     suspend fun place(id: String): Place? = places.getById(id)
     suspend fun byLastVisitInRange(from: Long, to: Long) = places.getByLastVisitInRange(from, to)
     fun observeAll(): Flow<List<Place>> = places.observeAll()
+
+    /** Every place including deleted ones, only for labelling existing visits. Pickers use [observeAll]. */
+    fun observeLabels(): Flow<List<Place>> = places.observeLabels()
     suspend fun addDefaultTag(link: PlaceDefaultTag) = places.upsertDefaultTag(link)
     suspend fun removeDefaultTag(placeId: String, tagId: String) = places.deleteDefaultTag(placeId, tagId)
     suspend fun defaultTags(placeId: String) = places.getDefaultTags(placeId)

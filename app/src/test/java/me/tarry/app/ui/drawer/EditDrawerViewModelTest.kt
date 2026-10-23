@@ -160,6 +160,21 @@ class EditDrawerViewModelTest {
     }
 
     @Test
+    fun frozenVisitAtADeletedPlaceKeepsItsHeaderAndInheritedJobButCannotRenameThePlace() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        places.save(place(defaultJobId = "j").copy(deleted = true))
+        timeline.saveVisit(visit("v", 0, 60, frozen = true))
+        viewModel.load(EditTarget.Visit("v"))
+
+        val state = awaitState()
+
+        assertThat(state.placeLabel).isEqualTo("Office")
+        assertThat(state.resolvedJob?.id).isEqualTo("j")
+        assertThat(state.hasPlace).isFalse() // hides Rename place
+        assertThat(state.places).isEmpty() // pickers still exclude the deleted place
+    }
+
+    @Test
     fun setAsPlaceDefaultWritesTheResolvedValuesToThePlace() = runBlocking<Unit> {
         jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
         seed(visit("v", 0, 60))

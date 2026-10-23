@@ -49,6 +49,7 @@ data class EditDrawerState(
     val placeLabelIsCoordinates: Boolean = false,
     /** The place's own name (blank-free), null when unnamed; seeds the rename dialog. */
     val placeName: String? = null,
+    /** The visit has a live place; false for a deleted one (label and inherited job still show), which hides Rename and "Set as place default". */
     val hasPlace: Boolean = false,
     val placeIgnored: Boolean = false,
     val tripMode: TripMode = TripMode.UNKNOWN,
