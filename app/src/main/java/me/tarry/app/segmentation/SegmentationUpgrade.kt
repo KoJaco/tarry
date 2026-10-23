@@ -33,8 +33,9 @@ class SegmentationUpgrade @Inject constructor(
     companion object {
         /**
          * 1 = original algorithm; 2 = dogfood-1 fixes (sustained departure, displacement merge, arrival radius);
-         * 3 = indistinguishable known places never split a stay, no zero-length stays.
+         * 3 = indistinguishable known places never split a stay, no zero-length stays;
+         * 4 = dogfood-2 B2 (spike rejection, anchor-aware noise, coherent departures, noise-scaled places and merge).
          */
-        const val SEGMENTATION_VERSION = 3
+        const val SEGMENTATION_VERSION = 4
     }
 }

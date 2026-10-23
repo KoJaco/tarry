@@ -125,8 +125,29 @@ class StayDetectorTest {
 
     @Test
     fun sustainedFarFixesCloseTheStay() {
-        val pings = builder().stay(30 * MIN).spikes(6, accuracyM = 10f, offsetM = 500.0).stay(30 * MIN).build()
-        assertEquals(2, detectStays(pings, params).size) // six fixes span 150 s, then the same place again
+        // Moved 500 m and stayed there: the far fixes agree with each other.
+        val pings = builder().stay(30 * MIN).moveBy(90.0, 500.0, 25.0, accuracyM = 10f).stay(30 * MIN).build()
+        assertEquals(2, detectStays(pings, params).size)
+    }
+
+    @Test
+    fun farFixesThatDisagreeWithEachOtherDoNotCloseTheStay() {
+        // Six network-grade fixes 500 m away in random directions span 150 s but never agree on where the phone went.
+        val pings = builder().stay(30 * MIN).spikes(6, accuracyM = 80f, offsetM = 500.0).stay(30 * MIN).build()
+        assertEquals(1, detectStays(pings, params).size)
+    }
+
+    @Test
+    fun ambiguousFixesDoNotResetAProgressingDeparture() {
+        // A slow boat leaving at 2 m/s: a clear fix every 20 s, each followed by a fix with a 400 m accuracy circle that
+        // still reaches the stay (ambiguous) until the boat is 460 m away. They must not restart the departure (9 steps = 360 m).
+        val b = builder().stay(30 * MIN, accuracyM = 10f)
+        repeat(9) {
+            b.moveBy(90.0, 40.0, 2.0, accuracyM = 10f)
+            b.wander(1_000, intervalMs = 1_000, radiusM = 1.0, accuracyM = 400f..400f, activity = null)
+        }
+        val stays = detectStays(b.build(), params)
+        assertFalse(stays.first().open) // closed by the departure, not left open by the ambiguous fixes
     }
 
     @Test

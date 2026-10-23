@@ -41,6 +41,7 @@ internal fun buildTrips(
     val leading = pings.filter { it.timeMs < first.range.startMs }
     if (leading.isNotEmpty()) {
         trips += trip(leading.first().timeMs, first.range.startMs, null, 0, leading, null, first, params, pings)
+            .filter { it.distanceM >= params.minTripDistanceM }
     }
     for (i in 0 until stays.lastIndex) {
         val a = stays[i]
@@ -52,6 +53,7 @@ internal fun buildTrips(
     val trailing = pings.filter { it.timeMs > last.range.endMs }
     if (trailing.isNotEmpty()) {
         trips += trip(last.range.endMs, trailing.last().timeMs, stays.lastIndex, null, trailing, last, null, params, pings)
+            .filter { it.distanceM >= params.minTripDistanceM }
     }
     return trips
 }
@@ -123,8 +125,10 @@ private fun trip(
     val anchor = fromStay ?: toStay
     if ((fromStay == null) != (toStay == null) && anchor != null) {
         val trusted = inside.filter { it.accuracyM <= params.goodAccuracyM }.ifEmpty { inside }
-        val furthest = trusted.maxOfOrNull { haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) } ?: 0.0
-        if (furthest < params.minTripDistanceM) return emptyList()
+        // Robust (not the single furthest fix) and no smaller than the stay's own noise scale.
+        val away = quantile(trusted.map { haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) }, params.robustDisplacementQuantile)
+        val noise = minOf(params.placeMaxRadiusM, params.placeNoiseFactor * stayNoiseM(anchor, params))
+        if (away < maxOf(params.minTripDistanceM, noise)) return emptyList()
     }
 
     // The vehicle part ends far from the stay, then on foot: two legs.

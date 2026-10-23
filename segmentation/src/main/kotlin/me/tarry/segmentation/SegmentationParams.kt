@@ -72,11 +72,47 @@ data class SegmentationParams(
      * (radius below [stayRadiusM]) are exempt: the user made them small to separate neighbours.
      */
     val indistinguishablePlaceFactor: Double = 2.0,
+    /** A poor fix further than this from both neighbours, which agree with each other, is a spike and is dropped. */
+    val spikeMinM: Double = 500.0,
+    /** A spike (one fix or a few in a row) lasts at most this long before the phone is back. */
+    val spikeMaxRunMs: Long = 3 * 60_000L,
+    /** Slack added to the neighbours' combined accuracy when deciding they agree (the phone came back). */
+    val spikeAgreeSlackM: Double = 30.0,
+    /** A hop faster than this (m/s) is not physically plausible; a fix reached and left that fast is a spike. */
+    val maxPlausibleSpeedMps: Double = 45.0,
+    /** Fixes within [anchorToleranceM] of each other, this many or more inside [anchorWindowMs], are an anchor. */
+    val anchorMinRepeats: Int = 4,
+    /** Distance within which fixes count as the same anchor (0 would be exact coordinates only). */
+    val anchorToleranceM: Double = 15.0,
+    /** Window (centred on the fix) over which anchors are counted and compared. */
+    val anchorWindowMs: Long = 30 * 60_000L,
+    /** The phone is flipping between anchors only when the anchors in the window change place this often. */
+    val anchorMinSwitches: Int = 4,
+    /** Anchors further apart than this are different sites, not one jumping field, and do not raise accuracy. */
+    val anchorSpreadMaxM: Double = 600.0,
+    /** Poor fixes (worse than [goodAccuracyM]) are replaced by the weighted geometric median of fixes within this. */
+    val smoothWindowMs: Long = 3 * 60_000L,
+    /** A poor fix is smoothed only with at least this many poor fixes around it (reaching up to twice the window). */
+    val smoothMinFixes: Int = 5,
+    /**
+     * A departure's closing fixes either agree with each other or each moves further from the centroid than the one
+     * before by at least this (metres of slack for noise). Used by stay detection.
+     */
+    val departureProgressM: Double = 10.0,
+    /** A stay's noise scale is this times its robust spread; it sets new place radii and matching. */
+    val placeNoiseFactor: Double = 4.0,
+    /** Upper bound on any noise-scaled radius. */
+    val placeMaxRadiusM: Double = 300.0,
+    /** Net displacement between stays uses this quantile of the fixes in between, not the single furthest fix. */
+    val robustDisplacementQuantile: Double = 0.8,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
         require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
+        require(spikeMinM > 0 && spikeMaxRunMs >= 0 && maxPlausibleSpeedMps > 0 && anchorMinRepeats >= 1 && anchorWindowMs > 0)
+        require(smoothWindowMs >= 0 && smoothMinFixes >= 1 && placeNoiseFactor >= 0 && placeMaxRadiusM > 0)
+        require(robustDisplacementQuantile in 0.0..1.0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }

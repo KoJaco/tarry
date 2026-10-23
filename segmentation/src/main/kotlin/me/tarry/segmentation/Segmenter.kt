@@ -8,7 +8,7 @@ package me.tarry.segmentation
  * 1. drop pings outside [SegmentationInput.range] or inside excluded or frozen ranges (T8);
  * 2. split the range at frozen ranges into free stretches. Each stretch is segmented on its own, so output
  *    never crosses or changes a frozen record (T8);
- * 3. per stretch: detect stays (T3), split them by known place, merge (T5) and build trips (T4). A trailing
+ * 3. per stretch (after the [cleanPings] pre-pass: spikes, anchors, poor fixes): detect stays (T3), split them by known place, merge (T5) and build trips (T4). A trailing
  *    candidate still open but shorter than the minimum stay is not a stay yet: its pings stay part of the
  *    trailing trip;
  * 4. assign places across all stretches (T6) and build gaps (T7);
@@ -29,7 +29,7 @@ object Segmenter {
 
         // Stale repeats carry no position: they stay out of stays and trips but still count as tracking (gaps).
         val stale = staleRepeats(pings, params)
-        val positional = pings.filter { it !in stale }
+        val positional = cleanPings(pings.filter { it !in stale }, params)
 
         val stays = ArrayList<StayCandidate>()
         val trips = ArrayList<TripCandidate>()

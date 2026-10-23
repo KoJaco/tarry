@@ -238,7 +238,11 @@ class GoldenCasesTest {
         assertTrue(r.trips.isEmpty())
         assertTrue(r.gaps.isEmpty())
         // Without the stale rule the repeats would form a phantom visit, so the case really exercises it.
-        val unfiltered = Segmenter.segment(SegmentationInput(pings.range(), pings), SegmentationParams(maxAccuracyM = 1_000f))
+        // (Noise-scaled merging is off in the control arm: it would also fold a phantom visit this noisy back in.)
+        val unfiltered = Segmenter.segment(
+            SegmentationInput(pings.range(), pings),
+            SegmentationParams(maxAccuracyM = 1_000f, placeNoiseFactor = 0.0),
+        )
         assertTrue(unfiltered.stays.size > 1)
     }
 
@@ -379,6 +383,96 @@ class GoldenCasesTest {
         assertTrue(r.gaps.none { g -> fixed.any { g.range.overlaps(it) } })
         // The first stay is untouched by the edits.
         assertEquals(baseline.stays[0].range, r.stays[0].range)
+    }
+
+    /**
+     * A synthetic look-alike of the 2026-10-22 marina day (docs/specs/fix-dogfood-2.md), fake coordinates: seven hours
+     * on a boat where the phone only gets network fixes, flipping every 20-60 s between three anchors 200-500 m apart
+     * (50-100 m accuracy) and a 20 m anchor that repeats, plus km-scale out-and-back spikes. One stay, one place.
+     */
+    @Test
+    fun boatDayNetworkAnchors() {
+        val o = SYDNEY_LAT to SYDNEY_LNG
+        val a = o
+        val b = offsetMeters(o.first, o.second, 300.0, -100.0)
+        val c = offsetMeters(o.first, o.second, -150.0, 300.0)
+        val wifi = offsetMeters(o.first, o.second, 50.0, -10.0)
+        val points = listOf(a, b, c, wifi, wifi)
+        val accuracies = listOf(80f, 90f, 60f, 20f, 20f)
+        val builder = builder(31)
+        repeat(7) {
+            builder.anchors(HOUR - 4 * MIN, points, accuracies, intervalMs = 40_000, intervalJitter = 0.5)
+            builder.outAndBack(offsetM = 3_500.0, bearingDeg = 20.0 * it, fixes = 2, accuracyM = 75f)
+            builder.anchors(4 * MIN, points, accuracies, intervalMs = 40_000, intervalJitter = 0.5)
+        }
+        val pings = builder.build()
+        assertTrue(pings.size > 500)
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.gaps.isEmpty())
+        assertTrue(r.stays.single().range.durationMs > 6 * HOUR + 50 * MIN)
+        val place = r.newPlaces.single()
+        assertTrue(haversineMeters(place.lat, place.lng, o.first, o.second) < 300.0) // none at a spike (3.5 km)
+        assertTrue(place.radiusM in 75.0..300.0)
+    }
+
+    /** A boat circling a 1 km loop at 2 m/s with good fixes is a real trip: stay, trip, stay. */
+    @Test
+    fun slowBoatLoopGoodGps() {
+        val pings = builder(41)
+            .stay(30 * MIN, jitterM = 5.0, accuracyM = 6f)
+            .moveBy(90.0, 500.0, 2.0, mode = Activity.UNKNOWN, accuracyM = 6f)
+            .moveBy(270.0, 500.0, 2.0, mode = Activity.UNKNOWN, accuracyM = 6f)
+            .stay(30 * MIN, jitterM = 5.0, accuracyM = 6f)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        assertEquals(1, r.trips.size)
+        // An out-and-back path: the turnaround is not "going somewhere", so the counted path is a little short of 1 km.
+        assertTrue(r.trips.single().distanceM in 700.0..1_100.0)
+    }
+
+    /** A genuine walk of 250 m away for 25 min at GPS accuracy is not noise: stay, trip, stay, trip, stay. */
+    @Test
+    fun gpsGradeWalkAwayAndBack() {
+        val pings = builder(51)
+            .stay(HOUR, intervalMs = 30_000, jitterM = 6.0, accuracyM = 8f)
+            .moveBy(0.0, 250.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(25 * MIN, intervalMs = 30_000, jitterM = 6.0, accuracyM = 8f)
+            .moveBy(180.0, 250.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(HOUR, intervalMs = 30_000, jitterM = 6.0, accuracyM = 8f)
+            .build()
+        val r = run(pings)
+        assertEquals(3, r.stays.size)
+        assertEquals(2, r.trips.size)
+        assertEquals(PlaceRef.New(0), r.stays[0].place)
+        assertEquals(PlaceRef.New(1), r.stays[1].place)
+        assertEquals(PlaceRef.New(0), r.stays[2].place)
+    }
+
+    /**
+     * Site-A shape: two visits to the same yard ~180 m apart by centroid (noisy network fixes), with a boat trip
+     * between them, are one place.
+     */
+    @Test
+    fun noisyVisitsOneHundredEightyMetresApartShareAPlace() {
+        val builder = builder(61)
+            .hops(15 * MIN, jitterM = 40.0, hopMinM = 80.0, hopMaxM = 160.0, accuracyM = 40f..95f)
+            .moveBy(270.0, 700.0, 1.5, mode = Activity.UNKNOWN, accuracyM = 30f)
+            .stay(10 * MIN, jitterM = 10.0, accuracyM = 30f)
+            .moveBy(90.0, 520.0, 1.5, mode = Activity.UNKNOWN, accuracyM = 30f)
+        // The boat is back 180 m west of where it left (700 m out, 520 m back).
+        val pings = builder
+            .hops(55 * MIN, jitterM = 40.0, hopMinM = 80.0, hopMaxM = 160.0, accuracyM = 40f..95f)
+            .build()
+        val r = run(pings)
+        val first = r.stays.first()
+        val last = r.stays.last()
+        assertTrue(r.stays.size >= 2 && r.trips.isNotEmpty())
+        // The two visits are well apart by centroid (past the old fixed 75 m radius), yet one place.
+        assertTrue(haversineMeters(first.lat, first.lng, last.lat, last.lng) > 120.0)
+        assertEquals(first.place, last.place)
     }
 
     private companion object {

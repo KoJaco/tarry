@@ -19,13 +19,16 @@ internal data class StayCandidate(
  *
  * A candidate grows while each ping is within [SegmentationParams.stayRadiusM] of its running accuracy-weighted
  * centroid, and closes once the pings clearly outside it are sustained: at least
- * [SegmentationParams.departureMinFixes] consecutive ones spanning [SegmentationParams.departureMinMs]. A shorter
- * excursion is an outlier and ignored. A closed candidate is kept when it spans at least
+ * [SegmentationParams.departureMinFixes] of them spanning [SegmentationParams.departureMinMs], with no ping inside the
+ * radius between them, and coherent: network-grade closing fixes (worse than [SegmentationParams.goodAccuracyM]) must
+ * agree with each other within their combined accuracy or move steadily away from the centroid, while GPS-grade ones
+ * are trusted. A shorter or incoherent excursion is an outlier and ignored. A closed candidate is kept when it spans at least
  * [SegmentationParams.minStayDurationMs]. The candidate still open when the pings run out is always returned
  * (with [StayCandidate.open]), however short: the caller decides whether it is a stay yet and resumes from it.
  *
  * - **Outliers:** a ping outside the radius whose accuracy circle still reaches it (`distance - accuracy <=
- *   stayRadius`) is ambiguous: it neither grows nor closes the candidate (indoor drift, accuracy spikes).
+ *   stayRadius`) is ambiguous: it neither grows nor closes the candidate, and does not interrupt a departure (indoor
+ *   drift, accuracy spikes, a slow boat).
  * - **Bridging:** a silence of up to [SegmentationParams.maxGapToBridgeMs] between two candidate pings is
  *   bridged; one longer than [SegmentationParams.signalGapMs] marks the stay as bridged (lower confidence).
  *   A longer silence closes the candidate even if the next ping is at the same spot (T7 then reports the gap).
@@ -33,15 +36,15 @@ internal data class StayCandidate(
 internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<StayCandidate> {
     val stays = ArrayList<StayCandidate>()
     var current: Growing? = null
-    // Index of the first ping of the current run of consecutive clearly-outside pings, or -1.
-    var excursion = -1
+    // Indices of the clearly-outside pings of the current excursion (pings that may close the stay), oldest first.
+    val outside = ArrayList<Int>()
     var i = 0
     while (i < pings.size) {
         val ping = pings[i]
         val c = current
         if (c == null) {
             current = Growing(ping, params)
-            excursion = -1
+            outside.clear()
             i++
             continue
         }
@@ -51,23 +54,32 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
             silence > params.maxGapToBridgeMs || ping.timeMs - pings[i - 1].timeMs > params.maxGapToBridgeMs -> {
                 c.closeInto(stays, params, open = false)
                 current = Growing(ping, params)
-                excursion = -1
+                outside.clear()
             }
             distance <= params.stayRadiusM -> {
                 c.add(ping, bridging = silence > params.signalGapMs)
-                excursion = -1
+                outside.clear()
             }
-            distance - ping.accuracyM <= params.stayRadiusM -> excursion = -1 // ambiguous outlier
+            distance - ping.accuracyM <= params.stayRadiusM -> Unit
+            // Ambiguous: neither grows nor closes the stay, and does not interrupt a departure (a slow boat's
+            // fixes keep being ambiguous without it being home). The closing fixes' coherence guards against noise.
             else -> {
-                if (excursion < 0) excursion = i
-                val sustained = i - excursion + 1 >= params.departureMinFixes &&
-                    ping.timeMs - pings[excursion].timeMs >= params.departureMinMs
+                outside += i
+                // Fixes before the coherent run disagree with it: noise, not part of the departure.
+                val run = coherentRun(outside, pings, c.lat, c.lng, params)
+                if (run.size < outside.size) {
+                    val keep = ArrayList(run)
+                    outside.clear()
+                    outside.addAll(keep)
+                }
+                val sustained = outside.size >= params.departureMinFixes &&
+                    ping.timeMs - pings[outside.first()].timeMs >= params.departureMinMs
                 if (sustained) {
                     // A real departure: the stay ends before the excursion, which is re-read as what comes next.
                     c.closeInto(stays, params, open = false)
                     current = null
-                    i = excursion
-                    excursion = -1
+                    i = outside.first()
+                    outside.clear()
                     continue
                 }
             }
@@ -76,6 +88,69 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
     }
     current?.closeInto(stays, params, open = true)
     return settleStarts(stays, pings, params)
+}
+
+/** The [q] quantile (0..1) of [values]; the upper element at exact ranks. Empty gives 0. */
+internal fun quantile(values: List<Double>, q: Double): Double {
+    if (values.isEmpty()) return 0.0
+    val sorted = values.sorted()
+    return sorted[minOf(sorted.lastIndex, (q * sorted.size).toInt())]
+}
+
+/**
+ * How noisy a stay's fixes are: the larger of the robust spread of its fixes around the centroid (the
+ * [SegmentationParams.robustDisplacementQuantile] distance) and their median accuracy when that is worse than
+ * [SegmentationParams.goodAccuracyM] (good accuracy is not noise). Clean GPS gives a few metres,
+ * a network-only boat day gives 80 m or more.
+ */
+internal fun stayNoiseM(stay: StayCandidate, params: SegmentationParams): Double {
+    if (stay.pings.isEmpty()) return 0.0
+    val spread = quantile(
+        stay.pings.map { haversineMeters(stay.lat, stay.lng, it.lat, it.lng) },
+        params.robustDisplacementQuantile,
+    )
+    val accuracy = quantile(stay.pings.map { it.accuracyM.toDouble() }, 0.5)
+    return maxOf(spread, if (accuracy > params.goodAccuracyM) accuracy else 0.0)
+}
+
+/** Radius a stay's place gets and matches new places with: [SegmentationParams.placeMatchRadiusM] up to the cap. */
+internal fun noiseScaledRadiusM(stay: StayCandidate, params: SegmentationParams): Double =
+    minOf(params.placeMaxRadiusM, maxOf(params.placeMatchRadiusM, params.placeNoiseFactor * stayNoiseM(stay, params)))
+
+/** Two fixes agree when they are no further apart than their combined accuracy. */
+private fun agree(a: Ping, b: Ping): Boolean =
+    haversineMeters(a.lat, a.lng, b.lat, b.lng) <= a.accuracyM + b.accuracyM
+
+/** Whether the fixes at [run] (oldest first) are one coherent departure from the centroid ([lat], [lng]). */
+private fun isCoherent(run: List<Int>, pings: List<Ping>, lat: Double, lng: Double, params: SegmentationParams): Boolean {
+    // GPS-grade fixes are trusted as they are (a real loop comes back the way it went); only poor ones must cohere.
+    val poor = run.filter { pings[it].accuracyM > params.goodAccuracyM }
+    if (poor.size < 2) return true
+    var allAgree = true
+    for (a in poor.indices) for (b in a + 1 until poor.size) {
+        if (!agree(pings[poor[a]], pings[poor[b]])) allAgree = false
+    }
+    return allAgree || progressing(poor, pings, lat, lng, params)
+}
+
+/**
+ * Whether the fixes at [run] move steadily away from the centroid: no fix falls back by more than the pair's
+ * combined accuracy, and the last is at least [SegmentationParams.departureProgressM] further than the first.
+ */
+private fun progressing(run: List<Int>, pings: List<Ping>, lat: Double, lng: Double, params: SegmentationParams): Boolean {
+    if (run.size < 2) return false
+    fun d(i: Int) = haversineMeters(lat, lng, pings[i].lat, pings[i].lng)
+    for (k in 1 until run.size) {
+        if (d(run[k]) < d(run[k - 1]) - pings[run[k]].accuracyM - pings[run[k - 1]].accuracyM) return false
+    }
+    return d(run.last()) >= d(run.first()) + params.departureProgressM
+}
+
+/** The longest suffix of [outside] that is a coherent departure (see [isCoherent]). */
+private fun coherentRun(outside: List<Int>, pings: List<Ping>, lat: Double, lng: Double, params: SegmentationParams): List<Int> {
+    var start = outside.size
+    while (start > 0 && isCoherent(outside.subList(start - 1, outside.size), pings, lat, lng, params)) start--
+    return outside.subList(start, outside.size).toList()
 }
 
 private fun pingWeight(ping: Ping, params: SegmentationParams): Double {

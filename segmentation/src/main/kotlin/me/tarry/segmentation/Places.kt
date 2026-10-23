@@ -29,14 +29,15 @@ internal fun KnownPlace.isTight(params: SegmentationParams): Boolean = radiusM <
  * the user shrank a tight place on purpose to separate neighbours) and their centroids are closer than
  * [SegmentationParams.indistinguishablePlaceFactor] times [SegmentationParams.stayRadiusM].
  */
-internal fun indistinguishablePlaces(a: KnownPlace, b: KnownPlace, params: SegmentationParams): Boolean {
+internal fun indistinguishablePlaces(a: KnownPlace, b: KnownPlace, params: SegmentationParams, noiseM: Double = 0.0): Boolean {
     val d = haversineMeters(a.lat, a.lng, b.lat, b.lng)
     if (d <= maxOf(a.radiusM, b.radiusM)) return true
-    return !a.isTight(params) && !b.isTight(params) && d < params.indistinguishablePlaceFactor * params.stayRadiusM
+    return !a.isTight(params) && !b.isTight(params) &&
+        d < params.indistinguishablePlaceFactor * minOf(params.placeMaxRadiusM, maxOf(params.stayRadiusM, noiseM))
 }
 
 /** Place id to cluster label (the smallest id of its connected [indistinguishablePlaces] component). */
-private fun clusterLabels(placesInStay: List<KnownPlace>, params: SegmentationParams): Map<String, String> {
+private fun clusterLabels(placesInStay: List<KnownPlace>, params: SegmentationParams, noiseM: Double): Map<String, String> {
     val label = placesInStay.associate { it.id to it.id }.toMutableMap()
     var changed = true
     while (changed) {
@@ -44,7 +45,7 @@ private fun clusterLabels(placesInStay: List<KnownPlace>, params: SegmentationPa
         for (a in placesInStay) for (b in placesInStay) {
             val la = label.getValue(a.id)
             val lb = label.getValue(b.id)
-            if (la < lb && indistinguishablePlaces(a, b, params)) {
+            if (la < lb && indistinguishablePlaces(a, b, params, noiseM)) {
                 for (k in label.keys) if (label.getValue(k) == lb) label[k] = la
                 changed = true
             }
@@ -65,7 +66,8 @@ internal fun distinctKnownPlaces(
     val pb = matchPlace(b.lat, b.lng, places)
     when {
         pa == null && pb == null -> false
-        pa != null && pb != null -> pa.id != pb.id && !indistinguishablePlaces(pa, pb, params)
+        pa != null && pb != null ->
+            pa.id != pb.id && !indistinguishablePlaces(pa, pb, params, maxOf(stayNoiseM(a, params), stayNoiseM(b, params)))
         else -> (pa ?: pb)!!.isTight(params)
     }
 }
@@ -97,7 +99,7 @@ private class Run(val label: String?, val pings: MutableList<Ping>)
 
 private fun split(stay: StayCandidate, places: List<KnownPlace>, params: SegmentationParams): List<StayCandidate> {
     val matched = stay.pings.map { matchPlace(it.lat, it.lng, places) }
-    val cluster = clusterLabels(matched.filterNotNull().distinctBy { it.id }, params)
+    val cluster = clusterLabels(matched.filterNotNull().distinctBy { it.id }, params, stayNoiseM(stay, params))
     val ids = matched.map { it?.let { p -> cluster.getValue(p.id) } }
     // Without a tight place in this stay, pings in no place belong with the place next to them (see [isTight]).
     val labels = if (matched.any { it != null && it.isTight(params) }) ids else absorbUnplaced(ids)
@@ -158,7 +160,8 @@ internal data class PlaceAssignment(
 
 /**
  * Assigns each stay to the nearest matching known place, otherwise to a new place. Unmatched stays within
- * [SegmentationParams.placeMatchRadiusM] of an earlier new place's running centroid share it (a morning and an
+ * the earlier new place's radius (at least [SegmentationParams.placeMatchRadiusM], scaled up to [SegmentationParams.placeMaxRadiusM]
+ * with the stay's noise, see [noiseScaledRadiusM]) of its running centroid share it (a morning and an
  * afternoon at the same new site make one place).
  * Centroids are duration-weighted means; an existing place's current centroid carries its [KnownPlace.weightMs].
  */
@@ -169,9 +172,11 @@ internal fun assignPlaces(
 ): PlaceAssignment {
     val refs = ArrayList<PlaceRef>(stays.size)
     val created = ArrayList<WeightedPoint>()
+    val radii = ArrayList<Double>()
     val moved = LinkedHashMap<String, WeightedPoint>()
     for (stay in stays) {
         val weight = maxOf(stay.range.durationMs, 1L).toDouble()
+        val scale = noiseScaledRadiusM(stay, params)
         val known = matchPlace(stay.lat, stay.lng, places)
         if (known != null) {
             refs += PlaceRef.Existing(known.id)
@@ -181,20 +186,22 @@ internal fun assignPlaces(
         }
         val index = created.indices
             .map { it to haversineMeters(stay.lat, stay.lng, created[it].lat, created[it].lng) }
-            .filter { (_, d) -> d <= params.placeMatchRadiusM }
+            .filter { (k, d) -> d <= maxOf(radii[k], scale) }
             .minByOrNull { (_, d) -> d }
             ?.first
         if (index != null) {
             created[index].add(stay.lat, stay.lng, weight)
+            radii[index] = maxOf(radii[index], scale)
             refs += PlaceRef.New(index)
         } else {
             created += WeightedPoint(stay.lat, stay.lng, weight)
+            radii += scale
             refs += PlaceRef.New(created.lastIndex)
         }
     }
     return PlaceAssignment(
         refs = refs,
-        newPlaces = created.map { NewPlace(it.lat, it.lng, params.placeMatchRadiusM) },
+        newPlaces = created.mapIndexed { k, p -> NewPlace(p.lat, p.lng, radii[k]) },
         updates = moved.map { (id, p) -> PlaceCentroidUpdate(id, p.lat, p.lng) },
     )
 }
