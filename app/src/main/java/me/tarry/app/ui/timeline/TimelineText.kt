@@ -108,6 +108,7 @@ internal fun spokenDescription(
             R.string.timeline_trip_description,
             stringResource(item.mode.labelRes()),
             t.spokenRange,
+            spokenDuration(t.durationMs),
             formatDistance(item.distanceM),
         )
         is TimelineItem.Gap -> stringResource(

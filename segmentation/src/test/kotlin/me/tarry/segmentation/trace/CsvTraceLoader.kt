@@ -4,7 +4,7 @@ import me.tarry.segmentation.Activity
 import me.tarry.segmentation.Ping
 import java.time.Instant
 
-/** Reads the phase 2a raw ping CSV export from the classpath into [Ping]s. Speed, bearing and source are ignored. */
+/** Reads the phase 2a raw ping CSV export from the classpath into [Ping]s. Bearing and source are ignored. */
 object CsvTraceLoader {
     const val HEADER = "id,timestamp_utc,zone_id,lat,lng,accuracy_m,speed_mps,bearing,activity,source,session_id"
 
@@ -32,6 +32,7 @@ object CsvTraceLoader {
                     Activity.entries.firstOrNull { it.name == name } ?: Activity.UNKNOWN
                 },
                 sessionId = cells[10].takeIf { it.isNotEmpty() }?.toLong(),
+                speedMps = cells[6].toDoubleOrNull()?.takeIf { it >= 0.0 },
             )
         }
     }

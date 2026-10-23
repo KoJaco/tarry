@@ -610,6 +610,63 @@ class GoldenCasesTest {
         assertEquals(parked, r.stays[1].range.startMs)
     }
 
+    private fun modeOfTrip(
+        distanceM: Double,
+        speedMps: Double,
+        activity: Activity,
+        accuracyM: Float = 15f,
+        reportSpeed: Boolean = false,
+        intervalMs: Long = 20_000,
+    ): TripMode {
+        val pings = builder(41).stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(90.0, distanceM, speedMps, intervalMs = intervalMs, mode = activity, accuracyM = accuracyM, reportSpeed = reportSpeed)
+            .stay(HOUR, intervalMs = 3 * MIN).build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        return r.trips.single().mode
+    }
+
+    @Test
+    fun gpsWalkAtWalkingPaceIsWalk() {
+        assertEquals(TripMode.WALK, modeOfTrip(800.0, 1.2, Activity.WALKING, reportSpeed = true, intervalMs = 10_000))
+        // Hop speeds alone (no reported speed) agree, even if activity recognition says nothing useful.
+        assertEquals(TripMode.WALK, modeOfTrip(800.0, 1.2, Activity.UNKNOWN, intervalMs = 10_000))
+    }
+
+    @Test
+    fun driveIsVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(5_000.0, 12.0, Activity.IN_VEHICLE, reportSpeed = true))
+    }
+
+    @Test
+    fun boatWithStillActivityIsVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.STILL, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 4.0, Activity.STILL))
+    }
+
+    @Test
+    fun walkingAboutOnAMovingBoatIsStillVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.WALKING, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.WALKING))
+    }
+
+    @Test
+    fun poorFixesWalkingActivityButVehicleNetSpeedIsVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.WALKING, accuracyM = 80f))
+    }
+
+    @Test
+    fun noSpeedNoActivityAndNoGoodFixesIsUnknown() {
+        assertEquals(TripMode.UNKNOWN, modeOfTrip(3_000.0, 5.0, Activity.UNKNOWN, accuracyM = 80f))
+    }
+
+    @Test
+    fun betweenThresholdsActivityDecidesThenNearerSide() {
+        assertEquals(TripMode.WALK, modeOfTrip(2_000.0, 2.8, Activity.WALKING, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(2_000.0, 2.8, Activity.ON_BICYCLE, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(2_000.0, 2.8, Activity.UNKNOWN, reportSpeed = true))
+    }
+
     private companion object {
         const val MIN = 60_000L
         const val HOUR = 60 * MIN

@@ -35,8 +35,15 @@ class TripsTest {
     }
 
     @Test
-    fun nullActivitiesGiveUnknown() {
+    fun nullActivitiesStillGetAModeFromHopSpeeds() {
         val pings = builder().stay(10 * min).moveBy(90.0, 3_000.0, 12.5).stay(10 * min).build()
+            .map { it.copy(activity = null) }
+        assertEquals(TripMode.VEHICLE, trips(pings).single().mode)
+    }
+
+    @Test
+    fun noActivityAndOnlyPoorFixesGiveUnknown() {
+        val pings = builder().stay(10 * min).moveBy(90.0, 3_000.0, 12.5, accuracyM = 80f).stay(10 * min).build()
             .map { it.copy(activity = null) }
         assertEquals(TripMode.UNKNOWN, trips(pings).single().mode)
     }

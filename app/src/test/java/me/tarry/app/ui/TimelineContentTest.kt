@@ -224,7 +224,7 @@ class TimelineContentTest {
                 TimelineItem.Trip("t", at(11, 40), at(12, 0), 1234f, TripMode.UNKNOWN),
             ),
         )
-        description("timeline_row_t", "Trip by Unknown mode, from ${t(11, 40)} to ${t(12, 0)}, 1.2 km")
+        description("timeline_row_t", "Trip, from ${t(11, 40)} to ${t(12, 0)}, 20 minutes, 1.2 km")
         description("timeline_row_g", "Tracking gap, No location fix, from ${t(8, 0)} to ${t(8, 30)}")
     }
 

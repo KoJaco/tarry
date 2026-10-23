@@ -29,14 +29,14 @@
     </plurals>
     <string name="timeline_includes_not_tracked_short">includes less than a minute not tracked</string>
     <string name="timeline_visit_description">Visit at %1$s, %2$s, %3$s</string>
-    <string name="timeline_trip_description">Trip by %1$s, %2$s, %3$s</string>
+    <string name="timeline_trip_description">%1$s, %2$s, %3$s, %4$s</string>
     <string name="timeline_gap_description">Tracking gap, %1$s, %2$s</string>
     <string name="component_loading">Loading</string>
     <string name="timeline_distance_m">%1$d m</string>
     <string name="timeline_distance_km">%1$.1f km</string>
-    <string name="timeline_mode_vehicle">Vehicle</string>
+    <string name="timeline_mode_vehicle">Vehicle trip</string>
     <string name="timeline_mode_walk">Walk</string>
-    <string name="timeline_mode_unknown">Unknown mode</string>
+    <string name="timeline_mode_unknown">Trip</string>
     <string name="timeline_gap_no_session">No tracking session</string>
     <string name="timeline_gap_no_fix">No location fix</string>
     <string name="timeline_gap_tracking_stopped">Tracking stopped</string>

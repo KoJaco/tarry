@@ -90,8 +90,10 @@ class TraceBuilder(
         mode: Activity = Activity.IN_VEHICLE,
         accuracyM: Float = 25f,
         jitterM: Double = 0.0,
+        reportSpeed: Boolean = false,
     ) = apply {
         require(speedMps > 0 && intervalMs > 0)
+        val reported = if (reportSpeed) speedMps else null
         val distance = haversineMeters(lat, lng, toLat, toLng)
         val stepM = speedMps * intervalMs / 1000.0
         val steps = maxOf(1, (distance / stepM).roundToInt())
@@ -101,9 +103,9 @@ class TraceBuilder(
             val pLng = if (k == steps) toLng else lng + (toLng - lng) * f
             if (jitterM > 0.0 && k != steps) {
                 val (jLat, jLng) = destination(pLat, pLng, random.nextDouble() * 360.0, random.nextDouble() * jitterM)
-                add(timeMs + k * intervalMs, jLat, jLng, accuracyM, mode)
+                add(timeMs + k * intervalMs, jLat, jLng, accuracyM, mode, reported)
             } else {
-                add(timeMs + k * intervalMs, pLat, pLng, accuracyM, mode)
+                add(timeMs + k * intervalMs, pLat, pLng, accuracyM, mode, reported)
             }
         }
         timeMs += steps * intervalMs
@@ -119,9 +121,10 @@ class TraceBuilder(
         mode: Activity = Activity.IN_VEHICLE,
         accuracyM: Float = 25f,
         jitterM: Double = 0.0,
+        reportSpeed: Boolean = false,
     ) = apply {
         val (toLat, toLng) = destination(lat, lng, bearingDeg, distanceM)
-        move(toLat, toLng, speedMps, intervalMs, mode, accuracyM, jitterM)
+        move(toLat, toLng, speedMps, intervalMs, mode, accuracyM, jitterM, reportSpeed)
     }
 
     /**
@@ -244,8 +247,8 @@ class TraceBuilder(
 
     fun build(): Trace = pings.sortedBy { it.timeMs }
 
-    private fun add(t: Long, pLat: Double, pLng: Double, acc: Float, activity: Activity?) {
-        pings += Ping(t, pLat, pLng, acc, activity, sessionId)
+    private fun add(t: Long, pLat: Double, pLng: Double, acc: Float, activity: Activity?, speed: Double? = null) {
+        pings += Ping(t, pLat, pLng, acc, activity, sessionId, speed)
     }
 
     private fun drawAccuracy(range: ClosedFloatingPointRange<Float>): Float =

@@ -271,7 +271,7 @@ class EditDrawerContentTest {
             tripMode = TripMode.VEHICLE, distanceM = 12_400f, jobs = listOf(acme), tagGroups = groups,
         )
         show(trip, EditDrawerActions(onAddStop = { stops++ }))
-        composeRule.onNodeWithText("Drive").assert(heading())
+        composeRule.onNodeWithText("Vehicle").assert(heading())
         composeRule.onNodeWithText("Unattributed").assertExists()
         composeRule.onNodeWithText("Trim start").assertDoesNotExist()
         composeRule.onNodeWithText("Delete visit").assertDoesNotExist()

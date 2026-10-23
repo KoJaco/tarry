@@ -57,6 +57,20 @@ data class SegmentationParams(
     val maxAccuracyM: Float = 100f,
     /** A vehicle-to-stay tail only becomes a WALK leg when its average speed is at most this (m/s). */
     val walkMaxSpeedMps: Double = 2.5,
+    /** Trip mode: median moving speed (m/s) at or above this is VEHICLE (car or boat). */
+    val vehicleMinSpeedMps: Double = 3.0,
+    /** Trip mode: median moving speed (m/s) at or below this is WALK; between the two, activity decides. */
+    val walkModeMaxSpeedMps: Double = 2.5,
+    /** Trip mode: speed samples slower than this (m/s) are standing still, not movement, and are ignored. */
+    val modeMovingMinSpeedMps: Double = 0.7,
+    /** Trip mode: at least this many moving speed samples are needed to decide from speed. */
+    val modeMinSpeedSamples: Int = 3,
+    /** Trip mode: hop speeds (the fallback when pings carry no speed) are taken only between fixes this close in time. */
+    val modeMaxHopMs: Long = 2 * 60_000L,
+    /** Trip mode: this many consecutive speed samples all above [vehicleMinSpeedMps] plus the margin make it VEHICLE whatever the activity says. */
+    val modeSustainedSamples: Int = 3,
+    /** Trip mode: margin (m/s) over [vehicleMinSpeedMps] for the sustained-speed override (walking about on a moving boat). */
+    val modeSustainedMarginMps: Double = 1.0,
     /**
      * Trip distance counts a hop at least this fast (m/s) when it is longer than the worse of the two fixes'
      * accuracies, so curves are not cut into chords. Other hops count only when longer than the combined accuracy.
@@ -118,6 +132,7 @@ data class SegmentationParams(
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
         require(departureMinFixes >= 1 && departureMinMs >= 0 && departureMaxSpanMs >= departureMinMs && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
+        require(vehicleMinSpeedMps > 0 && walkModeMaxSpeedMps > 0 && modeMovingMinSpeedMps >= 0 && modeMinSpeedSamples >= 1 && modeMaxHopMs > 0 && modeSustainedSamples >= 1 && modeSustainedMarginMps >= 0)
         require(spikeMinM > 0 && spikeMaxRunMs >= 0 && maxPlausibleSpeedMps > 0 && anchorMinRepeats >= 1 && anchorWindowMs > 0)
         require(smoothWindowMs >= 0 && smoothMinFixes >= 1 && placeNoiseFactor >= 0 && placeMaxRadiusM > 0)
         require(robustDisplacementQuantile in 0.0..1.0)
