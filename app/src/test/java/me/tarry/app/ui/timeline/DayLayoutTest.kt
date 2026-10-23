@@ -61,8 +61,9 @@ class DayLayoutTest {
         assertThat(l.blocks[2].heightDp).isWithin(eps).of(45 * 72f / 60)
         assertThat(l.blocks[2].compact).isFalse()
         assertThat(l.trips).hasSize(1)
-        assertThat(l.trips[0].topDp).isWithin(eps).of(2 * 72f + gapDp)
+        assertThat(l.trips[0].topDp).isWithin(eps).of(2 * 72f)
         assertThat(l.trips[0].heightDp).isWithin(eps).of(48f)
+        assertThat(l.trips[0].chip).isFalse()
         assertThat(l.blocks.all { it.foldedTrips.isEmpty() }).isTrue()
         assertThat(l.nowDp).isNull()
     }
@@ -113,53 +114,70 @@ class DayLayoutTest {
     }
 
     @Test
-    fun manyShortVisitsAreSeparatedAndEveryTripKeepsItsRow() {
+    fun manyShortTripsDoNotShiftAnythingOffTheHourGrid() {
+        // 10 short visits 6 min apart (5 min visit + 1 min trip), then a visit at exactly 10:00.
         val items = mutableListOf<TimelineItem>()
         for (i in 0 until 10) {
             val s = at(9, i * 6)
             items += visit("v$i", s, s + 5 * 60_000L)
             if (i < 9) items += trip("t$i", s + 5 * 60_000L, s + 6 * 60_000L)
         }
+        items += visit("last", at(10, 0), at(11, 0))
         val l = layout(items)
-        assertThat(l.blocks).hasSize(10)
+        assertThat(l.blocks).hasSize(11)
         l.blocks.forEach {
-            assertThat(it.heightDp).isAtLeast(28f - eps)
-            assertThat(it.compact).isTrue()
+            // True top, and the true bottom wherever the block is taller than the minimum height.
+            assertThat(it.topDp).isWithin(eps).of(((it.item.start - l.canvasStart) / 3_600_000.0 * 72).toFloat())
+            val trueH = ((it.item.end - it.item.start) / 3_600_000.0 * 72).toFloat()
+            assertThat(it.heightDp).isAtLeast(trueH - eps)
+            assertThat(it.compact).isEqualTo(it.item.end - it.item.start < 30 * 60_000L)
         }
-        for (i in 1 until l.blocks.size) {
-            assertThat(l.blocks[i].topDp).isAtLeast(l.blocks[i - 1].topDp + l.blocks[i - 1].heightDp - eps)
-        }
-        val proportional = 72f // 09:00..10:00
-        assertThat(l.heightDp).isGreaterThan(proportional)
-        assertThat(l.heightDp).isAtLeast(l.blocks.last().topDp + l.blocks.last().heightDp - eps)
-        // Every trip has its own row, at least 48 dp tall; nothing is folded away.
+        assertThat(l.blocks.last().topDp).isWithin(eps).of(72f)
+        assertThat(l.blocks.last().heightDp).isWithin(eps).of(72f)
+        assertThat(l.hourMarks.first { it.epochMs == at(10) }.topDp).isWithin(eps).of(l.blocks.last().topDp)
+        // Every trip keeps its own chip, at least 48 dp tall.
         assertThat(l.trips).hasSize(9)
         assertThat(l.blocks.flatMap { it.foldedTrips }).isEmpty()
         l.trips.forEach { assertThat(it.heightDp).isAtLeast(48f - eps) }
-        // No row overlaps another row or a block, and time order is kept.
-        l.ordered().zipWithNext().forEach { (upper, lower) ->
-            assertThat(lower.topDp).isAtLeast(upper.topDp + upper.heightDp - eps)
-        }
+        // Chips never overlap each other, and keep time order.
+        l.trips.zipWithNext().forEach { (a, b) -> assertThat(b.topDp).isAtLeast(a.topDp + a.heightDp - eps) }
         l.trips.forEachIndexed { i, t -> assertThat(t.trip.id).isEqualTo("t$i") }
     }
 
     @Test
-    fun sevenMinuteTripBetweenTwoVisitsGetsARowAndPushesTheNextVisitDown() {
+    fun oneAndSevenMinuteTripsGetCentredChipsWithA48dpTouchHeight_andVisitsStayPut() {
         val l = layout(
             listOf(
                 visit("a", at(9, 0), at(9, 40)),
                 trip("t", at(9, 40), at(9, 47)),
-                visit("b", at(9, 47), at(10, 30)),
+                visit("b", at(9, 47), at(11, 0)),
+                trip("u", at(11, 0), at(11, 1)),
+                visit("c", at(11, 1), at(12, 0)),
             ),
         )
-        val a = l.blocks[0]
-        val t = l.trips.single()
-        val b = l.blocks[1]
-        assertThat(t.heightDp).isAtLeast(48f - eps)
-        assertThat(t.topDp).isAtLeast(a.topDp + a.heightDp - eps)
-        assertThat(b.topDp).isAtLeast(t.topDp + t.heightDp - eps)
-        // The previous visit keeps its true height (the trip sits below it, not on it).
+        val (a, b, c) = l.blocks
+        // No push, no trim.
+        assertThat(a.topDp).isWithin(eps).of(0f)
         assertThat(a.heightDp).isWithin(eps).of(40 * 72f / 60)
+        assertThat(b.topDp).isWithin(eps).of(47 * 72f / 60)
+        assertThat(b.heightDp).isWithin(eps).of(73 * 72f / 60)
+        assertThat(c.topDp).isWithin(eps).of(121 * 72f / 60)
+        val (t, u) = l.trips
+        assertThat(t.chip).isTrue()
+        assertThat(t.heightDp).isAtLeast(48f - eps)
+        assertThat(t.topDp + t.heightDp / 2).isWithin(eps).of((40 + 3.5f) * 72f / 60)
+        assertThat(u.chip).isTrue()
+        assertThat(u.heightDp).isAtLeast(48f - eps)
+        assertThat(u.topDp + u.heightDp / 2).isWithin(eps).of((120 + 0.5f) * 72f / 60)
+    }
+
+    @Test
+    fun longTripKeepsAFullHeightRowOnItsTrueSpan() {
+        val l = layout(listOf(visit("a", at(9, 0), at(10, 0)), trip("t", at(10, 0), at(11, 0)), visit("b", at(11, 0), at(12, 0))))
+        val t = l.trips.single()
+        assertThat(t.chip).isFalse()
+        assertThat(t.topDp).isWithin(eps).of(72f)
+        assertThat(t.heightDp).isWithin(eps).of(72f)
     }
 
     @Test
@@ -171,16 +189,16 @@ class DayLayoutTest {
     }
 
     @Test
-    fun tripAfterLastBlockAlwaysFitsAndGrowsCanvas() {
+    fun tripChipAfterLastBlockGrowsTheCanvasWithoutMovingTheBlock() {
         val l = layout(listOf(visit("v", at(9, 0), at(9, 10)), trip("t", at(9, 10), at(9, 12))))
         assertThat(l.trips).hasSize(1)
-        assertThat(l.blocks[0].foldedTrips).isEmpty()
-        assertThat(l.trips[0].topDp).isAtLeast(l.blocks[0].topDp + l.blocks[0].heightDp - eps)
+        assertThat(l.blocks[0].topDp).isWithin(eps).of(0f)
+        assertThat(l.blocks[0].heightDp).isWithin(eps).of(28f)
         assertThat(l.heightDp).isAtLeast(l.trips[0].topDp + l.trips[0].heightDp - eps)
     }
 
     @Test
-    fun tripBeforeAGapKeepsItsRowBetweenTheVisitAndTheGap() {
+    fun tripBeforeAGapKeepsItsChipAndTheGapStaysOnItsTrueSpan() {
         val l = layout(
             listOf(
                 visit("v", at(9, 0), at(9, 30)),
@@ -190,10 +208,11 @@ class DayLayoutTest {
         )
         val v = l.blocks.first { it.item is TimelineItem.Visit }
         val g = l.blocks.first { it.item is TimelineItem.Gap }
-        val t = l.trips.single()
-        assertThat(v.foldedTrips).isEmpty()
-        assertThat(t.topDp).isAtLeast(v.topDp + v.heightDp - eps)
-        assertThat(g.topDp).isAtLeast(t.topDp + t.heightDp - eps)
+        assertThat(v.heightDp).isWithin(eps).of(36f)
+        assertThat(g.topDp).isWithin(eps).of(31 * 72f / 60)
+        assertThat(l.trips.single().chip).isTrue()
+        assertThat(l.ordered().map { (it as? PlacedTrip)?.trip?.id ?: (it as PlacedBlock).item.id })
+            .containsExactly("v", "t", "g").inOrder()
     }
 
     @Test
@@ -245,8 +264,8 @@ class DayLayoutTest {
         )
         assertThat(l.scale).isWithin(eps).of(144f)
         assertThat(l.blocks[0].heightDp).isWithin(eps).of(144f)
-        assertThat(l.trips[0].heightDp).isWithin(eps).of(48f)
-        assertThat(l.trips[0].topDp).isWithin(eps).of(144f + gapDp)
+        assertThat(l.trips[0].heightDp).isWithin(eps).of(72f)
+        assertThat(l.trips[0].topDp).isWithin(eps).of(144f)
         assertThat(l.blocks[1].topDp).isWithin(eps).of(288f)
     }
 
@@ -336,9 +355,10 @@ class DayLayoutTest {
     }
 
     @Test
-    fun overlappingSourceItemsArePushedDown() {
+    fun overlappingSourceItemsAreNotPushed() {
         val l = layout(listOf(visit("a", at(9, 0), at(10, 0)), visit("b", at(9, 30), at(10, 30))))
-        assertThat(l.blocks[1].topDp).isWithin(eps).of(l.blocks[0].topDp + l.blocks[0].heightDp + gapDp)
+        assertThat(l.blocks[1].topDp).isWithin(eps).of(36f)
+        assertThat(l.blocks[0].heightDp).isWithin(eps).of(72f)
     }
 
     @Test
@@ -348,23 +368,20 @@ class DayLayoutTest {
         assertThat(l.blocks[1].compact).isFalse()
     }
 
-    private val gapDp = DayLayoutParams().itemGapDp
-
     @Test
-    fun adjacentBlocksAreAtLeastTheGapApart_andTrimmedAtTheBottomOnly() {
+    fun adjacentBlocksSitExactlyOnTheirTimes() {
         val l = layout(listOf(visit("a", at(9, 0), at(10, 0)), visit("b", at(10, 0), at(11, 0))))
         val (a, b) = l.blocks
-        assertThat(a.topDp).isWithin(eps).of(0f) // blocks are drawn at their true top
-        assertThat(a.heightDp).isWithin(eps).of(72f - gapDp) // trimmed at the bottom
+        assertThat(a.topDp).isWithin(eps).of(0f)
+        assertThat(a.heightDp).isWithin(eps).of(72f)
         assertThat(b.topDp).isWithin(eps).of(72f)
-        assertThat(b.topDp - (a.topDp + a.heightDp)).isAtLeast(gapDp - eps)
     }
 
     private fun atS(h: Int, m: Int, s: Int, date: LocalDate, z: ZoneId): Long =
         LocalDateTime.of(date, java.time.LocalTime.of(h, m, s)).atZone(z).toInstant().toEpochMilli()
 
     @Test
-    fun deviceCase_gapInsideVisitIsInner_andNowLineFollowsPlacedItems() {
+    fun deviceCase_gapInsideVisitIsInner_andNowLineIsOnTheTimeScale() {
         val date = LocalDate.of(2026, 10, 21)
         val b = dayBounds(date, sydney)
         val v = visit("v", atS(19, 55, 45, date, sydney), atS(20, 12, 45, date, sydney))
@@ -378,11 +395,8 @@ class DayLayoutTest {
         assertThat(pv.innerGaps).hasSize(1)
         assertThat(pv.innerGaps[0].gap.id).isEqualTo("g")
         assertThat(pv.innerGaps[0].offsetDp).isWithin(0.1f).of(12f / 17f * pv.heightDp)
-        val nowDp = l.nowDp!!
-        l.ordered().forEach { p ->
-            assertThat(p.topDp).isAtMost(nowDp)
-            assertThat(p.topDp + p.heightDp).isAtMost(nowDp + 0.1f)
-        }
+        // Straight from the clock: 18:00 -> 20:14:21 on the 72 dp/h scale.
+        assertThat(l.nowDp!!).isWithin(0.01f).of((2 * 60 + 14 + 21 / 60f) * 72f / 60)
     }
 
     @Test
@@ -429,16 +443,16 @@ class DayLayoutTest {
     }
 
     @Test
-    fun gapNeverShrinksABlockBelowTheMinimum_theNextIsPushedInstead() {
-        // 10 min = 12 dp true height, so the minimum (28) applies; the next starts at its true end (12 dp).
+    fun minimumHeightNeverPushesOrOverlapsTheNextBlock() {
+        // 10 min = 12 dp true height; the minimum (28) would reach into b, so it stops at b's true start.
         val l = layout(listOf(visit("a", at(9, 0), at(9, 10)), visit("b", at(9, 10), at(10, 0))))
         val (a, b) = l.blocks
-        assertThat(a.heightDp).isWithin(eps).of(28f)
-        assertThat(b.topDp).isWithin(eps).of(28f + gapDp)
+        assertThat(a.heightDp).isWithin(eps).of(12f)
+        assertThat(b.topDp).isWithin(eps).of(12f)
     }
 
     @Test
-    fun gapsAreKeptBetweenBlocksAndTripRows_andMinimumHeightHoldsAtLargeFonts() {
+    fun everyBlockIsOnItsTimeAtAllFontScales() {
         val items = listOf(
             visit("a", at(9, 0), at(10, 0)),
             trip("t", at(10, 0), at(10, 20)),
@@ -447,9 +461,10 @@ class DayLayoutTest {
         )
         for (fs in listOf(1f, 2f)) {
             val l = layout(items, fontScale = fs)
-            val ordered = l.ordered()
-            ordered.zipWithNext().forEach { (p, n) -> assertThat(n.topDp - (p.topDp + p.heightDp)).isAtLeast(gapDp - eps) }
-            l.blocks.forEach { assertThat(it.heightDp).isAtLeast(28f * fs - eps) }
+            l.blocks.forEach {
+                assertThat(it.topDp).isWithin(eps).of(((it.item.start - l.canvasStart) / 3_600_000.0 * 72 * fs).toFloat())
+                assertThat(it.heightDp).isAtLeast(((it.item.end - it.item.start) / 3_600_000.0 * 72 * fs).toFloat() - eps)
+            }
         }
     }
 

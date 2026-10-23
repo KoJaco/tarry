@@ -13,10 +13,8 @@ data class DayLayoutParams(
     val compactUnderMinutes: Int = 30,
     /** Scaled by max(1, fontScale). */
     val tripRowDp: Float = 24f,
-    /** Least height (not font-scaled) of a trip row, so the chip is a 48 dp touch target. */
+    /** Least height (not font-scaled) of a trip row, so a trip row or chip is a 48 dp touch target. */
     val tripMinTouchDp: Float = 48f,
-    /** Minimum vertical space between consecutive items, so adjacent blocks never touch. Not font-scaled. */
-    val itemGapDp: Float = 4f,
     /** Minimum height of an outage marker drawn inside a visit. Not font-scaled. */
     val innerGapMinDp: Float = 4f,
     /** Used only when there are no items and no window. */
@@ -61,6 +59,8 @@ data class PlacedTrip(
     val trip: TimelineItem.Trip,
     override val topDp: Float,
     override val heightDp: Float,
+    /** True for a short trip drawn as a chip centred on its span (it may overlay visit edges); false for a full row. */
+    val chip: Boolean = false,
 ) : Placed
 
 data class DayLayout(
@@ -74,8 +74,10 @@ data class DayLayout(
     val trips: List<PlacedTrip>,
     val nowDp: Float?,
 ) {
-    /** Blocks and trips merged in time (reading) order. */
-    fun ordered(): List<Placed> = (blocks + trips).sortedBy { it.topDp }
+    /** Blocks and trips in reading order: by real start (a chip is centred on its span, so position alone is not enough). */
+    fun ordered(): List<Placed> = (blocks + trips).sortedWith(
+        compareBy<Placed> { if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start }.thenBy { it.topDp },
+    )
 }
 
 private const val MS_PER_HOUR = 3_600_000.0
@@ -91,7 +93,8 @@ private fun ceilHour(ms: Long, zone: ZoneId): Long {
 }
 
 /**
- * Lays [items] out on a day canvas. Scale, minimum block height and trip rows all grow with max(1, [fontScale]).
+ * Lays [items] out on a day canvas on a true linear time scale: every visit, gap and long trip row sits exactly at its real
+ * start and end, so hour marks, blocks and the now-line always agree. Scale, minimum block height and trip rows all grow with max(1, [fontScale]).
  *
  * Inner gaps: segmentation bridges short outages, so a gap can overlap a visit in time. Each gap is assigned to the
  * visit it overlaps most (clamped to the day); if that overlap is at least half of the gap's duration it is an inner
@@ -103,8 +106,7 @@ private fun ceilHour(ms: Long, zone: ZoneId): Long {
  * between them are dropped. Short visits inside the run still draw on top of the cluster. A cluster without visits
  * inside is stacked like any other block; one with visits inside is a band at its true time span that they overlay.
  *
- * Now-line: placed on the proportional position, but never above the proportional point of any placed block or trip
- * that started before now, so everything that started is at or above the line.
+ * Now-line: always at its proportional position.
  *
  * [window] (the schedule window) is accepted but nothing passes it yet: it is deferred to phase 6, when the schedule
  * window is exposed to the UI.
@@ -249,18 +251,16 @@ fun layoutDay(
 
     val compactUnderMs = params.compactUnderMinutes * MS_PER_MINUTE
 
-    val gap = params.itemGapDp
-
     /**
-     * Height of a block placed at [top]: its true height (at least the minimum), trimmed at the bottom so a gap is
-     * left before the next item's true start, but only as far as the minimum height allows. Where that is not
-     * enough, the next item is pushed down instead.
+     * True time scale: a block's top and bottom are its real start and end on the linear scale, nothing is pushed or
+     * trimmed. The only exception is the minimum height of a very short block, which grows downward as far as the next
+     * block's true start allows (never below its true height).
      */
-    fun blockHeight(c: Clamped, top: Float, nextStart: Long?): Float {
-        val trueHeight = maxOf(dp(c.start, c.end), minBlock)
-        if (nextStart == null) return trueHeight
-        val room = dp(canvasStart, nextStart) - gap - top
-        return if (room >= trueHeight) trueHeight else maxOf(room, minBlock)
+    fun blockHeight(c: Clamped, nextStart: Long?): Float {
+        val trueHeight = dp(c.start, c.end)
+        if (trueHeight >= minBlock) return trueHeight
+        val room = if (nextStart == null) minBlock else dp(c.start, nextStart)
+        return maxOf(trueHeight, minOf(minBlock, room))
     }
 
     fun innerGapsOf(c: Clamped, height: Float): List<InnerGap> {
@@ -275,36 +275,40 @@ fun layoutDay(
         }
     }
 
-    fun block(c: Clamped, top: Float, nextStart: Long?, folded: List<TimelineItem.Trip>) = PlacedBlock(
-        item = c.item,
-        topDp = top,
-        heightDp = blockHeight(c, top, nextStart),
-        compact = c.end - c.start < compactUnderMs,
-        foldedTrips = folded,
-        innerGaps = innerGapsOf(c, blockHeight(c, top, nextStart)),
-        cluster = stackedClusters[c.item]?.gaps.orEmpty(),
-    )
-
     val blocks = mutableListOf<PlacedBlock>()
     val trips = mutableListOf<PlacedTrip>()
 
-    // One flow top to bottom: every item sits at its true time or just below the previous item, never closer than the
-    // item gap. Every trip keeps its own row (dogfood-2: a trip under ~23 min used to be folded away and invisible), so
-    // a short trip between two visits pushes the later ones down rather than hiding; visits never yield to overlap.
-    var cur = 0f
-    for ((i, c) in clamped.withIndex()) {
-        val top = maxOf(dp(canvasStart, c.start), cur)
-        if (c.item is TimelineItem.Trip) {
-            trips += PlacedTrip(c.item, top, tripRow)
-            cur = top + tripRow + gap
+    val blockClamped = clamped.filter { it.item !is TimelineItem.Trip }
+    for ((i, c) in blockClamped.withIndex()) {
+        val height = blockHeight(c, blockClamped.getOrNull(i + 1)?.start)
+        blocks += PlacedBlock(
+            item = c.item,
+            topDp = dp(canvasStart, c.start),
+            heightDp = height,
+            compact = c.end - c.start < compactUnderMs,
+            foldedTrips = emptyList(),
+            innerGaps = innerGapsOf(c, height),
+            cluster = stackedClusters[c.item]?.gaps.orEmpty(),
+        )
+    }
+
+    // Trips: a long trip is a full-height row on its true span. A trip too short for a labelled touch row is a chip
+    // centred on its span, overlaying the neighbouring visits' edges. Only chips move (never blocks): a chip that would
+    // collide with the trip above it is nudged down.
+    val touch = maxOf(params.tripRowDp * fs, params.tripMinTouchDp)
+    var tripBottom = Float.NEGATIVE_INFINITY
+    for (c in clamped) {
+        if (c.item !is TimelineItem.Trip) continue
+        val top = dp(canvasStart, c.start)
+        val height = dp(c.start, c.end)
+        val placed = if (height >= touch - 0.01f) {
+            PlacedTrip(c.item, top, height, chip = false)
         } else {
-            // A block is trimmed against the next block's true start; trips between them are placed below it.
-            val nextBlockStart = (i + 1 until clamped.size).firstOrNull { clamped[it].item !is TimelineItem.Trip }
-                ?.let { clamped[it].start }
-            val b = block(c, top, nextBlockStart, emptyList())
-            blocks += b
-            cur = top + b.heightDp + gap
+            val centre = top + height / 2
+            PlacedTrip(c.item, maxOf(centre - touch / 2, 0f, tripBottom), touch, chip = true)
         }
+        trips += placed
+        tripBottom = placed.topDp + placed.heightDp
     }
     // Clusters with visits inside: a band at the true span, drawn first so the visits overlay it.
     for (b in bands.filter { it.visits.isNotEmpty() }.asReversed()) {
@@ -318,23 +322,12 @@ fun layoutDay(
         blocks.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
         trips.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
     )
-    var nowDp: Float? = if (isToday && now >= canvasStart && now <= canvasEnd) dp(canvasStart, now) else null
-    if (nowDp != null) {
-        fun reach(item: TimelineItem, top: Float, height: Float): Float? {
-            val s = item.start.coerceIn(dayStart, dayEnd)
-            val e = item.end.coerceIn(dayStart, dayEnd)
-            if (e <= s || s > now) return null
-            return top + height * ((now - s).toFloat() / (e - s)).coerceIn(0f, 1f)
-        }
-        val reaches = blocks.mapNotNull { reach(it.item, it.topDp, it.heightDp) } +
-            trips.mapNotNull { reach(it.trip, it.topDp, it.heightDp) }
-        nowDp = maxOf(nowDp, reaches.maxOrNull() ?: nowDp)
-    }
+    val nowDp: Float? = if (isToday && now >= canvasStart && now <= canvasEnd) dp(canvasStart, now) else null
 
     return DayLayout(
         canvasStart = canvasStart,
         canvasEnd = canvasEnd,
-        heightDp = maxOf(dp(canvasStart, canvasEnd), lastBottom, nowDp ?: 0f),
+        heightDp = maxOf(dp(canvasStart, canvasEnd), lastBottom),
         scale = scale,
         hourMarks = marks,
         blocks = blocks,

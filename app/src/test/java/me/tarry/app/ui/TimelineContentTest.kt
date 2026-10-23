@@ -133,13 +133,13 @@ class TimelineContentTest {
     @Test
     fun tripRowShowsModeKilometresAndDuration() {
         show(listOf(TimelineItem.Trip("t", at(11, 40), at(12, 0), 1234f, TripMode.VEHICLE)))
-        composeRule.onNodeWithText("Drive · 1.2 km · 20 min").assertExists()
+        composeRule.onNodeWithText("1.2 km · 20 min").assertExists()
     }
 
     @Test
     fun shortWalkShowsMetres() {
         show(listOf(TimelineItem.Trip("t", at(11, 40), at(11, 50), 850f, TripMode.WALK)))
-        composeRule.onNodeWithText("Walk · 850 m · 10 min").assertExists()
+        composeRule.onNodeWithText("850 m · 10 min").assertExists()
     }
 
     @Test
