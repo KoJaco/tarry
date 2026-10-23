@@ -37,6 +37,9 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.all {
+            // Opt-in local replay of real traces: -Ptarry.replay=<dir of CSVs>
+            providers.gradleProperty("tarry.replay").orNull?.let { dir -> it.systemProperty("tarry.replay", dir) }
+            it.testLogging.showStandardStreams = providers.gradleProperty("tarry.replay").isPresent
             // Robolectric reaches into JDK internals; required on JDK 17+ (we run JDK 25).
             it.jvmArgs(
                 "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
