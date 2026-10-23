@@ -39,7 +39,7 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (!ActivityTransitionResult.hasResult(intent)) return
-        // Each event carries its own monotonic stamp: its age on receipt decides whether it is still true (dogfood-2).
+        // Each event carries its own monotonic stamp: its age on receipt orders events and is logged (dogfood-2).
         val nowNanos = SystemClock.elapsedRealtimeNanos()
         val events = ActivityTransitionResult.extractResult(intent)?.transitionEvents.orEmpty()
             .filter { it.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER }

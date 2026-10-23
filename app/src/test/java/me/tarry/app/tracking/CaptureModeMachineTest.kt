@@ -289,6 +289,31 @@ class CaptureModeMachineTest {
     }
 
     @Test
+    fun movingWithAlternatingNetworkAnchorsStaysMovingAtTheMovingRequestUntilTheFixesSettle() {
+        val m = machine()
+        m.onActivity(ActivityType.IN_VEHICLE)
+        // Dogfood marina day under high accuracy: fixes hop between three exact anchors 200-500 m apart (80 m accuracy)
+        // every 20 s. Every hop is a new base for the no-progress check, so nothing can demote MOVING: accepted under
+        // accuracy-first (the session keeps recording at the moving interval; segmentation sorts the noise out).
+        val anchors = listOf(0.0, 300.0, -200.0)
+        var t = 0L
+        for (i in 0 until 180) {
+            val step = m.onAcceptedFix(fixAt(t, northM = anchors[i % anchors.size], accuracyM = 80f))
+            assertThat(step.mode).isEqualTo(CaptureMode.MOVING)
+            assertThat(step.effects).isEmpty() // no request thrash
+            t += 20_000L
+        }
+        // The phone finally gets one steady position: six fixes over more than five minutes demote to STATIONARY.
+        var step = MachineStep(m.mode, emptyList())
+        repeat(20) {
+            step = m.onAcceptedFix(fixAt(t, northM = 0.0, accuracyM = 20f))
+            t += 20_000L
+        }
+        assertThat(step.mode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(m.mode).isEqualTo(CaptureMode.STATIONARY)
+    }
+
+    @Test
     fun exactRepeatsOfAnOutsideAnchorNeverExitStationary() {
         val m = machine()
         // Network fixes alternate between two exact anchors 500 m apart while the phone sits still.

@@ -41,9 +41,11 @@ data class TrackingStatus(
     val segmentationError: SegmentationError? = null,
     /** True while the session is kept open past the schedule end (window-end grace); drives "Finishing up…". */
     val finishingUp: Boolean = false,
+    /** When that grace began (epoch ms); kept across a process death so the orphaned grace can be accounted for. */
+    val finishingUpSinceMs: Long? = null,
 )
 
-/** Activity Recognition transitions seen in one session: how many, how many were ignored as stale, and the last one. */
+/** Activity Recognition transitions seen in one session: how many, how many were ignored (an equal or newer one was already applied), and the last one. */
 data class ArSessionLog(
     val count: Int,
     val ignored: Int,
@@ -96,6 +98,7 @@ class TrackingStatusStore @Inject constructor(
             lastSegmentationSuccessMs = p[SEG_SUCCESS],
             segmentationError = p[SEG_ERROR_TIME]?.let { SegmentationError(it, p[SEG_ERROR_MESSAGE] ?: "") },
             finishingUp = p[FINISHING_UP] ?: false,
+            finishingUpSinceMs = p[FINISHING_UP_SINCE],
         )
     }
 
@@ -133,7 +136,17 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
     suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
-    suspend fun setFinishingUp(on: Boolean) = set(FINISHING_UP, on.takeIf { it })
+    suspend fun setFinishingUp(on: Boolean, sinceMs: Long? = null) {
+        dataStore.edit {
+            if (on) {
+                it[FINISHING_UP] = true
+                if (sinceMs != null) it[FINISHING_UP_SINCE] = sinceMs
+            } else {
+                it.remove(FINISHING_UP)
+                it.remove(FINISHING_UP_SINCE)
+            }
+        }
+    }
 
     /** A successful run: records the time and clears any earlier error. */
     suspend fun recordSegmentationSuccess(timeMs: Long) {
@@ -151,13 +164,12 @@ class TrackingStatusStore @Inject constructor(
         }
     }
 
-    /** Clears per-session runtime state (heartbeat, mode, session id). Attention, gap and test window are kept. */
+    /** Clears per-session runtime state (heartbeat, mode, session id). Attention, gap, test window and an unaccounted grace are kept. */
     suspend fun clearSessionState() {
         dataStore.edit {
             it.remove(HEARTBEAT)
             it.remove(CAPTURE_MODE)
             it.remove(ACTIVE_SESSION)
-            it.remove(FINISHING_UP)
         }
     }
 
@@ -177,6 +189,7 @@ class TrackingStatusStore @Inject constructor(
         val SEG_ERROR_TIME = longPreferencesKey("segmentation_error_ms")
         val SEG_ERROR_MESSAGE = stringPreferencesKey("segmentation_error_message")
         val FINISHING_UP = booleanPreferencesKey("finishing_up")
+        val FINISHING_UP_SINCE = longPreferencesKey("finishing_up_since_ms")
         val AR_LOG = stringPreferencesKey("ar_log")
         const val AR_LOG_SESSIONS = 20
     }

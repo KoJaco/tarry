@@ -50,7 +50,7 @@ class DefaultTrackingStateRepository @Inject constructor(
         reduced.map { it.state }.stateIn(scope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), reduced.value.state)
 
     override val details: StateFlow<TrackingDetails> =
-        reduced.map { TrackingDetails(it.attentionCause, it.pausedUntil) }
+        reduced.map { TrackingDetails(it.attentionCause, it.pausedUntil, it.finishingUp) }
             .stateIn(scope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), TrackingDetails())
 
     override fun refresh() {

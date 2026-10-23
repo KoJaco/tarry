@@ -21,16 +21,19 @@ class TrackingSnapshotProvider @Inject constructor(
         val effective = calculator.calculate(inputsProvider.inputs(now, now, zone), now, zone)
         val status = statusStore.current()
         val pause = effective.winningOverride?.takeIf { it.type == ManualOverrideType.PAUSE }
+        val grace = !effective.isActive && pause == null && status.finishingUp && coordinator.isActive
         return TrackingStateInputs(
             health = HealthSnapshot(
                 nowMs = now.toEpochMilli(),
-                shouldRun = effective.isActive,
+                // The window-end grace is a running session the health monitor must watch (rule 6).
+                shouldRun = effective.isActive || grace,
                 shouldRunSinceMs = effective.activeSince?.toEpochMilli(),
                 serviceRunning = coordinator.isActive,
                 lastHeartbeatMs = status.lastHeartbeatMs,
                 captureMode = status.captureMode,
                 alarmDegraded = status.alarmDegraded,
                 preconditions = preconditions.check(),
+                finishingUp = grace,
             ),
             pauseEndMode = pause?.endMode,
             pausedUntil = effective.pausedUntil,

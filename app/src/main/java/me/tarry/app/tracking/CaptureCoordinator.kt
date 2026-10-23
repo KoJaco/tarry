@@ -51,6 +51,7 @@ class CaptureCoordinator @Inject constructor(
     private var machine: CaptureModeMachine? = null
     private var filter = PingFilter(config)
     private var activity: ActivityType? = null
+    private var lastActivityEventMs = Long.MIN_VALUE
     private var manualStartPending = false
     private var activityRegistered = false
     private var graceWatch = false
@@ -110,6 +111,7 @@ class CaptureCoordinator @Inject constructor(
         val opened = draft.copy(id = trackingRepo.saveSession(draft))
         session = opened
         activity = null
+        lastActivityEventMs = Long.MIN_VALUE
         manualStartPending = trigger == SessionTrigger.MANUAL
         graceWatch = false
         filter = PingFilter(config)
@@ -160,6 +162,7 @@ class CaptureCoordinator @Inject constructor(
         locationJob = null
         trackingRepo.saveSession(open.copy(end = clock.nowMs(), endReason = reason))
         statusStore.clearSessionState()
+        statusStore.setFinishingUp(false)
         geofenceClient.remove()
         activityClient.unregister()
     }
@@ -182,13 +185,13 @@ class CaptureCoordinator @Inject constructor(
         var latest = Long.MIN_VALUE
         for (fix in fixes.sortedBy { it.timeMs }) {
             latest = maxOf(latest, fix.timeMs)
-            if (!filter.offer(fix, m.mode).accepted) continue
+            if (!filter.offer(fix).accepted) continue
             // Step first: a safety-net exit triggered by this very fix tags it GEOFENCE_EXIT.
             apply(m.onAcceptedFix(fix))
             val machineSource = m.takeNextPingSource()
             val source = if (manualStartPending) PingSource.MANUAL_START else machineSource
             manualStartPending = false
-            accepted += pingOf(fix, source, open.id, inferredActivity(fix, activity))
+            accepted += pingOf(fix, source, open.id, activity)
         }
         if (accepted.isNotEmpty()) trackingRepo.savePings(accepted)
         // Every fix or batch counts as a heartbeat, even when all were filtered out.
@@ -214,29 +217,21 @@ class CaptureCoordinator @Inject constructor(
     )
 
     /**
-     * The ping's activity. Dogfood showed every ping reading STILL, including drives, because no transition arrived. A
-     * fix that moves at [TrackingConfig.movingSpeedMps] or more while the last activity is STILL or unknown is
-     * recorded as IN_VEHICLE from [TrackingConfig.vehicleSpeedMps], otherwise the activity is left as it is.
-     */
-    private fun inferredActivity(fix: Fix, activity: ActivityType?): ActivityType? {
-        val speed = fix.speedMps ?: return activity
-        if (speed < config.movingSpeedMps) return activity
-        if (activity != null && activity != ActivityType.STILL && activity != ActivityType.UNKNOWN) return activity
-        return if (speed >= config.vehicleSpeedMps) ActivityType.IN_VEHICLE else activity
-    }
-
-    /**
      * An Activity Recognition transition. [eventAgeMs] is how long ago the event happened when it was received (from its
-     * elapsed-realtime stamp). Every transition is logged for the Sessions screen; one older than
-     * [TrackingConfig.arStaleMs] is not applied.
+     * elapsed-realtime stamp). Every transition is logged for the Sessions screen (counted as ignored when it was not applied).
+     * A late event is still the newest word on the activity, so it is applied unless an
+     * equal or newer event was already applied. The ping's activity is only ever what AR reported; it is never
+     * inferred from GPS speed.
      */
     suspend fun onActivity(type: ActivityType, eventAgeMs: Long = 0L) = mutex.withLock {
         val open = session ?: return@withLock
         val m = machine ?: return@withLock
         val now = clock.nowMs()
-        val stale = eventAgeMs > config.arStaleMs
-        statusStore.recordArTransition(open.id, type, now - eventAgeMs, now, stale)
-        if (stale) return@withLock
+        val eventMs = now - eventAgeMs
+        val newest = eventMs > lastActivityEventMs
+        statusStore.recordArTransition(open.id, type, eventMs, now, ignored = !newest)
+        if (!newest) return@withLock
+        lastActivityEventMs = eventMs
         m.stayRadiusM = stayRadius.stayRadiusM()
         activity = type
         apply(m.onActivity(type))
@@ -335,10 +330,22 @@ class CaptureCoordinator @Inject constructor(
         trackingRepo.saveSession(open.copy(end = closedAt, endReason = SessionEndReason.KILLED))
         // The dead time counts only where capture should have been running: a phone that died at 15:00 and
         // booted at 06:50 next day lost 15:00-17:00, not the night.
-        val active = if (now > closedAt) {
+        val windows = if (now > closedAt) {
             windowChecker.activeIntervals(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(now))
         } else {
             emptyList()
+        }
+        // A session that died during the window-end grace was meant to run until the grace cap (or the next window):
+        // that dead time is lost capture too (rule 6), not only the scheduled windows.
+        val status = statusStore.current()
+        val graceStart = status.finishingUpSinceMs?.takeIf { status.finishingUp }
+        val graceEnd = graceStart?.let {
+            minOf(now, it + config.windowEndGraceMaxMs, windows.firstOrNull()?.start?.toEpochMilli() ?: Long.MAX_VALUE)
+        }
+        val active = if (graceEnd != null && graceEnd > closedAt) {
+            listOf(WindowBounds(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(graceEnd))) + windows
+        } else {
+            windows
         }
         // An open health Gap (started at the last heartbeat) absorbs the interval that touches it; the rest are ours.
         for (interval in health.adoptOpenGap(active)) {

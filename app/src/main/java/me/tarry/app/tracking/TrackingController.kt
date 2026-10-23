@@ -216,6 +216,7 @@ class TrackingController @Inject constructor(
 
     private suspend fun reconcileLocked(source: ReconcileSource) {
         coordinator.recoverCrashedSession()
+        settleOrphanedGrace()
         // Exact alarms are allowed again: drop the stale cause; a start that fails again re-raises it.
         if (alarmScheduler.canScheduleExact()) health.recoverCause(AttentionCause.EXACT_ALARM_DENIED)
         val now = Instant.ofEpochMilli(clock.nowMs())
@@ -248,7 +249,8 @@ class TrackingController @Inject constructor(
             }
         }
         // Not supposed to run (window ended, paused, stopped): any open outage ends here.
-        if (!effective.isActive) health.closeOutage(now.toEpochMilli())
+        // A grace session is still capture that should be running: its outage (rule 6) stays open.
+        if (!effective.isActive && graceStartMs == null) health.closeOutage(now.toEpochMilli())
         val next = if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition
         // During the grace the cap is the one extra alarm; settling itself is driven by capture events, never a timer.
         val graceCap = graceStartMs?.let { Instant.ofEpochMilli(it + config.windowEndGraceMaxMs) }
@@ -267,11 +269,23 @@ class TrackingController @Inject constructor(
         if (started == null) {
             if (coordinator.isSettled()) return false
             graceStartMs = nowMs
-            statusStore.setFinishingUp(true)
+            statusStore.setFinishingUp(true, nowMs)
             coordinator.watchSettle(true)
             return true
         }
         return nowMs - started < config.windowEndGraceMaxMs && !coordinator.isSettled()
+    }
+
+    /**
+     * A grace that was running when the process died: the session is gone (crash recovery closed it and recorded the
+     * lost time), but its window end was never handled. Finish it now: clear the flag and run the end-of-window
+     * segmentation, so the grace is neither left "finishing up" forever nor skipped by segmentation.
+     */
+    private suspend fun settleOrphanedGrace() {
+        if (graceStartMs != null || coordinator.isActive) return
+        if (!statusStore.current().finishingUp) return
+        statusStore.setFinishingUp(false)
+        segmentationTrigger.onWindowEnd()
     }
 
     private suspend fun endGrace() {

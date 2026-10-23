@@ -516,6 +516,21 @@ class CaptureCoordinatorTest {
     }
 
     @Test
+    fun aSessionMovingOnAlternatingNetworkAnchorsKeepsSavingEveryFix() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onActivity(ActivityType.IN_VEHICLE)
+        val anchors = listOf(-33.0, -33.0027, -33.0018)
+        val fixes = (0 until 90).map { i ->
+            Fix(anchors[i % anchors.size], 151.0, 80f, clock.now + 1_000L + i * 20_000L)
+        }
+        coordinator.onFixes(fixes)
+
+        assertThat(savedPings()).hasSize(90)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
+        assertThat(store.current().lastHeartbeatMs).isEqualTo(fixes.last().timeMs)
+    }
+
+    @Test
     fun aSpikeIsSavedAndTheReturnToTheStayIsNotLostToTheSpeedCap() = runBlocking {
         coordinator.begin(SessionTrigger.SCHEDULE)
         // ~3.3 km away and back 20 s later: both are kept.
@@ -528,37 +543,53 @@ class CaptureCoordinatorTest {
     private fun speedFix(offsetMs: Long, speed: Float?) = Fix(-33.0, 151.0, 10f, clock.now + offsetMs, speedMps = speed)
 
     @Test
-    fun fixSpeedInfersVehicleActivityWhenTheActivityIsStillOrUnknown() = runBlocking {
+    fun fixSpeedNeverChangesTheRecordedActivity() = runBlocking {
         coordinator.begin(SessionTrigger.SCHEDULE)
-        // Unknown activity: 10 m/s is a vehicle, 2 m/s is moving but not enough to call it a vehicle, 0.5 is not moving.
-        coordinator.onFixes(listOf(speedFix(1_000, 10f), speedFix(2_000, 2f), speedFix(3_000, 0.5f), speedFix(4_000, null)))
+        // Owner decision: no IN_VEHICLE from GPS speed. Without an AR event the activity stays null, whatever the speed.
+        coordinator.onFixes(listOf(speedFix(1_000, 25f), speedFix(2_000, 2f), speedFix(3_000, null)))
+        clock.now += 1_000
         coordinator.onActivity(ActivityType.STILL)
-        coordinator.onFixes(listOf(speedFix(5_000, 10f), speedFix(6_000, 2f)))
+        coordinator.onFixes(listOf(speedFix(5_000, 25f)))
+        clock.now += 1_000
         coordinator.onActivity(ActivityType.WALKING)
-        coordinator.onFixes(listOf(speedFix(7_000, 10f)))
+        coordinator.onFixes(listOf(speedFix(7_000, 25f)))
 
         assertThat(savedPings().map { it.activity }).containsExactly(
-            ActivityType.IN_VEHICLE, null, null, null,
-            ActivityType.IN_VEHICLE, ActivityType.STILL,
-            ActivityType.WALKING,
+            null, null, null, ActivityType.STILL, ActivityType.WALKING,
         ).inOrder()
     }
 
     @Test
-    fun staleActivityEventIsLoggedButNotApplied() = runBlocking {
+    fun aLateActivityEventNewerThanTheLastAppliedOneIsStillApplied() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        coordinator.onFixes(listOf(fix(1_000)))
+        val id = coordinator.activeSessionId!!
+        val lateMs = 30 * 60_000L
+
+        coordinator.onActivity(ActivityType.STILL, eventAgeMs = lateMs)
+
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+        val log = store.arLogs.first().getValue(id)
+        assertThat(log.count).isEqualTo(1)
+        assertThat(log.ignored).isEqualTo(0)
+        assertThat(log.lastEventMs).isEqualTo(clock.now - lateMs)
+    }
+
+    @Test
+    fun anActivityEventNotNewerThanTheLastAppliedOneIsLoggedButIgnored() = runBlocking {
         coordinator.begin(SessionTrigger.SCHEDULE)
         coordinator.onFixes(listOf(fix(1_000)))
         val id = coordinator.activeSessionId!!
 
-        coordinator.onActivity(ActivityType.STILL, eventAgeMs = config.arStaleMs + 1)
+        coordinator.onActivity(ActivityType.STILL, eventAgeMs = 1_000)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+        // Delivered later but it happened earlier than the STILL that was already applied.
+        coordinator.onActivity(ActivityType.WALKING, eventAgeMs = 60_000)
 
-        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
         val log = store.arLogs.first().getValue(id)
-        assertThat(log.count).isEqualTo(1)
+        assertThat(log.count).isEqualTo(2)
         assertThat(log.ignored).isEqualTo(1)
-        assertThat(log.lastType).isEqualTo(ActivityType.STILL)
-        assertThat(log.lastReceiptMs).isEqualTo(clock.now)
-        assertThat(log.lastEventMs).isEqualTo(clock.now - config.arStaleMs - 1)
     }
 
     @Test

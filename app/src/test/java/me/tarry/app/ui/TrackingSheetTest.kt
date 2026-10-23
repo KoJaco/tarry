@@ -65,6 +65,14 @@ class TrackingSheetTest {
     }
 
     @Test
+    fun trackingInTheWindowEndGraceSaysFinishingUpAndStillOffersStop() {
+        show(TrackingState.TRACKING, TrackingDetails(finishingUp = true))
+        composeRule.onNodeWithText("Finishing up…").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop").performClick()
+        assertThat(calls).containsExactly("stop", "done").inOrder()
+    }
+
+    @Test
     fun pausedOffersResume() {
         show(TrackingState.PAUSED)
         composeRule.onNodeWithText("Paused until you resume").assertIsDisplayed()

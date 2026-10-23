@@ -35,7 +35,7 @@ class PingFilter(private val config: TrackingConfig) {
     private var beforeLast: Fix? = null
     private val recent = ArrayDeque<Fix>()
 
-    fun offer(fix: Fix, mode: CaptureMode): FilterDecision {
+    fun offer(fix: Fix): FilterDecision {
         if (fix.accuracyM > config.maxAccuracyM) return FilterDecision.DROP_ACCURACY
         val last = lastAccepted
         if (last != null) {

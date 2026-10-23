@@ -6,7 +6,7 @@ import javax.inject.Inject
 /**
  * Everything the health decision needs, as plain data.
  *
- * @property shouldRun the effective schedule says capture should be active now.
+ * @property shouldRun the effective schedule says capture should be active now, or the window-end grace keeps it running.
  * @property shouldRunSinceMs when the current active stretch began (window or manual start); null if not [shouldRun].
  * @property serviceRunning a capture session is live in this process.
  */
@@ -19,6 +19,8 @@ data class HealthSnapshot(
     val captureMode: CaptureMode?,
     val alarmDegraded: Boolean,
     val preconditions: Preconditions,
+    /** The window-end grace is running: [shouldRun] is true for it and the session is watched like any other. */
+    val finishingUp: Boolean = false,
 )
 
 /**

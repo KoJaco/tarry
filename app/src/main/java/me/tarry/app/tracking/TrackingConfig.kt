@@ -54,13 +54,6 @@ data class TrackingConfig(
      */
     val spikeMinM: Float = 500f,
     val spikeReturnM: Float = 150f,
-    // Activity Recognition diagnostics.
-    /** A transition event older than this when received (by its elapsed-realtime stamp) is logged but ignored. */
-    val arStaleMs: Long = 5 * 60_000L,
-    /** A fix at or above this speed while the last activity is STILL or unknown marks the ping's activity as inferred. */
-    val movingSpeedMps: Float = 1.0f,
-    /** Inferred activity is IN_VEHICLE from this speed; between [movingSpeedMps] and here the activity is left as is. */
-    val vehicleSpeedMps: Float = 4.0f,
     // Window-end grace: keep a session open past the schedule end until a stay this long is confirmed.
     val windowEndSettleMs: Long = 10 * 60_000L,
     val windowEndGraceMaxMs: Long = 2 * 60 * 60_000L,

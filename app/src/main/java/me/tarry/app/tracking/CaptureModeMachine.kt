@@ -129,7 +129,7 @@ class CaptureModeMachine(
         return enterMoving()
     }
 
-    /** [fix] must already have passed [PingFilter]: accepted, or only held back from saving by the displacement gate or STATIONARY jitter. */
+    /** [fix] must already have been accepted by [PingFilter] (capture keeps every accepted fix; there is no displacement or jitter gate). */
     fun onAcceptedFix(fix: Fix): MachineStep {
         lastFix = fix
         val repeated = recentFixes.any { it.lat == fix.lat && it.lng == fix.lng }

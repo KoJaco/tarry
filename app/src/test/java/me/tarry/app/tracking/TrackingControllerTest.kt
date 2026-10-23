@@ -579,15 +579,57 @@ class TrackingControllerTest {
     }
 
     @Test
-    fun staleActivityEventFromTheReceiverIsIgnored() = runBlocking {
+    fun anActivityEventOlderThanTheLastAppliedOneFromTheReceiverIsIgnored() = runBlocking {
         controller.reconcile()
         coordinator.begin(SessionTrigger.SCHEDULE)
         coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, clock.now + 1)))
 
-        controller.onActivity(ActivityType.STILL, eventAgeMs = config.arStaleMs + 1)
-        assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
-
         controller.onActivity(ActivityType.STILL, eventAgeMs = 1_000)
         assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+
+        controller.onActivity(ActivityType.WALKING, eventAgeMs = 10 * 60_000L)
+        assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
+    }
+
+    @Test
+    fun aGraceSessionCanBeStoppedByTheUser() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isTrue()
+
+        controller.stop()
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.USER_STOP)
+    }
+
+    @Test
+    fun graceThatLostItsProcessIsSettledAtTheNextReconcileWithSegmentationAndAGap() = runBlocking {
+        controller.reconcile()
+        val start = mondayAt(16, 30).toEpochMilli()
+        val sessionId = trackingRepo.saveSession(TrackingSession(start = start, zoneId = sydney.id, trigger = SessionTrigger.SCHEDULE))
+        val lastPing = mondayAt(17, 5).toEpochMilli()
+        trackingRepo.savePing(
+            me.tarry.core.data.db.entity.LocationPing(
+                timestamp = lastPing, zoneId = sydney.id, lat = -33.0, lng = 151.0, accuracyM = 10f, speedMps = null,
+                bearing = null, activity = null, source = me.tarry.core.data.model.PingSource.FUSED, sessionId = sessionId,
+            ),
+        )
+        // The grace began at 17:00 and the process died at 17:05; the cap alarm fires at 19:00.
+        store.setFinishingUp(true, mondayAt(17).toEpochMilli())
+        clock.now = mondayAt(17).toEpochMilli() + config.windowEndGraceMaxMs
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.KILLED)
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(lastPing)
+        assertThat(gap.end).isEqualTo(clock.now)
     }
 }
