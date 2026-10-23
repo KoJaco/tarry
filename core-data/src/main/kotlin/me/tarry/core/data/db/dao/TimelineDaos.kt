@@ -16,8 +16,15 @@ import me.tarry.core.data.db.entity.VisitTag
 /** Row of [VisitDao.durationByPlaceOutside]. */
 data class PlaceDuration(val placeId: String, val durationMs: Long)
 
+/** Row of [VisitDao.observePlaceVisitCounts]. */
+data class PlaceVisitCount(val placeId: String, val count: Int)
+
 @Dao
 interface VisitDao {
+    /** Live visit count per place; places with none are absent. */
+    @Query("SELECT placeId, COUNT(*) AS count FROM visit WHERE deleted = 0 AND placeId IS NOT NULL GROUP BY placeId")
+    fun observePlaceVisitCounts(): Flow<List<PlaceVisitCount>>
+
     @Upsert suspend fun upsert(visit: Visit)
 
     @Upsert suspend fun upsertAll(visits: List<Visit>)

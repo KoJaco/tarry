@@ -223,6 +223,7 @@ internal fun PlacePickerSheet(
     places: List<PlaceOption>,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
+    title: String = stringResource(R.string.edit_place_picker_title),
 ) {
     var query by remember { mutableStateOf("") }
     val shown = remember(places, query) {
@@ -238,7 +239,7 @@ internal fun PlacePickerSheet(
                 .padding(bottom = TarryTheme.space.l),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
         ) {
-            SheetTitle(stringResource(R.string.edit_place_picker_title))
+            SheetTitle(title)
             InsetTextField(query, { query = it }, stringResource(R.string.edit_place_search_label))
             if (shown.isEmpty()) {
                 Text(

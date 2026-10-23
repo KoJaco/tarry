@@ -79,6 +79,10 @@ class TimelineRepository @Inject constructor(
     suspend fun visit(id: String): Visit? = visits.getById(id)
     suspend fun visitsInRange(from: Long, to: Long) = visits.getInRange(from, to)
     fun observeVisits(from: Long, to: Long): Flow<List<Visit>> = visits.observeInRange(from, to)
+    /** Live visits per place id; places with none are absent. */
+    fun observePlaceVisitCounts(): Flow<Map<String, Int>> =
+        visits.observePlaceVisitCounts().map { rows -> rows.associate { it.placeId to it.count } }
+    suspend fun liveVisitsAt(placeId: String) = visits.getLiveByPlace(placeId)
     suspend fun tagVisit(link: VisitTag) = visits.upsertTag(link)
     suspend fun untagVisit(visitId: String, tagId: String) = visits.deleteTag(visitId, tagId)
     suspend fun visitTags(visitId: String) = visits.getTags(visitId)
