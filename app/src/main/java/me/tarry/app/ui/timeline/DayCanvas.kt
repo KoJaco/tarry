@@ -655,7 +655,9 @@ private fun TripRow(
         formatDistance(trip.distanceM),
         formatDuration(times.durationMs),
     )
-    Row(
+    // The whole row (at least 48 dp tall, see DayLayoutParams.tripMinTouchDp) is the touch target; the chip inside is
+    // what is drawn, so a short trip is a compact pill that never covers a neighbouring visit block.
+    Box(
         modifier = modifier
             .then(if (enabled) Modifier.clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick) else Modifier)
             .semantics(mergeDescendants = true) {
@@ -663,25 +665,41 @@ private fun TripRow(
                 traversalIndex = index.toFloat()
                 blockDimmed = dimmed
             }
-            .testTag("timeline_row_${trip.id}")
-            .padding(horizontal = TarryTheme.space.m),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+            .testTag("timeline_row_${trip.id}"),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Icon(
-            painter = painterResource(if (trip.mode == TripMode.WALK) R.drawable.ic_walk else R.drawable.ic_car),
-            contentDescription = null,
-            tint = c.muted,
-            modifier = Modifier.size(DayCanvasDefaults.TripIconSize),
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = c.muted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier
+                .padding(start = TarryTheme.space.s)
+                .clip(TarryTheme.shapes.pill)
+                .background(c.card)
+                .border(DayCanvasDefaults.RuleWidth, c.outline, TarryTheme.shapes.pill)
+                .padding(horizontal = TarryTheme.space.m, vertical = DayCanvasDefaults.ChipPaddingV),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+        ) {
+            Icon(
+                painter = painterResource(trip.mode.iconRes()),
+                contentDescription = null,
+                tint = c.muted,
+                modifier = Modifier.size(DayCanvasDefaults.TripIconSize),
+            )
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                color = c.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
+}
+
+/** Walk and drive have their own glyph; an unknown mode gets the neutral route icon, never the car. */
+internal fun TripMode.iconRes(): Int = when (this) {
+    TripMode.WALK -> R.drawable.ic_walk
+    TripMode.VEHICLE -> R.drawable.ic_car
+    TripMode.UNKNOWN -> R.drawable.ic_route
 }
 
 /** True when the now-pill would overlap the hour label at [markDp]; that label is hidden, as calendars do. */

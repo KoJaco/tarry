@@ -62,7 +62,7 @@ class DayLayoutTest {
         assertThat(l.blocks[2].compact).isFalse()
         assertThat(l.trips).hasSize(1)
         assertThat(l.trips[0].topDp).isWithin(eps).of(2 * 72f + gapDp)
-        assertThat(l.trips[0].heightDp).isWithin(eps).of(24f)
+        assertThat(l.trips[0].heightDp).isWithin(eps).of(48f)
         assertThat(l.blocks.all { it.foldedTrips.isEmpty() }).isTrue()
         assertThat(l.nowDp).isNull()
     }
@@ -113,7 +113,7 @@ class DayLayoutTest {
     }
 
     @Test
-    fun manyShortVisitsAreSeparatedAndFoldTrips() {
+    fun manyShortVisitsAreSeparatedAndEveryTripKeepsItsRow() {
         val items = mutableListOf<TimelineItem>()
         for (i in 0 until 10) {
             val s = at(9, i * 6)
@@ -132,19 +132,42 @@ class DayLayoutTest {
         val proportional = 72f // 09:00..10:00
         assertThat(l.heightDp).isGreaterThan(proportional)
         assertThat(l.heightDp).isAtLeast(l.blocks.last().topDp + l.blocks.last().heightDp - eps)
-        // Every trip is either a row or folded into exactly one visit.
-        val folded = l.blocks.flatMap { it.foldedTrips }
-        assertThat(l.trips.size + folded.size).isEqualTo(9)
-        assertThat(folded).isNotEmpty()
-        // Folded into the NEXT visit: trip t_i belongs to block i+1.
-        l.blocks.forEachIndexed { i, b -> b.foldedTrips.forEach { assertThat(it.id).isEqualTo("t${i - 1}") } }
-        // No trip row overlaps a block.
-        l.trips.forEach { t ->
-            l.blocks.forEach { b ->
-                val overlap = t.topDp < b.topDp + b.heightDp - eps && b.topDp < t.topDp + t.heightDp - eps
-                assertThat(overlap).isFalse()
-            }
+        // Every trip has its own row, at least 48 dp tall; nothing is folded away.
+        assertThat(l.trips).hasSize(9)
+        assertThat(l.blocks.flatMap { it.foldedTrips }).isEmpty()
+        l.trips.forEach { assertThat(it.heightDp).isAtLeast(48f - eps) }
+        // No row overlaps another row or a block, and time order is kept.
+        l.ordered().zipWithNext().forEach { (upper, lower) ->
+            assertThat(lower.topDp).isAtLeast(upper.topDp + upper.heightDp - eps)
         }
+        l.trips.forEachIndexed { i, t -> assertThat(t.trip.id).isEqualTo("t$i") }
+    }
+
+    @Test
+    fun sevenMinuteTripBetweenTwoVisitsGetsARowAndPushesTheNextVisitDown() {
+        val l = layout(
+            listOf(
+                visit("a", at(9, 0), at(9, 40)),
+                trip("t", at(9, 40), at(9, 47)),
+                visit("b", at(9, 47), at(10, 30)),
+            ),
+        )
+        val a = l.blocks[0]
+        val t = l.trips.single()
+        val b = l.blocks[1]
+        assertThat(t.heightDp).isAtLeast(48f - eps)
+        assertThat(t.topDp).isAtLeast(a.topDp + a.heightDp - eps)
+        assertThat(b.topDp).isAtLeast(t.topDp + t.heightDp - eps)
+        // The previous visit keeps its true height (the trip sits below it, not on it).
+        assertThat(a.heightDp).isWithin(eps).of(40 * 72f / 60)
+    }
+
+    @Test
+    fun tripRowStaysAtLeast48dpAtLargeFontScaleAndGrowsWithIt() {
+        val items = listOf(visit("a", at(9, 0), at(9, 10)), trip("t", at(9, 10), at(9, 12)), visit("b", at(9, 12), at(9, 30)))
+        assertThat(layout(items, fontScale = 1f).trips.single().heightDp).isWithin(eps).of(48f)
+        assertThat(layout(items, fontScale = 2f).trips.single().heightDp).isWithin(eps).of(48f)
+        assertThat(layout(items, fontScale = 3f).trips.single().heightDp).isWithin(eps).of(72f)
     }
 
     @Test
@@ -153,10 +176,11 @@ class DayLayoutTest {
         assertThat(l.trips).hasSize(1)
         assertThat(l.blocks[0].foldedTrips).isEmpty()
         assertThat(l.trips[0].topDp).isAtLeast(l.blocks[0].topDp + l.blocks[0].heightDp - eps)
+        assertThat(l.heightDp).isAtLeast(l.trips[0].topDp + l.trips[0].heightDp - eps)
     }
 
     @Test
-    fun tripWithNoNextVisitFoldsIntoPrevious() {
+    fun tripBeforeAGapKeepsItsRowBetweenTheVisitAndTheGap() {
         val l = layout(
             listOf(
                 visit("v", at(9, 0), at(9, 30)),
@@ -164,10 +188,12 @@ class DayLayoutTest {
                 gap("g", at(9, 31), at(9, 40)),
             ),
         )
-        // Gap block starts at 9:31 (true top 37.2) but is pushed below the visit; trip row cannot fit between.
         val v = l.blocks.first { it.item is TimelineItem.Visit }
-        assertThat(v.foldedTrips.map { it.id }).containsExactly("t")
-        assertThat(l.trips).isEmpty()
+        val g = l.blocks.first { it.item is TimelineItem.Gap }
+        val t = l.trips.single()
+        assertThat(v.foldedTrips).isEmpty()
+        assertThat(t.topDp).isAtLeast(v.topDp + v.heightDp - eps)
+        assertThat(g.topDp).isAtLeast(t.topDp + t.heightDp - eps)
     }
 
     @Test

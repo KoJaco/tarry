@@ -1,6 +1,15 @@
 package me.tarry.app.ui.timeline
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import me.tarry.app.R
+import me.tarry.app.ui.drawer.EditTarget
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -173,24 +182,102 @@ class DayCanvasTest {
     }
 
     @Test
-    fun shortTripIsFoldedIntoTheNextVisitDescription() {
-        show(
-            listOf(
-                TimelineItem.Visit("a", at(9, 0), at(9, 20), "A"),
-                TimelineItem.Trip("t", at(9, 20), at(9, 25), 500f, TripMode.VEHICLE),
-                TimelineItem.Visit("b", at(9, 25), at(10, 30), "B"),
-            ),
-        )
-        composeRule.onNodeWithTag("timeline_row_t").assertDoesNotExist()
-        composeRule.onNodeWithTag("timeline_row_b").assert(
-            SemanticsMatcher("folded trip appended") { node ->
-                val d = node.config[SemanticsProperties.ContentDescription].single()
-                d.startsWith("Visit at B, ") && d.contains(". Also: Trip by Vehicle, ") && d.endsWith("500 m")
+    fun shortTripBetweenTwoVisitsRendersAClickableLabelledRowThatCoversNoVisit() {
+        val targets = mutableListOf<EditTarget>()
+        composeRule.setContent {
+            TarryTheme {
+                TimelineContent(
+                    date,
+                    listOf(
+                        TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+                        TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.WALK),
+                        TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
+                    ),
+                    {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = { targets += it },
+                )
+            }
+        }
+        // A 7 minute trip is about 8 dp of true height; it used to be folded away with no row at all.
+        val row = composeRule.onNodeWithTag("timeline_row_t")
+        row.assertExists().assertHasClickAction()
+        composeRule.onNodeWithText("Walk · 800 m · 7 min").assertExists()
+        row.assert(
+            SemanticsMatcher("labelled") {
+                val d = it.config[SemanticsProperties.ContentDescription].single()
+                d.contains("Walk") && d.contains("9:40") && d.contains("9:47")
             },
         )
-        composeRule.onNodeWithTag("timeline_row_a").assert(
-            SemanticsMatcher("no extras") { !it.config[SemanticsProperties.ContentDescription].single().contains("Also") },
+        val t = row.getUnclippedBoundsInRoot()
+        assertThat(t.height.value).isAtLeast(48f - 0.01f)
+        for (visit in listOf("a", "b")) {
+            val v = composeRule.onNodeWithTag("timeline_row_$visit").getUnclippedBoundsInRoot()
+            val overlaps = t.top < v.bottom - 0.01.dp && v.top < t.bottom - 0.01.dp
+            assertThat(overlaps).isFalse()
+        }
+        row.performClick()
+        assertThat(targets).containsExactly(EditTarget.Trip("t"))
+    }
+
+    @Test
+    fun everyShortTripOfARealDayKeepsItsOwnRowBetweenItsNeighbours() {
+        // Shape of the dogfood day: 10 min walk between two Home visits, 10 min drive to the yard.
+        val items = listOf(
+            TimelineItem.Visit("h1", at(7, 0), at(7, 21), "Home"),
+            TimelineItem.Trip("walk", at(7, 21), at(7, 31), 800f, TripMode.WALK),
+            TimelineItem.Visit("h2", at(7, 31), at(7, 51), "Home"),
+            TimelineItem.Trip("drive", at(7, 51), at(8, 1), 5300f, TripMode.VEHICLE),
+            TimelineItem.Visit("yard", at(8, 1), at(8, 40), "Boatyard"),
         )
+        show(items)
+        val tags = listOf("h1", "walk", "h2", "drive", "yard").map { "timeline_row_$it" }
+        val bounds = tags.map { composeRule.onNodeWithTag(it).assertExists().getUnclippedBoundsInRoot() }
+        // Reading order top to bottom with no overlap between any two neighbours.
+        bounds.zipWithNext().forEach { (upper, lower) -> assertThat(lower.top.value).isAtLeast(upper.bottom.value - 0.01f) }
+        composeRule.onNodeWithTag("timeline_row_walk").assertHasClickAction()
+        composeRule.onNodeWithTag("timeline_row_drive").assertHasClickAction()
+    }
+
+    @Test
+    fun shortTripRowKeepsA48dpTouchTargetAndNoOverlapAtFontScale2() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                TarryTheme {
+                    TimelineContent(
+                        date,
+                        listOf(
+                            TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+                            TimelineItem.Trip("t", at(9, 40), at(9, 47), 800f, TripMode.UNKNOWN),
+                            TimelineItem.Visit("b", at(9, 47), at(10, 30), "B"),
+                        ),
+                        {}, {}, today = date, zone = zone, nowMs = at(20),
+                    )
+                }
+            }
+        }
+        val t = composeRule.onNodeWithTag("timeline_row_t").assertHasClickAction().getUnclippedBoundsInRoot()
+        assertThat(t.height.value).isAtLeast(48f - 0.01f)
+        val a = composeRule.onNodeWithTag("timeline_row_a").getUnclippedBoundsInRoot()
+        val b = composeRule.onNodeWithTag("timeline_row_b").getUnclippedBoundsInRoot()
+        assertThat(t.top.value).isAtLeast(a.bottom.value - 0.01f)
+        assertThat(b.top.value).isAtLeast(t.bottom.value - 0.01f)
+    }
+
+    @Test
+    fun unknownTripModeUsesTheNeutralRouteIconNotTheCar() {
+        assertThat(TripMode.UNKNOWN.iconRes()).isEqualTo(R.drawable.ic_route)
+        assertThat(TripMode.UNKNOWN.iconRes()).isNotEqualTo(R.drawable.ic_car)
+        assertThat(TripMode.VEHICLE.iconRes()).isEqualTo(R.drawable.ic_car)
+        assertThat(TripMode.WALK.iconRes()).isEqualTo(R.drawable.ic_walk)
+        // And the row says "Trip" for it.
+        show(
+            listOf(
+                TimelineItem.Visit("a", at(9, 0), at(9, 40), "A"),
+                TimelineItem.Trip("t", at(9, 40), at(9, 49), 1900f, TripMode.UNKNOWN),
+                TimelineItem.Visit("b", at(9, 49), at(10, 30), "B"),
+            ),
+        )
+        composeRule.onNodeWithText("Trip · 1.9 km · 9 min").assertExists()
     }
 
     @Test

@@ -13,6 +13,8 @@ data class DayLayoutParams(
     val compactUnderMinutes: Int = 30,
     /** Scaled by max(1, fontScale). */
     val tripRowDp: Float = 24f,
+    /** Least height (not font-scaled) of a trip row, so the chip is a 48 dp touch target. */
+    val tripMinTouchDp: Float = 48f,
     /** Minimum vertical space between consecutive items, so adjacent blocks never touch. Not font-scaled. */
     val itemGapDp: Float = 4f,
     /** Minimum height of an outage marker drawn inside a visit. Not font-scaled. */
@@ -38,7 +40,7 @@ sealed interface Placed {
 data class InnerGap(val gap: TimelineItem.Gap, val offsetDp: Float, val heightDp: Float)
 
 /**
- * A visit or gap. [foldedTrips] are trips that had no room of their own and are summarised in this visit.
+ * A visit or gap. [foldedTrips] is always empty now (every trip has its own row); the field is kept for the spoken description.
  * [innerGaps] are outages that fall inside this visit (see [layoutDay]).
  */
 data class PlacedBlock(
@@ -119,7 +121,8 @@ fun layoutDay(
     val (dayStart, dayEnd) = dayBounds
     val fs = maxOf(1f, fontScale)
     val scale = params.dpPerHour * fs
-    val tripRow = params.tripRowDp * fs
+    // A trip row is also the touch target of the trip chip: never below tripMinTouchDp, whatever the font scale.
+    val tripRow = maxOf(params.tripRowDp * fs, params.tripMinTouchDp)
     val minBlock = params.minBlockDp * fs
 
     // Clamp to the day, drop empties, stable sort by start.
@@ -244,7 +247,6 @@ fun layoutDay(
         }
     }
 
-    val hasVisit = clamped.any { it.item is TimelineItem.Visit }
     val compactUnderMs = params.compactUnderMinutes * MS_PER_MINUTE
 
     val gap = params.itemGapDp
@@ -286,67 +288,22 @@ fun layoutDay(
     val blocks = mutableListOf<PlacedBlock>()
     val trips = mutableListOf<PlacedTrip>()
 
-    if (!hasVisit) {
-        // Nothing to fold into: every trip keeps its own row and pushes later items down.
-        var cur = 0f
-        for ((i, c) in clamped.withIndex()) {
-            val top = maxOf(dp(canvasStart, c.start), cur)
-            if (c.item is TimelineItem.Trip) {
-                trips += PlacedTrip(c.item, top, tripRow)
-                cur = top + tripRow + gap
-            } else {
-                val b = block(c, top, clamped.getOrNull(i + 1)?.start, emptyList())
-                blocks += b
-                cur = top + b.heightDp + gap
-            }
-        }
-    } else {
-        // Pass 1: blocks (visits and gaps), never overlapping each other and never closer than the item gap.
-        val blockSources = clamped.filter { it.item !is TimelineItem.Trip }
-        val tops = ArrayList<Float>()
-        val heights = ArrayList<Float>()
-        var bottom = 0f
-        for ((i, c) in blockSources.withIndex()) {
-            val top = maxOf(dp(canvasStart, c.start), bottom)
-            val h = blockHeight(c, top, blockSources.getOrNull(i + 1)?.start)
-            tops += top
-            heights += h
-            bottom = top + h + gap
-        }
-        // Group trips by the number of blocks that start before them: group k sits between block k-1 and k.
-        val groups = List(blockSources.size + 1) { mutableListOf<Clamped>() }
-        var seen = 0
-        for (c in clamped) {
-            if (c.item is TimelineItem.Trip) groups[seen] += c else seen++
-        }
-        val folded = List(blockSources.size) { mutableListOf<TimelineItem.Trip>() }
-        fun foldTarget(k: Int): Int =
-            (k until blockSources.size).firstOrNull { blockSources[it].item is TimelineItem.Visit }
-                ?: (k - 1 downTo 0).first { blockSources[it].item is TimelineItem.Visit }
-        for ((k, group) in groups.withIndex()) {
-            var cur = if (k == 0) 0f else tops[k - 1] + heights[k - 1] + gap
-            val nextTop = if (k < blockSources.size) tops[k] else Float.POSITIVE_INFINITY
-            for (c in group) {
-                val trip = c.item as TimelineItem.Trip
-                val top = maxOf(dp(canvasStart, c.start), cur)
-                if (top + tripRow + gap <= nextTop) {
-                    trips += PlacedTrip(trip, top, tripRow)
-                    cur = top + tripRow + gap
-                } else {
-                    folded[foldTarget(k)] += trip
-                }
-            }
-        }
-        for ((i, c) in blockSources.withIndex()) {
-            blocks += PlacedBlock(
-                item = c.item,
-                topDp = tops[i],
-                heightDp = heights[i],
-                compact = c.end - c.start < compactUnderMs,
-                foldedTrips = folded[i].toList(),
-                innerGaps = innerGapsOf(c, heights[i]),
-                cluster = stackedClusters[c.item]?.gaps.orEmpty(),
-            )
+    // One flow top to bottom: every item sits at its true time or just below the previous item, never closer than the
+    // item gap. Every trip keeps its own row (dogfood-2: a trip under ~23 min used to be folded away and invisible), so
+    // a short trip between two visits pushes the later ones down rather than hiding; visits never yield to overlap.
+    var cur = 0f
+    for ((i, c) in clamped.withIndex()) {
+        val top = maxOf(dp(canvasStart, c.start), cur)
+        if (c.item is TimelineItem.Trip) {
+            trips += PlacedTrip(c.item, top, tripRow)
+            cur = top + tripRow + gap
+        } else {
+            // A block is trimmed against the next block's true start; trips between them are placed below it.
+            val nextBlockStart = (i + 1 until clamped.size).firstOrNull { clamped[it].item !is TimelineItem.Trip }
+                ?.let { clamped[it].start }
+            val b = block(c, top, nextBlockStart, emptyList())
+            blocks += b
+            cur = top + b.heightDp + gap
         }
     }
     // Clusters with visits inside: a band at the true span, drawn first so the visits overlay it.
