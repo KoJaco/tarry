@@ -17,11 +17,31 @@ import kotlin.math.sqrt
  * 3. [smoothPoorFixes] replaces the position of fixes worse than [SegmentationParams.goodAccuracyM] by a windowed
  *    weighted geometric median. Good fixes pass through unchanged, so real GPS walks and trips survive.
  */
-internal fun cleanPings(pings: List<Ping>, params: SegmentationParams): List<Ping> {
-    if (pings.size < 3) return pings
+internal fun cleanPings(pings: List<Ping>, params: SegmentationParams): CleanedPings {
+    if (pings.size < 3) return CleanedPings(pings, pings)
     val accuracy = anchorAccuracies(pings, params)
     val raised = pings.mapIndexed { i, p -> if (accuracy[i] != p.accuracyM) p.copy(accuracyM = accuracy[i]) else p }
-    return smoothPoorFixes(rejectSpikes(raised, params), params)
+    val kept = rejectSpikes(raised, params)
+    return CleanedPings(kept, smoothPoorFixes(kept, params))
+}
+
+/**
+ * The pre-pass result. [pings] keep their original positions (accuracies possibly raised, spikes removed): stay and
+ * place centroids, merging, arrivals and trip distances use them. [detection] is the same fixes, same order, with poor
+ * positions smoothed; it is only what [detectStays] reads to decide where stays start and end.
+ */
+internal class CleanedPings(val pings: List<Ping>, val detection: List<Ping>) {
+    /** Puts the original positions back into stays detected on [detection] and re-derives their centroids. */
+    fun restore(stays: List<StayCandidate>, params: SegmentationParams): List<StayCandidate> {
+        if (detection === pings) return stays
+        val original = java.util.IdentityHashMap<Ping, Ping>()
+        for (i in pings.indices) original[detection[i]] = pings[i]
+        return stays.map { s ->
+            val own = s.pings.map { original[it] ?: it }
+            val (lat, lng) = weightedCentroid(own, params)
+            s.copy(lat = lat, lng = lng, pings = own)
+        }
+    }
 }
 
 private fun dist(a: Ping, b: Ping) = haversineMeters(a.lat, a.lng, b.lat, b.lng)
@@ -73,8 +93,8 @@ internal fun rejectSpikes(pings: List<Ping>, params: SegmentationParams): List<P
 }
 
 /**
- * Effective accuracy per fix (same order as [pings]). A fix is an anchor observation when at least
- * [SegmentationParams.anchorMinRepeats] fixes (itself included) lie within [SegmentationParams.anchorToleranceM] of
+ * Effective accuracy per fix (same order as [pings]). A fix is an anchor observation when it is poor (worse than
+ * [SegmentationParams.goodAccuracyM]) and at least [SegmentationParams.anchorMinRepeats] poor fixes (itself included) lie within [SegmentationParams.anchorToleranceM] of
  * it inside a [SegmentationParams.anchorWindowMs] window centred on it. When the anchors in that window switch
  * between places at least [SegmentationParams.anchorMinSwitches] times (the phone is flipping between a few cached
  * network positions) the fix's accuracy becomes at least the distance to the furthest anchor within
@@ -84,20 +104,39 @@ internal fun anchorAccuracies(pings: List<Ping>, params: SegmentationParams): Fl
     val n = pings.size
     val acc = FloatArray(n) { pings[it].accuracyM }
     val half = params.anchorWindowMs / 2
+    val first = pings.first().timeMs
+    val last = pings.last().timeMs
     val lo = IntArray(n)
     val hi = IntArray(n) // exclusive
     var a = 0
     var b = 0
     for (i in 0 until n) {
-        while (pings[a].timeMs < pings[i].timeMs - half) a++
+        // Centred on the fix, but at the edge of the stream shifted inward so the window keeps its full width: a
+        // half-empty window would count too few repeats and leave edge anchors unrecognised.
+        var from = pings[i].timeMs - half
+        var to = pings[i].timeMs + half
+        if (from < first) {
+            to += first - from
+            from = first
+        }
+        if (to > last) {
+            from = maxOf(first, from - (to - last))
+            to = last
+        }
+        while (pings[a].timeMs < from) a++
         if (b < i) b = i
-        while (b < n && pings[b].timeMs <= pings[i].timeMs + half) b++
+        while (b < n && pings[b].timeMs <= to) b++
         lo[i] = a
         hi[i] = b
     }
+    // Only a poor fix can be an anchor: a still phone on good GPS jitters within the tolerance too, but its fixes are
+    // right and must not be doubted. The neighbours counted are poor as well.
+    val poor = BooleanArray(n) { pings[it].accuracyM > params.goodAccuracyM }
     val anchor = BooleanArray(n) { i ->
         var count = 0
-        for (j in lo[i] until hi[i]) if (dist(pings[i], pings[j]) <= params.anchorToleranceM) count++
+        if (poor[i]) {
+            for (j in lo[i] until hi[i]) if (poor[j] && dist(pings[i], pings[j]) <= params.anchorToleranceM) count++
+        }
         count >= params.anchorMinRepeats
     }
     if (anchor.none { it }) return acc

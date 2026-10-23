@@ -433,6 +433,90 @@ class GoldenCasesTest {
         assertTrue(r.trips.single().distanceM in 700.0..1_100.0)
     }
 
+    /**
+     * A still phone on good GPS jitter must not be read as alternating network anchors (review of dogfood-2): its
+     * accuracy stays what the fix says, so departures are prompt and no place radius grows. Two sites [siteDistM] apart,
+     * 8 m GPS accuracy and jitter, a six-minute stay at each in turn (A, B, A, B, ...) so that every 30 minute anchor
+     * window sees four or more switches. Returns the pings and the time spans of the walks between the sites.
+     */
+    private fun backAndForth(siteDistM: Double, stays: Int = 20): Pair<List<Ping>, List<TimeRange>> {
+        val builder = builder(71)
+        val walks = ArrayList<TimeRange>()
+        repeat(stays) { i ->
+            builder.stay(6 * MIN, intervalMs = 20_000, jitterM = 8.0, accuracyM = 8f)
+            if (i < stays - 1) {
+                val from = builder.currentTimeMs
+                builder.moveBy(if (i % 2 == 0) 90.0 else 270.0, siteDistM, 1.4, intervalMs = 20_000, mode = Activity.WALKING, accuracyM = 8f)
+                walks += TimeRange(from, builder.currentTimeMs)
+            }
+        }
+        return builder.build() to walks
+    }
+
+    private fun assertSplitAtEveryMove(stays: List<Stay>, walks: List<TimeRange>) {
+        assertEquals(walks.size + 1, stays.size)
+        for ((i, walk) in walks.withIndex()) {
+            assertTrue("stay $i ends near its move", stays[i].range.endMs in (walk.startMs - MIN)..(walk.endMs + MIN))
+            assertTrue("stay ${i + 1} starts near its move", stays[i + 1].range.startMs in (walk.startMs - MIN)..(walk.endMs + MIN))
+        }
+    }
+
+    @Test
+    fun goodGpsJitterBackAndForthBetweenTightKnownPlacesSplitsAtEveryMove() {
+        val a = SYDNEY_LAT to SYDNEY_LNG
+        val b = offsetMeters(a.first, a.second, 0.0, 100.0)
+        val (pings, walks) = backAndForth(100.0)
+        val r = run(
+            pings,
+            listOf(
+                KnownPlace("a", a.first, a.second, radiusM = 25f),
+                KnownPlace("b", b.first, b.second, radiusM = 25f),
+            ),
+        )
+        assertSplitAtEveryMove(r.stays, walks)
+        assertEquals(List(r.stays.size) { PlaceRef.Existing(if (it % 2 == 0) "a" else "b") }, r.stays.map { it.place })
+        assertTrue(r.newPlaces.isEmpty())
+    }
+
+    @Test
+    fun goodGpsJitterBackAndForthWithoutKnownPlacesSplitsAtEveryMoveWithDefaultPlaceRadii() {
+        // 220 m apart: past the minimum trip distance, so the visits stay separate; at 100 m they merge by design.
+        val (pings, walks) = backAndForth(220.0)
+        val r = run(pings)
+        assertSplitAtEveryMove(r.stays, walks)
+        assertEquals(2, r.newPlaces.size)
+        for (place in r.newPlaces) assertEquals(params.placeMatchRadiusM, place.radiusM, 0.5)
+    }
+
+    @Test
+    fun goodGpsJitterBackAndForthOneHundredMetresApartWithoutKnownPlacesMergesIntoOneVisit() {
+        val (pings, _) = backAndForth(100.0)
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        // Two sites under minTripDistanceM apart cannot be told apart without known places (by design); the merged
+        // place's radius follows the spread of the two sites, never beyond the cap.
+        assertTrue(r.newPlaces.single().radiusM <= params.placeMaxRadiusM)
+    }
+
+    /**
+     * An out-and-back walk turning at 170 m with GPS-grade fixes is a real trip: stay, trip, stay (not merged as noise).
+     * It is slow enough (1 m/s) to take longer than [SegmentationParams.shortTripMergeMs] outside the stays.
+     */
+    @Test
+    fun gpsGradeOutAndBackWalkTurningAtOneHundredSeventyMetresIsATrip() {
+        val pings = builder(81)
+            .stay(30 * MIN, intervalMs = 30_000, jitterM = 5.0, accuracyM = 8f)
+            .moveBy(0.0, 170.0, 1.0, mode = Activity.WALKING, accuracyM = 8f)
+            .moveBy(180.0, 170.0, 1.0, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(30 * MIN, intervalMs = 30_000, jitterM = 5.0, accuracyM = 8f)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        assertEquals(1, r.trips.size)
+        // The turnaround is not "going somewhere", so the counted path is shorter than the 340 m walked.
+        assertTrue(r.trips.single().distanceM >= params.minTripDistanceM)
+    }
+
     /** A genuine walk of 250 m away for 25 min at GPS accuracy is not noise: stay, trip, stay, trip, stay. */
     @Test
     fun gpsGradeWalkAwayAndBack() {

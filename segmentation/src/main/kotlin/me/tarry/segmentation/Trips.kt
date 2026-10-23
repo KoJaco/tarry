@@ -125,9 +125,21 @@ private fun trip(
     val anchor = fromStay ?: toStay
     if ((fromStay == null) != (toStay == null) && anchor != null) {
         val trusted = inside.filter { it.accuracyM <= params.goodAccuracyM }.ifEmpty { inside }
-        // Robust (not the single furthest fix) and no smaller than the stay's own noise scale.
-        val away = quantile(trusted.map { haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) }, params.robustDisplacementQuantile)
-        val noise = minOf(params.placeMaxRadiusM, params.placeNoiseFactor * stayNoiseM(anchor, params))
+        val goodCount = inside.count { it.accuracyM <= params.goodAccuracyM }
+        // Two or more good fixes: the furthest counts (an out-and-back walk survives). Otherwise the poor-fix fallback:
+        // a robust quantile of how far each fix is beyond its own accuracy, so a fix whose circle reaches the stay (a
+        // network anchor 300 m away claiming 335 m) is no evidence of leaving.
+        val away = if (goodCount >= 2) {
+            trusted.maxOf { haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) }
+        } else {
+            quantile(
+                trusted.map { maxOf(0.0, haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) - it.accuracyM) },
+                params.robustDisplacementQuantile,
+            )
+        }
+        // At least the stay's own noise scale (the capped multiple stops at the place radius cap, a noisier stay is no cleaner).
+        val stayNoise = stayNoiseM(anchor, params)
+        val noise = maxOf(stayNoise, minOf(params.placeMaxRadiusM, params.placeNoiseFactor * stayNoise))
         if (away < maxOf(params.minTripDistanceM, noise)) return emptyList()
     }
 

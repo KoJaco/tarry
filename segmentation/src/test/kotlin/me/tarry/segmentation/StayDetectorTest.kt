@@ -4,6 +4,7 @@ import me.tarry.segmentation.geo.haversineMeters
 import me.tarry.segmentation.trace.SYDNEY_LAT
 import me.tarry.segmentation.trace.SYDNEY_LNG
 import me.tarry.segmentation.trace.TraceBuilder
+import me.tarry.segmentation.trace.offsetMeters
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -150,6 +151,35 @@ class StayDetectorTest {
         assertFalse(stays.first().open) // closed by the departure, not left open by the ambiguous fixes
     }
 
+
+    @Test
+    fun anOldLoneOutsideFixAndAMuchLaterOneDoNotMakeADeparture() {
+        // One poor fix 200 m out at 31 min, ambiguous fixes (the accuracy circle still reaches the stay) for 40 minutes,
+        // then a second poor fix at the same spot. They agree, but 40 minutes apart they are two outliers, not a
+        // departure: the stay must not close at the first one.
+        val base = builder().stay(30 * MIN, accuracyM = 10f).build()
+        val far = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 200.0, 0.0)
+        val ambiguous = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 100.0, 0.0)
+        val first = t0 + 31 * MIN
+        val pings = base +
+            Ping(first, far.first, far.second, 60f) +
+            (1..19).map { Ping(first + it * 2 * MIN, ambiguous.first, ambiguous.second, 60f) } +
+            Ping(first + 40 * MIN, far.first, far.second, 60f) +
+            (1..10).map { Ping(first + 40 * MIN + it * MIN, SYDNEY_LAT, SYDNEY_LNG, 10f) }
+        val stays = detectStays(pings, params)
+        assertEquals(1, stays.size)
+        assertTrue(stays.single().range.endMs >= first + 40 * MIN)
+    }
+
+    @Test
+    fun aDepartureThatStaysWithinTheMaxSpanStillCloses() {
+        val base = builder().stay(30 * MIN, accuracyM = 10f).build()
+        val far = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 200.0, 0.0)
+        val first = t0 + 31 * MIN
+        val pings = base + (0..3).map { Ping(first + it * 2 * MIN, far.first, far.second + it * 1e-5, 60f) }
+        val stays = detectStays(pings, params)
+        assertFalse(stays.first().open) // closed by the departure; the excursion is re-read as what comes next
+    }
     @Test
     fun emptyInputGivesNoStays() {
         assertTrue(detectStays(emptyList(), params).isEmpty())

@@ -12,8 +12,8 @@ data class SegmentationParams(
     /** A ping gap inside one stay is bridged when the position on both sides is within [stayRadiusM]. */
     val maxGapToBridgeMs: Long = 45 * 60_000L,
     /**
-     * A silence inside a stay longer than this counts as a signal gap that was bridged (lower confidence). Capture
-     * saves a stationary keepalive every 10 min plus a 3 min fix interval, so normal stays stay under it.
+     * A silence inside a stay longer than this counts as a signal gap that was bridged (lower confidence). A
+     * stationary session takes a fix every minute, so normal stays stay under it.
      */
     val signalGapMs: Long = 15 * 60_000L,
     /** Radius of a newly created place; existing places match within their own radius. */
@@ -40,6 +40,8 @@ data class SegmentationParams(
     val departureMinFixes: Int = 2,
     /** The consecutive outside pings that close a stay must span at least this long. */
     val departureMinMs: Long = 2 * 60_000L,
+    /** ...and no longer than this (first to last): an old outlier and a much later fix do not make a departure. */
+    val departureMaxSpanMs: Long = 4 * departureMinMs,
     /** Pings at least this accurate (metres, smaller is better) are trusted for displacement and distance. */
     val goodAccuracyM: Double = 50.0,
     /**
@@ -109,7 +111,7 @@ data class SegmentationParams(
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
-        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
+        require(departureMinFixes >= 1 && departureMinMs >= 0 && departureMaxSpanMs >= departureMinMs && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
         require(spikeMinM > 0 && spikeMaxRunMs >= 0 && maxPlausibleSpeedMps > 0 && anchorMinRepeats >= 1 && anchorWindowMs > 0)
         require(smoothWindowMs >= 0 && smoothMinFixes >= 1 && placeNoiseFactor >= 0 && placeMaxRadiusM > 0)
         require(robustDisplacementQuantile in 0.0..1.0)

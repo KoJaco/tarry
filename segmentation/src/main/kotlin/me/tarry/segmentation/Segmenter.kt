@@ -8,7 +8,7 @@ package me.tarry.segmentation
  * 1. drop pings outside [SegmentationInput.range] or inside excluded or frozen ranges (T8);
  * 2. split the range at frozen ranges into free stretches. Each stretch is segmented on its own, so output
  *    never crosses or changes a frozen record (T8);
- * 3. per stretch (after the [cleanPings] pre-pass: spikes, anchors, poor fixes): detect stays (T3), split them by known place, merge (T5) and build trips (T4). A trailing
+ * 3. per stretch (after the [cleanPings] pre-pass: spikes, anchors; poor fixes are smoothed for detection only): detect stays (T3), split them by known place, merge (T5) and build trips (T4). A trailing
  *    candidate still open but shorter than the minimum stay is not a stay yet: its pings stay part of the
  *    trailing trip;
  * 4. assign places across all stretches (T6) and build gaps (T7);
@@ -29,14 +29,19 @@ object Segmenter {
 
         // Stale repeats carry no position: they stay out of stays and trips but still count as tracking (gaps).
         val stale = staleRepeats(pings, params)
-        val positional = cleanPings(pings.filter { it !in stale }, params)
+        val positional = pings.filter { it !in stale }
 
         val stays = ArrayList<StayCandidate>()
         val trips = ArrayList<TripCandidate>()
+        val cleanedAll = ArrayList<Ping>()
         for (stretch in input.range.minus(frozen)) {
-            val local = positional.filter { it.timeMs in stretch }
+            // Cleaned per stretch so spikes, anchors and smoothing never reach across frozen, session or excluded gaps.
+            val cleaned = cleanPings(positional.filter { it.timeMs in stretch }, params)
+            val local = cleaned.pings
+            cleanedAll += local
             val reachesEnd = stretch.endMs == input.range.endMs
-            var detected = detectStays(local, params)
+            // Stays are detected on the smoothed positions but measured on the original ones.
+            var detected = cleaned.restore(detectStays(cleaned.detection, params), params)
             val last = detected.lastOrNull()
             if (last != null && last.open && last.range.durationMs < params.minStayDurationMs) {
                 detected = detected.dropLast(1)
@@ -78,7 +83,7 @@ object Segmenter {
                     mayBeOngoing = s.open,
                 )
             },
-            trips = trips.flatMap { cutAround(it, cuts, stays, positional, params) },
+            trips = trips.flatMap { cutAround(it, cuts, stays, cleanedAll, params) },
             gaps = gaps,
             newPlaces = assignment.newPlaces,
             placeUpdates = assignment.updates,

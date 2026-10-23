@@ -74,4 +74,37 @@ class TripsTest {
             .moveBy(90.0, 100.0, 1.4, mode = Activity.WALKING).stay(10 * min).build()
         assertEquals(TripMode.VEHICLE, trips(driveHeavy).single().mode)
     }
+
+    /** Stays as the Segmenter keeps them: a trailing open candidate shorter than the minimum stay is not a stay yet. */
+    private fun settledStays(pings: Trace): List<StayCandidate> {
+        var detected = detectStays(pings, params)
+        val last = detected.lastOrNull()
+        if (last != null && last.open && last.range.durationMs < params.minStayDurationMs) detected = detected.dropLast(1)
+        return mergeStays(detected, pings, params)
+    }
+
+    @Test
+    fun leadingAndTrailingMovesUnderTheMinimumTripDistanceAreNotTrips() {
+        val short = builder().moveBy(90.0, 100.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(10 * min, accuracyM = 8f)
+            .moveBy(90.0, 100.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .build()
+        val stays = settledStays(short)
+        assertEquals(1, stays.size)
+        assertTrue(buildTrips(stays, short).isEmpty())
+    }
+
+    @Test
+    fun leadingAndTrailingMovesOverTheMinimumTripDistanceAreTrips() {
+        val long = builder().moveBy(90.0, 400.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(10 * min, accuracyM = 8f)
+            .moveBy(90.0, 400.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .build()
+        val stays = settledStays(long)
+        val trips = buildTrips(stays, long)
+        assertEquals(2, trips.size)
+        assertNull(trips.first().fromStay)
+        assertNull(trips.last().toStay)
+        assertTrue(trips.all { it.distanceM >= params.minTripDistanceM })
+    }
 }

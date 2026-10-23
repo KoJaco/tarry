@@ -22,7 +22,7 @@ internal data class StayCandidate(
  * [SegmentationParams.departureMinFixes] of them spanning [SegmentationParams.departureMinMs], with no ping inside the
  * radius between them, and coherent: network-grade closing fixes (worse than [SegmentationParams.goodAccuracyM]) must
  * agree with each other within their combined accuracy or move steadily away from the centroid, while GPS-grade ones
- * are trusted. A shorter or incoherent excursion is an outlier and ignored. A closed candidate is kept when it spans at least
+ * are trusted. The closing fixes must also fall within [SegmentationParams.departureMaxSpanMs] of the first one. A shorter, longer or incoherent excursion is an outlier and ignored. A closed candidate is kept when it spans at least
  * [SegmentationParams.minStayDurationMs]. The candidate still open when the pings run out is always returned
  * (with [StayCandidate.open]), however short: the caller decides whether it is a stay yet and resumes from it.
  *
@@ -65,6 +65,9 @@ internal fun detectStays(pings: List<Ping>, params: SegmentationParams): List<St
             // fixes keep being ambiguous without it being home). The closing fixes' coherence guards against noise.
             else -> {
                 outside += i
+                // The closing fixes must fall within departureMaxSpanMs of the first one: an old lone outlier plus a
+                // much later fix is two outliers, not one departure, so the run restarts from the later fix.
+                while (outside.size > 1 && ping.timeMs - pings[outside.first()].timeMs > params.departureMaxSpanMs) outside.removeAt(0)
                 // Fixes before the coherent run disagree with it: noise, not part of the departure.
                 val run = coherentRun(outside, pings, c.lat, c.lng, params)
                 if (run.size < outside.size) {

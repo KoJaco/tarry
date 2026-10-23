@@ -52,17 +52,21 @@ private fun shouldMerge(
 }
 
 /**
- * The robust (80th percentile, see [SegmentationParams.robustDisplacementQuantile]) distance the pings between [a] and [b] get from [a]'s centroid (and [b]'s centroid itself), using fixes no worse
- * than [SegmentationParams.goodAccuracyM]. With none that good, all fixes are used after dropping the least accurate
+ * The distance the pings between [a] and [b] get from [a]'s centroid (and [b]'s centroid itself): the furthest of the fixes no worse
+ * than [SegmentationParams.goodAccuracyM] when there are two or more. Otherwise a robust quantile ([SegmentationParams.robustDisplacementQuantile]) is used, and with no good fix at all, all fixes after dropping the least accurate
  * third. Net displacement, not path length: noisy fixes at one spot add up to kilometres of path.
  */
 private fun netDisplacement(a: StayCandidate, b: StayCandidate, pings: List<Ping>, params: SegmentationParams): Double {
     val inside = between(a, b, pings)
-    var used = inside.filter { it.accuracyM <= params.goodAccuracyM }
+    val good = inside.filter { it.accuracyM <= params.goodAccuracyM }
+    var used = good
     if (used.isEmpty() && inside.isNotEmpty()) {
         used = inside.sortedBy { it.accuracyM }.take(maxOf(1, inside.size - inside.size / 3))
     }
-    val furthest = quantile(used.map { haversineMeters(a.lat, a.lng, it.lat, it.lng) }, params.robustDisplacementQuantile)
+    val distances = used.map { haversineMeters(a.lat, a.lng, it.lat, it.lng) }
+    // Two or more good fixes are trusted, so the furthest one counts (an out-and-back walk must survive); only the
+    // poor-fix fallback needs the robust quantile.
+    val furthest = if (good.size >= 2) distances.max() else quantile(distances, params.robustDisplacementQuantile)
     return maxOf(furthest, haversineMeters(a.lat, a.lng, b.lat, b.lng))
 }
 
