@@ -43,6 +43,8 @@ fun TimelineScreen(
         onClearSelection = viewModel::clearSelection,
         showMap = showMap,
         onShowMapChange = { showMap = it },
+        // Collected only while the Map tab shows, so the route isn't built otherwise.
+        dayMap = if (showMap) viewModel.dayMap.collectAsStateWithLifecycle().value else null,
         modifier = modifier,
     )
     editTarget?.let { target ->

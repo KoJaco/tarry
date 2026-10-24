@@ -7,7 +7,22 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import me.tarry.app.map.DayMap
+import me.tarry.app.map.GeoPoint
+import me.tarry.app.map.MapConfig
+import me.tarry.app.map.PinInput
+import me.tarry.app.map.RoutePoint
+import me.tarry.app.map.TimeSpan
+import me.tarry.app.map.buildDayMap
+import me.tarry.core.data.db.dao.PingPosition
+import me.tarry.core.data.repository.TrackingRepository
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -137,6 +152,9 @@ class TimelineViewModel internal constructor(
     private val createJob: suspend (String) -> EditResult = { EditResult.NotFound },
     /** Shortest a visit may be resized to; `SegmentationParams.minStayDurationMs`. */
     val minStayMs: Long = DEFAULT_MIN_STAY_MS,
+    /** Live ping positions in `[from, to)`, for the Map tab only. */
+    private val pingPositions: (from: Long, to: Long) -> Flow<List<PingPosition>> = { _, _ -> flowOf(emptyList()) },
+    private val mapConfig: MapConfig = MapConfig(),
 ) : ViewModel() {
     @Inject
     constructor(
@@ -148,6 +166,7 @@ class TimelineViewModel internal constructor(
         undoEvents: UndoEvents,
         scheduler: SegmentationScheduler,
         params: SegmentationParams,
+        tracking: TrackingRepository,
     ) :
         this(
             timeline, places, jobs, tags, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
@@ -156,6 +175,7 @@ class TimelineViewModel internal constructor(
             bulk = editor::bulk,
             createJob = { name -> editor.createJob(name, JobPalette.slots.map { it.key }) },
             minStayMs = params.minStayDurationMs,
+            pingPositions = tracking::observePingPositions,
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -198,6 +218,39 @@ class TimelineViewModel internal constructor(
                             gaps.map { TimelineItem.Gap(it.id, it.start, it.end, it.cause) }
                         rows.sortedWith(RowOrder)
                     },
+                )
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
+
+    /**
+     * The selected day for the Map tab: route from that day's pings, pins at place centroids. Null while loading.
+     * Only collected while the Map tab shows (WhileSubscribed), so nothing runs for it otherwise. New pings while
+     * tracking are conflated and the route is rebuilt off the main thread.
+     */
+    val dayMap: StateFlow<DayMap?> = _selectedDate
+        .flatMapLatest { date ->
+            val (from, to) = dayBounds(date, zone)
+            flow {
+                emit(null)
+                emitAll(
+                    combine(
+                        items.filterNotNull(),
+                        pingPositions(from, to).conflate(),
+                        places.observeLabels(),
+                    ) { rows, pings, allPlaces ->
+                        val byId = allPlaces.associateBy { it.id }
+                        buildDayMap(
+                            visits = rows.filterIsInstance<TimelineItem.Visit>().map { v ->
+                                val place = v.placeId?.let(byId::get)
+                                PinInput(v.id, v.start, place?.let { GeoPoint(it.centroidLat, it.centroidLng) }, v.jobColorArgb, v.jobId)
+                            },
+                            tripCount = rows.count { it is TimelineItem.Trip },
+                            gaps = rows.filterIsInstance<TimelineItem.Gap>().map { TimeSpan(it.start, it.end) },
+                            points = pings.map { RoutePoint(it.timestamp, it.lat, it.lng, it.accuracyM) },
+                            config = mapConfig,
+                        )
+                    }.flowOn(Dispatchers.Default),
                 )
             }
         }

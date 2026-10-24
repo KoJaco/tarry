@@ -20,7 +20,10 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import me.tarry.app.map.GeoPoint
 import me.tarry.app.ui.timeline.TimelineItem
+import me.tarry.core.data.db.dao.PingPosition
+import kotlinx.coroutines.flow.flowOf
 import me.tarry.app.ui.timeline.TimelineViewModel
 import me.tarry.app.ui.timeline.dayBounds
 import me.tarry.core.data.db.TarryDatabase
@@ -126,6 +129,41 @@ class TimelineViewModelTest {
     private fun place(id: String, name: String? = null, address: String? = null) = Place(
         id = id, centroidLat = -33.865143, centroidLng = 151.2099, name = name, address = address, updatedAt = 0,
     )
+
+    @Test
+    fun dayMapPinsVisitsAtTheirPlaceAndDrawsTheDaysPings() = runBlocking {
+        places.save(place("p", name = "Office"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "p"))
+        timeline.saveVisit(visit("loose", at(day, 12), at(day, 13), null))
+        val asked = mutableListOf<Pair<Long, Long>>()
+        val pings = listOf(
+            PingPosition(at(day, 11), -33.865, 151.209, 5f),
+            PingPosition(at(day, 11, 5), -33.870, 151.205, 5f),
+        )
+        val vm = TimelineViewModel(
+            timeline, places, jobs, tags, zone, { day },
+            pingPositions = { from, to -> asked += from to to; flowOf(pings) },
+        ).managed()
+
+        val map = runBlocking { withTimeout(10_000) { vm.dayMap.first { it != null && it.visitCount == 2 } } }!!
+
+        assertThat(asked).containsExactly(dayBounds(day, zone))
+        assertThat(map.pins.map { it.visitId to it.number }).containsExactly("v" to 1) // "loose" has no place
+        assertThat(map.pins.single().position).isEqualTo(GeoPoint(-33.865143, 151.2099))
+        assertThat(map.route).hasSize(1)
+        assertThat(map.routeMissing).isFalse()
+    }
+
+    @Test
+    fun dayMapFlagsAMissingRouteWhenTheDayHasNoPings() = runBlocking {
+        places.save(place("p"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "p"))
+
+        val map = runBlocking { withTimeout(10_000) { viewModel().dayMap.first { it != null && it.visitCount == 1 } } }!!
+
+        assertThat(map.route).isEmpty()
+        assertThat(map.routeMissing).isTrue()
+    }
 
     @Test
     fun combinesAndSortsByStart() = runBlocking {

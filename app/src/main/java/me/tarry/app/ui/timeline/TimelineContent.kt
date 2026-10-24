@@ -40,7 +40,9 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.rememberReducedMotion
-import me.tarry.app.ui.map.TarryMap
+import androidx.compose.ui.res.pluralStringResource
+import me.tarry.app.map.DayMap
+import me.tarry.app.ui.map.DayMapView
 import me.tarry.app.ui.theme.TarryTheme
 import java.time.LocalDate
 import java.time.ZoneId
@@ -82,6 +84,8 @@ fun TimelineContent(
     /** Timeline | Map: true shows the day on the map instead of the canvas. */
     showMap: Boolean = false,
     onShowMapChange: (Boolean) -> Unit = {},
+    /** The Map tab's data; null while loading (or when the map isn't shown). */
+    dayMap: DayMap? = null,
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -125,11 +129,18 @@ fun TimelineContent(
         )
         if (showMap) {
             // Full width, down to the bottom bar (the shell's inner padding).
-            TarryMap(
-                contentDescription = stringResource(
-                    R.string.map_day_description,
-                    date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG)),
-                ),
+            val dateText = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG))
+            val description = if (dayMap == null) {
+                stringResource(R.string.map_day_description, dateText)
+            } else {
+                val trips = pluralStringResource(R.plurals.map_trip_count, dayMap.tripCount, dayMap.tripCount)
+                pluralStringResource(R.plurals.map_day_summary, dayMap.visitCount, dateText, dayMap.visitCount, trips)
+            }
+            DayMapView(
+                dayMap = dayMap,
+                date = date,
+                contentDescription = description,
+                onOpenVisit = { onEdit(EditTarget.Visit(it)) },
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
             return@Column

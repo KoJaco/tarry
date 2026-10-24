@@ -11,4 +11,14 @@
     <string name="map_attribution_openmaptiles">© OpenMapTiles</string>
     <string name="map_attribution_osm">Data from OpenStreetMap contributors</string>
     <string name="map_attribution_close">Close</string>
+    <string name="map_route_missing">No route for this day: its location history is not available. Visits are shown at their places.</string>
+    <string name="map_nothing_recorded">Nothing recorded on this day.</string>
+    <plurals name="map_day_summary">
+        <item quantity="one">%1$s: %2$d visit, %3$s</item>
+        <item quantity="other">%1$s: %2$d visits, %3$s</item>
+    </plurals>
+    <plurals name="map_trip_count">
+        <item quantity="one">%d trip</item>
+        <item quantity="other">%d trips</item>
+    </plurals>
 </resources>
