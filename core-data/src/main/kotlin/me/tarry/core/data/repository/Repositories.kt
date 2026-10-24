@@ -53,6 +53,8 @@ class TrackingRepository @Inject constructor(
         pings.upsert(ping).let { if (it == -1L) ping.id else it }
     suspend fun savePings(list: List<LocationPing>) = pings.upsertAll(list)
     suspend fun pingsInRange(from: Long, to: Long) = pings.getInRange(from, to)
+    /** Ping positions in `[from, to)`, live; for the map only (raw pings never leave the device). */
+    fun observePingPositions(from: Long, to: Long) = pings.observePositions(from, to)
     suspend fun pingsForSession(sessionId: Long) = pings.getBySession(sessionId)
     suspend fun purgePingsBefore(before: Long): Int = pings.deleteOlderThan(before)
     /** Ping count per session id; sessions with no pings are absent. */

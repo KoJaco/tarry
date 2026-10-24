@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import me.tarry.core.data.db.entity.Gap
+import me.tarry.core.data.db.dao.PingPosition
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.Tag
 import me.tarry.core.data.db.entity.TrackingSession
@@ -128,6 +129,23 @@ class RangeQueryAndCascadeTest : DbTestBase() {
 
         assertThat(db.locationPingDao().getBySession(s1)).isEmpty()
         assertThat(db.locationPingDao().getBySession(s2)).hasSize(1)
+    }
+
+    @Test
+    fun pingObservePositions_isHalfOpenAndOrdered() = runTest {
+        val s = db.trackingSessionDao().upsert(TrackingSession(start = 0, zoneId = "UTC", trigger = SessionTrigger.SCHEDULE))
+        fun ping(ts: Long, lat: Double) = LocationPing(
+            timestamp = ts, zoneId = "UTC", lat = lat, lng = 151.0, accuracyM = 5f,
+            source = PingSource.FUSED, sessionId = s,
+        )
+        db.locationPingDao().upsertAll(listOf(ping(2000, 3.0), ping(1500, 2.0), ping(1000, 1.0), ping(999, 0.0)))
+
+        val positions = db.locationPingDao().observePositions(1000, 2000).first()
+
+        assertThat(positions).containsExactly(
+            PingPosition(1000, 1.0, 151.0, 5f),
+            PingPosition(1500, 2.0, 151.0, 5f),
+        ).inOrder()
     }
 
     @Test
