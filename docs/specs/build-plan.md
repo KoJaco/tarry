@@ -31,6 +31,8 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 ## Phases
 Each phase: own branch, short spec in `docs/specs/phase-N.md`, implementer → test-writer → reviewer, PR with green CI, device check.
 
+**Status (2026-10-24):** phase 4 (#14, #15) and the dogfood-2/3 fixes (#16, `docs/specs/fix-dogfood-2.md`) are merged. Next: **phase 5, Map**. Handoff: `docs/handoffs/phase-5-map.md`.
+
 **Status (2026-10-22):** phase 3 is merged (PRs #10–#13), except T4 multi-select, which moves to phase 4. Next: **phase 4** (spec `docs/specs/phase-4.md`), shipped as 4a (selection, jobs, tags; handoff `docs/handoffs/phase-4a-selection-catalog.md`) then 4b (places).
 
 **Status (2026-10-21):** 0, 1, 2a (PR #4, dogfood fixes #5), 2b (PR #6) and 2c (design system, PR #8) are merged. Next: the owner dogfoods a day on the 2c build, then **phase 3, timeline editing** (spec `docs/specs/phase-3.md`, handoff `docs/handoffs/phase-3-timeline-editing.md`), then 4–8.
