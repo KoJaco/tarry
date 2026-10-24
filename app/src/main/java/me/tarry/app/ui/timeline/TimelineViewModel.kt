@@ -255,9 +255,12 @@ class TimelineViewModel internal constructor(
                         buildDayMap(
                             visits = rows.filterIsInstance<TimelineItem.Visit>().map { v ->
                                 val place = v.placeId?.let(byId::get)
-                                PinInput(v.id, v.start, place?.let { GeoPoint(it.centroidLat, it.centroidLng) }, v.jobColorArgb, v.jobId)
+                                PinInput(
+                                    v.id, v.start, place?.let { GeoPoint(it.centroidLat, it.centroidLng) }, v.jobColorArgb, v.jobId,
+                                    end = v.end, radiusM = place?.radiusM,
+                                )
                             },
-                            tripCount = rows.count { it is TimelineItem.Trip },
+                            trips = rows.filterIsInstance<TimelineItem.Trip>().map { TimeSpan(it.start, it.end) },
                             gaps = rows.filterIsInstance<TimelineItem.Gap>().map { TimeSpan(it.start, it.end) },
                             points = pings.map { RoutePoint(it.timestamp, it.lat, it.lng, it.accuracyM) },
                             config = mapConfig,

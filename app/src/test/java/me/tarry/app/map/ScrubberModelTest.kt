@@ -97,6 +97,17 @@ class ScrubberModelTest {
     }
 
     @Test
+    fun duringAPinnedVisitTheMarkerSitsAtThePlaceNotTheJitter() {
+        val stay = ScrubItem("v", ScrubKind.VISIT, 0, 60_000)
+        val centre = GeoPoint(-33.9, 151.2)
+        val jitter = listOf(ping(0, -33.91, 151.21), ping(30_000, -33.89, 151.19), ping(60_000, -33.91, 151.21))
+        val m = ScrubberModel(listOf(stay), 0, 100_000, jitter, visitCentres = mapOf("v" to centre))
+        assertThat(m.positionAt(15_000)).isEqualTo(centre)
+        // Without a known centre it falls back to the pings.
+        assertThat(ScrubberModel(listOf(stay), 0, 100_000, jitter).positionAt(30_000)).isEqualTo(GeoPoint(-33.89, 151.19))
+    }
+
+    @Test
     fun recordedGapBetweenPingsIsNull() {
         // Pings a minute apart (well under routeBreakMs) but with a recorded outage between them: no fake position.
         val gap = ScrubItem("g", ScrubKind.GAP, 20_000, 40_000)

@@ -137,6 +137,7 @@ class TimelineViewModelTest {
         places.save(place("p", name = "Office"))
         timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "p"))
         timeline.saveVisit(visit("loose", at(day, 12), at(day, 13), null))
+        timeline.saveTrip(Trip(id = "t", start = at(day, 11), end = at(day, 12), zoneId = zone.id, distanceM = 900f, mode = TripMode.VEHICLE, updatedAt = 0))
         val asked = mutableListOf<Pair<Long, Long>>()
         val pings = listOf(
             PingPosition(at(day, 11), -33.865, 151.209, 5f),
@@ -152,7 +153,8 @@ class TimelineViewModelTest {
         assertThat(asked).containsExactly(dayBounds(day, zone))
         assertThat(map.pins.map { it.visitId to it.number }).containsExactly("v" to 1) // "loose" has no place
         assertThat(map.pins.single().position).isEqualTo(GeoPoint(-33.865143, 151.2099))
-        assertThat(map.route).hasSize(1)
+        // The trip leaves from "v"'s place and runs through the pings ("loose" has no place to arrive at).
+        assertThat(map.routes.single().solid.single().first()).isEqualTo(GeoPoint(-33.865143, 151.2099))
         assertThat(map.routeMissing).isFalse()
     }
 
@@ -164,6 +166,9 @@ class TimelineViewModelTest {
         places.save(place("yday").copy(centroidLat = -34.0))
         timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "today"))
         timeline.saveVisit(visit("y", at(yesterday, 9), at(yesterday, 11), "yday"))
+        for ((id, d) in listOf("tt" to day, "ty" to yesterday)) {
+            timeline.saveTrip(Trip(id = id, start = at(d, 1), end = at(d, 1, 5), zoneId = zone.id, distanceM = 900f, mode = TripMode.VEHICLE, updatedAt = 0))
+        }
         val vm = TimelineViewModel(
             timeline, places, jobs, tags, zone, { day },
             pingPositions = { from, _ ->
@@ -180,7 +185,7 @@ class TimelineViewModelTest {
 
         seen.forEach { m ->
             val pinLats = m.pins.map { it.position.lat }.toSet()
-            val routeLats = m.route.flatten().map { it.lat }.toSet()
+            val routeLats = m.routes.flatMap { it.points }.map { it.lat }.toSet()
             assertThat(pinLats + routeLats).hasSize(1)
         }
     }
@@ -192,7 +197,7 @@ class TimelineViewModelTest {
 
         val map = runBlocking { withTimeout(10_000) { viewModel().dayMap.first { it != null && it.visitCount == 1 } } }!!
 
-        assertThat(map.route).isEmpty()
+        assertThat(map.routes).isEmpty()
         assertThat(map.routeMissing).isTrue()
     }
 

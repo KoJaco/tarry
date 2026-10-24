@@ -22,6 +22,8 @@ class ScrubberModel(
     dayEnd: Long,
     points: List<RoutePoint>,
     private val config: MapConfig = MapConfig(),
+    /** Pinned visits' place centres: during a visit the marker sits there instead of following ping jitter. */
+    private val visitCentres: Map<String, GeoPoint> = emptyMap(),
 ) {
     private val clamped: List<ScrubItem> = items
         .map { it.copy(start = maxOf(it.start, dayStart), end = minOf(it.end, dayEnd)) }
@@ -59,10 +61,11 @@ class ScrubberModel(
     }
 
     /**
-     * Interpolated route position at [t], or null with no pings, outside the ping span, or inside a break longer than
+     * The visit's place centre while [t] is inside a pinned visit; otherwise the interpolated route position, or null with no pings, outside the ping span, or inside a break longer than
      * `routeBreakMs` (no fake position).
      */
     fun positionAt(t: Long): GeoPoint? {
+        itemAt(t)?.takeIf { it.kind == ScrubKind.VISIT }?.let { visit -> visitCentres[visit.id]?.let { return it } }
         if (pings.isEmpty() || t < pings.first().timestamp || t > pings.last().timestamp) return null
         // Binary search: this runs on every drag frame over a whole day of pings.
         val found = pings.binarySearchBy(t) { it.timestamp }

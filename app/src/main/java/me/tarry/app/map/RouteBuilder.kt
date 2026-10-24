@@ -116,3 +116,55 @@ private fun distToSegment(px: Double, py: Double, ax: Double, ay: Double, bx: Do
     val t = (((px - ax) * dx + (py - ay) * dy) / len2).coerceIn(0.0, 1.0)
     return hypot(px - (ax + t * dx), py - (ay + t * dy))
 }
+
+/** One trip for [buildTripRoutes]: its time span and where it leaves from / arrives at (neighbouring visits' places). */
+data class TripLeg(val start: Long, val end: Long, val from: GeoPoint?, val to: GeoPoint?)
+
+/**
+ * One trip's drawing: recorded stretches ([solid], simplified) and unrecorded ones ([dashed], straight two-point lines).
+ * [start]/[end] identify the trip in time, so the map can emphasise the one the scrubber is on.
+ */
+data class TripRoute(val start: Long, val end: Long, val solid: List<List<GeoPoint>>, val dashed: List<List<GeoPoint>>) {
+    val points: List<GeoPoint> get() = solid.flatten() + dashed.flatten()
+}
+
+/**
+ * The day's movement drawn from trips only: stays are shown as their place's circle, so the jitter of pings during a
+ * visit never becomes lines. Each leg runs from its departure place through the trip's pings to its arrival place. Where
+ * consecutive points are more than `tripBreakMs` apart or a recorded gap lies between them, the stretch is [dashed]
+ * (a straight "not recorded" line) rather than drawn as if it were known; a trip with no usable pings is one dashed
+ * line between its places.
+ */
+fun buildTripRoutes(
+    points: List<RoutePoint>,
+    legs: List<TripLeg>,
+    gaps: List<TimeSpan>,
+    config: MapConfig = MapConfig(),
+): List<TripRoute> {
+    val usable = points.filter { it.accuracyM <= config.routeMaxAccuracyM }.sortedBy { it.timestamp }
+    return legs.map { leg ->
+        val solid = mutableListOf<List<GeoPoint>>()
+        val dashed = mutableListOf<List<GeoPoint>>()
+        val stops = buildList {
+            leg.from?.let { add(leg.start to it) }
+            usable.filter { it.timestamp in leg.start..leg.end }.forEach { add(it.timestamp to GeoPoint(it.lat, it.lng)) }
+            leg.to?.let { add(leg.end to it) }
+        }
+        var run = mutableListOf<GeoPoint>()
+        stops.firstOrNull()?.let { run += it.second }
+        for (i in 1 until stops.size) {
+            val (ta, a) = stops[i - 1]
+            val (tb, b) = stops[i]
+            val unrecorded = tb - ta > config.tripBreakMs || gaps.any { it.start < tb && it.end > ta }
+            if (unrecorded) {
+                if (run.size >= 2) solid += simplifyWindowed(run, config.routeSimplifyToleranceM)
+                if (a != b) dashed += listOf(a, b)
+                run = mutableListOf(b)
+            } else {
+                run += b
+            }
+        }
+        if (run.size >= 2) solid += simplifyWindowed(run, config.routeSimplifyToleranceM)
+        TripRoute(leg.start, leg.end, solid, dashed)
+    }
+}

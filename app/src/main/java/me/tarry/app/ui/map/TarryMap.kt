@@ -33,6 +33,7 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.background
@@ -85,13 +86,15 @@ fun TarryMap(
     modifier: Modifier = Modifier,
     /** False for previews (radius sheet): no pan, zoom, rotate or tilt, so the sheet's own gestures win. */
     interactive: Boolean = true,
+    /** Lifts the attribution above anything overlaid on the map's bottom edge (it must stay visible). */
+    attributionBottomPadding: Dp = 0.dp,
     onStyleLoaded: (MapLibreMap, Style) -> Unit = { _, _ -> },
 ) {
     if (!LocalMapsEnabled.current) {
         Box(modifier.background(TarryTheme.colors.inset).semantics { this.contentDescription = contentDescription })
         return
     }
-    TarryMapView(contentDescription, modifier, interactive, onStyleLoaded)
+    TarryMapView(contentDescription, modifier, interactive, attributionBottomPadding, onStyleLoaded)
 }
 
 @Composable
@@ -99,6 +102,7 @@ private fun TarryMapView(
     contentDescription: String,
     modifier: Modifier,
     interactive: Boolean,
+    attributionBottomPadding: Dp,
     onStyleLoaded: (MapLibreMap, Style) -> Unit,
 ) {
     val context = LocalContext.current
@@ -147,7 +151,7 @@ private fun TarryMapView(
                 .testTag("map")
                 .semantics { this.contentDescription = contentDescription },
         )
-        MapAttribution(Modifier.align(Alignment.BottomEnd))
+        MapAttribution(Modifier.align(Alignment.BottomEnd).padding(bottom = attributionBottomPadding))
     }
 }
 

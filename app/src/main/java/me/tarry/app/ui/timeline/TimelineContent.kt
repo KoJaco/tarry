@@ -6,6 +6,9 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -140,35 +143,45 @@ fun TimelineContent(
             val (dayStart, dayEnd) = dayBounds(date, zone)
             val rows = items.orEmpty()
             val points = dayMap?.points.orEmpty()
-            val scrub = remember(rows, points, dayStart, dayEnd) { ScrubberModel(rows.toScrubItems(), dayStart, dayEnd, points) }
+            val scrub = remember(rows, points, dayMap?.visitCentres, dayStart, dayEnd) { ScrubberModel(rows.toScrubItems(), dayStart, dayEnd, points, visitCentres = dayMap?.visitCentres.orEmpty()) }
             // Kept across day changes only for a date-time jump; otherwise the day starts at its first item.
             var scrubTime by rememberSaveable { mutableStateOf<Long?>(null) }
             val range = scrub.range
             val time = scrubTime?.takeIf { range != null && it in range.start..range.end } ?: range?.start
-            DayMapView(
-                dayMap = dayMap,
-                date = date,
-                contentDescription = description,
-                onOpenVisit = { onEdit(EditTarget.Visit(it)) },
-                marker = time?.let(scrub::positionAt),
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            if (time != null) {
-                DayScrubber(
-                    model = scrub,
-                    visits = rows.filterIsInstance<TimelineItem.Visit>(),
-                    time = time,
-                    onTimeChange = { scrubTime = it },
-                    onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+            // The map runs down to the bottom bar; the scrubber floats over its bottom edge.
+            var overlayPx by remember { mutableIntStateOf(0) }
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                DayMapView(
+                    dayMap = dayMap,
                     date = date,
-                    today = today,
-                    zone = zone,
-                    onJump = { day, ms ->
-                        scrubTime = ms
-                        onSelectDate(day)
-                    },
-                    modifier = gutter.padding(bottom = TarryTheme.space.s),
+                    contentDescription = description,
+                    onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                    marker = time?.let(scrub::positionAt),
+                    bottomInsetPx = if (time != null) overlayPx else 0,
+                    activeTime = time,
+                    modifier = Modifier.fillMaxSize(),
                 )
+                if (time != null) {
+                    DayScrubber(
+                        model = scrub,
+                        visits = rows.filterIsInstance<TimelineItem.Visit>(),
+                        time = time,
+                        onTimeChange = { scrubTime = it },
+                        onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                        date = date,
+                        today = today,
+                        zone = zone,
+                        onJump = { day, ms ->
+                            scrubTime = ms
+                            onSelectDate(day)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .onSizeChanged { overlayPx = it.height }
+                            .padding(horizontal = TarryTheme.space.m)
+                            .padding(bottom = TarryTheme.space.m),
+                    )
+                }
             }
             return@Column
         }

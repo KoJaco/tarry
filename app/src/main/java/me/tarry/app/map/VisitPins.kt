@@ -2,12 +2,15 @@ package me.tarry.app.map
 
 import me.tarry.segmentation.geo.haversineMeters
 
+/** A visit for the map. [position] is its place centroid; [radiusM] its place radius (drawn as the visit's area). */
 data class PinInput(
     val visitId: String,
     val start: Long,
     val position: GeoPoint?,
     val jobColorArgb: Int?,
     val jobId: String?,
+    val end: Long = start,
+    val radiusM: Float? = null,
 )
 
 data class VisitPin(
@@ -16,13 +19,16 @@ data class VisitPin(
     val position: GeoPoint,
     val jobColorArgb: Int?,
     val jobId: String?,
+    val radiusM: Float? = null,
+    val start: Long = 0,
+    val end: Long = 0,
 )
 
 /** Numbers every visit 1..n in start order (ties by id) but emits pins only for visits that have a position. */
 fun visitPins(visits: List<PinInput>): List<VisitPin> =
     visits.sortedWith(compareBy({ it.start }, { it.visitId }))
         .mapIndexedNotNull { i, v ->
-            v.position?.let { VisitPin(v.visitId, i + 1, it, v.jobColorArgb, v.jobId) }
+            v.position?.let { VisitPin(v.visitId, i + 1, it, v.jobColorArgb, v.jobId, v.radiusM, v.start, v.end) }
         }
 
 /** Smallest box containing [points]; null when empty. */

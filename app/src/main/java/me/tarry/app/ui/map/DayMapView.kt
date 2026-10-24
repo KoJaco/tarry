@@ -27,6 +27,10 @@ import me.tarry.app.map.DayMap
 import me.tarry.app.map.GeoBounds
 import me.tarry.app.map.GeoPoint
 import me.tarry.app.map.MapConfig
+import me.tarry.app.map.TripRoute
+import me.tarry.app.map.circlePolygon
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.geojson.Polygon
 import me.tarry.app.map.VisitPin
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryColors
@@ -49,6 +53,8 @@ import java.time.LocalDate
 private const val RouteId = "day-route"
 private const val PinsId = "day-pins"
 private const val MarkerId = "day-marker"
+private const val AreasId = "day-areas"
+private const val RouteWidth = 4f
 private const val PinCircleLayer = "$PinsId-circle"
 private const val PinFont = "Noto Sans Bold" // served by the OpenFreeMap glyph endpoint the style already uses
 private const val SinglePlaceZoom = 16.0
@@ -70,6 +76,10 @@ fun DayMapView(
     modifier: Modifier = Modifier,
     /** The scrubber's position on the route (null: none at that time, e.g. inside a break); the camera follows it. */
     marker: GeoPoint? = null,
+    /** Height of whatever floats over the map's bottom (the scrubber): the camera centres in the space above it. */
+    bottomInsetPx: Int = 0,
+    /** The scrubber's time: the trip or visit it is on is drawn solid and full strength, the rest faded. */
+    activeTime: Long? = null,
     config: MapConfig = MapConfig(),
 ) {
     val colors = TarryTheme.colors
@@ -85,6 +95,7 @@ fun DayMapView(
         TarryMap(
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
+            attributionBottomPadding = with(LocalDensity.current) { bottomInsetPx.toDp() },
             onStyleLoaded = { map, style ->
                 if (loaded?.first !== map) {
                     map.addOnMapClickListener { latLng ->
@@ -105,15 +116,24 @@ fun DayMapView(
             },
         )
         val current = loaded
-        LaunchedEffect(current, dayMap, colors, dark) {
+        // Keys rather than the raw time, so layers refresh when the emphasis moves, not on every drag frame.
+        val activeTrip = activeTime?.let { t -> dayMap?.routes?.firstOrNull { t >= it.start && t < it.end }?.start }
+        val activeVisit = activeTime?.let { t -> dayMap?.pins?.firstOrNull { t >= it.start && t < it.end }?.visitId }
+        LaunchedEffect(current, dayMap, colors, dark, activeTrip, activeVisit) {
             val (map, style) = current ?: return@LaunchedEffect
             if (!style.isFullyLoaded || dayMap == null) return@LaunchedEffect
-            style.setRoute(dayMap.route, colors)
+            // Added bottom-up on first use: visit areas, then trips, then pins (all below the marker).
+            style.setVisitAreas(dayMap.pins, activeVisit, colors, dark, config)
+            style.setRoutes(dayMap.routes, activeTrip, colors)
             style.setPins(dayMap.pins, colors, dark)
             if (fittedFor != date) {
                 dayMap.bounds?.let { map.fitTo(it, fitPaddingPx) }
                 fittedFor = date
             }
+        }
+        LaunchedEffect(current, bottomInsetPx) {
+            val (map, _) = current ?: return@LaunchedEffect
+            map.moveCamera(CameraUpdateFactory.paddingTo(0.0, 0.0, 0.0, bottomInsetPx.toDouble()))
         }
         LaunchedEffect(current, marker, colors) {
             val (map, style) = current ?: return@LaunchedEffect
@@ -166,18 +186,74 @@ private fun Style.addBelowMarker(layer: org.maplibre.android.style.layers.Layer)
 
 private fun Style.source(id: String): GeoJsonSource = getSourceAs(id) ?: GeoJsonSource(id).also { addSource(it) }
 
-private fun Style.setRoute(route: List<List<GeoPoint>>, colors: TarryColors) {
-    val lines = route.map { seg -> Feature.fromGeometry(LineString.fromLngLats(seg.map { it.toPoint() })) }
-    source("$RouteId-src").setGeoJson(FeatureCollection.fromFeatures(lines))
-    val layer = getLayer("$RouteId-line") as LineLayer?
+private fun List<List<GeoPoint>>.toLines() =
+    FeatureCollection.fromFeatures(map { seg -> Feature.fromGeometry(LineString.fromLngLats(seg.map { it.toPoint() })) })
+
+/**
+ * The trip the scrubber is on ([activeTrip], its start): recorded stretches solid, unrecorded ones (no fixes, e.g. a
+ * ferry leg) dashed. Every other trip is faded and dashed, so where the user is reads at a glance.
+ */
+private fun Style.setRoutes(routes: List<TripRoute>, activeTrip: Long?, colors: TarryColors) {
+    val (active, others) = routes.partition { it.start == activeTrip }
+    source("$RouteId-src").setGeoJson(active.flatMap { it.solid }.toLines())
+    source("$RouteId-gap-src").setGeoJson(active.flatMap { it.dashed }.toLines())
+    source("$RouteId-rest-src").setGeoJson(others.flatMap { it.solid + it.dashed }.toLines())
+    val ink = mapColor(colors.ink.toArgb())
+    val rest = getLayer("$RouteId-rest") as LineLayer?
+        ?: LineLayer("$RouteId-rest", "$RouteId-rest-src").also { addBelowMarker(it) }
+    rest.setProperties(
+        PropertyFactory.lineColor(ink),
+        PropertyFactory.lineWidth(RouteWidth * 0.75f),
+        PropertyFactory.lineOpacity(0.35f),
+        PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
+    )
+    val solid = getLayer("$RouteId-line") as LineLayer?
         ?: LineLayer("$RouteId-line", "$RouteId-src").also { addBelowMarker(it) }
-    layer.setProperties(
-        PropertyFactory.lineColor(mapColor(colors.ink.toArgb())),
-        PropertyFactory.lineWidth(4f),
+    solid.setProperties(
+        PropertyFactory.lineColor(ink),
+        PropertyFactory.lineWidth(RouteWidth),
         PropertyFactory.lineOpacity(0.85f),
         PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
         PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
     )
+    val dashed = getLayer("$RouteId-gap") as LineLayer?
+        ?: LineLayer("$RouteId-gap", "$RouteId-gap-src").also { addBelowMarker(it) }
+    dashed.setProperties(
+        PropertyFactory.lineColor(ink),
+        PropertyFactory.lineWidth(RouteWidth * 0.75f),
+        PropertyFactory.lineOpacity(0.5f),
+        PropertyFactory.lineDasharray(arrayOf(1.5f, 2f)),
+    )
+}
+
+/** Each pinned visit as its place's radius, tinted in the job colour: a stay reads as one area, not ping jitter. */
+private fun Style.setVisitAreas(pins: List<VisitPin>, activeVisit: String?, colors: TarryColors, dark: Boolean, config: MapConfig) {
+    val features = pins.mapNotNull { pin ->
+        val radius = pin.radiusM ?: return@mapNotNull null
+        val job = pin.jobId?.let { JobPalette.lookup(pin.jobColorArgb, it).colors(dark) }
+        val ring = circlePolygon(pin.position, radius.toDouble(), config.circleSegments).map { it.toPoint() }
+        Feature.fromGeometry(Polygon.fromLngLats(listOf(ring))).apply {
+            addStringProperty("fill", mapColor((job?.container ?: colors.accent.copy(alpha = RadiusFillAlpha)).toArgb()))
+            addStringProperty("stroke", mapColor((job?.border ?: colors.accentStrong).toArgb()))
+            addBooleanProperty("active", pin.visitId == activeVisit)
+        }
+    }
+    source("$AreasId-src").setGeoJson(FeatureCollection.fromFeatures(features))
+    if (getLayer("$AreasId-fill") == null) {
+        addBelowMarker(
+            FillLayer("$AreasId-fill", "$AreasId-src").withProperties(
+                PropertyFactory.fillColor(Expression.toColor(Expression.get("fill"))),
+                PropertyFactory.fillOpacity(Expression.switchCase(Expression.get("active"), Expression.literal(0.6f), Expression.literal(0.3f))),
+            ),
+        )
+        addBelowMarker(
+            LineLayer("$AreasId-line", "$AreasId-src").withProperties(
+                PropertyFactory.lineColor(Expression.toColor(Expression.get("stroke"))),
+                PropertyFactory.lineWidth(2f),
+                PropertyFactory.lineOpacity(Expression.switchCase(Expression.get("active"), Expression.literal(1f), Expression.literal(0.45f))),
+            ),
+        )
+    }
 }
 
 /** The scrubber position: an `accent` dot ringed in `ink`, drawn above the pins. */
