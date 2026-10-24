@@ -223,6 +223,7 @@ internal fun PlacePickerSheet(
     places: List<PlaceOption>,
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
+    title: String = stringResource(R.string.edit_place_picker_title),
 ) {
     var query by remember { mutableStateOf("") }
     val shown = remember(places, query) {
@@ -238,7 +239,7 @@ internal fun PlacePickerSheet(
                 .padding(bottom = TarryTheme.space.l),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
         ) {
-            SheetTitle(stringResource(R.string.edit_place_picker_title))
+            SheetTitle(title)
             InsetTextField(query, { query = it }, stringResource(R.string.edit_place_search_label))
             if (shown.isEmpty()) {
                 Text(
@@ -300,14 +301,21 @@ internal fun NameDialog(
 }
 
 @Composable
-internal fun ConfirmDialog(title: String, body: String, confirmLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+internal fun ConfirmDialog(
+    title: String,
+    body: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    confirmEnabled: Boolean = true,
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container,
         containerColor = TarryTheme.colors.card,
         title = { Text(title, style = MaterialTheme.typography.titleLarge, color = TarryTheme.colors.ink) },
         text = { Text(body, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted) },
-        confirmButton = { PrimaryButton(confirmLabel, onClick = onConfirm) },
+        confirmButton = { PrimaryButton(confirmLabel, onClick = onConfirm, enabled = confirmEnabled) },
         dismissButton = { TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onDismiss) },
     )
 }
