@@ -62,9 +62,11 @@ class ScrubberModel(
      */
     fun positionAt(t: Long): GeoPoint? {
         if (pings.isEmpty() || t < pings.first().timestamp || t > pings.last().timestamp) return null
-        val hi = pings.indexOfFirst { it.timestamp >= t }
+        // Binary search: this runs on every drag frame over a whole day of pings.
+        val found = pings.binarySearchBy(t) { it.timestamp }
+        if (found >= 0) return pings[found].let { GeoPoint(it.lat, it.lng) }
+        val hi = -found - 1
         val b = pings[hi]
-        if (b.timestamp == t) return GeoPoint(b.lat, b.lng)
         val a = pings[hi - 1]
         if (b.timestamp - a.timestamp > config.routeBreakMs) return null
         val f = (t - a.timestamp).toDouble() / (b.timestamp - a.timestamp)
