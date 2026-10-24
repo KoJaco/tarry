@@ -90,6 +90,41 @@ interface PlaceDao {
 
     @Query("SELECT * FROM place_default_tag WHERE placeId IN (:placeIds)")
     suspend fun getDefaultTagsFor(placeIds: List<String>): List<PlaceDefaultTag>
+
+    /**
+     * Every place, deleted ones included, for labelling visits: frozen visits at a deleted place keep their label and
+     * inherited job. Pickers and catalogs must use [observeAll] instead.
+     */
+    @Query("SELECT * FROM place")
+    fun observeLabels(): Flow<List<Place>>
+
+    /** Sets only the radius, so columns segmentation owns (centroid, lastVisitAt) are never overwritten. */
+    @Query("UPDATE place SET radiusM = :radiusM, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun setRadius(id: String, radiusM: Float, updatedAt: Long)
+
+    /** Places (deleted tombstones included) that were merged into [id]. */
+    @Query("SELECT * FROM place WHERE mergedIntoId = :id")
+    suspend fun getMergedInto(id: String): List<Place>
+
+    /** Points every place merged into [from] at [to] instead, so merge chains stay flat. */
+    @Query("UPDATE place SET mergedIntoId = :to, updatedAt = :updatedAt WHERE mergedIntoId = :from")
+    suspend fun repointMerged(from: String, to: String, updatedAt: Long)
+
+    /**
+     * Soft-deletes orphan places: unnamed, no defaults, not ignored, still the default radius, not a merge, last touched
+     * before [cutoff] and with no live visit and no visit changed since [cutoff] (the grace period).
+     */
+    @Query(
+        "UPDATE place SET deleted = 1, updatedAt = :now WHERE deleted = 0 AND mergedIntoId IS NULL AND name IS NULL " +
+            "AND defaultJobId IS NULL AND defaultBillable IS NULL AND ignored = 0 AND radiusM = :defaultRadiusM " +
+            "AND updatedAt < :cutoff " +
+            "AND NOT EXISTS (SELECT 1 FROM place_default_tag t WHERE t.placeId = place.id) " +
+            "AND NOT EXISTS (SELECT 1 FROM visit v WHERE v.placeId = place.id AND (v.deleted = 0 OR v.updatedAt >= :cutoff))",
+    )
+    suspend fun pruneOrphans(now: Long, cutoff: Long, defaultRadiusM: Float): Int
+
+    @Query("DELETE FROM place_default_tag WHERE placeId = :placeId")
+    suspend fun deleteAllDefaultTags(placeId: String)
 }
 
 @Dao

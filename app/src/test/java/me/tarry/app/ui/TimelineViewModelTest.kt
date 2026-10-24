@@ -274,6 +274,19 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun frozenVisitAtADeletedPlaceKeepsItsLabelAndInheritedJob() = runBlocking {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
+        places.save(place("p", name = "Yard").copy(defaultJobId = "j", deleted = true))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p").copy(frozen = true))
+
+        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
+
+        assertThat(v.placeLabel).isEqualTo("Yard")
+        assertThat(v.jobName).isEqualTo("Acme")
+        assertThat(v.jobInherited).isTrue()
+    }
+
+    @Test
     fun visitExposesFrozenBillableOriginPlaceAndIgnoredFlags() = runBlocking {
         places.save(place("p", name = "Home").copy(ignored = true))
         timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p").copy(frozen = true, billable = true, origin = VisitOrigin.MANUAL))

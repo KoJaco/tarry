@@ -35,3 +35,11 @@ data object JobsRoute : NavKey
 /** Tags and tag groups management (phase 4a). Pushed on top of [SettingsRoute]. */
 @Serializable
 data object TagsRoute : NavKey
+
+/** Places list (phase 4b). Pushed on top of [SettingsRoute]. */
+@Serializable
+data object PlacesRoute : NavKey
+
+/** One place's detail (phase 4b). Pushed on top of [PlacesRoute]. */
+@Serializable
+data class PlaceDetailRoute(val id: String) : NavKey

@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Phase 4b: Places management. -->
+    <string name="settings_places">Places</string>
+
+    <string name="places_title">Places</string>
+    <string name="places_empty_title">No places yet</string>
+    <string name="places_empty_body">Places appear here once tracking has detected a visit.</string>
+    <string name="places_ignored_chip">Ignored</string>
+    <string name="places_no_visits">No visits yet</string>
+    <string name="places_visits_last">%1$s · last %2$s</string>
+    <plurals name="places_visit_count">
+        <item quantity="one">%1$d visit</item>
+        <item quantity="other">%1$d visits</item>
+    </plurals>
+    <string name="places_last_today">today</string>
+    <string name="places_last_yesterday">yesterday</string>
+    <plurals name="places_last_days_ago">
+        <item quantity="one">%1$d day ago</item>
+        <item quantity="other">%1$d days ago</item>
+    </plurals>
+
+    <string name="place_detail_not_named">Not named</string>
+    <string name="place_name_row">Name</string>
+    <string name="place_name_dialog_title">Name this place</string>
+    <string name="place_default_job_row">Default job</string>
+    <string name="place_default_job_none">No default</string>
+    <string name="place_default_job_picker_title">Default job</string>
+    <string name="place_default_job_none_option">No default job</string>
+    <string name="place_default_billable_row">Default billable</string>
+    <string name="place_default_billable_title">Default billable</string>
+    <string name="place_billable_not_set">Not set</string>
+    <string name="place_billable_yes">Billable</string>
+    <string name="place_billable_no">Not billable</string>
+    <string name="place_default_tags_row">Default tags</string>
+    <string name="place_default_tags_none">None</string>
+    <string name="place_default_tags_title">Default tags</string>
+    <string name="place_default_tags_save">Save</string>
+    <string name="place_defaults_hint">Defaults apply to visits you have not edited.</string>
+    <string name="place_ignore_row">Ignore this place</string>
+    <string name="place_ignore_subtitle">Visits here never ask for review.</string>
+    <string name="place_radius_row">Radius</string>
+    <string name="place_radius_value">%1$d m</string>
+
+    <string name="place_merge_action">Merge into…</string>
+    <string name="place_merge_picker_title">Merge into which place?</string>
+    <string name="place_merge_confirm_title">Merge into %1$s?</string>
+    <string name="place_merge_confirm_body">All visits here move to %1$s and this place is removed. The combined circle will be %2$d m.</string>
+    <string name="place_merge_checking">Checking the combined circle…</string>
+    <string name="place_merge_capped">The circle is limited to %1$d m, so it will not fully cover both places.</string>
+    <string name="place_merge_defaults_note">Visits there that you have not edited may pick up this place\'s defaults.</string>
+    <string name="place_merge_confirm">Merge</string>
+
+    <string name="place_delete_action">Delete place</string>
+    <string name="place_delete_confirm_title">Delete %1$s?</string>
+    <string name="place_delete_confirm_body">Detected visits here are dropped and will come back as a new place. Edited visits keep their label. If this is not a work place, turn on Ignore instead.</string>
+    <string name="place_delete_confirm">Delete</string>
+
+    <string name="place_radius_title">Place radius</string>
+    <string name="place_radius_decrease">Decrease radius by 5 metres</string>
+    <string name="place_radius_increase">Increase radius by 5 metres</string>
+    <string name="place_radius_slider_label">Radius</string>
+    <plurals name="place_radius_state">
+        <item quantity="one">%1$d metre</item>
+        <item quantity="other">%1$d metres</item>
+    </plurals>
+    <string name="place_radius_loading">Counting visits…</string>
+    <plurals name="place_radius_stay">
+        <item quantity="one">%1$d detected visit stays here</item>
+        <item quantity="other">%1$d detected visits stay here</item>
+    </plurals>
+    <plurals name="place_radius_leave">
+        <item quantity="one">%1$d detected visit would leave</item>
+        <item quantity="other">%1$d detected visits would leave</item>
+    </plurals>
+    <plurals name="place_radius_join">
+        <item quantity="one">%1$d visit from a nearby place would join</item>
+        <item quantity="other">%1$d visits from nearby places would join</item>
+    </plurals>
+    <plurals name="place_radius_frozen">
+        <item quantity="one">%1$d edited visit will not change</item>
+        <item quantity="other">%1$d edited visits will not change</item>
+    </plurals>
+    <string name="place_radius_small_hint">Below 60 m, long stays may split into several visits.</string>
+    <string name="place_radius_defaults_note">Detected visits that move may pick up another place\'s defaults.</string>
+    <string name="place_radius_save">Save</string>
+    <string name="place_radius_cancel">Cancel</string>
+
+    <string name="places_undo_radius">Radius changed</string>
+    <string name="places_undo_merged">Places merged</string>
+    <string name="places_undo_deleted">Place deleted</string>
+</resources>
