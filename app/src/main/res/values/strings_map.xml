@@ -21,4 +21,5 @@
         <item quantity="one">%d trip</item>
         <item quantity="other">%d trips</item>
     </plurals>
+    <string name="map_place_mini_description">Map of %1$s, %2$s radius</string>
 </resources>

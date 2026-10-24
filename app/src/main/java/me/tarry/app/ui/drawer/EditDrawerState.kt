@@ -1,6 +1,7 @@
 package me.tarry.app.ui.drawer
 
 import androidx.compose.runtime.Immutable
+import me.tarry.app.map.GeoPoint
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.EditResult
@@ -52,6 +53,10 @@ data class EditDrawerState(
     /** The visit has a live place; false for a deleted one (label and inherited job still show), which hides Rename and "Set as place default". */
     val hasPlace: Boolean = false,
     val placeIgnored: Boolean = false,
+    /** The live place's id, centre and radius for the header mini map; null when there is no live place. */
+    val placeId: String? = null,
+    val placeCentre: GeoPoint? = null,
+    val placeRadiusM: Float = 0f,
     val tripMode: TripMode = TripMode.UNKNOWN,
     val distanceM: Float = 0f,
     val jobs: List<JobOption> = emptyList(),
