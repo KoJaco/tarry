@@ -84,6 +84,20 @@ fun TarryMap(
     interactive: Boolean = true,
     onStyleLoaded: (MapLibreMap, Style) -> Unit = { _, _ -> },
 ) {
+    if (!LocalMapsEnabled.current) {
+        Box(modifier.background(TarryTheme.colors.inset).semantics { this.contentDescription = contentDescription })
+        return
+    }
+    TarryMapView(contentDescription, modifier, interactive, onStyleLoaded)
+}
+
+@Composable
+private fun TarryMapView(
+    contentDescription: String,
+    modifier: Modifier,
+    interactive: Boolean,
+    onStyleLoaded: (MapLibreMap, Style) -> Unit,
+) {
     val context = LocalContext.current
     val colors = TarryTheme.colors
     val template = remember { context.styleTemplate() }
