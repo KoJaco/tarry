@@ -108,6 +108,13 @@ fun TrackingSheetContent(
             }
             TrackingState.TRACKING -> {
                 SheetTitle(R.string.tracking_sheet_tracking_title)
+                if (details.finishingUp) {
+                    Text(
+                        text = stringResource(R.string.tracking_notification_finishing),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TarryTheme.colors.muted,
+                    )
+                }
                 SheetRow(stringResource(R.string.tracking_sheet_pause_30m), onDone, R.drawable.ic_pause) { actions.onPause(PauseKind.PAUSE_30M) }
                 SheetRow(stringResource(R.string.tracking_sheet_pause_1h), onDone, R.drawable.ic_pause) { actions.onPause(PauseKind.PAUSE_1H) }
                 SheetRow(stringResource(R.string.tracking_sheet_pause_next_window), onDone, R.drawable.ic_pause) {

@@ -180,6 +180,27 @@ class HealthCheckWorkerTest {
     }
 
     @Test
+    fun aStalledWindowEndGraceIsWatchedLikeAnyRunningSession() = runBlocking<Unit> {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile()
+        assertThat(store.current().finishingUp).isTrue()
+        val heartbeat = store.current().lastHeartbeatMs!!
+        clock.now += config.noHeartbeatThresholdMs + 60_000
+
+        runWorker()
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.NO_FIX_WHILE_MOVING)
+        val gap = gaps().single()
+        assertThat(gap.cause).isEqualTo(GapCause.NO_FIX)
+        assertThat(gap.start).isEqualTo(heartbeat)
+        // The reconcile the worker triggers must not close the outage of a session that is still supposed to run.
+        assertThat(store.current().openHealthGapId).isEqualTo(gap.id)
+        assertThat(coordinator.isActive).isTrue()
+    }
+
+    @Test
     fun laterChecksExtendTheGapAndRecoveryClosesIt() = runBlocking<Unit> {
         preconditions.value = Preconditions(locationEnabled = false)
         runWorker()

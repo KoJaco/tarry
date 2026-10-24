@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import me.tarry.core.data.model.ActivityType
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Qualifier
@@ -38,7 +39,36 @@ data class TrackingStatus(
     val lastSegmentationSuccessMs: Long? = null,
     /** Set when segmentation gave up; cleared by the next successful run. */
     val segmentationError: SegmentationError? = null,
+    /** True while the session is kept open past the schedule end (window-end grace); drives "Finishing up…". */
+    val finishingUp: Boolean = false,
+    /** When that grace began (epoch ms); kept across a process death so the orphaned grace can be accounted for. */
+    val finishingUpSinceMs: Long? = null,
 )
+
+/** Activity Recognition transitions seen in one session: how many, how many were ignored (an equal or newer one was already applied), and the last one. */
+data class ArSessionLog(
+    val count: Int,
+    val ignored: Int,
+    val lastType: ActivityType,
+    /** When the transition happened (receipt time minus its age), and when it was received; epoch ms. */
+    val lastEventMs: Long,
+    val lastReceiptMs: Long,
+)
+
+private fun decodeArLog(raw: String?): Map<Long, ArSessionLog> =
+    raw.orEmpty().split(';').mapNotNull { entry ->
+        val c = entry.split(',')
+        if (c.size != 6) return@mapNotNull null
+        val type = ActivityType.entries.firstOrNull { it.name == c[3] } ?: return@mapNotNull null
+        val id = c[0].toLongOrNull() ?: return@mapNotNull null
+        id to ArSessionLog(
+            count = c[1].toIntOrNull() ?: return@mapNotNull null,
+            ignored = c[2].toIntOrNull() ?: return@mapNotNull null,
+            lastType = type,
+            lastEventMs = c[4].toLongOrNull() ?: return@mapNotNull null,
+            lastReceiptMs = c[5].toLongOrNull() ?: return@mapNotNull null,
+        )
+    }.toMap()
 
 /** Why and when segmentation last gave up. */
 data class SegmentationError(val timeMs: Long, val message: String)
@@ -67,10 +97,37 @@ class TrackingStatusStore @Inject constructor(
             alarmDegraded = p[ALARM_DEGRADED] ?: false,
             lastSegmentationSuccessMs = p[SEG_SUCCESS],
             segmentationError = p[SEG_ERROR_TIME]?.let { SegmentationError(it, p[SEG_ERROR_MESSAGE] ?: "") },
+            finishingUp = p[FINISHING_UP] ?: false,
+            finishingUpSinceMs = p[FINISHING_UP_SINCE],
         )
     }
 
     suspend fun current(): TrackingStatus = status.first()
+
+    /** Activity Recognition diagnostics per session id (the last [AR_LOG_SESSIONS] sessions). */
+    val arLogs: Flow<Map<Long, ArSessionLog>> = dataStore.data.map { p -> decodeArLog(p[AR_LOG]) }
+
+    /**
+     * Logs one Activity Recognition transition for [sessionId]: its type, when it happened and when it was received.
+     * [ignored] marks one that was too old to apply. Diagnostics only, so it needs no schema.
+     */
+    suspend fun recordArTransition(sessionId: Long, type: ActivityType, eventMs: Long, receiptMs: Long, ignored: Boolean) {
+        dataStore.edit { p ->
+            val logs = decodeArLog(p[AR_LOG]).toMutableMap()
+            val old = logs[sessionId]
+            logs[sessionId] = ArSessionLog(
+                count = (old?.count ?: 0) + 1,
+                ignored = (old?.ignored ?: 0) + if (ignored) 1 else 0,
+                lastType = type,
+                lastEventMs = eventMs,
+                lastReceiptMs = receiptMs,
+            )
+            val kept = logs.toSortedMap().entries.toList().takeLast(AR_LOG_SESSIONS)
+            p[AR_LOG] = kept.joinToString(";") { (id, l) ->
+                "$id,${l.count},${l.ignored},${l.lastType.name},${l.lastEventMs},${l.lastReceiptMs}"
+            }
+        }
+    }
 
     suspend fun setLastHeartbeat(timeMs: Long?) = set(HEARTBEAT, timeMs)
     suspend fun setCaptureMode(mode: CaptureMode?) = set(CAPTURE_MODE, mode?.name)
@@ -79,6 +136,17 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
     suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
+    suspend fun setFinishingUp(on: Boolean, sinceMs: Long? = null) {
+        dataStore.edit {
+            if (on) {
+                it[FINISHING_UP] = true
+                if (sinceMs != null) it[FINISHING_UP_SINCE] = sinceMs
+            } else {
+                it.remove(FINISHING_UP)
+                it.remove(FINISHING_UP_SINCE)
+            }
+        }
+    }
 
     /** A successful run: records the time and clears any earlier error. */
     suspend fun recordSegmentationSuccess(timeMs: Long) {
@@ -96,7 +164,7 @@ class TrackingStatusStore @Inject constructor(
         }
     }
 
-    /** Clears per-session runtime state (heartbeat, mode, session id). Attention, gap and test window are kept. */
+    /** Clears per-session runtime state (heartbeat, mode, session id). Attention, gap, test window and an unaccounted grace are kept. */
     suspend fun clearSessionState() {
         dataStore.edit {
             it.remove(HEARTBEAT)
@@ -120,6 +188,10 @@ class TrackingStatusStore @Inject constructor(
         val SEG_SUCCESS = longPreferencesKey("segmentation_success_ms")
         val SEG_ERROR_TIME = longPreferencesKey("segmentation_error_ms")
         val SEG_ERROR_MESSAGE = stringPreferencesKey("segmentation_error_message")
+        val FINISHING_UP = booleanPreferencesKey("finishing_up")
+        val FINISHING_UP_SINCE = longPreferencesKey("finishing_up_since_ms")
+        val AR_LOG = stringPreferencesKey("ar_log")
+        const val AR_LOG_SESSIONS = 20
     }
 }
 

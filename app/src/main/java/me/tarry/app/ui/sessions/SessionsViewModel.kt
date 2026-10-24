@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.export.RawExporter
 import me.tarry.app.segmentation.SegmentationScheduler
+import me.tarry.app.tracking.ArSessionLog
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.TrackingController
 import me.tarry.app.tracking.SegmentationError
@@ -34,6 +35,8 @@ data class SessionListItem(
     val trigger: SessionTrigger,
     val endReason: SessionEndReason?,
     val pingCount: Int,
+    /** Activity Recognition transitions seen in this session (diagnostics), if any were logged. */
+    val activityLog: ArSessionLog? = null,
 )
 
 /** What the Sessions screen shows about segmentation. */
@@ -60,9 +63,9 @@ class SessionsViewModel @Inject constructor(
     @param:CaptureScope private val captureScope: CoroutineScope,
 ) : ViewModel() {
     val sessions: StateFlow<List<SessionListItem>> =
-        combine(trackingRepo.observeSessions(), trackingRepo.observePingCounts()) { sessions, counts ->
+        combine(trackingRepo.observeSessions(), trackingRepo.observePingCounts(), statusStore.arLogs) { sessions, counts, arLogs ->
             sessions.map { s ->
-                SessionListItem(s.id, s.start, s.end, s.zoneId, s.trigger, s.endReason, counts[s.id] ?: 0)
+                SessionListItem(s.id, s.start, s.end, s.zoneId, s.trigger, s.endReason, counts[s.id] ?: 0, arLogs[s.id])
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 

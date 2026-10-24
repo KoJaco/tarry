@@ -21,6 +21,8 @@ data class ReducedTrackingState(
     val state: TrackingState,
     val attentionCause: AttentionCause? = null,
     val pausedUntil: Instant? = null,
+    /** TRACKING only: the session is in the window-end grace ("Finishing up…"). */
+    val finishingUp: Boolean = false,
 )
 
 /**
@@ -43,6 +45,6 @@ class TrackingStateReducer @Inject constructor(private val evaluator: HealthEval
         // Inside the start grace period, a failed start has already recorded why.
         val stored = inputs.storedCause
         if (!h.serviceRunning && stored != null) return ReducedTrackingState(TrackingState.ATTENTION, stored)
-        return ReducedTrackingState(TrackingState.TRACKING)
+        return ReducedTrackingState(TrackingState.TRACKING, finishingUp = h.finishingUp)
     }
 }

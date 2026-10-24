@@ -41,6 +41,7 @@ internal fun buildTrips(
     val leading = pings.filter { it.timeMs < first.range.startMs }
     if (leading.isNotEmpty()) {
         trips += trip(leading.first().timeMs, first.range.startMs, null, 0, leading, null, first, params, pings)
+            .filter { it.distanceM >= params.minTripDistanceM }
     }
     for (i in 0 until stays.lastIndex) {
         val a = stays[i]
@@ -52,6 +53,7 @@ internal fun buildTrips(
     val trailing = pings.filter { it.timeMs > last.range.endMs }
     if (trailing.isNotEmpty()) {
         trips += trip(last.range.endMs, trailing.last().timeMs, stays.lastIndex, null, trailing, last, null, params, pings)
+            .filter { it.distanceM >= params.minTripDistanceM }
     }
     return trips
 }
@@ -123,8 +125,22 @@ private fun trip(
     val anchor = fromStay ?: toStay
     if ((fromStay == null) != (toStay == null) && anchor != null) {
         val trusted = inside.filter { it.accuracyM <= params.goodAccuracyM }.ifEmpty { inside }
-        val furthest = trusted.maxOfOrNull { haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) } ?: 0.0
-        if (furthest < params.minTripDistanceM) return emptyList()
+        val goodCount = inside.count { it.accuracyM <= params.goodAccuracyM }
+        // Two or more good fixes: the furthest counts (an out-and-back walk survives). Otherwise the poor-fix fallback:
+        // a robust quantile of how far each fix is beyond its own accuracy, so a fix whose circle reaches the stay (a
+        // network anchor 300 m away claiming 335 m) is no evidence of leaving.
+        val away = if (goodCount >= 2) {
+            trusted.maxOf { haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) }
+        } else {
+            quantile(
+                trusted.map { maxOf(0.0, haversineMeters(anchor.lat, anchor.lng, it.lat, it.lng) - it.accuracyM) },
+                params.robustDisplacementQuantile,
+            )
+        }
+        // At least the stay's own noise scale (the capped multiple stops at the place radius cap, a noisier stay is no cleaner).
+        val stayNoise = stayNoiseM(anchor, params)
+        val noise = maxOf(stayNoise, minOf(params.placeMaxRadiusM, params.placeNoiseFactor * stayNoise))
+        if (away < maxOf(params.minTripDistanceM, noise)) return emptyList()
     }
 
     // The vehicle part ends far from the stay, then on foot: two legs.
@@ -155,15 +171,76 @@ private fun trip(
     }
 
     val path = listOfNotNull(fromEdge()) + inside.map { it.toPathPoint() } + listOfNotNull(toEdge())
-    return listOf(TripCandidate(TimeRange(startMs, endMs), from, to, pathDistance(path, params), dominantMode(inside)))
+    return listOf(TripCandidate(TimeRange(startMs, endMs), from, to, pathDistance(path, params), tripMode(inside, params, fromEdge(), toEdge())))
 }
 
-private fun dominantMode(pings: List<Ping>): TripMode {
-    val vehicle = pings.count { it.activity == Activity.IN_VEHICLE }
-    val walk = pings.count { it.activity == Activity.WALKING || it.activity == Activity.ON_BICYCLE }
-    return when {
-        vehicle == 0 && walk == 0 -> TripMode.UNKNOWN
-        vehicle >= walk -> TripMode.VEHICLE
+/**
+ * A trip's mode from speed first, activity second. Speed samples are the pings' reported speeds, or, when fewer than
+ * [SegmentationParams.modeMinSpeedSamples] of those are moving, the hop speeds between consecutive GPS-grade fixes.
+ * Only moving samples count, and the median decides, never one sample. A run of
+ * [SegmentationParams.modeSustainedSamples] samples all well above the vehicle threshold is VEHICLE whatever the
+ * activity says (walking about on a moving boat). Between the thresholds the activity majority decides, else the
+ * nearer side. With too few samples: activity majority, else net speed between GPS-grade endpoints, else UNKNOWN.
+ */
+internal fun tripMode(
+    pings: List<Ping>,
+    params: SegmentationParams,
+    from: PathPoint? = null,
+    to: PathPoint? = null,
+): TripMode {
+    val mode = modeFromEvidence(pings, params)
+    // Nobody walks 4+ m/s on average between two places: the net speed between the trip's ends beats a WALK verdict
+    // (a ferry with a phone in hand, a sparse trace of poor fixes). It never turns UNKNOWN into anything.
+    if (mode == TripMode.WALK && from != null && to != null && to.timeMs > from.timeMs) {
+        val net = haversineMeters(from.lat, from.lng, to.lat, to.lng) / ((to.timeMs - from.timeMs) / 1000.0)
+        if (net >= params.vehicleMinSpeedMps + params.modeSustainedMarginMps) return TripMode.VEHICLE
+    }
+    return mode
+}
+
+private fun modeFromEvidence(pings: List<Ping>, params: SegmentationParams): TripMode {
+    fun movingOnly(speeds: List<Double>) = speeds.filter { it >= params.modeMovingMinSpeedMps }
+    val reported = pings.mapNotNull { it.speedMps?.takeIf { s -> s.isFinite() && s >= 0.0 } }
+    val good = pings.filter { it.accuracyM <= params.goodAccuracyM }
+    val hops = good.zipWithNext().mapNotNull { (a, b) ->
+        val dt = b.timeMs - a.timeMs
+        if (dt <= 0 || dt > params.modeMaxHopMs) null else haversineMeters(a.lat, a.lng, b.lat, b.lng) / (dt / 1000.0)
+    }
+    val series = if (movingOnly(reported).size >= params.modeMinSpeedSamples) reported else hops
+    val moving = movingOnly(series)
+
+    val vehicleActivity = pings.count { it.activity == Activity.IN_VEHICLE || it.activity == Activity.ON_BICYCLE }
+    val walkActivity = pings.count { it.activity == Activity.WALKING }
+    fun byActivity(): TripMode? = when {
+        vehicleActivity == 0 && walkActivity == 0 -> null
+        vehicleActivity >= walkActivity -> TripMode.VEHICLE
         else -> TripMode.WALK
     }
+    fun nearer(speed: Double) =
+        if (speed >= (params.vehicleMinSpeedMps + params.walkModeMaxSpeedMps) / 2) TripMode.VEHICLE else TripMode.WALK
+
+    if (moving.size >= params.modeMinSpeedSamples) {
+        val floor = params.vehicleMinSpeedMps + params.modeSustainedMarginMps
+        val n = params.modeSustainedSamples
+        if (series.size >= n && series.windowed(n).any { w -> w.all { it >= floor } }) return TripMode.VEHICLE
+        val median = quantile(moving, 0.5)
+        return when {
+            median >= params.vehicleMinSpeedMps -> TripMode.VEHICLE
+            median <= params.walkModeMaxSpeedMps -> TripMode.WALK
+            else -> byActivity() ?: nearer(median)
+        }
+    }
+    byActivity()?.let { return it }
+    if (good.size >= 2) {
+        val seconds = (good.last().timeMs - good.first().timeMs) / 1000.0
+        if (seconds > 0) {
+            val net = haversineMeters(good.first().lat, good.first().lng, good.last().lat, good.last().lng) / seconds
+            return when {
+                net >= params.vehicleMinSpeedMps -> TripMode.VEHICLE
+                net <= params.walkModeMaxSpeedMps -> TripMode.WALK
+                else -> nearer(net)
+            }
+        }
+    }
+    return TripMode.UNKNOWN
 }

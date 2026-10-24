@@ -89,8 +89,11 @@ class TraceBuilder(
         intervalMs: Long = 20_000,
         mode: Activity = Activity.IN_VEHICLE,
         accuracyM: Float = 25f,
+        jitterM: Double = 0.0,
+        reportSpeed: Boolean = false,
     ) = apply {
         require(speedMps > 0 && intervalMs > 0)
+        val reported = if (reportSpeed) speedMps else null
         val distance = haversineMeters(lat, lng, toLat, toLng)
         val stepM = speedMps * intervalMs / 1000.0
         val steps = maxOf(1, (distance / stepM).roundToInt())
@@ -98,7 +101,12 @@ class TraceBuilder(
             val f = k.toDouble() / steps
             val pLat = if (k == steps) toLat else lat + (toLat - lat) * f
             val pLng = if (k == steps) toLng else lng + (toLng - lng) * f
-            add(timeMs + k * intervalMs, pLat, pLng, accuracyM, mode)
+            if (jitterM > 0.0 && k != steps) {
+                val (jLat, jLng) = destination(pLat, pLng, random.nextDouble() * 360.0, random.nextDouble() * jitterM)
+                add(timeMs + k * intervalMs, jLat, jLng, accuracyM, mode, reported)
+            } else {
+                add(timeMs + k * intervalMs, pLat, pLng, accuracyM, mode, reported)
+            }
         }
         timeMs += steps * intervalMs
         lat = toLat
@@ -112,9 +120,11 @@ class TraceBuilder(
         intervalMs: Long = 20_000,
         mode: Activity = Activity.IN_VEHICLE,
         accuracyM: Float = 25f,
+        jitterM: Double = 0.0,
+        reportSpeed: Boolean = false,
     ) = apply {
         val (toLat, toLng) = destination(lat, lng, bearingDeg, distanceM)
-        move(toLat, toLng, speedMps, intervalMs, mode, accuracyM)
+        move(toLat, toLng, speedMps, intervalMs, mode, accuracyM, jitterM, reportSpeed)
     }
 
     /**
@@ -192,10 +202,53 @@ class TraceBuilder(
         }
     }
 
+    /**
+     * Network anchors: for [durationMs], a fix about every [intervalMs] at one of [points] (exact, repeated
+     * coordinates given as latitude to longitude), always a different one from the last fix so the position keeps
+     * jumping, with the matching accuracy from [accuracies]. [intervalJitter] is the fraction of [intervalMs] the
+     * spacing varies by (0 is regular). The cursor does not move.
+     */
+    fun anchors(
+        durationMs: Long,
+        points: List<Pair<Double, Double>>,
+        accuracies: List<Float>,
+        intervalMs: Long = 30_000,
+        intervalJitter: Double = 0.5,
+        activity: Activity? = Activity.STILL,
+    ) = apply {
+        require(points.size >= 2 && accuracies.size == points.size && intervalMs > 0 && durationMs >= 0)
+        var t = 0L
+        var last = -1
+        while (t < durationMs) {
+            var k = random.nextInt(points.size)
+            if (k == last) k = (k + 1 + random.nextInt(points.size - 1)) % points.size
+            last = k
+            add(timeMs + t, points[k].first, points[k].second, accuracies[k], activity)
+            t += (intervalMs * (1.0 + (random.nextDouble() * 2.0 - 1.0) * intervalJitter)).toLong().coerceAtLeast(1)
+        }
+        timeMs += durationMs
+    }
+
+    /**
+     * A spike with a return: [fixes] low-accuracy fixes [intervalMs] apart at [offsetM] from the cursor on
+     * [bearingDeg], after which the next fix is back at the cursor. The cursor does not move.
+     */
+    fun outAndBack(
+        offsetM: Double,
+        bearingDeg: Double = 90.0,
+        fixes: Int = 1,
+        intervalMs: Long = 10_000,
+        accuracyM: Float = 80f,
+    ) = apply {
+        val (pLat, pLng) = destination(lat, lng, bearingDeg, offsetM)
+        repeat(fixes) { k -> add(timeMs + k * intervalMs, pLat, pLng, accuracyM, Activity.STILL) }
+        timeMs += fixes * intervalMs
+    }
+
     fun build(): Trace = pings.sortedBy { it.timeMs }
 
-    private fun add(t: Long, pLat: Double, pLng: Double, acc: Float, activity: Activity?) {
-        pings += Ping(t, pLat, pLng, acc, activity, sessionId)
+    private fun add(t: Long, pLat: Double, pLng: Double, acc: Float, activity: Activity?, speed: Double? = null) {
+        pings += Ping(t, pLat, pLng, acc, activity, sessionId, speed)
     }
 
     private fun drawAccuracy(range: ClosedFloatingPointRange<Float>): Float =

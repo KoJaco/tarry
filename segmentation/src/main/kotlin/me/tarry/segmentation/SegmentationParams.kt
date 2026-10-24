@@ -12,8 +12,8 @@ data class SegmentationParams(
     /** A ping gap inside one stay is bridged when the position on both sides is within [stayRadiusM]. */
     val maxGapToBridgeMs: Long = 45 * 60_000L,
     /**
-     * A silence inside a stay longer than this counts as a signal gap that was bridged (lower confidence). Capture
-     * saves a stationary keepalive every 10 min plus a 3 min fix interval, so normal stays stay under it.
+     * A silence inside a stay longer than this counts as a signal gap that was bridged (lower confidence). A
+     * stationary session takes a fix every minute, so normal stays stay under it.
      */
     val signalGapMs: Long = 15 * 60_000L,
     /** Radius of a newly created place; existing places match within their own radius. */
@@ -40,6 +40,8 @@ data class SegmentationParams(
     val departureMinFixes: Int = 2,
     /** The consecutive outside pings that close a stay must span at least this long. */
     val departureMinMs: Long = 2 * 60_000L,
+    /** ...and no longer than this (first to last): an old outlier and a much later fix do not make a departure. */
+    val departureMaxSpanMs: Long = 4 * departureMinMs,
     /** Pings at least this accurate (metres, smaller is better) are trusted for displacement and distance. */
     val goodAccuracyM: Double = 50.0,
     /**
@@ -55,6 +57,20 @@ data class SegmentationParams(
     val maxAccuracyM: Float = 100f,
     /** A vehicle-to-stay tail only becomes a WALK leg when its average speed is at most this (m/s). */
     val walkMaxSpeedMps: Double = 2.5,
+    /** Trip mode: median moving speed (m/s) at or above this is VEHICLE (car or boat). */
+    val vehicleMinSpeedMps: Double = 3.0,
+    /** Trip mode: median moving speed (m/s) at or below this is WALK; between the two, activity decides. */
+    val walkModeMaxSpeedMps: Double = 2.5,
+    /** Trip mode: speed samples slower than this (m/s) are standing still, not movement, and are ignored. */
+    val modeMovingMinSpeedMps: Double = 0.7,
+    /** Trip mode: at least this many moving speed samples are needed to decide from speed. */
+    val modeMinSpeedSamples: Int = 3,
+    /** Trip mode: hop speeds (the fallback when pings carry no speed) are taken only between fixes this close in time. */
+    val modeMaxHopMs: Long = 2 * 60_000L,
+    /** Trip mode: this many consecutive speed samples all above [vehicleMinSpeedMps] plus the margin make it VEHICLE whatever the activity says. */
+    val modeSustainedSamples: Int = 3,
+    /** Trip mode: margin (m/s) over [vehicleMinSpeedMps] for the sustained-speed override (walking about on a moving boat). */
+    val modeSustainedMarginMps: Double = 1.0,
     /**
      * Trip distance counts a hop at least this fast (m/s) when it is longer than the worse of the two fixes'
      * accuracies, so curves are not cut into chords. Other hops count only when longer than the combined accuracy.
@@ -72,11 +88,54 @@ data class SegmentationParams(
      * (radius below [stayRadiusM]) are exempt: the user made them small to separate neighbours.
      */
     val indistinguishablePlaceFactor: Double = 2.0,
+    /** A poor fix further than this from both neighbours, which agree with each other, is a spike and is dropped. */
+    val spikeMinM: Double = 500.0,
+    /** A spike (one fix or a few in a row) lasts at most this long before the phone is back. */
+    val spikeMaxRunMs: Long = 3 * 60_000L,
+    /** Slack added to the neighbours' combined accuracy when deciding they agree (the phone came back). */
+    val spikeAgreeSlackM: Double = 30.0,
+    /** A hop faster than this (m/s) is not physically plausible; a fix reached and left that fast is a spike. */
+    val maxPlausibleSpeedMps: Double = 45.0,
+    /** Fixes within [anchorToleranceM] of each other, this many or more inside [anchorWindowMs], are an anchor. */
+    val anchorMinRepeats: Int = 4,
+    /** Distance within which fixes count as the same anchor (0 would be exact coordinates only). */
+    val anchorToleranceM: Double = 15.0,
+    /** Window (centred on the fix) over which anchors are counted and compared. */
+    val anchorWindowMs: Long = 30 * 60_000L,
+    /** The phone is flipping between anchors only when the anchors in the window change place this often. */
+    val anchorMinSwitches: Int = 4,
+    /** Anchors further apart than this are different sites, not one jumping field, and do not raise accuracy. */
+    val anchorSpreadMaxM: Double = 600.0,
+    /** Poor fixes (worse than [goodAccuracyM]) are replaced by the weighted geometric median of fixes within this. */
+    val smoothWindowMs: Long = 3 * 60_000L,
+    /** A poor fix is smoothed only with at least this many poor fixes around it (reaching up to twice the window). */
+    val smoothMinFixes: Int = 5,
+    /**
+     * A departure's closing fixes either agree with each other or each moves further from the centroid than the one
+     * before by at least this (metres of slack for noise). Used by stay detection.
+     */
+    val departureProgressM: Double = 10.0,
+    /** A stay's noise scale is this times its robust spread; it sets new place radii and matching. */
+    val placeNoiseFactor: Double = 4.0,
+    /** Upper bound on any noise-scaled radius. */
+    val placeMaxRadiusM: Double = 300.0,
+    /** Directed-walk test (arrival attribution): the window of fixes it looks at. */
+    val directedWindowMs: Long = 60_000L,
+    /** ...the least net speed (m/s) over the window; pottering is slower. */
+    val directedMinSpeedMps: Double = 0.6,
+    /** ...and the least net displacement / path length over the window. */
+    val directedMinEfficiency: Double = 0.5,
+    /** Net displacement between stays uses this quantile of the fixes in between, not the single furthest fix. */
+    val robustDisplacementQuantile: Double = 0.8,
 ) {
     init {
         require(stayRadiusM > 0 && placeMatchRadiusM > 0) { "radii must be positive" }
         require(minStayDurationMs > 0 && signalGapMs in 0..maxGapToBridgeMs && shortTripMergeMs >= 0 && overlapMs >= 0)
-        require(departureMinFixes >= 1 && departureMinMs >= 0 && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
+        require(departureMinFixes >= 1 && departureMinMs >= 0 && departureMaxSpanMs >= departureMinMs && goodAccuracyM > 0 && arrivalRadiusM > 0 && indistinguishablePlaceFactor >= 0 && walkMaxSpeedMps > 0 && movingSpeedMps > 0)
+        require(vehicleMinSpeedMps > 0 && walkModeMaxSpeedMps > 0 && modeMovingMinSpeedMps >= 0 && modeMinSpeedSamples >= 1 && modeMaxHopMs > 0 && modeSustainedSamples >= 1 && modeSustainedMarginMps >= 0)
+        require(spikeMinM > 0 && spikeMaxRunMs >= 0 && maxPlausibleSpeedMps > 0 && anchorMinRepeats >= 1 && anchorWindowMs > 0)
+        require(smoothWindowMs >= 0 && smoothMinFixes >= 1 && placeNoiseFactor >= 0 && placeMaxRadiusM > 0)
+        require(robustDisplacementQuantile in 0.0..1.0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }

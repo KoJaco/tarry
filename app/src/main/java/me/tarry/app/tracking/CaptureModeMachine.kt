@@ -9,6 +9,11 @@ data class LocationRequestParams(
     val priority: LocationPriority,
     val intervalMs: Long,
     val maxUpdateDelayMs: Long,
+    /** Fastest rate fixes may arrive; null means the same as [intervalMs]. */
+    val minUpdateIntervalMs: Long? = null,
+    val waitForAccurateLocation: Boolean = false,
+    /** Oldest fix to deliver as an update; null leaves the platform default. */
+    val maxUpdateAgeMs: Long? = null,
 )
 
 /** Side effects the service must perform after a machine step. */
@@ -61,6 +66,11 @@ class CaptureModeMachine(
     private var progressCount = 0
     private var exitBase: Fix? = null
     private var exitCount = 0
+    private val recentFixes = ArrayDeque<Fix>()
+
+    /** Time of the fix the current STATIONARY stay was entered at; null while MOVING. */
+    var stationarySinceMs: Long? = null
+        private set
 
     /** Session start: always begin MOVING so the first fix is quick. */
     fun start(): MachineStep {
@@ -68,7 +78,9 @@ class CaptureModeMachine(
         activity = null
         anchor = null
         lastFix = null
+        recentFixes.clear()
         geofenceCentre = null
+        stationarySinceMs = null
         stillPending = false
         nextSource = PingSource.FUSED
         resetProgress()
@@ -117,9 +129,12 @@ class CaptureModeMachine(
         return enterMoving()
     }
 
-    /** [fix] must already have passed [PingFilter]: accepted, or only held back from saving by the displacement gate or STATIONARY jitter. */
+    /** [fix] must already have been accepted by [PingFilter] (capture keeps every accepted fix; there is no displacement or jitter gate). */
     fun onAcceptedFix(fix: Fix): MachineStep {
         lastFix = fix
+        val repeated = recentFixes.any { it.lat == fix.lat && it.lng == fix.lng }
+        recentFixes.addLast(fix)
+        while (recentFixes.size > config.staleRepeatMemory) recentFixes.removeFirst()
         if (mode == CaptureMode.STATIONARY) {
             val centre = geofenceCentre
             // Safety net if the geofence exit event is late or lost: accuracy-aware and sustained, so one noisy hop
@@ -129,6 +144,9 @@ class CaptureModeMachine(
                 exitCount = 0
                 return step()
             }
+            // An exact repeat of a recent coordinate is a provider re-emitting an anchor (network fixes alternate
+            // between a few), not a new reading: it is never evidence of leaving.
+            if (repeated) return step()
             val base = exitBase ?: fix.also { exitBase = it }
             exitCount++
             if (exitCount < config.stationaryExitFixes || fix.timeMs - base.timeMs < config.stationaryExitMinMs) return step()
@@ -182,6 +200,7 @@ class CaptureModeMachine(
         anchor = null
         resetProgress()
         geofenceCentre = at
+        stationarySinceMs = at.timeMs
         geofenceRadiusM = stayRadiusM
         return MachineStep(
             mode,
@@ -191,6 +210,9 @@ class CaptureModeMachine(
                         priority = config.stationaryPriority,
                         intervalMs = config.stationaryFixIntervalMs,
                         maxUpdateDelayMs = 0L,
+                        minUpdateIntervalMs = config.stationaryFixIntervalMs,
+                        waitForAccurateLocation = config.waitForAccurateLocation,
+                        maxUpdateAgeMs = config.maxUpdateAgeMs,
                     ),
                 ),
                 CaptureEffect.AddStayGeofence(at.lat, at.lng, geofenceRadiusM),
@@ -204,6 +226,7 @@ class CaptureModeMachine(
         anchor = lastFix
         resetProgress()
         geofenceCentre = null
+        stationarySinceMs = null
         return MachineStep(mode, listOf(CaptureEffect.RemoveGeofence, requestMoving()))
     }
 
@@ -212,6 +235,9 @@ class CaptureModeMachine(
             priority = config.movingPriority,
             intervalMs = config.movingIntervalMs,
             maxUpdateDelayMs = config.movingMaxUpdateDelayMs,
+            minUpdateIntervalMs = config.movingIntervalMs,
+            waitForAccurateLocation = config.waitForAccurateLocation,
+            maxUpdateAgeMs = config.maxUpdateAgeMs,
         ),
     )
 

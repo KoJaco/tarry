@@ -22,5 +22,7 @@ keystore.properties
 .env
 .env.*
 
+tmp/*
+
 # Claude Code per-user settings
 .claude/settings.local.json

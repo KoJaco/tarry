@@ -4,6 +4,7 @@ import me.tarry.segmentation.geo.haversineMeters
 import me.tarry.segmentation.trace.SYDNEY_LAT
 import me.tarry.segmentation.trace.SYDNEY_LNG
 import me.tarry.segmentation.trace.TraceBuilder
+import me.tarry.segmentation.trace.offsetMeters
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -125,10 +126,60 @@ class StayDetectorTest {
 
     @Test
     fun sustainedFarFixesCloseTheStay() {
-        val pings = builder().stay(30 * MIN).spikes(6, accuracyM = 10f, offsetM = 500.0).stay(30 * MIN).build()
-        assertEquals(2, detectStays(pings, params).size) // six fixes span 150 s, then the same place again
+        // Moved 500 m and stayed there: the far fixes agree with each other.
+        val pings = builder().stay(30 * MIN).moveBy(90.0, 500.0, 25.0, accuracyM = 10f).stay(30 * MIN).build()
+        assertEquals(2, detectStays(pings, params).size)
     }
 
+    @Test
+    fun farFixesThatDisagreeWithEachOtherDoNotCloseTheStay() {
+        // Six network-grade fixes 500 m away in random directions span 150 s but never agree on where the phone went.
+        val pings = builder().stay(30 * MIN).spikes(6, accuracyM = 80f, offsetM = 500.0).stay(30 * MIN).build()
+        assertEquals(1, detectStays(pings, params).size)
+    }
+
+    @Test
+    fun ambiguousFixesDoNotResetAProgressingDeparture() {
+        // A slow boat leaving at 2 m/s: a clear fix every 20 s, each followed by a fix with a 400 m accuracy circle that
+        // still reaches the stay (ambiguous) until the boat is 460 m away. They must not restart the departure (9 steps = 360 m).
+        val b = builder().stay(30 * MIN, accuracyM = 10f)
+        repeat(9) {
+            b.moveBy(90.0, 40.0, 2.0, accuracyM = 10f)
+            b.wander(1_000, intervalMs = 1_000, radiusM = 1.0, accuracyM = 400f..400f, activity = null)
+        }
+        val stays = detectStays(b.build(), params)
+        assertFalse(stays.first().open) // closed by the departure, not left open by the ambiguous fixes
+    }
+
+
+    @Test
+    fun anOldLoneOutsideFixAndAMuchLaterOneDoNotMakeADeparture() {
+        // One poor fix 200 m out at 31 min, ambiguous fixes (the accuracy circle still reaches the stay) for 40 minutes,
+        // then a second poor fix at the same spot. They agree, but 40 minutes apart they are two outliers, not a
+        // departure: the stay must not close at the first one.
+        val base = builder().stay(30 * MIN, accuracyM = 10f).build()
+        val far = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 200.0, 0.0)
+        val ambiguous = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 100.0, 0.0)
+        val first = t0 + 31 * MIN
+        val pings = base +
+            Ping(first, far.first, far.second, 60f) +
+            (1..19).map { Ping(first + it * 2 * MIN, ambiguous.first, ambiguous.second, 60f) } +
+            Ping(first + 40 * MIN, far.first, far.second, 60f) +
+            (1..10).map { Ping(first + 40 * MIN + it * MIN, SYDNEY_LAT, SYDNEY_LNG, 10f) }
+        val stays = detectStays(pings, params)
+        assertEquals(1, stays.size)
+        assertTrue(stays.single().range.endMs >= first + 40 * MIN)
+    }
+
+    @Test
+    fun aDepartureThatStaysWithinTheMaxSpanStillCloses() {
+        val base = builder().stay(30 * MIN, accuracyM = 10f).build()
+        val far = offsetMeters(SYDNEY_LAT, SYDNEY_LNG, 200.0, 0.0)
+        val first = t0 + 31 * MIN
+        val pings = base + (0..3).map { Ping(first + it * 2 * MIN, far.first, far.second + it * 1e-5, 60f) }
+        val stays = detectStays(pings, params)
+        assertFalse(stays.first().open) // closed by the departure; the excursion is re-read as what comes next
+    }
     @Test
     fun emptyInputGivesNoStays() {
         assertTrue(detectStays(emptyList(), params).isEmpty())

@@ -27,7 +27,10 @@ data class TimeRange(val startMs: Long, val endMs: Long) {
     operator fun contains(timeMs: Long): Boolean = timeMs >= startMs && timeMs < endMs
 }
 
-/** One accepted location ping. [sessionId] is null only for pings that predate sessions. */
+/**
+ * One accepted location ping. [sessionId] is null only for pings that predate sessions. [speedMps] is the speed the
+ * fix reported (GPS), null when the provider gave none.
+ */
 data class Ping(
     val timeMs: Long,
     val lat: Double,
@@ -35,6 +38,7 @@ data class Ping(
     val accuracyM: Float,
     val activity: Activity? = null,
     val sessionId: Long? = null,
+    val speedMps: Double? = null,
 )
 
 /**

@@ -4,6 +4,7 @@ import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.SystemClock
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionResult
 import com.google.android.gms.location.Geofence
@@ -25,6 +26,10 @@ private fun BroadcastReceiver.runAsync(scope: CoroutineScope, block: suspend () 
     }
 }
 
+/** How long before receipt an event with the given elapsed-realtime stamp happened, never negative. */
+internal fun eventAgeMs(nowElapsedNanos: Long, eventElapsedNanos: Long): Long =
+    ((nowElapsedNanos - eventElapsedNanos) / 1_000_000L).coerceAtLeast(0L)
+
 /** Receives Activity Recognition transitions (non-exported). Only ENTER transitions are forwarded. */
 @AndroidEntryPoint
 class ActivityTransitionReceiver : BroadcastReceiver() {
@@ -34,11 +39,14 @@ class ActivityTransitionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (!ActivityTransitionResult.hasResult(intent)) return
-        val types = ActivityTransitionResult.extractResult(intent)?.transitionEvents.orEmpty()
+        // Each event carries its own monotonic stamp: its age on receipt orders events and is logged (dogfood-2).
+        val nowNanos = SystemClock.elapsedRealtimeNanos()
+        val events = ActivityTransitionResult.extractResult(intent)?.transitionEvents.orEmpty()
             .filter { it.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER }
-            .map { detectedActivityToType(it.activityType) }
-        if (types.isEmpty()) return
-        runAsync(scope) { types.forEach { controller.onActivity(it) } }
+            .sortedBy { it.elapsedRealTimeNanos }
+            .map { detectedActivityToType(it.activityType) to eventAgeMs(nowNanos, it.elapsedRealTimeNanos) }
+        if (events.isEmpty()) return
+        runAsync(scope) { events.forEach { (type, ageMs) -> controller.onActivity(type, ageMs) } }
     }
 }
 

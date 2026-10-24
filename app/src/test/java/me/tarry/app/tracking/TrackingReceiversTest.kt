@@ -197,4 +197,10 @@ class TrackingReceiversTest {
         assertThat(runBlocking { overrides() }).isEmpty()
         assertThat(launcher.stopCalls).isEqualTo(0)
     }
+
+    @Test
+    fun eventAgeIsTheElapsedRealtimeDifferenceInMillisAndNeverNegative() {
+        assertThat(eventAgeMs(10_000_000_000L, 4_000_000_000L)).isEqualTo(6_000L)
+        assertThat(eventAgeMs(4_000_000_000L, 10_000_000_000L)).isEqualTo(0L)
+    }
 }

@@ -80,8 +80,12 @@ class TrackingController @Inject constructor(
 ) {
     private val mutex = Mutex()
 
+    /** When the window-end grace began (the first reconcile after the schedule ended with capture unsettled); in memory only. */
+    private var graceStartMs: Long? = null
+
     init {
         coordinator.failureListener = ::onCaptureFailed
+        coordinator.settleListener = ::onSettled
     }
 
     /**
@@ -191,7 +195,7 @@ class TrackingController @Inject constructor(
     /** Called by the service when the OS refused to run the location FGS. */
     suspend fun onStartFailure(failure: StartFailure) = mutex.withLock { onStartFailureLocked(failure) }
 
-    suspend fun onActivity(type: ActivityType) = coordinator.onActivity(type)
+    suspend fun onActivity(type: ActivityType, eventAgeMs: Long = 0L) = coordinator.onActivity(type, eventAgeMs)
 
     suspend fun onGeofenceExit() = coordinator.onGeofenceExit()
 
@@ -212,6 +216,7 @@ class TrackingController @Inject constructor(
 
     private suspend fun reconcileLocked(source: ReconcileSource) {
         coordinator.recoverCrashedSession()
+        settleOrphanedGrace()
         // Exact alarms are allowed again: drop the stale cause; a start that fails again re-raises it.
         if (alarmScheduler.canScheduleExact()) health.recoverCause(AttentionCause.EXACT_ALARM_DENIED)
         val now = Instant.ofEpochMilli(clock.nowMs())
@@ -232,15 +237,67 @@ class TrackingController @Inject constructor(
                 // A location request that died on a non-security error, or a failed Activity Recognition
                 // registration, is retried here.
                 coordinator.ensureCapture()
+                endGrace()
             }
         } else if (coordinator.isActive) {
             val paused = effective.winningOverride?.type == ManualOverrideType.PAUSE
-            stopCapture(if (paused) SessionEndReason.USER_PAUSE else SessionEndReason.SCHEDULE_END)
-            if (!paused) segmentationTrigger.onWindowEnd()
+            if (paused) {
+                stopCapture(SessionEndReason.USER_PAUSE)
+            } else if (!keepOpenForGrace(now.toEpochMilli())) {
+                stopCapture(SessionEndReason.SCHEDULE_END)
+                segmentationTrigger.onWindowEnd()
+            }
         }
         // Not supposed to run (window ended, paused, stopped): any open outage ends here.
-        if (!effective.isActive) health.closeOutage(now.toEpochMilli())
-        rearm(if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition)
+        // A grace session is still capture that should be running: its outage (rule 6) stays open.
+        if (!effective.isActive && graceStartMs == null) health.closeOutage(now.toEpochMilli())
+        val next = if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition
+        // During the grace the cap is the one extra alarm; settling itself is driven by capture events, never a timer.
+        val graceCap = graceStartMs?.let { Instant.ofEpochMilli(it + config.windowEndGraceMaxMs) }
+        rearm(if (graceCap != null && (next == null || graceCap.isBefore(next))) graceCap else next)
+    }
+
+    /**
+     * Window-end grace: at the schedule end a scheduled session stays open ("Finishing up…") while capture is MOVING or
+     * the current stay is younger than [TrackingConfig.windowEndSettleMs], until a settled stay is confirmed
+     * (reported by the coordinator through [onSettled]) or [TrackingConfig.windowEndGraceMaxMs] has passed.
+     * Returns true to keep the session open.
+     */
+    private suspend fun keepOpenForGrace(nowMs: Long): Boolean {
+        if (coordinator.activeTrigger != SessionTrigger.SCHEDULE) return false
+        val started = graceStartMs
+        if (started == null) {
+            if (coordinator.isSettled()) return false
+            graceStartMs = nowMs
+            statusStore.setFinishingUp(true, nowMs)
+            coordinator.watchSettle(true)
+            return true
+        }
+        return nowMs - started < config.windowEndGraceMaxMs && !coordinator.isSettled()
+    }
+
+    /**
+     * A grace that was running when the process died: the session is gone (crash recovery closed it and recorded the
+     * lost time), but its window end was never handled. Finish it now: clear the flag and run the end-of-window
+     * segmentation, so the grace is neither left "finishing up" forever nor skipped by segmentation.
+     */
+    private suspend fun settleOrphanedGrace() {
+        if (graceStartMs != null || coordinator.isActive) return
+        if (!statusStore.current().finishingUp) return
+        statusStore.setFinishingUp(false)
+        segmentationTrigger.onWindowEnd()
+    }
+
+    private suspend fun endGrace() {
+        if (graceStartMs == null) return
+        graceStartMs = null
+        coordinator.watchSettle(false)
+        statusStore.setFinishingUp(false)
+    }
+
+    /** A stay long enough to end the grace was confirmed. */
+    private suspend fun onSettled() = mutex.withLock {
+        if (graceStartMs != null) reconcileLocked(ReconcileSource.ALARM)
     }
 
     private suspend fun rearm(at: Instant?) {
@@ -258,6 +315,7 @@ class TrackingController @Inject constructor(
     }
 
     private suspend fun stopCapture(endReason: SessionEndReason) {
+        endGrace()
         coordinator.end(endReason)
         launcher.stop()
         segmentationTrigger.onCaptureStopped()

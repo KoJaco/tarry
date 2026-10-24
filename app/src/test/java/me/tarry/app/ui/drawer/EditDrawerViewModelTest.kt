@@ -375,7 +375,7 @@ class EditDrawerViewModelTest {
 
         viewModel.createTag("Parts")
 
-        val created = awaitState { it.tagIds.isNotEmpty() }
+        val created = awaitState { s -> s.tagIds.isNotEmpty() && s.tagGroups.flatMap { it.tags }.isNotEmpty() }
         val tag = created.tagGroups.single().tags.single()
         assertThat(tag.name).isEqualTo("Parts")
         assertThat(created.tagIds).containsExactly(tag.id)
@@ -392,9 +392,12 @@ class EditDrawerViewModelTest {
         seed(visit("v", 0, 60))
         viewModel.load(EditTarget.Visit("v"))
         viewModel.createTag("Parts")
-        val parts = awaitState { it.tagIds.isNotEmpty() }.tagGroups.single().tags.single()
+        // The tag catalog and the selected ids arrive on separate flows, so wait for both.
+        val parts = awaitState { s -> s.tagIds.isNotEmpty() && s.tagGroups.flatMap { it.tags }.any { it.name == "Parts" } }
+            .tagGroups.single().tags.single()
         viewModel.createTag("Tools")
-        val tools = awaitState { it.tagIds.size == 2 }.tagGroups.single().tags.first { it.name == "Tools" }
+        val tools = awaitState { s -> s.tagIds.size == 2 && s.tagGroups.flatMap { it.tags }.any { it.name == "Tools" } }
+            .tagGroups.single().tags.first { it.name == "Tools" }
         places.addDefaultTag(me.tarry.core.data.db.entity.PlaceDefaultTag("p", parts.id))
         timeline.saveVisit(visit("w", 100, 160))
 

@@ -126,20 +126,20 @@ class TimelineContentTest {
 
     @Test
     fun shortVisitIsOneLineWithDuration() {
-        show(listOf(TimelineItem.Visit("v", at(9, 0), at(9, 45), null)))
-        composeRule.onNodeWithText("Unknown place · 45 min").assertExists()
+        show(listOf(TimelineItem.Visit("v", at(9, 0), at(9, 20), null)))
+        composeRule.onNodeWithText("Unknown place · 20 min").assertExists()
     }
 
     @Test
     fun tripRowShowsModeKilometresAndDuration() {
         show(listOf(TimelineItem.Trip("t", at(11, 40), at(12, 0), 1234f, TripMode.VEHICLE)))
-        composeRule.onNodeWithText("Drive · 1.2 km · 20 min").assertExists()
+        composeRule.onNodeWithText("1.2 km · 20 min").assertExists()
     }
 
     @Test
     fun shortWalkShowsMetres() {
         show(listOf(TimelineItem.Trip("t", at(11, 40), at(11, 50), 850f, TripMode.WALK)))
-        composeRule.onNodeWithText("Walk · 850 m · 10 min").assertExists()
+        composeRule.onNodeWithText("850 m · 10 min").assertExists()
     }
 
     @Test
@@ -224,7 +224,7 @@ class TimelineContentTest {
                 TimelineItem.Trip("t", at(11, 40), at(12, 0), 1234f, TripMode.UNKNOWN),
             ),
         )
-        description("timeline_row_t", "Trip by Unknown mode, from ${t(11, 40)} to ${t(12, 0)}, 1.2 km")
+        description("timeline_row_t", "Trip, from ${t(11, 40)} to ${t(12, 0)}, 20 minutes, 1.2 km")
         description("timeline_row_g", "Tracking gap, No location fix, from ${t(8, 0)} to ${t(8, 30)}")
     }
 

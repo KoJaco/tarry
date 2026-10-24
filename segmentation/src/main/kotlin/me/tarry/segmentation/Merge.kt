@@ -43,24 +43,30 @@ private fun shouldMerge(
     if (distinctPlaces(a, b)) return false
     // A silence too long to bridge is a signal gap (T7 reports it); merging would hide it.
     if (longestSilence(a, b, pings) > params.maxGapToBridgeMs) return false
-    if (netDisplacement(a, b, pings, params) < params.minTripDistanceM) return true
+    // Stays this noisy cannot be told apart below their own noise scale (capped), so that is the least trip.
+    val noise = minOf(params.placeMaxRadiusM, params.placeNoiseFactor * maxOf(stayNoiseM(a, params), stayNoiseM(b, params)))
+    if (netDisplacement(a, b, pings, params) < maxOf(params.minTripDistanceM, noise)) return true
     val gap = b.range.startMs - a.range.endMs
     return gap < params.shortTripMergeMs &&
-        haversineMeters(a.lat, a.lng, b.lat, b.lng) <= params.placeMatchRadiusM
+        haversineMeters(a.lat, a.lng, b.lat, b.lng) <= maxOf(noiseScaledRadiusM(a, params), noiseScaledRadiusM(b, params))
 }
 
 /**
- * The furthest the pings between [a] and [b] get from [a]'s centroid (and [b]'s centroid itself), using fixes no worse
- * than [SegmentationParams.goodAccuracyM]. With none that good, all fixes are used after dropping the least accurate
+ * The distance the pings between [a] and [b] get from [a]'s centroid (and [b]'s centroid itself): the furthest of the fixes no worse
+ * than [SegmentationParams.goodAccuracyM] when there are two or more. Otherwise a robust quantile ([SegmentationParams.robustDisplacementQuantile]) is used, and with no good fix at all, all fixes after dropping the least accurate
  * third. Net displacement, not path length: noisy fixes at one spot add up to kilometres of path.
  */
 private fun netDisplacement(a: StayCandidate, b: StayCandidate, pings: List<Ping>, params: SegmentationParams): Double {
     val inside = between(a, b, pings)
-    var used = inside.filter { it.accuracyM <= params.goodAccuracyM }
+    val good = inside.filter { it.accuracyM <= params.goodAccuracyM }
+    var used = good
     if (used.isEmpty() && inside.isNotEmpty()) {
         used = inside.sortedBy { it.accuracyM }.take(maxOf(1, inside.size - inside.size / 3))
     }
-    val furthest = used.maxOfOrNull { haversineMeters(a.lat, a.lng, it.lat, it.lng) } ?: 0.0
+    val distances = used.map { haversineMeters(a.lat, a.lng, it.lat, it.lng) }
+    // Two or more good fixes are trusted, so the furthest one counts (an out-and-back walk must survive); only the
+    // poor-fix fallback needs the robust quantile.
+    val furthest = if (good.size >= 2) distances.max() else quantile(distances, params.robustDisplacementQuantile)
     return maxOf(furthest, haversineMeters(a.lat, a.lng, b.lat, b.lng))
 }
 

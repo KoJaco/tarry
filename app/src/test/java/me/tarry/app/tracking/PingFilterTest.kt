@@ -17,177 +17,132 @@ class PingFilterTest {
 
     @Test
     fun firstFixWithGoodAccuracyIsAccepted() {
-        assertThat(filter.offer(fixAt(0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(fixAt(0))).isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
     fun dropsAccuracyWorseThanLimitButKeepsExactlyAtLimit() {
-        assertThat(filter.offer(fixAt(0, accuracyM = config.maxAccuracyM + 1), CaptureMode.MOVING))
+        assertThat(filter.offer(fixAt(0, accuracyM = config.maxAccuracyM + 1)))
             .isEqualTo(FilterDecision.DROP_ACCURACY)
         assertThat(filter.lastAccepted).isNull()
-        assertThat(filter.offer(fixAt(0, accuracyM = config.maxAccuracyM), CaptureMode.MOVING))
+        assertThat(filter.offer(fixAt(0, accuracyM = config.maxAccuracyM)))
             .isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
     fun dropsImpossibleSpeedAndKeepsLastAccepted() {
         val first = fixAt(0)
-        filter.offer(first, CaptureMode.MOVING)
+        filter.offer(first)
         // 1000 m in 10 s = 100 m/s > 70 m/s
-        assertThat(filter.offer(fixAt(10_000, northM = 1000.0), CaptureMode.MOVING))
+        assertThat(filter.offer(fixAt(10_000, northM = 1000.0)))
             .isEqualTo(FilterDecision.DROP_SPEED)
         assertThat(filter.lastAccepted).isEqualTo(first)
         // 500 m in 10 s = 50 m/s is fine
-        assertThat(filter.offer(fixAt(10_000, northM = 500.0), CaptureMode.MOVING))
+        assertThat(filter.offer(fixAt(10_000, northM = 500.0)))
             .isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
     fun dropsFixNotNewerThanLastAccepted() {
-        filter.offer(fixAt(5_000), CaptureMode.MOVING)
-        assertThat(filter.offer(fixAt(5_000, northM = 100.0), CaptureMode.MOVING))
+        filter.offer(fixAt(5_000))
+        assertThat(filter.offer(fixAt(5_000, northM = 100.0)))
             .isEqualTo(FilterDecision.DROP_SPEED)
     }
 
     @Test
-    fun jitterInsideAccuracyCircleIsTheStationaryRuleAndMovingUsesTheDisplacementGate() {
-        filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        val jittery = fixAt(60_000, northM = 8.0, accuracyM = 15f)
-        assertThat(filter.offer(jittery, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
-        assertThat(filter.offer(jittery, CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
-        val moved = fixAt(60_000, northM = 30.0, accuracyM = 15f)
-        assertThat(filter.offer(moved, CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+    fun keepsEveryFixInsideTheCapsInBothModes() {
+        // No jitter or displacement drop: a still phone's 3 m wobble and a 5 m step in MOVING are all kept.
+        assertThat(filter.offer(fixAt(0))).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(fixAt(60_000, northM = 3.0, accuracyM = 20f)))
+            .isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(fixAt(70_000, northM = 8.0))).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(fixAt(80_000, northM = 8.0, accuracyM = 5f))).isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
-    fun stationaryFixOutsideAccuracyCircleIsAccepted() {
-        filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        assertThat(filter.offer(fixAt(60_000, northM = 30.0, accuracyM = 10f), CaptureMode.STATIONARY))
-            .isEqualTo(FilterDecision.ACCEPT)
+    fun spikeReturnedFromIsNotTheAnchorSoTheReturnIsNotDroppedOnSpeed() {
+        val home = fixAt(0)
+        filter.offer(home)
+        // 3 km away 60 s later is 50 m/s: accepted (and saved) as a spike.
+        val spike = fixAt(60_000, northM = 3_000.0)
+        assertThat(filter.offer(spike)).isEqualTo(FilterDecision.ACCEPT)
+        // Back at home 20 s later: 150 m/s from the spike would be dropped; against the pre-spike fix it is fine.
+        val back = fixAt(80_000, northM = 5.0)
+        assertThat(filter.offer(back)).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.lastAccepted).isEqualTo(back)
+        // Later fixes compare with the return, not the spike.
+        assertThat(filter.offer(fixAt(140_000, northM = 8.0))).isEqualTo(FilterDecision.ACCEPT)
     }
+
+    @Test
+    fun withoutAReturnTheSpikeStaysTheAnchor() {
+        filter.offer(fixAt(0))
+        filter.offer(fixAt(60_000, northM = 3_000.0))
+        // Not within spikeReturnM of the first fix (1 km from it): compared with the 3 km fix, 2 km in 10 s is too fast.
+        assertThat(filter.offer(fixAt(70_000, northM = 1_000.0))).isEqualTo(FilterDecision.DROP_SPEED)
+    }
+
+    @Test
+    fun aFarFixThatFollowsAnotherFarFixIsNotMistakenForAReturn() {
+        filter.offer(fixAt(0))
+        // A real trip: 600 m steps, never back near the start.
+        assertThat(filter.offer(fixAt(30_000, northM = 600.0))).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(fixAt(60_000, northM = 1_200.0))).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.lastAccepted!!.timeMs).isEqualTo(60_000)
+    }
+
 
     @Test
     fun resetForgetsLastAccepted() {
-        filter.offer(fixAt(0), CaptureMode.MOVING)
+        filter.offer(fixAt(0))
         filter.reset()
         assertThat(filter.lastAccepted).isNull()
-        assertThat(filter.offer(fixAt(1_000, northM = 5000.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(fixAt(1_000, northM = 5000.0))).isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
     fun speedJustUnderTheLimitIsAcceptedAndJustOverIsDropped() {
-        filter.offer(fixAt(0), CaptureMode.MOVING)
+        filter.offer(fixAt(0))
         // 690 m in 10 s = 69 m/s (under 70), 720 m = 72 m/s (over).
-        assertThat(filter.offer(fixAt(10_000, northM = 720.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_SPEED)
-        assertThat(filter.offer(fixAt(10_000, northM = 690.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
+        assertThat(filter.offer(fixAt(10_000, northM = 720.0))).isEqualTo(FilterDecision.DROP_SPEED)
+        assertThat(filter.offer(fixAt(10_000, northM = 690.0))).isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
     fun olderFixThanLastAcceptedIsDropped() {
-        filter.offer(fixAt(5_000), CaptureMode.MOVING)
-        assertThat(filter.offer(fixAt(4_000, northM = 5.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_SPEED)
+        filter.offer(fixAt(5_000))
+        assertThat(filter.offer(fixAt(4_000, northM = 5.0))).isEqualTo(FilterDecision.DROP_SPEED)
     }
 
     @Test
     fun poorAccuracyIsReportedBeforeSpeedAndDoesNotMoveLastAccepted() {
         val first = fixAt(0)
-        filter.offer(first, CaptureMode.MOVING)
+        filter.offer(first)
         val bad = fixAt(10_000, northM = 5_000.0, accuracyM = config.maxAccuracyM + 1)
-        assertThat(filter.offer(bad, CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_ACCURACY)
+        assertThat(filter.offer(bad)).isEqualTo(FilterDecision.DROP_ACCURACY)
         assertThat(filter.lastAccepted).isEqualTo(first)
-    }
-
-    @Test
-    fun jitterBoundaryIsInclusiveOfTheAccuracyRadius() {
-        filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        // 9 m away with 10 m accuracy is inside the circle; 11 m is outside.
-        assertThat(filter.offer(fixAt(1_000, northM = 9.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
-        assertThat(filter.offer(fixAt(2_000, northM = 11.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.ACCEPT)
-    }
-
-    @Test
-    fun movingDisplacementGateCountsFromTheLastSavedPingNotTheLastDroppedFix() {
-        val first = fixAt(0)
-        filter.offer(first, CaptureMode.MOVING)
-        // Each step is 10 m (< 25 m): dropped, and the reference stays at the first fix.
-        assertThat(filter.offer(fixAt(20_000, northM = 10.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
-        assertThat(filter.offer(fixAt(40_000, northM = 20.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_DISPLACEMENT)
-        assertThat(filter.lastAccepted).isEqualTo(first)
-        // 30 m from the saved ping (not 10 m from the previous fix) is accepted.
-        assertThat(filter.offer(fixAt(60_000, northM = 30.0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
-    }
-
-    @Test
-    fun displacementGateDoesNotApplyToTheFirstFixOrStationary() {
-        assertThat(filter.offer(fixAt(0), CaptureMode.MOVING)).isEqualTo(FilterDecision.ACCEPT)
-        // Stationary fixes outside the accuracy circle are saved even when under 25 m.
-        assertThat(filter.offer(fixAt(300_000, northM = 15.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.ACCEPT)
-    }
-
-    @Test
-    fun stationaryJitterIsDroppedInsideTheKeepaliveAndAcceptedAtOrAfterIt() {
-        filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        val keepalive = config.stationaryKeepaliveMs
-        assertThat(filter.offer(fixAt(keepalive - 1, northM = 3.0), CaptureMode.STATIONARY))
-            .isEqualTo(FilterDecision.DROP_JITTER)
-        assertThat(filter.offer(fixAt(keepalive, northM = 3.0), CaptureMode.STATIONARY))
-            .isEqualTo(FilterDecision.ACCEPT)
-        // The keepalive counts from the last saved ping.
-        assertThat(filter.offer(fixAt(keepalive + 1_000, northM = 3.0), CaptureMode.STATIONARY))
-            .isEqualTo(FilterDecision.DROP_JITTER)
-    }
-
-    @Test
-    fun keepaliveDoesNotBypassAccuracyAndMovingIsUnaffected() {
-        filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        val late = config.stationaryKeepaliveMs + 1
-        assertThat(filter.offer(fixAt(late, accuracyM = config.maxAccuracyM + 1), CaptureMode.STATIONARY))
-            .isEqualTo(FilterDecision.DROP_ACCURACY)
-        assertThat(filter.offer(fixAt(late, northM = 3.0), CaptureMode.MOVING))
-            .isEqualTo(FilterDecision.DROP_DISPLACEMENT)
     }
 
     @Test
     fun repeatedPositionAtTheAccuracyLimitIsStale() {
         // Shape of the dogfood repeats: the provider re-emits the last position minutes later at the accuracy limit.
-        filter.offer(fixAt(0, accuracyM = 20f), CaptureMode.STATIONARY)
+        filter.offer(fixAt(0, accuracyM = 20f))
         val repeat = fixAt(12 * 60_000L, accuracyM = config.maxAccuracyM)
-        assertThat(filter.offer(repeat, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_STALE)
+        assertThat(filter.offer(repeat)).isEqualTo(FilterDecision.DROP_STALE)
         assertThat(filter.lastAccepted!!.timeMs).isEqualTo(0L)
     }
 
     @Test
-    fun repeatOfAnEarlierDroppedFixAtTheLimitIsStaleToo() {
-        filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        assertThat(filter.offer(fixAt(60_000, northM = 4.0), CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_JITTER)
-        val repeat = fixAt(15 * 60_000L, northM = 4.0, accuracyM = config.maxAccuracyM)
-        assertThat(filter.offer(repeat, CaptureMode.STATIONARY)).isEqualTo(FilterDecision.DROP_STALE)
-    }
-
-    @Test
-    fun stillPhoneWithAnIdenticalGoodFixKeepsProducingKeepalivePings() {
-        // Same 20 m position every 3 min for 40 min: only keepalives are saved, and never more than 10 min apart.
-        val saved = mutableListOf<Long>()
-        var t = 0L
-        while (t <= 40 * 60_000L) {
-            if (filter.offer(fixAt(t, accuracyM = 20f), CaptureMode.STATIONARY).accepted) saved += t
-            t += 3 * 60_000L
-        }
-        assertThat(saved.zipWithNext { a, b -> b - a }.maxOrNull()!!).isAtMost(config.stationaryKeepaliveMs + 3 * 60_000L)
-        assertThat(saved.size).isAtLeast(4)
-    }
-
-    @Test
     fun differentPositionAtTheLimitIsNotStale() {
-        filter.offer(fixAt(0), CaptureMode.STATIONARY)
-        assertThat(filter.offer(fixAt(12 * 60_000L, northM = 1.0, accuracyM = config.maxAccuracyM), CaptureMode.STATIONARY))
+        filter.offer(fixAt(0))
+        assertThat(filter.offer(fixAt(12 * 60_000L, northM = 1.0, accuracyM = config.maxAccuracyM)))
             .isEqualTo(FilterDecision.ACCEPT)
     }
 
     @Test
     fun fixNotNewerByElapsedRealtimeIsDroppedEvenIfWallTimeAdvanced() {
-        filter.offer(fixAt(0).copy(elapsedRealtimeNanos = 5_000_000_000L), CaptureMode.MOVING)
+        filter.offer(fixAt(0).copy(elapsedRealtimeNanos = 5_000_000_000L))
         val older = fixAt(60_000, northM = 100.0).copy(elapsedRealtimeNanos = 4_000_000_000L)
-        assertThat(filter.offer(older, CaptureMode.MOVING)).isEqualTo(FilterDecision.DROP_SPEED)
+        assertThat(filter.offer(older)).isEqualTo(FilterDecision.DROP_SPEED)
     }
 }

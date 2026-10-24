@@ -9,4 +9,6 @@ data class TrackingDetails(
     val attentionCause: AttentionCause? = null,
     /** When a manual pause ends; null if not paused or open-ended. */
     val pausedUntil: Instant? = null,
+    /** TRACKING only: capture is past the schedule end, finishing the current stop; the sheet says so and still offers Stop. */
+    val finishingUp: Boolean = false,
 )

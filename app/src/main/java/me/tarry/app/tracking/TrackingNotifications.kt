@@ -18,9 +18,9 @@ class TrackingNotifications @Inject constructor(
 ) {
     private val manager get() = context.getSystemService(NotificationManager::class.java)
 
-    fun build(mode: CaptureMode): Notification {
+    fun build(mode: CaptureMode, finishingUp: Boolean = false): Notification {
         ensureChannel()
-        val text = when (mode) {
+        val text = if (finishingUp) R.string.tracking_notification_finishing else when (mode) {
             CaptureMode.MOVING -> R.string.tracking_notification_moving
             CaptureMode.STATIONARY -> R.string.tracking_notification_stationary
         }
@@ -40,8 +40,8 @@ class TrackingNotifications @Inject constructor(
             .build()
     }
 
-    fun update(mode: CaptureMode) {
-        manager.notify(NOTIFICATION_ID, build(mode))
+    fun update(mode: CaptureMode, finishingUp: Boolean = false) {
+        manager.notify(NOTIFICATION_ID, build(mode, finishingUp))
     }
 
     private fun ensureChannel() {

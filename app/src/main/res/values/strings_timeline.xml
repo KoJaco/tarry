@@ -37,7 +37,8 @@
     <string name="timeline_compact_line">%1$s · %2$s</string>
     <string name="timeline_range_with_job">%1$s · %2$s</string>
     <string name="timeline_trip_row">%1$s · %2$s · %3$s</string>
-    <string name="timeline_trip_row_drive">Drive</string>
+    <string name="timeline_trip_compact">%1$s · %2$s</string>
+    <string name="timeline_trip_row_drive">Vehicle</string>
     <string name="timeline_trip_row_walk">Walk</string>
     <string name="timeline_trip_row_unknown">Trip</string>
     <string name="timeline_gap_row">Not tracked · %1$s</string>

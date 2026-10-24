@@ -319,6 +319,7 @@ class SegmentationRunner @Inject constructor(
 
 private fun LocationPing.toSegmentation() = Ping(
     timeMs = timestamp, lat = lat, lng = lng, accuracyM = accuracyM, activity = activity?.toSegmentation(), sessionId = sessionId,
+    speedMps = speedMps?.toDouble(),
 )
 
 /**

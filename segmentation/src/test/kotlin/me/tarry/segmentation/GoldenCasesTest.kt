@@ -238,7 +238,11 @@ class GoldenCasesTest {
         assertTrue(r.trips.isEmpty())
         assertTrue(r.gaps.isEmpty())
         // Without the stale rule the repeats would form a phantom visit, so the case really exercises it.
-        val unfiltered = Segmenter.segment(SegmentationInput(pings.range(), pings), SegmentationParams(maxAccuracyM = 1_000f))
+        // (Noise-scaled merging is off in the control arm: it would also fold a phantom visit this noisy back in.)
+        val unfiltered = Segmenter.segment(
+            SegmentationInput(pings.range(), pings),
+            SegmentationParams(maxAccuracyM = 1_000f, placeNoiseFactor = 0.0),
+        )
         assertTrue(unfiltered.stays.size > 1)
     }
 
@@ -379,6 +383,288 @@ class GoldenCasesTest {
         assertTrue(r.gaps.none { g -> fixed.any { g.range.overlaps(it) } })
         // The first stay is untouched by the edits.
         assertEquals(baseline.stays[0].range, r.stays[0].range)
+    }
+
+    /**
+     * A synthetic look-alike of the 2026-10-22 marina day (docs/specs/fix-dogfood-2.md), fake coordinates: seven hours
+     * on a boat where the phone only gets network fixes, flipping every 20-60 s between three anchors 200-500 m apart
+     * (50-100 m accuracy) and a 20 m anchor that repeats, plus km-scale out-and-back spikes. One stay, one place.
+     */
+    @Test
+    fun boatDayNetworkAnchors() {
+        val o = SYDNEY_LAT to SYDNEY_LNG
+        val a = o
+        val b = offsetMeters(o.first, o.second, 300.0, -100.0)
+        val c = offsetMeters(o.first, o.second, -150.0, 300.0)
+        val wifi = offsetMeters(o.first, o.second, 50.0, -10.0)
+        val points = listOf(a, b, c, wifi, wifi)
+        val accuracies = listOf(80f, 90f, 60f, 20f, 20f)
+        val builder = builder(31)
+        repeat(7) {
+            builder.anchors(HOUR - 4 * MIN, points, accuracies, intervalMs = 40_000, intervalJitter = 0.5)
+            builder.outAndBack(offsetM = 3_500.0, bearingDeg = 20.0 * it, fixes = 2, accuracyM = 75f)
+            builder.anchors(4 * MIN, points, accuracies, intervalMs = 40_000, intervalJitter = 0.5)
+        }
+        val pings = builder.build()
+        assertTrue(pings.size > 500)
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        assertTrue(r.trips.isEmpty())
+        assertTrue(r.gaps.isEmpty())
+        assertTrue(r.stays.single().range.durationMs > 6 * HOUR + 50 * MIN)
+        val place = r.newPlaces.single()
+        assertTrue(haversineMeters(place.lat, place.lng, o.first, o.second) < 300.0) // none at a spike (3.5 km)
+        assertTrue(place.radiusM in 75.0..300.0)
+    }
+
+    /** A boat circling a 1 km loop at 2 m/s with good fixes is a real trip: stay, trip, stay. */
+    @Test
+    fun slowBoatLoopGoodGps() {
+        val pings = builder(41)
+            .stay(30 * MIN, jitterM = 5.0, accuracyM = 6f)
+            .moveBy(90.0, 500.0, 2.0, mode = Activity.UNKNOWN, accuracyM = 6f)
+            .moveBy(270.0, 500.0, 2.0, mode = Activity.UNKNOWN, accuracyM = 6f)
+            .stay(30 * MIN, jitterM = 5.0, accuracyM = 6f)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        assertEquals(1, r.trips.size)
+        // An out-and-back path: the turnaround is not "going somewhere", so the counted path is a little short of 1 km.
+        assertTrue(r.trips.single().distanceM in 700.0..1_100.0)
+    }
+
+    /**
+     * A still phone on good GPS jitter must not be read as alternating network anchors (review of dogfood-2): its
+     * accuracy stays what the fix says, so departures are prompt and no place radius grows. Two sites [siteDistM] apart,
+     * 8 m GPS accuracy and jitter, a six-minute stay at each in turn (A, B, A, B, ...) so that every 30 minute anchor
+     * window sees four or more switches. Returns the pings and the time spans of the walks between the sites.
+     */
+    private fun backAndForth(siteDistM: Double, stays: Int = 20): Pair<List<Ping>, List<TimeRange>> {
+        val builder = builder(71)
+        val walks = ArrayList<TimeRange>()
+        repeat(stays) { i ->
+            builder.stay(6 * MIN, intervalMs = 20_000, jitterM = 8.0, accuracyM = 8f)
+            if (i < stays - 1) {
+                val from = builder.currentTimeMs
+                builder.moveBy(if (i % 2 == 0) 90.0 else 270.0, siteDistM, 1.4, intervalMs = 20_000, mode = Activity.WALKING, accuracyM = 8f)
+                walks += TimeRange(from, builder.currentTimeMs)
+            }
+        }
+        return builder.build() to walks
+    }
+
+    private fun assertSplitAtEveryMove(stays: List<Stay>, walks: List<TimeRange>) {
+        assertEquals(walks.size + 1, stays.size)
+        for ((i, walk) in walks.withIndex()) {
+            assertTrue("stay $i ends near its move", stays[i].range.endMs in (walk.startMs - MIN)..(walk.endMs + MIN))
+            assertTrue("stay ${i + 1} starts near its move", stays[i + 1].range.startMs in (walk.startMs - MIN)..(walk.endMs + MIN))
+        }
+    }
+
+    @Test
+    fun goodGpsJitterBackAndForthBetweenTightKnownPlacesSplitsAtEveryMove() {
+        val a = SYDNEY_LAT to SYDNEY_LNG
+        val b = offsetMeters(a.first, a.second, 0.0, 100.0)
+        val (pings, walks) = backAndForth(100.0)
+        val r = run(
+            pings,
+            listOf(
+                KnownPlace("a", a.first, a.second, radiusM = 25f),
+                KnownPlace("b", b.first, b.second, radiusM = 25f),
+            ),
+        )
+        assertSplitAtEveryMove(r.stays, walks)
+        assertEquals(List(r.stays.size) { PlaceRef.Existing(if (it % 2 == 0) "a" else "b") }, r.stays.map { it.place })
+        assertTrue(r.newPlaces.isEmpty())
+    }
+
+    @Test
+    fun goodGpsJitterBackAndForthWithoutKnownPlacesSplitsAtEveryMoveWithDefaultPlaceRadii() {
+        // 220 m apart: past the minimum trip distance, so the visits stay separate; at 100 m they merge by design.
+        val (pings, walks) = backAndForth(220.0)
+        val r = run(pings)
+        assertSplitAtEveryMove(r.stays, walks)
+        assertEquals(2, r.newPlaces.size)
+        for (place in r.newPlaces) assertEquals(params.placeMatchRadiusM, place.radiusM, 0.5)
+    }
+
+    @Test
+    fun goodGpsJitterBackAndForthOneHundredMetresApartWithoutKnownPlacesMergesIntoOneVisit() {
+        val (pings, _) = backAndForth(100.0)
+        val r = run(pings)
+        assertEquals(1, r.stays.size)
+        // Two sites under minTripDistanceM apart cannot be told apart without known places (by design); the merged
+        // place's radius follows the spread of the two sites, never beyond the cap.
+        assertTrue(r.newPlaces.single().radiusM <= params.placeMaxRadiusM)
+    }
+
+    /**
+     * An out-and-back walk turning at 170 m with GPS-grade fixes is a real trip: stay, trip, stay (not merged as noise).
+     * It is slow enough (1 m/s) to take longer than [SegmentationParams.shortTripMergeMs] outside the stays.
+     */
+    @Test
+    fun gpsGradeOutAndBackWalkTurningAtOneHundredSeventyMetresIsATrip() {
+        val pings = builder(81)
+            .stay(30 * MIN, intervalMs = 30_000, jitterM = 5.0, accuracyM = 8f)
+            .moveBy(0.0, 170.0, 1.0, mode = Activity.WALKING, accuracyM = 8f)
+            .moveBy(180.0, 170.0, 1.0, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(30 * MIN, intervalMs = 30_000, jitterM = 5.0, accuracyM = 8f)
+            .build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        assertEquals(1, r.trips.size)
+        // The turnaround is not "going somewhere", so the counted path is shorter than the 340 m walked.
+        assertTrue(r.trips.single().distanceM >= params.minTripDistanceM)
+    }
+
+    /** A genuine walk of 250 m away for 25 min at GPS accuracy is not noise: stay, trip, stay, trip, stay. */
+    @Test
+    fun gpsGradeWalkAwayAndBack() {
+        val pings = builder(51)
+            .stay(HOUR, intervalMs = 30_000, jitterM = 6.0, accuracyM = 8f)
+            .moveBy(0.0, 250.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(25 * MIN, intervalMs = 30_000, jitterM = 6.0, accuracyM = 8f)
+            .moveBy(180.0, 250.0, 1.4, mode = Activity.WALKING, accuracyM = 8f)
+            .stay(HOUR, intervalMs = 30_000, jitterM = 6.0, accuracyM = 8f)
+            .build()
+        val r = run(pings)
+        assertEquals(3, r.stays.size)
+        assertEquals(2, r.trips.size)
+        assertEquals(PlaceRef.New(0), r.stays[0].place)
+        assertEquals(PlaceRef.New(1), r.stays[1].place)
+        assertEquals(PlaceRef.New(0), r.stays[2].place)
+    }
+
+    /**
+     * Site-A shape: two visits to the same yard ~180 m apart by centroid (noisy network fixes), with a boat trip
+     * between them, are one place.
+     */
+    @Test
+    fun noisyVisitsOneHundredEightyMetresApartShareAPlace() {
+        val builder = builder(61)
+            .hops(15 * MIN, jitterM = 40.0, hopMinM = 80.0, hopMaxM = 160.0, accuracyM = 40f..95f)
+            .moveBy(270.0, 700.0, 1.5, mode = Activity.UNKNOWN, accuracyM = 30f)
+            .stay(10 * MIN, jitterM = 10.0, accuracyM = 30f)
+            .moveBy(90.0, 520.0, 1.5, mode = Activity.UNKNOWN, accuracyM = 30f)
+        // The boat is back 180 m west of where it left (700 m out, 520 m back).
+        val pings = builder
+            .hops(55 * MIN, jitterM = 40.0, hopMinM = 80.0, hopMaxM = 160.0, accuracyM = 40f..95f)
+            .build()
+        val r = run(pings)
+        val first = r.stays.first()
+        val last = r.stays.last()
+        assertTrue(r.stays.size >= 2 && r.trips.isNotEmpty())
+        // The two visits are well apart by centroid (past the old fixed 75 m radius), yet one place.
+        assertTrue(haversineMeters(first.lat, first.lng, last.lat, last.lng) > 120.0)
+        assertEquals(first.place, last.place)
+    }
+
+    /** Real day 3: a directed GPS-grade walk between two places is its own trip; pottering stays in the visits. */
+    @Test
+    fun walkBetweenTwoPlacesKeepsItsDuration() {
+        val walkMs = (470.0 / 1.2 * 1000).toLong()
+        val b = builder(31).stay(30 * MIN, intervalMs = 20_000, jitterM = 6.0, accuracyM = 12f, activity = Activity.STILL)
+        b.wander(3 * MIN, radiusM = 60.0, accuracyM = 7f..22f)
+        val leaveOut = b.currentTimeMs
+        b.moveBy(90.0, 470.0, 1.2, intervalMs = 10_000, mode = Activity.WALKING, accuracyM = 12f, jitterM = 8.0)
+        val arriveOut = b.currentTimeMs
+        b.wander(3 * MIN, radiusM = 60.0, accuracyM = 7f..22f)
+        b.stay(20 * MIN, intervalMs = 20_000, jitterM = 6.0, accuracyM = 12f, activity = Activity.STILL)
+        b.wander(2 * MIN, radiusM = 80.0, accuracyM = 7f..22f)
+        val leaveBack = b.currentTimeMs
+        b.moveBy(270.0, 470.0, 1.2, intervalMs = 10_000, mode = Activity.WALKING, accuracyM = 12f, jitterM = 8.0)
+        val arriveBack = b.currentTimeMs
+        b.wander(2 * MIN, radiusM = 40.0, accuracyM = 7f..22f)
+        val pings = b.stay(30 * MIN, intervalMs = 20_000, jitterM = 6.0, accuracyM = 12f, activity = Activity.STILL).build()
+        val r = run(pings)
+        assertEquals(3, r.stays.size)
+        assertEquals(2, r.trips.size)
+        for (t in r.trips) {
+            assertEquals(walkMs.toDouble(), t.range.durationMs.toDouble(), 1.5 * MIN)
+            assertEquals(470.0, t.distanceM, 470.0 * 0.15)
+            assertEquals(TripMode.WALK, t.mode)
+        }
+        assertEquals(leaveOut.toDouble(), r.trips[0].range.startMs.toDouble(), 1.5 * MIN)
+        assertEquals(arriveOut.toDouble(), r.trips[0].range.endMs.toDouble(), 1.5 * MIN)
+        assertEquals(leaveBack.toDouble(), r.trips[1].range.startMs.toDouble(), 1.5 * MIN)
+        assertEquals(arriveBack.toDouble(), r.trips[1].range.endMs.toDouble(), 1.5 * MIN)
+        // The pottering is inside the visits.
+        assertTrue(r.stays[0].range.endMs >= leaveOut - 1.5 * MIN)
+        assertTrue(r.stays[1].range.startMs <= arriveOut + 1.5 * MIN && r.stays[1].range.endMs >= leaveBack - 1.5 * MIN)
+        assertTrue(r.stays[2].range.startMs <= arriveBack + 1.5 * MIN)
+    }
+
+    /** A vehicle trip still absorbs the walk-in tail: the drive ends where the vehicle stopped. */
+    @Test
+    fun vehicleTripStillAbsorbsWalkInTail() {
+        val b = builder(32).stay(30 * MIN, intervalMs = 3 * MIN)
+        b.moveBy(90.0, 4_000.0, 12.5, accuracyM = 15f)
+        val parked = b.currentTimeMs
+        b.moveBy(90.0, 150.0, 1.2, intervalMs = 10_000, mode = Activity.WALKING, accuracyM = 12f, jitterM = 6.0)
+        val pings = b.stay(HOUR, intervalMs = 3 * MIN).build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        val trip = r.trips.single()
+        assertEquals(TripMode.VEHICLE, trip.mode)
+        assertEquals(parked, trip.range.endMs)
+        assertEquals(parked, r.stays[1].range.startMs)
+    }
+
+    private fun modeOfTrip(
+        distanceM: Double,
+        speedMps: Double,
+        activity: Activity,
+        accuracyM: Float = 15f,
+        reportSpeed: Boolean = false,
+        intervalMs: Long = 20_000,
+    ): TripMode {
+        val pings = builder(41).stay(HOUR, intervalMs = 3 * MIN)
+            .moveBy(90.0, distanceM, speedMps, intervalMs = intervalMs, mode = activity, accuracyM = accuracyM, reportSpeed = reportSpeed)
+            .stay(HOUR, intervalMs = 3 * MIN).build()
+        val r = run(pings)
+        assertEquals(2, r.stays.size)
+        return r.trips.single().mode
+    }
+
+    @Test
+    fun gpsWalkAtWalkingPaceIsWalk() {
+        assertEquals(TripMode.WALK, modeOfTrip(800.0, 1.2, Activity.WALKING, reportSpeed = true, intervalMs = 10_000))
+        // Hop speeds alone (no reported speed) agree, even if activity recognition says nothing useful.
+        assertEquals(TripMode.WALK, modeOfTrip(800.0, 1.2, Activity.UNKNOWN, intervalMs = 10_000))
+    }
+
+    @Test
+    fun driveIsVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(5_000.0, 12.0, Activity.IN_VEHICLE, reportSpeed = true))
+    }
+
+    @Test
+    fun boatWithStillActivityIsVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.STILL, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 4.0, Activity.STILL))
+    }
+
+    @Test
+    fun walkingAboutOnAMovingBoatIsStillVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.WALKING, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.WALKING))
+    }
+
+    @Test
+    fun poorFixesWalkingActivityButVehicleNetSpeedIsVehicle() {
+        assertEquals(TripMode.VEHICLE, modeOfTrip(3_000.0, 5.0, Activity.WALKING, accuracyM = 80f))
+    }
+
+    @Test
+    fun noSpeedNoActivityAndNoGoodFixesIsUnknown() {
+        assertEquals(TripMode.UNKNOWN, modeOfTrip(3_000.0, 5.0, Activity.UNKNOWN, accuracyM = 80f))
+    }
+
+    @Test
+    fun betweenThresholdsActivityDecidesThenNearerSide() {
+        assertEquals(TripMode.WALK, modeOfTrip(2_000.0, 2.8, Activity.WALKING, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(2_000.0, 2.8, Activity.ON_BICYCLE, reportSpeed = true))
+        assertEquals(TripMode.VEHICLE, modeOfTrip(2_000.0, 2.8, Activity.UNKNOWN, reportSpeed = true))
     }
 
     private companion object {

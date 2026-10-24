@@ -22,7 +22,8 @@ class HealthLogicTest {
         mode: CaptureMode? = CaptureMode.MOVING,
         degraded: Boolean = false,
         pre: Preconditions = Preconditions(),
-    ) = HealthSnapshot(now, shouldRun, if (shouldRun) since else null, running, heartbeat, mode, degraded, pre)
+        finishingUp: Boolean = false,
+    ) = HealthSnapshot(now, shouldRun, if (shouldRun) since else null, running, heartbeat, mode, degraded, pre, finishingUp)
 
     private fun reduce(
         health: HealthSnapshot = snapshot(),
@@ -117,6 +118,19 @@ class HealthLogicTest {
         assertThat(reduce().state).isEqualTo(TrackingState.TRACKING)
     }
 
+
+    @Test
+    fun windowEndGraceIsTrackingFinishingUpWhileFixesArrive() {
+        val r = reduce(snapshot(since = null, finishingUp = true))
+        assertThat(r).isEqualTo(ReducedTrackingState(TrackingState.TRACKING, finishingUp = true))
+    }
+
+    @Test
+    fun aStalledGraceIsAnOutageLikeAnyRunningSession() {
+        val s = snapshot(since = null, heartbeat = now - config.noHeartbeatThresholdMs - 1, finishingUp = true)
+        assertThat(evaluator.evaluate(s)?.gapCause).isEqualTo(GapCause.NO_FIX)
+        assertThat(reduce(s).state).isEqualTo(TrackingState.ATTENTION)
+    }
     @Test
     fun idleOutsideTheSchedule() {
         val r = reduce(snapshot(shouldRun = false, running = false))
