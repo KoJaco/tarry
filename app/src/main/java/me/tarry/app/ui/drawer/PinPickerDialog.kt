@@ -38,6 +38,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import me.tarry.app.R
 import me.tarry.app.map.GeoPoint
+import me.tarry.app.map.MapConfig
 import me.tarry.app.map.PickPlace
 import me.tarry.app.map.PinPickerConfig
 import me.tarry.app.map.PlacePick
@@ -48,6 +49,7 @@ import me.tarry.app.map.startCentre
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
+import me.tarry.app.ui.map.RadiusFillAlpha
 import me.tarry.app.ui.map.TarryMap
 import me.tarry.app.ui.map.mapColor
 import me.tarry.app.ui.map.setDots
@@ -150,7 +152,7 @@ fun PinPickerDialog(
                 )
             }
             val style = loaded
-            val fill = colors.accent.copy(alpha = 0.22f).toArgb()
+            val fill = colors.accent.copy(alpha = RadiusFillAlpha).toArgb()
             val outline = colors.accentStrong.toArgb()
             val dot = colors.accentStrong.toArgb()
             val stroke = colors.paper.toArgb()
@@ -202,7 +204,7 @@ fun PinPickerDialog(
 /** Known places as dots and radius circles (one source each, replaced on every call). */
 private fun Style.showPlaces(places: List<PickPlace>, fillArgb: Int, outlineArgb: Int, dotArgb: Int, strokeArgb: Int) {
     val rings = places.map { p ->
-        Feature.fromGeometry(Polygon.fromLngLats(listOf(circlePolygon(p.centre, p.radiusM.toDouble(), 32).map { it.toPoint() })))
+        Feature.fromGeometry(Polygon.fromLngLats(listOf(circlePolygon(p.centre, p.radiusM.toDouble(), MapConfig().circleSegments).map { it.toPoint() })))
     }
     val source = getSourceAs<GeoJsonSource>(PlaceSource) ?: GeoJsonSource(PlaceSource).also { addSource(it) }
     source.setGeoJson(FeatureCollection.fromFeatures(rings))

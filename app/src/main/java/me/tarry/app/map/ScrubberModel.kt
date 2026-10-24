@@ -40,6 +40,8 @@ class ScrubberModel(
     private val pings: List<RoutePoint> =
         points.filter { it.accuracyM <= config.routeMaxAccuracyM }.sortedBy { it.timestamp }
 
+    private val gaps: List<ScrubItem> = clamped.filter { it.kind == ScrubKind.GAP }
+
     private val starts: List<Long> =
         clamped.filter { it.kind == ScrubKind.VISIT }.map { it.start }.distinct().sorted()
 
@@ -69,6 +71,8 @@ class ScrubberModel(
         val b = pings[hi]
         val a = pings[hi - 1]
         if (b.timestamp - a.timestamp > config.routeBreakMs) return null
+        // A recorded gap between the two pings breaks the route line too (buildRoute), so no position there either.
+        if (gaps.any { it.start < b.timestamp && it.end > a.timestamp }) return null
         val f = (t - a.timestamp).toDouble() / (b.timestamp - a.timestamp)
         return GeoPoint(a.lat + (b.lat - a.lat) * f, a.lng + (b.lng - a.lng) * f)
     }

@@ -3,6 +3,8 @@ package me.tarry.app.ui.timeline
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -103,6 +105,32 @@ class DayScrubberTest {
         }
         composeRule.onNodeWithTag("map_scrub_time").assertWidthIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithText("OK").assertExists()
+    }
+
+    @Test
+    fun aNewModelMidDragDoesNotCancelTheDragOrItsSnap() {
+        // Today the model is rebuilt whenever a ping arrives; the gesture must survive it and still snap on release.
+        val (start, end) = dayBounds(day, zone)
+        var model by mutableStateOf(ScrubberModel(items.toScrubItems(), start, end, emptyList()))
+        composeRule.setContent {
+            TarryTheme {
+                DayScrubber(
+                    model, items.filterIsInstance<TimelineItem.Visit>(), time, { time = it }, { opened += it },
+                    date = day, today = day, zone = zone, onJump = { _, _ -> },
+                )
+            }
+        }
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput {
+            down(centerLeft.copy(x = width * 0.05f))
+            moveBy(Offset(width * 0.2f, 0f))
+        }
+        model = ScrubberModel(items.toScrubItems(), start, end, listOf(RoutePoint(at(9), -33.9, 151.2, 5f)))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput {
+            moveBy(Offset(width * 0.1f, 0f)) // now ~35 % of 8:00–16:00 ≈ 10:48
+            up()
+        }
+        assertThat(time).isEqualTo(at(11))
     }
 
     @Test

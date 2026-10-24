@@ -91,7 +91,12 @@ fun DayMapView(
                         val p = map.projection.toScreenLocation(latLng)
                         val half = touchPx / 2
                         val hit = map.queryRenderedFeatures(RectF(p.x - half, p.y - half, p.x + half, p.y + half), PinCircleLayer)
-                        val id = hit.firstOrNull()?.getStringProperty("id") ?: return@addOnMapClickListener false
+                        // Overlapping pins: the one nearest the tap, not whichever the query lists first.
+                        val nearest = hit.minByOrNull { f ->
+                            val at = (f.geometry() as? org.maplibre.geojson.Point)?.let { map.projection.toScreenLocation(org.maplibre.android.geometry.LatLng(it.latitude(), it.longitude())) }
+                            if (at == null) Float.MAX_VALUE else (at.x - p.x) * (at.x - p.x) + (at.y - p.y) * (at.y - p.y)
+                        }
+                        val id = nearest?.getStringProperty("id") ?: return@addOnMapClickListener false
                         openVisit(id)
                         true
                     }
@@ -154,13 +159,18 @@ private fun MapLibreMap.fitTo(bounds: GeoBounds, paddingPx: Int) {
     moveCamera(update)
 }
 
+/** Route and pins always sit below the scrubber marker, whichever was added first. */
+private fun Style.addBelowMarker(layer: org.maplibre.android.style.layers.Layer) {
+    if (getLayer("$MarkerId-dot") != null) addLayerBelow(layer, "$MarkerId-dot") else addLayer(layer)
+}
+
 private fun Style.source(id: String): GeoJsonSource = getSourceAs(id) ?: GeoJsonSource(id).also { addSource(it) }
 
 private fun Style.setRoute(route: List<List<GeoPoint>>, colors: TarryColors) {
     val lines = route.map { seg -> Feature.fromGeometry(LineString.fromLngLats(seg.map { it.toPoint() })) }
     source("$RouteId-src").setGeoJson(FeatureCollection.fromFeatures(lines))
     val layer = getLayer("$RouteId-line") as LineLayer?
-        ?: LineLayer("$RouteId-line", "$RouteId-src").also { addLayer(it) }
+        ?: LineLayer("$RouteId-line", "$RouteId-src").also { addBelowMarker(it) }
     layer.setProperties(
         PropertyFactory.lineColor(mapColor(colors.ink.toArgb())),
         PropertyFactory.lineWidth(4f),
@@ -200,7 +210,7 @@ private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boole
     }
     source("$PinsId-src").setGeoJson(FeatureCollection.fromFeatures(features))
     if (getLayer(PinCircleLayer) == null) {
-        addLayer(
+        addBelowMarker(
             CircleLayer(PinCircleLayer, "$PinsId-src").withProperties(
                 PropertyFactory.circleRadius(13f),
                 PropertyFactory.circleColor(Expression.toColor(Expression.get("fill"))),
@@ -208,7 +218,7 @@ private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boole
                 PropertyFactory.circleStrokeWidth(2f),
             ),
         )
-        addLayer(
+        addBelowMarker(
             SymbolLayer("$PinsId-label", "$PinsId-src").withProperties(
                 PropertyFactory.textField(Expression.get("n")),
                 PropertyFactory.textFont(arrayOf(PinFont)),

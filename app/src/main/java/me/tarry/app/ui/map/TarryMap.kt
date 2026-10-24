@@ -66,8 +66,11 @@ internal fun TarryColors.mapPalette(): Map<String, Int> = mapOf(
     "mapGreen" to mapGreen.toArgb(),
 )
 
+@Volatile private var cachedTemplate: String? = null
+
+/** The bundled style template, read from assets once per process (it is ~44 KB and every map and snapshot needs it). */
 internal fun Context.styleTemplate(): String =
-    assets.open(MapStyle.TemplateAsset).bufferedReader().use { it.readText() }
+    cachedTemplate ?: assets.open(MapStyle.TemplateAsset).bufferedReader().use { it.readText() }.also { cachedTemplate = it }
 
 /**
  * A MapLibre map in the Tarry theme, with the required OpenFreeMap / OpenMapTiles / OSM attribution. The MapView

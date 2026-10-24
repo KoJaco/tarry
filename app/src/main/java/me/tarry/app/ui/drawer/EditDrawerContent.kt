@@ -99,9 +99,10 @@ fun EditDrawerContent(
     // New-visit form values; they survive rotation and are unused by the other kinds.
     var newStart by rememberSaveable(state.start) { mutableLongStateOf(state.start) }
     var newEnd by rememberSaveable(state.end) { mutableLongStateOf(state.end) }
-    var newPlaceId by rememberSaveable { mutableStateOf<String?>(null) }
+    // Keyed like the times, so a pick never carries over to a later new visit in the same composition.
+    var newPlaceId by rememberSaveable(state.start, state.end) { mutableStateOf<String?>(null) }
     // A map pin chosen as a NEW place ([lat, lng]); exclusive with newPlaceId. ArrayList so it survives rotation.
-    var newPin by rememberSaveable { mutableStateOf<ArrayList<Double>?>(null) }
+    var newPin by rememberSaveable(state.start, state.end) { mutableStateOf<ArrayList<Double>?>(null) }
     Column(
         modifier = modifier
             .fillMaxWidth()

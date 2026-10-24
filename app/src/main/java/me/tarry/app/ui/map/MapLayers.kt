@@ -24,6 +24,9 @@ import org.maplibre.geojson.Polygon
  * slider move. Colours are ARGB ints from `TarryTheme.colors` (never literals).
  */
 
+/** Alpha of the `accent` fill inside a place radius circle (drawer mini map, radius sheet, pin picker). */
+const val RadiusFillAlpha = 0.22f
+
 fun GeoPoint.toLatLng(): LatLng = LatLng(lat, lng)
 
 fun GeoPoint.toPoint(): Point = Point.fromLngLat(lng, lat)

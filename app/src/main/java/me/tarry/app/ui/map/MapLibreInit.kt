@@ -5,6 +5,7 @@ import me.tarry.app.BuildConfig
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import org.maplibre.android.MapLibre
+import org.maplibre.android.log.Logger
 import org.maplibre.android.module.http.HttpRequestUtil
 
 /**
@@ -23,6 +24,8 @@ object MapLibreInit {
         synchronized(this) {
             if (done) return
             MapLibre.getInstance(context.applicationContext)
+            // Native logs can include tile URLs (z/x/y ≈ where the user looked); keep them out of release logcat.
+            if (!BuildConfig.DEBUG) Logger.setVerbosity(Logger.NONE)
             val dispatcher = Dispatcher().apply {
                 maxRequests = MaxParallelRequests
                 maxRequestsPerHost = MaxParallelRequests

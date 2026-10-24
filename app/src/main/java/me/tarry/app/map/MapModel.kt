@@ -25,6 +25,8 @@ data class MapConfig(
     val routeMaxAccuracyM: Float = 100f,
     /** Douglas-Peucker tolerance for the drawn route. */
     val routeSimplifyToleranceM: Double = 5.0,
+    /** While tracking, the open day map rebuilds from new pings at most this often. */
+    val liveRefreshMs: Long = 5_000L,
     /** Vertices in a radius circle polygon. */
     val circleSegments: Int = 64,
     /** A dropped map pin offers known places whose centre is within this distance. */

@@ -59,7 +59,7 @@ The manual-visit create form was never built, so it is built here first. Recon f
 | T2 | Day Map view: route, pins, missing-route banner, pin → drawer, fit camera, day summary content description | L | claude → ui-reviewer | Done (device pass pending) |
 | T3 | Scrubber (`ScrubberModel`, strip, snap, step buttons, semantics) + date-time jump | L | claude + test-writer → ui-reviewer | Done (device pass pending) |
 | T4 | Manual-visit form in NEW_VISIT: times, place search, Save → `createManual`, inline errors, undo | M | implementer + test-writer | Done |
-| T5 | Map-pin placement: centre-pin picker, nearby places, `createManualAtNewPlace` with a single undo | M | claude + test-writer | In progress |
+| T5 | Map-pin placement: centre-pin picker, nearby places, `createManualAtNewPlace` with a single undo | M | claude + test-writer | Done (device pass pending) |
 | T6 | Drawer mini map (`MapSnapshotter`, cached) | S | implementer | Done (device pass pending) |
 | T7 | Radius sheet live map (circle follows the slider, visit dots) | S | implementer | Done (device pass pending) |
 | T8 | Review, security pass (network/telemetry), device pass | M | claude | |
@@ -106,4 +106,7 @@ The manual-visit create form was never built, so it is built here first. Recon f
 - **Ping volume:** a full high-accuracy day is tens of thousands of points, so simplification is mandatory. Measure it in T2.
 - **MapView lifecycle in Compose:** one MapView per screen, and it is destroyed on dispose.
 - **Debug APK size:** about 90 MB, because MapLibre ships native libraries for every ABI. Consider ABI splits for release later.
+- **Renderer:** the build uses `android-sdk-opengl`. The default `android-sdk` artifact is Vulkan-only and declares `android.hardware.vulkan.version` as a required feature, which would rule out older devices and some emulator images.
+  - MapLibre's manifest also adds `ACCESS_NETWORK_STATE` and `ACCESS_WIFI_STATE` (connectivity checks). Both are normal permissions and expose no location.
+  - Release builds turn MapLibre's native logging off, because tile URLs reveal roughly where the user looked.
 - **`MapSnapshotter` cost:** cache it. If it's slow, fall back to a non-interactive MapView.

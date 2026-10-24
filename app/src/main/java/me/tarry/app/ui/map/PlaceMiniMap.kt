@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.map.GeoPoint
+import me.tarry.app.map.MapConfig
 import me.tarry.app.map.MapStyle
 import me.tarry.app.map.MiniMapConfig
 import me.tarry.app.map.MiniMapKey
@@ -77,13 +78,13 @@ fun PlaceMiniMap(
         val key = MiniMapKey(placeId, centre, radiusM, TarryTheme.isDark, widthPx, heightPx)
         var bitmap by remember(key) { mutableStateOf(bitmapCache.get(key)) }
         if (bitmap == null && widthPx > 0) {
-            val fill = colors.accent.copy(alpha = 0.22f).toArgb()
+            val fill = colors.accent.copy(alpha = RadiusFillAlpha).toArgb()
             val outline = colors.accentStrong.toArgb()
             val palette = colors.mapPalette()
             DisposableEffect(key) {
                 MapLibreInit.ensure(context)
                 val styleJson = MapStyle.build(context.styleTemplate(), palette)
-                val ring = circlePolygon(centre, radiusM.toDouble(), 64).map { it.toPoint() }
+                val ring = circlePolygon(centre, radiusM.toDouble(), MapConfig().circleSegments).map { it.toPoint() }
                 val builder = Style.Builder()
                     .fromJson(styleJson)
                     .withSource(GeoJsonSource("place-src", Feature.fromGeometry(Polygon.fromLngLats(listOf(ring)))))

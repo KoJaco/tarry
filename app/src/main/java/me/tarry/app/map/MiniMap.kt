@@ -6,7 +6,8 @@ data class MiniMapConfig(
     /** The camera shows a circle of radius * this around the place, so the radius circle sits inside with margin. */
     val fitFactor: Double = 1.6,
     /** In-memory bitmap cache budget. */
-    val cacheBytes: Int = 4 * 1024 * 1024,
+    // A full-width header bitmap is ~1–1.5 MB on a Pixel; 16 MB keeps a day's worth of places.
+    val cacheBytes: Int = 16 * 1024 * 1024,
 ) {
     /** Radius of the circle the camera is fitted to. */
     fun fitRadiusM(radiusM: Float): Double = radiusM.coerceAtLeast(1f) * fitFactor

@@ -97,6 +97,16 @@ class ScrubberModelTest {
     }
 
     @Test
+    fun recordedGapBetweenPingsIsNull() {
+        // Pings a minute apart (well under routeBreakMs) but with a recorded outage between them: no fake position.
+        val gap = ScrubItem("g", ScrubKind.GAP, 20_000, 40_000)
+        val m = ScrubberModel(listOf(gap), 0, 100_000, listOf(ping(0, 1.0, 1.0), ping(60_000, 2.0, 2.0)))
+        assertThat(m.positionAt(30_000)).isNull()
+        val clear = ScrubberModel(emptyList(), 0, 100_000, listOf(ping(0, 1.0, 1.0), ping(60_000, 2.0, 2.0)))
+        assertThat(clear.positionAt(30_000)).isNotNull()
+    }
+
+    @Test
     fun inaccuratePingsIgnored() {
         val m = model(
             points = listOf(ping(1_000, 10.0, 20.0), ping(2_000, 50.0, 50.0, acc = 500f), ping(3_000, 12.0, 24.0)),

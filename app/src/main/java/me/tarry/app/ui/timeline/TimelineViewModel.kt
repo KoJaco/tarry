@@ -11,7 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import me.tarry.app.map.DayMap
@@ -136,6 +137,12 @@ private const val DEFAULT_MIN_STAY_MS = 5 * 60_000L
 
 private val RowOrder = compareBy<TimelineItem>({ it.start }, { it.typeOrder() })
 
+/** The first value at once, then at most the latest one every [periodMs] (Room re-emits a whole day per ping). */
+private fun <T> Flow<T>.throttleLatest(periodMs: Long): Flow<T> = conflate().transform {
+    emit(it)
+    delay(periodMs)
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TimelineViewModel internal constructor(
@@ -186,6 +193,35 @@ class TimelineViewModel internal constructor(
     private val _selectedDate = MutableStateFlow(_today.value)
     val selectedDate: StateFlow<LocalDate> = _selectedDate
 
+    /** The sorted rows of `[from, to)`, live. Both [items] and [dayMap] derive from it, so the map never mixes two days. */
+    private val rowsIn: (from: Long, to: Long) -> Flow<List<TimelineItem>> = { from, to ->
+        combine(
+            timeline.observeVisits(from, to),
+            timeline.observeTrips(from, to),
+            timeline.observeGaps(from, to),
+            places.observeLabels(), // includes deleted places: frozen visits there keep their label and inherited job
+            jobs.observeAll(), // excludes deleted jobs
+        ) { visits, trips, gaps, allPlaces, allJobs ->
+            val byId = allPlaces.associateBy { it.id }
+            val jobsById = allJobs.associateBy { it.id }
+            val rows: List<TimelineItem> = visits.map {
+                val place = it.placeId?.let(byId::get)
+                val own = it.jobId?.let(jobsById::get)
+                val job = own ?: place?.defaultJobId?.let(jobsById::get)
+                TimelineItem.Visit(
+                    it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false,
+                    job?.name, job?.colorArgb, job?.id,
+                    placeId = it.placeId, frozen = it.frozen, billable = it.billable, origin = it.origin,
+                    jobInherited = own == null && job != null,
+                    placeIgnored = place?.ignored ?: false,
+                )
+            } +
+                trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
+                gaps.map { TimelineItem.Gap(it.id, it.start, it.end, it.cause) }
+            rows.sortedWith(RowOrder)
+        }
+    }
+
     /** Null until the first emission for the selected date (loading); an empty list is a loaded, empty day. */
     val items: StateFlow<List<TimelineItem>?> = _selectedDate
         .flatMapLatest { date ->
@@ -193,31 +229,7 @@ class TimelineViewModel internal constructor(
             flow {
                 emit(null)
                 emitAll(
-                    combine(
-                        timeline.observeVisits(from, to),
-                        timeline.observeTrips(from, to),
-                        timeline.observeGaps(from, to),
-                        places.observeLabels(), // includes deleted places: frozen visits there keep their label and inherited job
-                        jobs.observeAll(), // excludes deleted jobs
-                    ) { visits, trips, gaps, allPlaces, allJobs ->
-                        val byId = allPlaces.associateBy { it.id }
-                        val jobsById = allJobs.associateBy { it.id }
-                        val rows: List<TimelineItem> = visits.map {
-                            val place = it.placeId?.let(byId::get)
-                            val own = it.jobId?.let(jobsById::get)
-                            val job = own ?: place?.defaultJobId?.let(jobsById::get)
-                            TimelineItem.Visit(
-                                it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false,
-                                job?.name, job?.colorArgb, job?.id,
-                                placeId = it.placeId, frozen = it.frozen, billable = it.billable, origin = it.origin,
-                                jobInherited = own == null && job != null,
-                                placeIgnored = place?.ignored ?: false,
-                            )
-                        } +
-                            trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
-                            gaps.map { TimelineItem.Gap(it.id, it.start, it.end, it.cause) }
-                        rows.sortedWith(RowOrder)
-                    },
+                    rowsIn(from, to),
                 )
             }
         }
@@ -226,7 +238,7 @@ class TimelineViewModel internal constructor(
     /**
      * The selected day for the Map tab: route from that day's pings, pins at place centroids. Null while loading.
      * Only collected while the Map tab shows (WhileSubscribed), so nothing runs for it otherwise. New pings while
-     * tracking are conflated and the route is rebuilt off the main thread.
+     * tracking are throttled (`MapConfig.liveRefreshMs`) and the route is rebuilt off the main thread.
      */
     val dayMap: StateFlow<DayMap?> = _selectedDate
         .flatMapLatest { date ->
@@ -235,8 +247,8 @@ class TimelineViewModel internal constructor(
                 emit(null)
                 emitAll(
                     combine(
-                        items.filterNotNull(),
-                        pingPositions(from, to).conflate(),
+                        rowsIn(from, to),
+                        pingPositions(from, to).throttleLatest(mapConfig.liveRefreshMs),
                         places.observeLabels(),
                     ) { rows, pings, allPlaces ->
                         val byId = allPlaces.associateBy { it.id }

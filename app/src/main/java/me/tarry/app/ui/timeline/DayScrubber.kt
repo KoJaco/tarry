@@ -67,6 +67,7 @@ private val StripHeight = 32.dp
 private val MinTouch = 48.dp
 private val ThumbWidth = 3.dp
 private val HatchSpacing = 6.dp
+private val BorderWidth = 1.5.dp
 
 /** The scrubber's rows: [TimelineItem]s as [ScrubItem]s (same ids, so a tapped visit block opens its drawer). */
 internal fun List<TimelineItem>.toScrubItems(): List<ScrubItem> = map {
@@ -103,6 +104,9 @@ internal fun DayScrubber(
     val formats = rememberTimeFormats()
     val timeText = formats.time(time, zone)
     val current by rememberUpdatedState(time)
+    // Gestures read the latest model instead of restarting on it: today it is rebuilt as pings arrive, mid-drag.
+    val latestModel by rememberUpdatedState(model)
+    val openVisit by rememberUpdatedState(onOpenVisit)
     val change by rememberUpdatedState(onTimeChange)
     var widthPx by remember { mutableStateOf(0) }
     var pickingDay by rememberSaveable { mutableStateOf(false) }
@@ -161,19 +165,19 @@ internal fun DayScrubber(
                             next?.let { t -> CustomAccessibilityAction(nextLabel) { change(t); true } },
                         )
                     }
-                    .pointerInput(model) {
+                    .pointerInput(Unit) {
                         detectTapGestures { p ->
                             if (widthPx <= 0) return@detectTapGestures
-                            val t = model.timeAt(p.x / widthPx)
-                            val hit = model.itemAt(t)
-                            if (hit?.kind == ScrubKind.VISIT) onOpenVisit(hit.id) else change(model.snap(t))
+                            val t = latestModel.timeAt(p.x / widthPx)
+                            val hit = latestModel.itemAt(t)
+                            if (hit?.kind == ScrubKind.VISIT) openVisit(hit.id) else change(latestModel.snap(t))
                         }
                     }
-                    .pointerInput(model) {
+                    .pointerInput(Unit) {
                         detectHorizontalDragGestures(
-                            onDragEnd = { change(model.snap(current)) },
+                            onDragEnd = { change(latestModel.snap(current)) },
                         ) { pointer, _ ->
-                            if (widthPx > 0) change(model.timeAt(pointer.position.x / widthPx))
+                            if (widthPx > 0) change(latestModel.timeAt(pointer.position.x / widthPx))
                         }
                     }
                     .testTag("map_scrubber"),
@@ -192,7 +196,7 @@ internal fun DayScrubber(
                             ScrubKind.VISIT -> {
                                 val job = jobColors[block.item.id]
                                 drawRect(job?.container ?: c.card, Offset(left, 0f), Size(w, size.height))
-                                drawRect(job?.border ?: c.outline, Offset(left, 0f), Size(w, size.height), style = Stroke(1.5f))
+                                drawRect(job?.border ?: c.outline, Offset(left, 0f), Size(w, size.height), style = Stroke(BorderWidth.toPx()))
                             }
                         }
                     }
@@ -233,7 +237,7 @@ private fun DrawScope.drawHatched(left: Float, width: Float, fill: Color, line: 
     clipRect(left, 0f, left + width, size.height) {
         var x = left - size.height
         while (x < left + width) {
-            drawLine(line, Offset(x, size.height), Offset(x + size.height, 0f), strokeWidth = 1.5f)
+            drawLine(line, Offset(x, size.height), Offset(x + size.height, 0f), strokeWidth = BorderWidth.toPx())
             x += spacing
         }
     }

@@ -24,6 +24,8 @@ import me.tarry.app.map.GeoPoint
 import me.tarry.app.ui.timeline.TimelineItem
 import me.tarry.core.data.db.dao.PingPosition
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
 import me.tarry.app.ui.timeline.TimelineViewModel
 import me.tarry.app.ui.timeline.dayBounds
 import me.tarry.core.data.db.TarryDatabase
@@ -152,6 +154,35 @@ class TimelineViewModelTest {
         assertThat(map.pins.single().position).isEqualTo(GeoPoint(-33.865143, 151.2099))
         assertThat(map.route).hasSize(1)
         assertThat(map.routeMissing).isFalse()
+    }
+
+    @Test
+    fun dayMapNeverMixesTwoDaysWhenTheDateChanges() = runBlocking {
+        // Each day's place and pings share one latitude, so a mixed map has pins and route at different latitudes.
+        val yesterday = day.minusDays(1)
+        places.save(place("today").copy(centroidLat = -33.0))
+        places.save(place("yday").copy(centroidLat = -34.0))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "today"))
+        timeline.saveVisit(visit("y", at(yesterday, 9), at(yesterday, 11), "yday"))
+        val vm = TimelineViewModel(
+            timeline, places, jobs, tags, zone, { day },
+            pingPositions = { from, _ ->
+                val lat = if (from == dayBounds(day, zone).first) -33.0 else -34.0
+                flowOf(listOf(PingPosition(from + 3_600_000, lat, 151.2, 5f), PingPosition(from + 3_660_000, lat, 151.21, 5f)))
+            },
+        ).managed()
+        val seen = java.util.concurrent.CopyOnWriteArrayList<me.tarry.app.map.DayMap>()
+        val job = launch(Dispatchers.Default) { vm.dayMap.collect { m -> if (m != null) seen += m } }
+        withTimeout(10_000) { while (seen.none { m -> m.pins.any { it.visitId == "v" } }) delay(10) }
+        vm.previousDay()
+        withTimeout(10_000) { while (seen.none { m -> m.pins.any { it.visitId == "y" } }) delay(10) }
+        job.cancelAndJoin()
+
+        seen.forEach { m ->
+            val pinLats = m.pins.map { it.position.lat }.toSet()
+            val routeLats = m.route.flatten().map { it.lat }.toSet()
+            assertThat(pinLats + routeLats).hasSize(1)
+        }
     }
 
     @Test

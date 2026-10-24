@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import me.tarry.app.map.GeoPoint
 import me.tarry.app.segmentation.radiusDots
+import me.tarry.app.ui.map.RadiusFillAlpha
 import me.tarry.app.ui.map.TarryMap
 import me.tarry.app.ui.map.radiusBounds
 import me.tarry.app.ui.map.setDots
@@ -176,7 +177,9 @@ private fun RadiusMapPreview(input: RadiusPreviewInput, radius: Float, counts: R
     }
     LaunchedEffect(style, centre, radius, dots, colors) {
         val s = style ?: return@LaunchedEffect
-        s.setRadiusCircle(MAP_PREVIEW_ID, centre, radius.toDouble(), colors.accent.copy(alpha = 0.22f).toArgb(), colors.accentStrong.toArgb())
+        // A theme switch replaces the style; never touch one that is not (or no longer) loaded.
+        if (!s.isFullyLoaded) return@LaunchedEffect
+        s.setRadiusCircle(MAP_PREVIEW_ID, centre, radius.toDouble(), colors.accent.copy(alpha = RadiusFillAlpha).toArgb(), colors.accentStrong.toArgb())
         s.setDots("$MAP_PREVIEW_ID-out", dots.outside, colors.muted.toArgb(), colors.paper.toArgb())
         s.setDots("$MAP_PREVIEW_ID-frozen", dots.frozen, colors.paper.toArgb(), colors.ink.toArgb())
         s.setDots("$MAP_PREVIEW_ID-in", dots.inside, colors.ink.toArgb(), colors.paper.toArgb())
