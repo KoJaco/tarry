@@ -16,15 +16,8 @@ import me.tarry.core.data.db.entity.VisitTag
 /** Row of [VisitDao.durationByPlaceOutside]. */
 data class PlaceDuration(val placeId: String, val durationMs: Long)
 
-/** Row of [VisitDao.observePlaceVisitCounts]. */
-data class PlaceVisitCount(val placeId: String, val count: Int)
-
 @Dao
 interface VisitDao {
-    /** Live visit count per place; places with none are absent. */
-    @Query("SELECT placeId, COUNT(*) AS count FROM visit WHERE deleted = 0 AND placeId IS NOT NULL GROUP BY placeId")
-    fun observePlaceVisitCounts(): Flow<List<PlaceVisitCount>>
-
     @Upsert suspend fun upsert(visit: Visit)
 
     @Upsert suspend fun upsertAll(visits: List<Visit>)
@@ -53,26 +46,6 @@ interface VisitDao {
             "WHERE deleted = 0 AND placeId IS NOT NULL AND NOT (start < :to AND `end` > :from) GROUP BY placeId",
     )
     suspend fun durationByPlaceOutside(from: Long, to: Long): List<PlaceDuration>
-
-    /** Every non-deleted visit at the place, frozen or not. */
-    @Query("SELECT * FROM visit WHERE deleted = 0 AND placeId = :placeId ORDER BY start")
-    suspend fun getLiveByPlace(placeId: String): List<Visit>
-
-    /** Start of the earliest non-deleted, non-frozen visit at any of the places, or null when there is none. */
-    @Query("SELECT MIN(start) FROM visit WHERE deleted = 0 AND frozen = 0 AND placeId IN (:placeIds)")
-    suspend fun earliestUnfrozenStart(placeIds: List<String>): Long?
-
-    /** Total time of the place's non-deleted visits. */
-    @Query("SELECT COALESCE(SUM(`end` - start), 0) FROM visit WHERE deleted = 0 AND placeId = :placeId")
-    suspend fun durationAt(placeId: String): Long
-
-    /** Moves every non-deleted visit (frozen included) from one place to another; only placeId and updatedAt change. */
-    @Query("UPDATE visit SET placeId = :to, updatedAt = :updatedAt WHERE deleted = 0 AND placeId = :from")
-    suspend fun repointPlace(from: String, to: String, updatedAt: Long)
-
-    /** Soft-deletes the place's non-frozen visits (no exclusion is recorded, so segmentation detects them again). */
-    @Query("UPDATE visit SET deleted = 1, updatedAt = :updatedAt WHERE deleted = 0 AND frozen = 0 AND placeId = :placeId")
-    suspend fun softDeleteUnfrozenAt(placeId: String, updatedAt: Long)
 
     @Upsert suspend fun upsertTag(link: VisitTag)
 

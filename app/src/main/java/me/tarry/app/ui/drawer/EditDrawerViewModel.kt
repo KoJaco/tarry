@@ -281,7 +281,7 @@ class EditDrawerViewModel @Inject constructor(
                 kind = EditKind.VISIT, id = v.id, start = v.start, end = v.end, zoneId = v.zoneId,
                 placeLabel = place?.displayLabel(), placeLabelIsCoordinates = place?.labelIsCoordinates() ?: false,
                 placeName = place?.name?.takeIf { it.isNotBlank() },
-                hasPlace = place != null && !place.deleted, placeIgnored = place?.ignored ?: false,
+                hasPlace = place != null, placeIgnored = place?.ignored ?: false,
                 jobs = catalog.pickableJobs(setOf(v.jobId, place?.defaultJobId)), tagGroups = catalog.pickableTagGroups(data.effectiveTags),
                 places = catalog.places,
                 ownJob = job(v.jobId), placeJob = job(place?.defaultJobId),

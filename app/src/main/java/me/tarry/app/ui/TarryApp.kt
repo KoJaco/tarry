@@ -34,10 +34,6 @@ import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.catalog.JobsScreen
 import me.tarry.app.ui.catalog.TagsScreen
 import me.tarry.app.ui.navigation.JobsRoute
-import me.tarry.app.ui.navigation.PlaceDetailRoute
-import me.tarry.app.ui.navigation.PlacesRoute
-import me.tarry.app.ui.places.PlaceDetailScreen
-import me.tarry.app.ui.places.PlacesScreen
 import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.PermissionsRoute
 import me.tarry.app.ui.navigation.SessionsRoute
@@ -113,7 +109,6 @@ fun TarryApp(
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
                 onOpenTags = { if (backStack.lastOrNull() != TagsRoute) backStack.add(TagsRoute) },
-                onOpenPlaces = { if (backStack.lastOrNull() != PlacesRoute) backStack.add(PlacesRoute) },
             )
         },
         permissionsContent = {
@@ -122,13 +117,6 @@ fun TarryApp(
         sessionsContent = { SessionsScreen() },
         jobsContent = { JobsScreen() },
         tagsContent = { TagsScreen() },
-        placesContent = { PlacesScreen(onOpenPlace = { if (backStack.lastOrNull() != PlaceDetailRoute(it)) backStack.add(PlaceDetailRoute(it)) }) },
-        placeDetailContent = { id ->
-            PlaceDetailScreen(
-                placeId = id,
-                onClose = { if (backStack.lastOrNull() == PlaceDetailRoute(id)) backStack.removeAt(backStack.lastIndex) },
-            )
-        },
     )
     if (sheetVisible) {
         val openAppSettings = { context.startActivity(appSettingsIntent(context)) }
@@ -173,8 +161,6 @@ fun TarryAppContent(
     sessionsContent: @Composable () -> Unit = {},
     jobsContent: @Composable () -> Unit = {},
     tagsContent: @Composable () -> Unit = {},
-    placesContent: @Composable () -> Unit = {},
-    placeDetailContent: @Composable (String) -> Unit = {},
     modifier: Modifier = Modifier,
     snackbarHost: @Composable () -> Unit = {},
     /** Replaces the bottom navigation while visits are selected for a bulk edit (null = the normal bar). */
@@ -210,8 +196,6 @@ fun TarryAppContent(
                 entry<SessionsRoute> { sessionsContent() }
                 entry<JobsRoute> { jobsContent() }
                 entry<TagsRoute> { tagsContent() }
-                entry<PlacesRoute> { placesContent() }
-                entry<PlaceDetailRoute> { placeDetailContent(it.id) }
             },
         )
     }

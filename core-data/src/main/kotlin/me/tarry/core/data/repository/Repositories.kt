@@ -79,10 +79,6 @@ class TimelineRepository @Inject constructor(
     suspend fun visit(id: String): Visit? = visits.getById(id)
     suspend fun visitsInRange(from: Long, to: Long) = visits.getInRange(from, to)
     fun observeVisits(from: Long, to: Long): Flow<List<Visit>> = visits.observeInRange(from, to)
-    /** Live visits per place id; places with none are absent. */
-    fun observePlaceVisitCounts(): Flow<Map<String, Int>> =
-        visits.observePlaceVisitCounts().map { rows -> rows.associate { it.placeId to it.count } }
-    suspend fun liveVisitsAt(placeId: String) = visits.getLiveByPlace(placeId)
     suspend fun tagVisit(link: VisitTag) = visits.upsertTag(link)
     suspend fun untagVisit(visitId: String, tagId: String) = visits.deleteTag(visitId, tagId)
     suspend fun visitTags(visitId: String) = visits.getTags(visitId)
@@ -112,9 +108,6 @@ class PlaceRepository @Inject constructor(private val places: PlaceDao) {
     suspend fun place(id: String): Place? = places.getById(id)
     suspend fun byLastVisitInRange(from: Long, to: Long) = places.getByLastVisitInRange(from, to)
     fun observeAll(): Flow<List<Place>> = places.observeAll()
-
-    /** Every place including deleted ones, only for labelling existing visits. Pickers use [observeAll]. */
-    fun observeLabels(): Flow<List<Place>> = places.observeLabels()
     suspend fun addDefaultTag(link: PlaceDefaultTag) = places.upsertDefaultTag(link)
     suspend fun removeDefaultTag(placeId: String, tagId: String) = places.deleteDefaultTag(placeId, tagId)
     suspend fun defaultTags(placeId: String) = places.getDefaultTags(placeId)

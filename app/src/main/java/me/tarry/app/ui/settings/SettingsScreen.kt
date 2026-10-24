@@ -48,7 +48,6 @@ fun SettingsScreen(
     onOpenSessions: () -> Unit,
     onOpenJobs: () -> Unit = {},
     onOpenTags: () -> Unit = {},
-    onOpenPlaces: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
@@ -59,7 +58,6 @@ fun SettingsScreen(
         onOpenSessions = onOpenSessions,
         onOpenJobs = onOpenJobs,
         onOpenTags = onOpenTags,
-        onOpenPlaces = onOpenPlaces,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onThemeSelected = viewModel::setTheme,
         modifier = modifier,
@@ -76,7 +74,6 @@ fun SettingsContent(
     onOpenSessions: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenTags: () -> Unit = {},
-    onOpenPlaces: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -162,11 +159,9 @@ fun SettingsContent(
         SectionHeader(stringResource(R.string.settings_section_labels), Modifier.padding(top = space.m))
         val jobsTitle = stringResource(R.string.settings_jobs)
         val tagsTitle = stringResource(R.string.settings_tags)
-        val placesTitle = stringResource(R.string.settings_places)
         SettingsGroup {
             row(jobsTitle, onClick = onOpenJobs)
             row(tagsTitle, onClick = onOpenTags)
-            row(placesTitle, onClick = onOpenPlaces)
         }
         if (settings != null) {
             SectionHeader(stringResource(R.string.settings_section_appearance), Modifier.padding(top = space.m))

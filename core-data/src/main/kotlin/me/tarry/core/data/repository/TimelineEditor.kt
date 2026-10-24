@@ -21,7 +21,6 @@ import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.VisitOrigin
-import me.tarry.segmentation.geo.haversineMeters
 import java.time.ZoneId
 import java.util.UUID
 import javax.inject.Inject
@@ -30,14 +29,6 @@ import javax.inject.Singleton
 /** Source of "now" for edit timestamps (`updatedAt`). Tests pass a fixed value. */
 fun interface EditClock {
     fun nowMs(): Long
-}
-
-/**
- * Earliest instant a place op may rewind segmentation to: the start of the raw-ping retention window (0 when pings are
- * kept forever). Older pings are purged, so re-detecting before it would only erase history. Same window as `SegmentationUpgrade`.
- */
-fun interface RewindFloor {
-    suspend fun floorMs(): Long
 }
 
 enum class ItemType { VISIT, TRIP }
@@ -90,26 +81,11 @@ data class Snapshot(
     val placeDefaultTags: List<PlaceDefaultTag> = emptyList(),
     /** placeId to the default job a job archive cleared; restore sets only that column, and only while the place is live, still has no default and the job is live. */
     val placeDefaultJobs: Map<String, String> = emptyMap(),
-    /** placeId to its exact default-tag set before a place merge; restore replaces the place's links with these (live tags only). */
-    val replaceDefaultTags: Map<String, List<PlaceDefaultTag>> = emptyMap(),
 )
 
-/** Limits of a place's circle, in metres. */
-object PlaceLimits {
-    const val RADIUS_MIN_M = 20f
-    const val RADIUS_MAX_M = 300f
-    const val RADIUS_STEP_M = 5f
-}
-
-/** What [TimelineEditor.mergePlaces] would produce: the target's radius after growing to cover both places, and whether [PlaceLimits.RADIUS_MAX_M] clipped it. */
-data class MergePreview(val radiusM: Float, val capped: Boolean)
-
 sealed interface EditResult {
-    /**
-     * [undo] is set for structural edits and bulk; [id] is the created row for split (second half), createManual, createJob, createTag.
-     * [capped] is set by mergePlaces when the target's circle could not grow to cover the source (radius clipped at the max).
-     */
-    data class Ok(val undo: Snapshot? = null, val id: String? = null, val capped: Boolean = false) : EditResult
+    /** [undo] is set for structural edits and bulk; [id] is the created row for split (second half), createManual, createJob, createTag. */
+    data class Ok(val undo: Snapshot? = null, val id: String? = null) : EditResult
 
     /** The edit would overlap another live visit. */
     data object Overlap : EditResult
@@ -144,7 +120,6 @@ class TimelineEditor @Inject constructor(
     private val tags: TagDao,
     private val checkpoints: SegmentationCheckpointDao,
     private val clock: EditClock,
-    private val rewindFloor: RewindFloor = RewindFloor { 0L },
 ) {
     // region annotations
 
@@ -170,7 +145,7 @@ class TimelineEditor @Inject constructor(
         val visitRows = items.filter { it.type == ItemType.VISIT }.map { visits.getById(it.id)?.takeUnless { v -> v.deleted } ?: return@withTransaction EditResult.NotFound }
         val tripRows = items.filter { it.type == ItemType.TRIP }.map { trips.getById(it.id)?.takeUnless { t -> t.deleted } ?: return@withTransaction EditResult.NotFound }
         val placeRows = if (op is AnnotationOp.IgnorePlace) {
-            visitRows.mapNotNull { it.placeId }.distinct().map { livePlace(it) ?: return@withTransaction EditResult.NotFound }
+            visitRows.mapNotNull { it.placeId }.distinct().map { places.getById(it) ?: return@withTransaction EditResult.NotFound }
         } else {
             emptyList()
         }
@@ -227,19 +202,6 @@ class TimelineEditor @Inject constructor(
                 }
             }
         }
-        EditResult.Ok(undo)
-    }
-
-    /**
-     * Sets `Place.ignored` directly, so a place with no live visits can be ignored too. Re-reads the row inside the
-     * transaction (segmentation rewrites centroid and lastVisitAt). The undo restores the row as it was. No change is
-     * [EditResult.Ok] without an undo. Does not freeze or rewind anything.
-     */
-    suspend fun setPlaceIgnored(placeId: String, ignored: Boolean): EditResult = db.withTransaction {
-        val place = livePlace(placeId) ?: return@withTransaction EditResult.NotFound
-        if (place.ignored == ignored) return@withTransaction EditResult.Ok()
-        val undo = Snapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), places = listOf(place))
-        places.upsert(place.copy(ignored = ignored, updatedAt = clock.nowMs()))
         EditResult.Ok(undo)
     }
 
@@ -463,10 +425,6 @@ class TimelineEditor @Inject constructor(
             excluded.getInRange(from, to).filter { it.id !in keepExclusions }.forEach { excluded.upsert(it.copy(deleted = true, updatedAt = now)) }
         }
         snapshot.places.forEach { places.upsert(it) }
-        snapshot.replaceDefaultTags.forEach { (placeId, links) ->
-            places.deleteAllDefaultTags(placeId)
-            links.forEach { if (tags.getById(it.tagId)?.deleted == false) places.upsertDefaultTag(it) }
-        }
         // Catalog undo is targeted: it reverses only what the archive did, so edits made since (renames, new defaults) survive.
         snapshot.archivedJobIds.forEach { jobs.unarchive(it, now) }
         snapshot.placeDefaultJobs.forEach { (placeId, jobId) ->
@@ -489,7 +447,7 @@ class TimelineEditor @Inject constructor(
             snapshot.tripTags.filter { it.tripId == t.id }.forEach { trips.upsertTag(it) }
         }
         snapshot.exclusions.forEach { excluded.upsert(it) }
-        snapshot.range?.let { rewindCheckpoint(if (snapshot.places.isNotEmpty()) maxOf(it.first, rewindFloor.floorMs()) else it.first) }
+        snapshot.range?.let { rewindCheckpoint(it.first) }
         EditResult.Ok()
     }
 
@@ -528,148 +486,6 @@ class TimelineEditor @Inject constructor(
         val place = places.getById(placeId)?.takeUnless { it.deleted } ?: return@withTransaction EditResult.NotFound
         places.upsert(place.copy(name = name?.trim()?.takeIf { it.isNotEmpty() }, updatedAt = clock.nowMs()))
         EditResult.Ok()
-    }
-
-    // endregion
-
-    // region place geometry (phase 4 T7)
-    //
-    // Every op re-reads its rows by id inside the transaction and never upserts a Place the UI holds, because segmentation
-    // rewrites centroid and lastVisitAt. Each returns an undo [Snapshot] for [restore]; when unfrozen history is affected the
-    // snapshot spans [earliest unfrozen visit, now], so the undo is exact even after a re-run. The caller (app) enqueues segmentation.
-
-    /**
-     * Sets the circle radius, coerced to [PlaceLimits] in steps of [PlaceLimits.RADIUS_STEP_M]. No change is [EditResult.Ok] without an
-     * undo. Unfrozen visits at the place, and at neighbours within `max(old, new) + neighbour radius`, are re-detected;
-     * frozen visits never change.
-     */
-    suspend fun setPlaceRadius(placeId: String, radiusM: Float): EditResult = db.withTransaction {
-        val place = livePlace(placeId) ?: return@withTransaction EditResult.NotFound
-        val radius = coerceRadius(radiusM)
-        if (radius == place.radiusM) return@withTransaction EditResult.Ok()
-        val reach = maxOf(place.radiusM, radius)
-        val neighbours = places.getAllActive().filter {
-            it.id != place.id && haversineMeters(place.centroidLat, place.centroidLng, it.centroidLat, it.centroidLng) <= reach + it.radiusM
-        }
-        val from = visits.earliestUnfrozenStart(listOf(place.id) + neighbours.map { it.id })
-        val now = clock.nowMs()
-        val undo = placeSnapshot(from, now, listOf(place))
-        places.setRadius(place.id, radius, now)
-        rewindForPlaces(from)
-        EditResult.Ok(undo)
-    }
-
-    /** The target's radius after a merge, without writing. Null when the ids are the same, missing or deleted (what [mergePlaces] rejects). */
-    suspend fun previewMerge(sourceId: String, targetId: String): MergePreview? = db.withTransaction {
-        calcMerge(sourceId, targetId)?.let { MergePreview(it.radiusM, it.capped) }
-    }
-
-    /**
-     * Merges [sourceId] into [targetId]. The target's centroid becomes the duration-weighted mean and its circle grows to cover
-     * both (never below its own radius, capped at [PlaceLimits.RADIUS_MAX_M]; [EditResult.Ok.capped] says the cap clipped it).
-     * Empty target fields are filled from the source (default tags too, as a set); `ignored` stays the target's. Every
-     * visit at the source, frozen included, moves to the target (only placeId and updatedAt change). The source becomes a deleted
-     * tombstone with `mergedIntoId` set, and places merged into it point at the target.
-     */
-    suspend fun mergePlaces(sourceId: String, targetId: String): EditResult = db.withTransaction {
-        val calc = calcMerge(sourceId, targetId) ?: return@withTransaction EditResult.NotFound
-        val (source, target) = calc.source to calc.target
-        val now = clock.nowMs()
-        val chain = places.getMergedInto(source.id)
-        val sourceVisits = visits.getLiveByPlace(source.id)
-        val targetTags = places.getDefaultTags(target.id)
-        val from = visits.earliestUnfrozenStart(listOf(source.id, target.id))
-        val undo = placeSnapshot(
-            from, now, listOf(source, target) + chain, extraVisits = sourceVisits,
-            replaceDefaultTags = mapOf(target.id to targetTags),
-        )
-        places.upsert(
-            target.copy(
-                centroidLat = calc.lat, centroidLng = calc.lng, radiusM = calc.radiusM,
-                name = target.name?.takeIf { it.isNotBlank() } ?: source.name?.takeIf { it.isNotBlank() },
-                address = target.address?.takeIf { it.isNotBlank() } ?: source.address?.takeIf { it.isNotBlank() } ?: target.address,
-                defaultJobId = target.defaultJobId ?: source.defaultJobId,
-                defaultBillable = target.defaultBillable ?: source.defaultBillable,
-                lastVisitAt = listOfNotNull(target.lastVisitAt, source.lastVisitAt).maxOrNull(),
-                updatedAt = now,
-            ),
-        )
-        if (targetTags.isEmpty()) places.getDefaultTags(source.id).forEach { places.upsertDefaultTag(PlaceDefaultTag(target.id, it.tagId)) }
-        visits.repointPlace(source.id, target.id, now)
-        places.repointMerged(source.id, target.id, now)
-        places.upsert(source.copy(deleted = true, mergedIntoId = target.id, updatedAt = now))
-        rewindForPlaces(from)
-        EditResult.Ok(undo, capped = calc.capped)
-    }
-
-    /**
-     * Soft-deletes the place and its unfrozen visits (no [ExcludedRange], so they are detected again, usually at a new place).
-     * Frozen visits keep their placeId and are labelled through the deleted place.
-     */
-    suspend fun deletePlace(placeId: String): EditResult = db.withTransaction {
-        val place = livePlace(placeId) ?: return@withTransaction EditResult.NotFound
-        val now = clock.nowMs()
-        val from = visits.earliestUnfrozenStart(listOf(place.id))
-        val undo = placeSnapshot(from, now, listOf(place))
-        visits.softDeleteUnfrozenAt(place.id, now)
-        places.upsert(place.copy(deleted = true, updatedAt = now))
-        rewindForPlaces(from)
-        EditResult.Ok(undo)
-    }
-
-    private class MergeCalc(val source: Place, val target: Place, val lat: Double, val lng: Double, val radiusM: Float, val capped: Boolean)
-
-    private suspend fun calcMerge(sourceId: String, targetId: String): MergeCalc? {
-        if (sourceId == targetId) return null
-        val source = livePlace(sourceId) ?: return null
-        val target = livePlace(targetId)?.takeIf { it.mergedIntoId == null } ?: return null
-        val ds = visits.durationAt(source.id)
-        val dt = visits.durationAt(target.id)
-        val (ws, wt) = if (ds + dt == 0L) 1.0 to 1.0 else ds.toDouble() to dt.toDouble()
-        val lat = (source.centroidLat * ws + target.centroidLat * wt) / (ws + wt)
-        val lng = (source.centroidLng * ws + target.centroidLng * wt) / (ws + wt)
-        val cover = maxOf(
-            haversineMeters(lat, lng, source.centroidLat, source.centroidLng) + source.radiusM,
-            haversineMeters(lat, lng, target.centroidLat, target.centroidLng) + target.radiusM,
-        )
-        val radius = maxOf(target.radiusM, minOf(cover.toFloat(), PlaceLimits.RADIUS_MAX_M))
-        return MergeCalc(source, target, lat, lng, radius, capped = cover > PlaceLimits.RADIUS_MAX_M)
-    }
-
-    private fun coerceRadius(r: Float): Float {
-        val step = PlaceLimits.RADIUS_STEP_M
-        return (Math.round(r / step) * step).coerceIn(PlaceLimits.RADIUS_MIN_M, PlaceLimits.RADIUS_MAX_M)
-    }
-
-    private suspend fun livePlace(id: String): Place? = places.getById(id)?.takeUnless { it.deleted }
-
-    /** Pulls the checkpoint back to [from] (the earliest unfrozen visit the op touched; null means nothing to re-detect) so the next run reprocesses it, but never before [RewindFloor] (purged pings). */
-    private suspend fun rewindForPlaces(from: Long?) {
-        if (from != null) rewindCheckpoint(maxOf(from, rewindFloor.floorMs()))
-    }
-
-    /**
-     * Undo token for a place op: [snapshotRange] from the earliest affected unfrozen visit to now (when there is one), plus
-     * the [placeRows] as they were and any [extraVisits] outside that range (frozen visits a merge repoints).
-     */
-    private suspend fun placeSnapshot(
-        from: Long?,
-        now: Long,
-        placeRows: List<Place>,
-        extraVisits: List<Visit> = emptyList(),
-        replaceDefaultTags: Map<String, List<PlaceDefaultTag>> = emptyMap(),
-    ): Snapshot {
-        val base = if (from != null) {
-            snapshotRange(from, maxOf(now, from))
-        } else {
-            Snapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
-        }
-        val known = base.visits.map { it.id }.toSet()
-        val extra = extraVisits.filter { it.id !in known }
-        return base.copy(
-            visits = base.visits + extra, visitTags = base.visitTags + extra.flatMap { visits.getTags(it.id) },
-            places = placeRows, replaceDefaultTags = replaceDefaultTags,
-        )
     }
 
     // endregion
