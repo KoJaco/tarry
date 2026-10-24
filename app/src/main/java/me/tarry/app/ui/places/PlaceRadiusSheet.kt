@@ -10,7 +10,24 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
+import me.tarry.app.map.GeoPoint
+import me.tarry.app.segmentation.radiusDots
+import me.tarry.app.ui.map.TarryMap
+import me.tarry.app.ui.map.radiusBounds
+import me.tarry.app.ui.map.setDots
+import me.tarry.app.ui.map.setRadiusCircle
+import me.tarry.app.ui.map.toLatLngBounds
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.Style
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -95,6 +112,7 @@ fun PlaceRadiusSheet(
                 enabled = radius < PlaceLimits.RADIUS_MAX_M,
             )
         }
+        if (input != null) RadiusMapPreview(input, radius, counts)
         Column(verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
             if (counts == null) {
                 Text(stringResource(R.string.place_radius_loading), style = MaterialTheme.typography.bodyMedium, color = colors.muted)
@@ -126,6 +144,55 @@ private fun CountLines(counts: RadiusCounts) {
     Text(pluralStringResource(R.plurals.place_radius_leave, counts.leave, counts.leave), style = style, color = ink)
     if (counts.join > 0) Text(pluralStringResource(R.plurals.place_radius_join, counts.join, counts.join), style = style, color = ink)
     if (counts.frozen > 0) Text(pluralStringResource(R.plurals.place_radius_frozen, counts.frozen, counts.frozen), style = style, color = ink)
+}
+
+private val MapHeight = 200.dp
+private val MapFitPadding = 16.dp
+private const val MAP_PREVIEW_ID = "radius"
+
+/**
+ * A non-interactive map under the slider: the radius circle follows [radius] live (data update only, the style is not
+ * reloaded) and the camera fits the largest allowed radius once per centre so it never jumps while sliding. Dark dots
+ * are visits that would be this place's at this radius, muted dots are not, hollow dots are edited visits (frozen).
+ */
+@Composable
+private fun RadiusMapPreview(input: RadiusPreviewInput, radius: Float, counts: RadiusCounts?) {
+    val colors = TarryTheme.colors
+    var map by remember { mutableStateOf<MapLibreMap?>(null) }
+    var style by remember { mutableStateOf<Style?>(null) }
+    val centre = remember(input.centre) { GeoPoint(input.centre.lat, input.centre.lng) }
+    val dots = remember(input, radius) { radiusDots(input, radius) }
+    val fitPadding = with(LocalDensity.current) { MapFitPadding.roundToPx() }
+    val description = if (counts == null) {
+        stringResource(R.string.place_radius_map_description_loading, radius.roundToInt())
+    } else {
+        val inside = counts.stay + counts.join
+        pluralStringResource(R.plurals.place_radius_map_description, inside, radius.roundToInt(), inside)
+    }
+    LaunchedEffect(map, centre) {
+        map?.moveCamera(
+            CameraUpdateFactory.newLatLngBounds(radiusBounds(centre, PlaceLimits.RADIUS_MAX_M.toDouble()).toLatLngBounds(), fitPadding),
+        )
+    }
+    LaunchedEffect(style, centre, radius, dots, colors) {
+        val s = style ?: return@LaunchedEffect
+        s.setRadiusCircle(MAP_PREVIEW_ID, centre, radius.toDouble(), colors.accent.copy(alpha = 0.22f).toArgb(), colors.accentStrong.toArgb())
+        s.setDots("$MAP_PREVIEW_ID-out", dots.outside, colors.muted.toArgb(), colors.paper.toArgb())
+        s.setDots("$MAP_PREVIEW_ID-frozen", dots.frozen, colors.paper.toArgb(), colors.ink.toArgb())
+        s.setDots("$MAP_PREVIEW_ID-in", dots.inside, colors.ink.toArgb(), colors.paper.toArgb())
+    }
+    TarryMap(
+        contentDescription = description,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(MapHeight)
+            .clip(TarryTheme.shapes.small),
+        interactive = false,
+        onStyleLoaded = { m, st ->
+            map = m
+            style = st
+        },
+    )
 }
 
 private fun snap(v: Float): Float =
