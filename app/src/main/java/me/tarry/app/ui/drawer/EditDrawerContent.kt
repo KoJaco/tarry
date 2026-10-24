@@ -51,7 +51,6 @@ import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
-import me.tarry.app.ui.components.SettingsGroupScope
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.map.LocalMapsEnabled
@@ -94,8 +93,6 @@ fun EditDrawerContent(
     state: EditDrawerState,
     actions: EditDrawerActions,
     modifier: Modifier = Modifier,
-    /** Extra rows under "Choose place" in the new-visit form: the seam for a later "Pick on map" option. */
-    placeExtras: SettingsGroupScope.() -> Unit = {},
 ) {
     val space = TarryTheme.space
     var dialog by remember { mutableStateOf<DrawerDialog?>(null) }
@@ -129,7 +126,6 @@ fun EditDrawerContent(
                     if (pin != null) actions.onCreateManualAtNewPlace(pin[0], pin[1], newStart, newEnd)
                     else if (id != null) actions.onCreateManual(id, newStart, newEnd)
                 },
-                placeExtras = placeExtras,
             )
             EditKind.TRIP -> {
                 ErrorBanner(state.error)
@@ -213,7 +209,6 @@ private fun NewVisitForm(
     pin: GeoPoint?,
     onOpen: (DrawerDialog) -> Unit,
     onSave: () -> Unit,
-    placeExtras: SettingsGroupScope.() -> Unit,
 ) {
     val formats = rememberTimeFormats()
     val zone = rememberZone(state.zoneId)
@@ -237,7 +232,6 @@ private fun NewVisitForm(
         SettingsGroup {
             row(choose, onClick = { onOpen(DrawerDialog.NewPlace) }, value = placeLabel)
             row(pickOnMap, onClick = { onOpen(DrawerDialog.PickOnMap) }, icon = R.drawable.ic_location_pin)
-            placeExtras()
         }
         if (placeId == null && pin == null) {
             Text(

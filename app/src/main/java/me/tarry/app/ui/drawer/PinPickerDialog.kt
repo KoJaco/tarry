@@ -48,7 +48,6 @@ import me.tarry.app.map.startCentre
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
-import me.tarry.app.ui.map.LocalMapsEnabled
 import me.tarry.app.ui.map.TarryMap
 import me.tarry.app.ui.map.mapColor
 import me.tarry.app.ui.map.setDots
@@ -124,9 +123,8 @@ fun PinPickerDialog(
                 )
             }
             Box(Modifier.weight(1f).heightIn(min = MapMinHeight).fillMaxWidth()) {
-                // JVM tests cannot load MapLibre's native library: they get a plain box instead of the map.
-                if (!LocalMapsEnabled.current) Box(Modifier.fillMaxSize().background(colors.inset))
-                else TarryMap(
+                // TarryMap draws a placeholder itself when LocalMapsEnabled is false (JVM tests).
+                TarryMap(
                     contentDescription = stringResource(R.string.edit_pin_map_description),
                     modifier = Modifier.fillMaxSize(),
                     onStyleLoaded = { map, style ->
