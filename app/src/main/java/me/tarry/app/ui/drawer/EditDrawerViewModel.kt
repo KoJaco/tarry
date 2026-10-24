@@ -213,6 +213,23 @@ class EditDrawerViewModel @Inject constructor(
 
     fun resetToDetected() = structural(R.string.edit_undo_reset) { v -> editor.resetToDetected(v.id) }
 
+    /**
+     * Saves the new-visit form: a frozen MANUAL visit at [placeId] over `[start, end)`. On success the drawer follows the
+     * new visit (so the user can label it), with an undo offer and a segmentation run; on a validation failure it stays
+     * open with the error inline.
+     */
+    fun createManual(placeId: String, start: Long, end: Long) = viewModelScope.launch {
+        if (target.value !is EditTarget.NewVisit) return@launch
+        val result = editor.createManual(placeId, start, end, ZoneId.systemDefault().id)
+        if (result is EditResult.Ok) {
+            result.undo?.let { undoEvents.offer(UndoEvent(R.string.edit_undo_visit_added, it)) }
+            scheduler.enqueueNow()
+        }
+        finish(result)
+        val newId = (result as? EditResult.Ok)?.id
+        if (newId != null) eventChannel.send(EditDrawerEvent.Retarget(EditTarget.Visit(newId)))
+    }
+
     private fun structural(
         @StringRes undoMessage: Int,
         onOk: suspend (EditResult.Ok) -> Unit = {},

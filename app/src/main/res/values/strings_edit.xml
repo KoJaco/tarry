@@ -80,4 +80,15 @@
     <string name="edit_undo_place_changed">Place changed</string>
     <string name="edit_undo_deleted">Visit deleted</string>
     <string name="edit_undo_reset">Visit reset</string>
+    <string name="edit_undo_visit_added">Visit added</string>
+
+    <!-- New (manual) visit form (phase 5). -->
+    <string name="edit_new_section_when">When</string>
+    <string name="edit_new_section_place">Place</string>
+    <string name="edit_new_start">Start</string>
+    <string name="edit_new_end">End</string>
+    <string name="edit_new_choose_place">Choose place</string>
+    <string name="edit_new_choose_place_required">Choose a place to save this visit.</string>
+    <string name="edit_new_save">Save visit</string>
+    <string name="edit_new_picker_title">Choose a place</string>
 </resources>

@@ -101,4 +101,6 @@ class EditDrawerActions(
     val onDelete: () -> Unit = {},
     val onReset: () -> Unit = {},
     val onAddStop: () -> Unit = {},
+    /** New-visit form: (placeId, start, end). */
+    val onCreateManual: (String, Long, Long) -> Unit = { _, _, _ -> },
 )
