@@ -57,6 +57,8 @@ data class TrackingConfig(
     /** Max places looked up per geocode worker run, and the base retry backoff after a failed lookup. */
     val geocodeBatchSize: Int = 20,
     val geocodeBackoffSeconds: Long = 30L,
+    /** An orphan place (no name, defaults or live visits, default radius) is pruned only once it and its visits have been untouched this long. */
+    val placePruneGraceMs: Long = 60 * 60_000L,
     /** Label by distance from the place to the geocoder's address point: street address within this many metres. */
     val addressExactMaxM: Double = 75.0,
     /** Within this many metres (and past [addressExactMaxM]) the label is "Near <address>"; further out the suburb only. */

@@ -3,6 +3,7 @@ package me.tarry.app.segmentation
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.tarry.app.tracking.ScheduleWindowChecker
+import me.tarry.app.tracking.TrackingConfig
 import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.dao.ExcludedRangeDao
 import me.tarry.core.data.db.dao.GapDao
@@ -58,6 +59,7 @@ class SegmentationRunner @Inject constructor(
     private val excludedDao: ExcludedRangeDao,
     private val windowChecker: ScheduleWindowChecker,
     private val params: SegmentationParams,
+    private val config: TrackingConfig = TrackingConfig(),
 ) {
     suspend fun run(nowMs: Long) {
         mutex.withLock { store.transaction { runLocked(nowMs) } }
@@ -129,6 +131,8 @@ class SegmentationRunner @Inject constructor(
         reconcileTrips(result, visitIds, from, to, zones, now)
         reconcileGaps(result, allGaps, zones, now)
         saveCheckpoint(minOf(nextCheckpoint(result, pings), now))
+        // Orphans (a place nobody named or configured, with no visits left) go after a grace period. Same transaction as the run.
+        placeDao.pruneOrphans(now, now - config.placePruneGraceMs, params.placeMatchRadiusM.toFloat())
     }
 
     /** Writes new, moved and recently visited places. Returns every active place, current values, by id. */

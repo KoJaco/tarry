@@ -10,7 +10,11 @@ import dagger.hilt.components.SingletonComponent
 import me.tarry.core.data.db.ALL_MIGRATIONS
 import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.TarryDatabase
+import kotlinx.coroutines.flow.first
 import me.tarry.core.data.repository.EditClock
+import me.tarry.core.data.repository.RewindFloor
+import me.tarry.core.data.settings.SettingsRepository
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -26,6 +30,10 @@ object DatabaseModule {
 
     @Provides fun segmentationStore(db: TarryDatabase) = SegmentationStore(db)
     @Provides fun editClock(): EditClock = EditClock { System.currentTimeMillis() }
+    @Provides fun rewindFloor(settings: SettingsRepository): RewindFloor = RewindFloor {
+        val days = settings.settings.first().rawPingRetentionDays
+        days?.let { System.currentTimeMillis() - TimeUnit.DAYS.toMillis(it.toLong()) }?.coerceAtLeast(0L) ?: 0L
+    }
     @Provides fun trackingSessionDao(db: TarryDatabase) = db.trackingSessionDao()
     @Provides fun locationPingDao(db: TarryDatabase) = db.locationPingDao()
     @Provides fun manualOverrideDao(db: TarryDatabase) = db.manualOverrideDao()
