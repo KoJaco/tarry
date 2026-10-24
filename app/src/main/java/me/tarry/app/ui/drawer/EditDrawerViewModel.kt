@@ -109,7 +109,7 @@ class EditDrawerViewModel @Inject constructor(
             jobs = allJobs.map { JobOption(it.id, it.name, it.colorArgb) },
             tagGroups = groups.map { g -> TagGroupOption(g.id, g.name, tagsByGroup[g.id].orEmpty().map { TagOption(it.id, it.name) }) }
                 .filter { it.tags.isNotEmpty() },
-            places = allPlaces.filter { it.mergedIntoId == null }.map { PlaceOption(it.id, it.displayLabel(), it.address?.takeIf { a -> a.isNotBlank() }) },
+            places = allPlaces.filter { it.mergedIntoId == null }.map { PlaceOption(it.id, it.displayLabel(), it.address?.takeIf { a -> a.isNotBlank() }, GeoPoint(it.centroidLat, it.centroidLng), it.lastVisitAt, it.radiusM) },
             archivedJobIds = allJobs.filter { it.archived }.map { it.id }.toSet(),
             archivedTagIds = allTags.filter { it.archived }.map { it.id }.toSet(),
         )
@@ -219,9 +219,21 @@ class EditDrawerViewModel @Inject constructor(
      * new visit (so the user can label it), with an undo offer and a segmentation run; on a validation failure it stays
      * open with the error inline.
      */
-    fun createManual(placeId: String, start: Long, end: Long) = viewModelScope.launch {
+    fun createManual(placeId: String, start: Long, end: Long) = saveManual {
+        editor.createManual(placeId, start, end, ZoneId.systemDefault().id)
+    }
+
+    /**
+     * Like [createManual], but at a new place centred on a map pin. One undo removes the visit and the place. The
+     * address is geocoded after the segmentation run this requests, the same way as for detected places.
+     */
+    fun createManualAtNewPlace(lat: Double, lng: Double, start: Long, end: Long) = saveManual {
+        editor.createManualAtNewPlace(lat, lng, start, end, ZoneId.systemDefault().id)
+    }
+
+    private fun saveManual(op: suspend () -> EditResult) = viewModelScope.launch {
         if (target.value !is EditTarget.NewVisit) return@launch
-        val result = editor.createManual(placeId, start, end, ZoneId.systemDefault().id)
+        val result = op()
         if (result is EditResult.Ok) {
             result.undo?.let { undoEvents.offer(UndoEvent(R.string.edit_undo_visit_added, it)) }
             scheduler.enqueueNow()

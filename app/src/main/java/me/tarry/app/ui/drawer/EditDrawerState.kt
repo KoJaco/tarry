@@ -32,7 +32,15 @@ data class TagOption(val id: String, val name: String)
 data class TagGroupOption(val id: String, val name: String, val tags: List<TagOption>)
 
 @Immutable
-data class PlaceOption(val id: String, val label: String, val detail: String?)
+data class PlaceOption(
+    val id: String,
+    val label: String,
+    val detail: String?,
+    /** Where the place is and when it was last visited, for the map pin picker; null when not known (tests, previews). */
+    val centre: GeoPoint? = null,
+    val lastVisitAt: Long? = null,
+    val radiusM: Float = 75f,
+)
 
 /**
  * Everything the drawer draws. Times are UTC epoch ms; [zoneId] is the zone the record was captured in.
@@ -108,4 +116,6 @@ class EditDrawerActions(
     val onAddStop: () -> Unit = {},
     /** New-visit form: (placeId, start, end). */
     val onCreateManual: (String, Long, Long) -> Unit = { _, _, _ -> },
+    /** New-visit form, place picked as a new place at a map pin: (lat, lng, start, end). */
+    val onCreateManualAtNewPlace: (Double, Double, Long, Long) -> Unit = { _, _, _, _ -> },
 )

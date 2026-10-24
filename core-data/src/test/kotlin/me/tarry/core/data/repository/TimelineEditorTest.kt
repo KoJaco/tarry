@@ -531,6 +531,67 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
+    fun createManualAtNewPlaceInsertsTheVisitAndAnUnnamedPlaceAtThePin() = runTest {
+        seedDay()
+
+        val r = editor.createManualAtNewPlace(-33.9, 151.2, t0 + 210 * min, t0 + 230 * min, "UTC") as EditResult.Ok
+
+        val v = visitById(r.id!!)
+        assertThat(v.origin).isEqualTo(VisitOrigin.MANUAL)
+        assertThat(v.frozen).isTrue()
+        val place = db.placeDao().getById(v.placeId!!)!!
+        assertThat(place.deleted).isFalse()
+        assertThat(place.centroidLat).isEqualTo(-33.9)
+        assertThat(place.centroidLng).isEqualTo(151.2)
+        assertThat(place.radiusM).isEqualTo(75f)
+        assertThat(place.name).isNull()
+        assertThat(place.address).isNull()
+        assertThat(place.updatedAt).isEqualTo(now)
+        assertThat(r.undo!!.createdPlaceIds).containsExactly(place.id)
+    }
+
+    @Test
+    fun createManualAtNewPlaceUndoRemovesTheVisitAndThePlaceTogether() = runTest {
+        seedDay()
+        val placesBefore = db.placeDao().getAllActive().map { it.id }
+        val before = state()
+
+        val r = editor.createManualAtNewPlace(-33.9, 151.2, t0 + 210 * min, t0 + 230 * min, "UTC") as EditResult.Ok
+        val newPlaceId = visitById(r.id!!).placeId!!
+        assertThat(db.placeDao().getAllActive().map { it.id }).contains(newPlaceId)
+        editor.restore(r.undo!!)
+
+        assertThat(state()).isEqualTo(before)
+        assertThat(db.placeDao().getAllActive().map { it.id }).containsExactlyElementsIn(placesBefore)
+        assertThat(db.placeDao().getById(newPlaceId)!!.deleted).isTrue()
+    }
+
+    @Test
+    fun createManualAtNewPlaceUndoKeepsThePlaceIfAnotherVisitNowUsesIt() = runTest {
+        seedDay()
+        val r = editor.createManualAtNewPlace(-33.9, 151.2, t0 + 210 * min, t0 + 230 * min, "UTC") as EditResult.Ok
+        val newPlaceId = visitById(r.id!!).placeId!!
+        db.visitDao().upsert(visit("X", 300, 310, placeId = newPlaceId))
+
+        editor.restore(r.undo!!)
+
+        assertThat(db.placeDao().getById(newPlaceId)!!.deleted).isFalse()
+    }
+
+    @Test
+    fun createManualAtNewPlaceInsertsNothingOnOverlapOrEmptyRange() = runTest {
+        seedDay()
+        val placesBefore = db.placeDao().getAllActive().map { it.id }
+        val before = state()
+
+        assertThat(editor.createManualAtNewPlace(1.0, 1.0, t0 + 120 * min, t0 + 135 * min, "UTC")).isEqualTo(EditResult.Overlap)
+        assertThat(editor.createManualAtNewPlace(1.0, 1.0, t0 + 160 * min, t0 + 160 * min, "UTC")).isEqualTo(EditResult.EmptyRange)
+
+        assertThat(state()).isEqualTo(before)
+        assertThat(db.placeDao().getAllActive().map { it.id }).containsExactlyElementsIn(placesBefore)
+    }
+
+    @Test
     fun resetToDetectedClearsAnnotationsUnfreezesAndRemovesExclusionsInsideTheSpan() = runTest {
         seedDay()
         editor.setNotes(ItemRef.visit("A"), "mine")

@@ -532,6 +532,47 @@ class EditDrawerViewModelTest {
     }
 
     @Test
+    fun createManualAtNewPlaceMakesTheVisitAndPlaceFollowsItAndOneUndoRemovesBoth() = runBlocking<Unit> {
+        viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
+        awaitState()
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.createManualAtNewPlace(-33.9, 151.2, base + 5 * minute, base + 25 * minute)
+
+        val event = withTimeout(10_000) { offered.await() }
+        assertThat(event.message).isEqualTo(R.string.edit_undo_visit_added)
+        val created = timeline.visitsInRange(base - minute, base + 100 * minute).single()
+        assertThat(created.origin).isEqualTo(VisitOrigin.MANUAL)
+        assertThat(created.frozen).isTrue()
+        val place = places.place(created.placeId!!)!!
+        assertThat(place.centroidLat).isEqualTo(-33.9)
+        assertThat(place.centroidLng).isEqualTo(151.2)
+        assertThat(place.deleted).isFalse()
+        assertThat(withTimeout(10_000) { viewModel.events.first() })
+            .isEqualTo(EditDrawerEvent.Retarget(EditTarget.Visit(created.id)))
+        assertThat(workManager.getWorkInfosForUniqueWork(SegmentationScheduler.NOW).get()).hasSize(1)
+
+        undoEvents.undo(event)
+
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).isEmpty()
+        assertThat(places.place(place.id)!!.deleted).isTrue()
+    }
+
+    @Test
+    fun createManualAtNewPlaceOverAnotherVisitShowsOverlapAndCreatesNothing() = runBlocking<Unit> {
+        seed(visit("v", 0, 60))
+        viewModel.load(EditTarget.NewVisit(base + 30 * minute, base + 90 * minute))
+        awaitState()
+        val placesBefore = places.observeAll().first().map { it.id }
+
+        viewModel.createManualAtNewPlace(-33.9, 151.2, base + 30 * minute, base + 90 * minute)
+
+        assertThat(awaitState { it.error != null }.error).isEqualTo(EditError.OVERLAP)
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute).map { it.id }).containsExactly("v")
+        assertThat(places.observeAll().first().map { it.id }).containsExactlyElementsIn(placesBefore)
+    }
+
+    @Test
     fun createManualOverAnotherVisitShowsOverlapAndCreatesNothing() = runBlocking<Unit> {
         seed(visit("v", 0, 60))
         viewModel.load(EditTarget.NewVisit(base + 30 * minute, base + 90 * minute))
