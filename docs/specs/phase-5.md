@@ -54,14 +54,14 @@ The manual-visit create form was never built, so it is built here first. Recon f
 | # | Task | Size | Exec | Status |
 |---|---|---|---|---|
 | P0 | Flaky tests | S | claude | Done (#21) |
-| T0 | MapLibre + style + attribution + UA/request cap + Day/Map control, then a device check of network hosts | M | claude | In progress |
-| T1 | Pure building blocks: `RouteBuilder`, `CirclePolygon`, `VisitPins`, `MapConfig` | M | implementer + test-writer | |
-| T2 | Day Map view: route, pins, missing-route banner, pin → drawer, fit camera, day summary content description | L | claude → ui-reviewer | |
-| T3 | Scrubber (`ScrubberModel`, strip, snap, step buttons, semantics) + date-time jump | L | claude + test-writer → ui-reviewer | |
-| T4 | Manual-visit form in NEW_VISIT: times, place search, Save → `createManual`, inline errors, undo | M | implementer + test-writer | |
-| T5 | Map-pin placement: centre-pin picker, nearby places, `createManualAtNewPlace` with a single undo | M | claude + test-writer | |
-| T6 | Drawer mini map (`MapSnapshotter`, cached) | S | implementer | |
-| T7 | Radius sheet live map (circle follows the slider, visit dots) | S | implementer | |
+| T0 | MapLibre + style + attribution + UA/request cap + Day/Map control, then a device check of network hosts | M | claude | Done; device network check moved to T8 |
+| T1 | Pure building blocks: `RouteBuilder`, `CirclePolygon`, `VisitPins`, `MapConfig` | M | implementer + test-writer | Done |
+| T2 | Day Map view: route, pins, missing-route banner, pin → drawer, fit camera, day summary content description | L | claude → ui-reviewer | Done (device pass pending) |
+| T3 | Scrubber (`ScrubberModel`, strip, snap, step buttons, semantics) + date-time jump | L | claude + test-writer → ui-reviewer | Done (device pass pending) |
+| T4 | Manual-visit form in NEW_VISIT: times, place search, Save → `createManual`, inline errors, undo | M | implementer + test-writer | Done |
+| T5 | Map-pin placement: centre-pin picker, nearby places, `createManualAtNewPlace` with a single undo | M | claude + test-writer | In progress |
+| T6 | Drawer mini map (`MapSnapshotter`, cached) | S | implementer | Done (device pass pending) |
+| T7 | Radius sheet live map (circle follows the slider, visit dots) | S | implementer | Done (device pass pending) |
 | T8 | Review, security pass (network/telemetry), device pass | M | claude | |
 
 ## Acceptance criteria
