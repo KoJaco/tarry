@@ -12,7 +12,9 @@ Phases 0–4 and the dogfood fixes are merged, and the DB is Room v1. Phase 5 ad
 The manual-visit create form was never built, so it is built here first. Recon found that NEW_VISIT renders only a header, and nothing in the app calls `TimelineEditor.createManual`.
 
 ## Owner decisions (2026-10-24)
-- **Entry:** a **Day | Map** segmented control under the week strip. It keeps the selected day.
+- **Entry:** a compact **Day | Map** toggle, first in the review row (before "Needs review" and "New visit"). It keeps the selected day.
+  - Revised 2026-10-25: "New visit" becomes a `+` icon when the row doesn't fit; "Needs review" is hidden on the map.
+  - The map runs full width, down to the bottom bar.
   - The owner chose "Timeline | Map". The label is "Day" because the bottom bar already has a "Timeline" tab, and two tabs with the same name confuse TalkBack and the tests.
 - **Offline regions are deferred,** along with Settings → Maps. MapLibre's ambient tile cache is all for now.
   - OpenFreeMap allows at most 3,000 tiles or 50 MB per offline download; larger downloads need a PMTiles extract.
