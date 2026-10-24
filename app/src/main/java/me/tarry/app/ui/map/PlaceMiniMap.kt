@@ -17,7 +17,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,12 +45,6 @@ import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.Polygon
 import me.tarry.app.map.circlePolygon
-
-/**
- * False in JVM/Robolectric tests, which cannot load MapLibre's native library: [PlaceMiniMap] is then not composed
- * at all. On a device it stays true.
- */
-val LocalMapsEnabled = staticCompositionLocalOf { true }
 
 private val MiniMapConfigDefault = MiniMapConfig()
 
