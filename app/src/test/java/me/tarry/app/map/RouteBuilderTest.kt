@@ -100,4 +100,25 @@ class RouteBuilderTest {
         assertThat(route[0].size).isGreaterThan(1000)
         assertThat(ms).isLessThan(5_000L)
     }
+
+    @Test
+    fun stationaryJitterZigZagIsFastAndCollapses() {
+        // Douglas-Peucker's worst case: a long visit's jitter, alternating ±15 m (above the 5 m tolerance) for 50k pings.
+        val n = 50_000
+        val pts = List(n) { pt(it, lat = -33.9 + (if (it % 2 == 0) 0.000135 else -0.000135), lng = 151.2, t = it * 1_000L) }
+        val start = System.nanoTime()
+        val route = buildRoute(pts, emptyList(), cfg)
+        val ms = (System.nanoTime() - start) / 1_000_000
+        assertThat(route).hasSize(1)
+        assertThat(ms).isLessThan(2_000L)
+    }
+
+    @Test
+    fun windowedSimplificationKeepsEndpointsAndHasNoDuplicateJoins() {
+        val pts = List(5_001) { pt(it, lat = -33.9 + it * 0.00005, lng = 151.2 + 0.0006 * kotlin.math.sin(it / 40.0), t = it * 1_000L) }
+        val line = buildRoute(pts, emptyList(), cfg).single()
+        assertThat(line.first()).isEqualTo(GeoPoint(pts.first().lat, pts.first().lng))
+        assertThat(line.last()).isEqualTo(GeoPoint(pts.last().lat, pts.last().lng))
+        assertThat(line.zipWithNext().none { (a, b) -> a == b }).isTrue()
+    }
 }
