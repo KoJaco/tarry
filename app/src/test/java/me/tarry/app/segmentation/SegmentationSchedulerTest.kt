@@ -10,7 +10,9 @@ import androidx.work.NetworkType
 import androidx.work.WorkManager
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withTimeout
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
@@ -45,6 +47,10 @@ class SegmentationSchedulerTest {
         // Hanging workers are still running; cancel and wait so no WorkManager future is left to be failed by the GC finalizer
         // after Robolectric has closed the work database (that leaked an uncaught coroutine exception into later Compose tests).
         workManager.cancelAllWork().result.get()
+        // cancelAllWork() returns once the rows are marked cancelled, not once the coroutines have unwound; wait for them
+        // so nothing is still running (and touching the work database) when Robolectric tears it down.
+        runBlocking { withTimeout(10_000) { HangingWorkerFactory.entered.forEach { it.await() } } }
+        HangingWorkerFactory.entered.clear()
     }
 
     private fun infos(name: String): List<WorkInfo> = workManager.getWorkInfosForUniqueWork(name).get()
@@ -131,8 +137,18 @@ class SegmentationSchedulerTest {
 }
 
 private object HangingWorkerFactory : WorkerFactory() {
+    /** One entry per worker that started [CoroutineWorker.doWork]; completed when it has been cancelled and unwound. */
+    val entered = java.util.concurrent.CopyOnWriteArrayList<CompletableDeferred<Unit>>()
+
     override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
         object : CoroutineWorker(appContext, workerParameters) {
-            override suspend fun doWork(): Result = awaitCancellation()
+            override suspend fun doWork(): Result {
+                val done = CompletableDeferred<Unit>().also { entered += it }
+                try {
+                    awaitCancellation()
+                } finally {
+                    done.complete(Unit)
+                }
+            }
         }
 }

@@ -2,6 +2,10 @@ package me.tarry.app.ui
 
 import android.content.Context
 import androidx.room.Room
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CompletableDeferred
@@ -9,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -73,6 +79,12 @@ class TimelineViewModelTest {
 
     @After
     fun tearDown() {
+        // Cancel every view model's scope first: its init collector would otherwise keep observing the Room flows after
+        // db.close() and leak an uncaught exception into whichever test runs next. Cancellation completes on Room's threads
+        // and resumes through Dispatchers.Main, so wait for every scope to finish before resetMain (else "used concurrently").
+        val scopes = registered.map { it.viewModelScope.coroutineContext.job }
+        store.clear()
+        runBlocking { withTimeout(10_000) { scopes.joinAll() } }
         db.close()
         Dispatchers.resetMain()
     }
@@ -80,7 +92,22 @@ class TimelineViewModelTest {
     private fun at(date: LocalDate, hour: Int, minute: Int = 0): Long =
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private fun viewModel(today: () -> LocalDate = { day }) = TimelineViewModel(timeline, places, jobs, tags, zone, today)
+    private val store = ViewModelStore()
+    private var nextKey = 0
+    private val registered = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<TimelineViewModel, Boolean>())
+
+    /** Registers the view model with [store] (once) so tearDown can clear it (cancelling viewModelScope) before the DB closes. */
+    private fun TimelineViewModel.managed(): TimelineViewModel {
+        val vm = this
+        if (!registered.add(vm)) return vm
+        return ViewModelProvider.create(store, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = vm as T
+        })["vm${nextKey++}", TimelineViewModel::class.java]
+    }
+
+    private fun viewModel(today: () -> LocalDate = { day }) =
+        TimelineViewModel(timeline, places, jobs, tags, zone, today).managed()
 
     private fun TimelineViewModel.awaitItems(predicate: (List<TimelineItem>) -> Boolean): List<TimelineItem> =
         runBlocking { withTimeout(10_000) { items.first { it != null && predicate(it) } } }.orEmpty()
@@ -88,7 +115,7 @@ class TimelineViewModelTest {
     /** Saves one live visit per id on [day] and returns a view model that has already loaded them (selection is pruned to live visits). */
     private fun loadedViewModel(vararg ids: String, build: () -> TimelineViewModel = { viewModel() }): TimelineViewModel {
         runBlocking { ids.forEachIndexed { i, id -> timeline.saveVisit(visit(id, at(day, 8 + 2 * i), at(day, 9 + 2 * i), null)) } }
-        return build().also { it.awaitItems { rows -> rows.size == ids.size } }
+        return build().managed().also { it.awaitItems { rows -> rows.size == ids.size } }
     }
 
     private fun visit(id: String, start: Long, end: Long, placeId: String?, jobId: String? = null) = Visit(
