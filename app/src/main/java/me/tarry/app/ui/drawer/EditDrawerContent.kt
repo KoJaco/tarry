@@ -22,7 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -42,9 +44,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import me.tarry.app.R
 import me.tarry.app.ui.components.DestructiveButton
+import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
+import me.tarry.app.ui.components.SettingsGroupScope
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.theme.TarryTheme
@@ -70,10 +74,13 @@ private sealed interface DrawerDialog {
     data object TrimStart : DrawerDialog
     data object TrimEnd : DrawerDialog
     data object Split : DrawerDialog
+    data object NewStart : DrawerDialog
+    data object NewEnd : DrawerDialog
+    data object NewPlace : DrawerDialog
 }
 
 /**
- * The drawer body for a visit, a trip or (for now just the header of) a new visit. Stateless apart from which dialog is
+ * The drawer body for a visit, a trip or a new visit (the create form). Stateless apart from which dialog is
  * open and the notes text being typed (saved on a short debounce, on blur and when the drawer closes).
  */
 @Composable
@@ -81,9 +88,15 @@ fun EditDrawerContent(
     state: EditDrawerState,
     actions: EditDrawerActions,
     modifier: Modifier = Modifier,
+    /** Extra rows under "Choose place" in the new-visit form: the seam for a later "Pick on map" option. */
+    placeExtras: SettingsGroupScope.() -> Unit = {},
 ) {
     val space = TarryTheme.space
     var dialog by remember { mutableStateOf<DrawerDialog?>(null) }
+    // New-visit form values; they survive rotation and are unused by the other kinds.
+    var newStart by rememberSaveable(state.start) { mutableLongStateOf(state.start) }
+    var newEnd by rememberSaveable(state.end) { mutableLongStateOf(state.end) }
+    var newPlaceId by rememberSaveable { mutableStateOf<String?>(null) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -95,7 +108,15 @@ fun EditDrawerContent(
     ) {
         DrawerHeader(state, onRename = { dialog = DrawerDialog.RenamePlace })
         when (state.kind) {
-            EditKind.NEW_VISIT -> Unit
+            EditKind.NEW_VISIT -> NewVisitForm(
+                state = state,
+                start = newStart,
+                end = newEnd,
+                placeId = newPlaceId,
+                onOpen = { dialog = it },
+                onSave = { newPlaceId?.let { actions.onCreateManual(it, newStart, newEnd) } },
+                placeExtras = placeExtras,
+            )
             EditKind.TRIP -> {
                 ErrorBanner(state.error)
                 AttributionSection(state) { dialog = DrawerDialog.JobPicker }
@@ -115,6 +136,80 @@ fun EditDrawerContent(
         }
     }
     DrawerDialogs(state, actions, dialog, onShow = { dialog = it }, onClose = { dialog = null })
+    val zone = rememberZone(state.zoneId)
+    val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    if (dialog == DrawerDialog.NewPlace) {
+        PlacePickerSheet(
+            places = state.places,
+            onSelect = {
+                newPlaceId = it
+                dialog = null
+            },
+            onDismiss = { dialog = null },
+            title = stringResource(R.string.edit_new_picker_title),
+        )
+    }
+    if (dialog == DrawerDialog.NewStart || dialog == DrawerDialog.NewEnd) {
+        val isStart = dialog == DrawerDialog.NewStart
+        val anchor = if (isStart) newStart else newEnd
+        TimePickerDialog(
+            title = stringResource(if (isStart) R.string.edit_time_picker_trim_start else R.string.edit_time_picker_trim_end),
+            initialMs = anchor,
+            zone = zone,
+            is24Hour = is24Hour,
+            onConfirm = { hour, minute ->
+                val picked = instantNear(hour, minute, zone, anchor)
+                if (isStart) newStart = picked else newEnd = picked
+                dialog = null
+            },
+            onDismiss = { dialog = null },
+        )
+    }
+}
+
+/** Times and place for a manual visit. Save needs a place; the editor rejects empty ranges and overlaps (shown inline). */
+@Composable
+private fun NewVisitForm(
+    state: EditDrawerState,
+    start: Long,
+    end: Long,
+    placeId: String?,
+    onOpen: (DrawerDialog) -> Unit,
+    onSave: () -> Unit,
+    placeExtras: SettingsGroupScope.() -> Unit,
+) {
+    val formats = rememberTimeFormats()
+    val zone = rememberZone(state.zoneId)
+    val placeLabel = placeId?.let { id -> state.places.firstOrNull { it.id == id }?.label }
+    val startTitle = stringResource(R.string.edit_new_start)
+    val endTitle = stringResource(R.string.edit_new_end)
+    val choose = stringResource(R.string.edit_new_choose_place)
+    ErrorBanner(state.error)
+    Section(R.string.edit_new_section_when) {
+        SettingsGroup {
+            row(startTitle, onClick = { onOpen(DrawerDialog.NewStart) }, value = formats.time(start, zone))
+            row(endTitle, onClick = { onOpen(DrawerDialog.NewEnd) }, value = formats.time(end, zone))
+        }
+    }
+    Section(R.string.edit_new_section_place) {
+        SettingsGroup {
+            row(choose, onClick = { onOpen(DrawerDialog.NewPlace) }, value = placeLabel)
+            placeExtras()
+        }
+        if (placeId == null) {
+            Text(
+                stringResource(R.string.edit_new_choose_place_required),
+                style = MaterialTheme.typography.bodySmall,
+                color = TarryTheme.colors.muted,
+            )
+        }
+    }
+    PrimaryButton(
+        stringResource(R.string.edit_new_save),
+        onClick = onSave,
+        enabled = placeId != null,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 // region header

@@ -67,6 +67,7 @@ fun EditDrawer(
             onChangePlace = { viewModel.changePlace(it) },
             onDelete = { viewModel.delete() },
             onReset = { viewModel.resetToDetected() },
+            onCreateManual = { placeId, start, end -> viewModel.createManual(placeId, start, end) },
             onAddStop = {
                 (target as? EditTarget.Trip)?.let { trip ->
                     state?.let { s -> currentRetarget(EditTarget.NewVisit(s.start, s.end, trip.id)) }

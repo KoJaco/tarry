@@ -9,6 +9,8 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertHasClickAction
@@ -279,13 +281,65 @@ class EditDrawerContentTest {
         assertThat(stops).isEqualTo(1)
     }
 
+    private fun newVisit(error: EditError? = null) = EditDrawerState(
+        kind = EditKind.NEW_VISIT, id = null, start = at(10), end = at(11), zoneId = zone.id,
+        places = listOf(PlaceOption("p1", "Rose Bay Marina", "1 Beach Rd"), PlaceOption("p2", "Depot", null)),
+        error = error,
+    )
+
     @Test
-    fun newVisitRendersOnlyTheTitleAndRange() {
-        val state = EditDrawerState(kind = EditKind.NEW_VISIT, id = null, start = at(10), end = at(11), zoneId = zone.id)
-        show(state)
+    fun newVisitShowsTheTitleTimesAndNoStructuralControls() {
+        show(newVisit())
         composeRule.onNodeWithText("New visit").assert(heading())
         composeRule.onNodeWithText("Delete visit").assertDoesNotExist()
         composeRule.onNodeWithText("Needs review").assertDoesNotExist()
+        composeRule.onNodeWithText("Start").assertExists()
+        composeRule.onNodeWithText("End").assertExists()
+        composeRule.onNodeWithText("Choose place").assertHasClickAction()
+    }
+
+    @Test
+    fun newVisitSaveNeedsAPlaceThenSendsThePlaceAndTimes() {
+        val saved = mutableListOf<Triple<String, Long, Long>>()
+        show(newVisit(), EditDrawerActions(onCreateManual = { p, s, e -> saved += Triple(p, s, e) }))
+        composeRule.onNodeWithText("Save visit").performScrollTo().assertIsNotEnabled()
+        composeRule.onNodeWithText("Choose a place to save this visit.").assertExists()
+
+        composeRule.onNodeWithText("Choose place").performClick()
+        composeRule.onNodeWithText("Rose Bay Marina").performClick()
+
+        composeRule.onNodeWithText("Choose a place to save this visit.").assertDoesNotExist()
+        composeRule.onNodeWithText("Save visit").performScrollTo().assertIsEnabled().performClick()
+        assertThat(saved).containsExactly(Triple("p1", at(10), at(11)))
+    }
+
+    @Test
+    fun newVisitTimeRowOpensThePickerAndConfirmKeepsTheForm() {
+        val saved = mutableListOf<Triple<String, Long, Long>>()
+        show(newVisit(), EditDrawerActions(onCreateManual = { p, s, e -> saved += Triple(p, s, e) }))
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.onNodeWithText("Start time").assertExists()
+        composeRule.onNodeWithText("OK").performClick()
+        composeRule.onNodeWithText("Start time").assertDoesNotExist()
+        composeRule.onNodeWithText("Choose place").performClick()
+        composeRule.onNodeWithText("Depot").performClick()
+        composeRule.onNodeWithText("Save visit").performScrollTo().performClick()
+        assertThat(saved).containsExactly(Triple("p2", at(10), at(11)))
+    }
+
+    @Test
+    fun newVisitShowsEditorErrorsInlineAndKeepsTheForm() {
+        show(newVisit(error = EditError.OVERLAP))
+        composeRule.onNodeWithText("That would overlap another visit.").assertExists()
+        composeRule.onNodeWithText("Save visit").assertExists()
+    }
+
+    @Test
+    fun newVisitFormFitsAtFontScaleTwo() {
+        show(newVisit(error = EditError.EMPTY_RANGE), fontScale = 2f)
+        composeRule.onNodeWithText("Choose place", useUnmergedTree = true).performScrollTo().assertNotTruncated()
+        composeRule.onNodeWithText("Choose a place to save this visit.", useUnmergedTree = true).performScrollTo().assertNotTruncated()
+        composeRule.onNodeWithText("Save visit", useUnmergedTree = true).performScrollTo().assertNotTruncated()
     }
 
     @Test
