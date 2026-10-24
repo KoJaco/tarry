@@ -24,8 +24,6 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.navigation.JobsRoute
-import me.tarry.app.ui.navigation.PlaceDetailRoute
-import me.tarry.app.ui.navigation.PlacesRoute
 import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
@@ -128,37 +126,6 @@ class TarryAppShellTest {
         composeRule.onNodeWithText("Tags").performScrollTo().performClick()
         composeRule.mainClock.advanceTimeBy(1_000)
         composeRule.onNodeWithText("Tags screen").assertIsDisplayed()
-    }
-
-    @Test
-    fun placesRow_pushesPlacesThenDetail_andBackReturnsToPlaces() {
-        val backStack = mutableStateListOf<NavKey>(TimelineRoute)
-        composeRule.setContent {
-            TarryAppContent(
-                trackingState = TrackingState.IDLE,
-                backStack = backStack,
-                onNavigate = { backStack.navigateTopLevel(it) },
-                onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
-                onToggleClick = {},
-                settingsContent = { SettingsContent(Settings(), onOpenPlaces = { backStack.add(PlacesRoute) }) },
-                timelineContent = { Text("Timeline screen") },
-                placesContent = { Text("Places screen") },
-                placeDetailContent = { Text("Detail $it") },
-            )
-        }
-        settingsTab.performClick()
-
-        composeRule.onNodeWithText("Places").performScrollTo().performClick()
-        composeRule.mainClock.advanceTimeBy(1_000)
-        composeRule.onNodeWithText("Places screen").assertIsDisplayed()
-        backStack.add(PlaceDetailRoute("p1"))
-        composeRule.mainClock.advanceTimeBy(1_000)
-        composeRule.onNodeWithText("Detail p1").assertIsDisplayed()
-        settingsTab.assertIsSelected()
-
-        backStack.removeAt(backStack.lastIndex)
-        composeRule.mainClock.advanceTimeBy(1_000)
-        composeRule.onNodeWithText("Places screen").assertIsDisplayed()
     }
 
     @Test

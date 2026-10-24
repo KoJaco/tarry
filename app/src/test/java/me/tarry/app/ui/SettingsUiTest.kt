@@ -56,16 +56,14 @@ class SettingsUiTest {
                 Settings(),
                 onOpenJobs = { opened += "jobs" },
                 onOpenTags = { opened += "tags" },
-                onOpenPlaces = { opened += "places" },
             )
         }
 
         composeRule.onNodeWithText("Labels", ignoreCase = true).assertExists()
         composeRule.onNodeWithText("Jobs").assertHeightIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithText("Tags").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
-        composeRule.onNodeWithText("Places").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
 
-        assertThat(opened).containsExactly("jobs", "tags", "places").inOrder()
+        assertThat(opened).containsExactly("jobs", "tags").inOrder()
     }
 
     private val radioOption =SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
