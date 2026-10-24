@@ -23,6 +23,7 @@ import me.tarry.app.ui.timeline.displayLabel
 import me.tarry.app.ui.timeline.labelIsCoordinates
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
+import me.tarry.app.map.GeoPoint
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.Trip
 import me.tarry.core.data.db.entity.Visit
@@ -299,6 +300,9 @@ class EditDrawerViewModel @Inject constructor(
                 placeLabel = place?.displayLabel(), placeLabelIsCoordinates = place?.labelIsCoordinates() ?: false,
                 placeName = place?.name?.takeIf { it.isNotBlank() },
                 hasPlace = place != null && !place.deleted, placeIgnored = place?.ignored ?: false,
+                placeId = place?.takeIf { !it.deleted }?.id,
+                placeCentre = place?.takeIf { !it.deleted }?.let { GeoPoint(it.centroidLat, it.centroidLng) },
+                placeRadiusM = place?.radiusM ?: 0f,
                 jobs = catalog.pickableJobs(setOf(v.jobId, place?.defaultJobId)), tagGroups = catalog.pickableTagGroups(data.effectiveTags),
                 places = catalog.places,
                 ownJob = job(v.jobId), placeJob = job(place?.defaultJobId),

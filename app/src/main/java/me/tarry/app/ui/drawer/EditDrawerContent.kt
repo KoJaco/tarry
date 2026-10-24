@@ -51,6 +51,8 @@ import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.SettingsGroupScope
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.TarryChip
+import me.tarry.app.ui.map.LocalMapsEnabled
+import me.tarry.app.ui.map.PlaceMiniMap
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.timeline.formatDistance
 import me.tarry.app.ui.timeline.formatDuration
@@ -250,6 +252,17 @@ private fun DrawerHeader(state: EditDrawerState, onRename: () -> Unit) {
             }
         }
         Text(text = subtitle, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
+        val centre = state.placeCentre
+        val placeId = state.placeId
+        if (state.kind == EditKind.VISIT && centre != null && placeId != null && LocalMapsEnabled.current) {
+            PlaceMiniMap(
+                placeId = placeId,
+                placeLabel = state.placeLabel ?: stringResource(R.string.timeline_unknown_place),
+                centre = centre,
+                radiusM = state.placeRadiusM,
+                modifier = Modifier.padding(top = TarryTheme.space.s),
+            )
+        }
         if (state.needsReview) {
             Text(
                 text = stringResource(R.string.timeline_needs_review),

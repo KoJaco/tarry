@@ -66,7 +66,7 @@ internal fun TarryColors.mapPalette(): Map<String, Int> = mapOf(
     "mapGreen" to mapGreen.toArgb(),
 )
 
-private fun Context.styleTemplate(): String =
+internal fun Context.styleTemplate(): String =
     assets.open(MapStyle.TemplateAsset).bufferedReader().use { it.readText() }
 
 /**

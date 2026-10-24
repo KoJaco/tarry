@@ -11,4 +11,5 @@
     <string name="map_attribution_openmaptiles">© OpenMapTiles</string>
     <string name="map_attribution_osm">Data from OpenStreetMap contributors</string>
     <string name="map_attribution_close">Close</string>
+    <string name="map_place_mini_description">Map of %1$s, %2$s radius</string>
 </resources>
