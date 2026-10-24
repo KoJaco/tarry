@@ -80,6 +80,8 @@ private fun Context.styleTemplate(): String =
 fun TarryMap(
     contentDescription: String,
     modifier: Modifier = Modifier,
+    /** False for previews (radius sheet): no pan, zoom, rotate or tilt, so the sheet's own gestures win. */
+    interactive: Boolean = true,
     onStyleLoaded: (MapLibreMap, Style) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
@@ -117,6 +119,7 @@ fun TarryMap(
     }
     LaunchedEffect(mapView, styleJson) {
         mapView.getMapAsync { map ->
+            map.uiSettings.setAllGesturesEnabled(interactive)
             map.setStyle(Style.Builder().fromJson(styleJson)) { style -> currentOnStyleLoaded(map, style) }
         }
     }
