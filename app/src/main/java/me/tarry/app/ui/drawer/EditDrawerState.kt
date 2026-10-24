@@ -17,6 +17,8 @@ internal fun EditResult.toError(): EditError? = when (this) {
     EditResult.EmptyRange -> EditError.EMPTY_RANGE
     EditResult.NotFound -> EditError.NOT_FOUND
     EditResult.BlankName -> EditError.BLANK_NAME
+    // Only CatalogEditor returns InUse, and its callers are the catalog screens, not the drawer.
+    is EditResult.InUse -> EditError.NOT_FOUND
 }
 
 @Immutable

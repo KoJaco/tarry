@@ -31,9 +31,16 @@ class SegmentationScheduler @Inject constructor(
 ) {
     private val workManager get() = WorkManager.getInstance(context)
 
-    /** One-time run now. KEEP: a run that is already queued or running covers the request. */
+    /**
+     * One-time run now. APPEND_OR_REPLACE: a request made while a run is in progress is chained behind it (the run may
+     * already have read its inputs, so it does not cover the new edit); [SegmentationRunner] serialises the runs. A
+     * chain that is already failed or cancelled when this is called is replaced rather than appended to (a chain whose
+     * predecessor fails later would fail its dependents, which is why [SegmentationWorker] never returns failure).
+     * N quick edits therefore mean N serial runs; each is cheap, and coalescing them would risk skipping an edit.
+     */
     fun enqueueNow() {
-        workManager.enqueueUniqueWork(NOW, ExistingWorkPolicy.KEEP, OneTimeWorkRequestBuilder<SegmentationWorker>().build())
+        // Each call appends one more run to the chain (see above); the runner mutex keeps them from overlapping.
+        workManager.enqueueUniqueWork(NOW, ExistingWorkPolicy.APPEND_OR_REPLACE, OneTimeWorkRequestBuilder<SegmentationWorker>().build())
     }
 
     /** State of the one-time "run now" work; empty if it never ran. */

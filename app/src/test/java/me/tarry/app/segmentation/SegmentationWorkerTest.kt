@@ -86,19 +86,19 @@ class SegmentationWorkerTest {
     }
 
     @Test
-    fun failureRetriesThreeTimesThenFails() = runBlocking<Unit> {
+    fun failureRetriesThreeTimesThenGivesUpWithSuccess() = runBlocking<Unit> {
         db.close()
 
         for (attempt in 0 until SegmentationWorker.MAX_RETRIES) {
             assertThat(work(attempt).startWork().get()).isEqualTo(ListenableWorker.Result.retry())
         }
-        assertThat(work(SegmentationWorker.MAX_RETRIES).startWork().get()).isEqualTo(ListenableWorker.Result.failure())
+        assertThat(work(SegmentationWorker.MAX_RETRIES).startWork().get()).isEqualTo(ListenableWorker.Result.success())
     }
 
     @Test
-    fun finalFailureIsRecordedAndNextSuccessClearsIt() = runBlocking<Unit> {
+    fun finalFailureIsRecordedAndStillReturnsSuccessSoChainedRunsExecute() = runBlocking<Unit> {
         db.close()
-        assertThat(work(SegmentationWorker.MAX_RETRIES).startWork().get()).isEqualTo(ListenableWorker.Result.failure())
+        assertThat(work(SegmentationWorker.MAX_RETRIES).startWork().get()).isEqualTo(ListenableWorker.Result.success())
         val error = statusStore.current().segmentationError
         assertThat(error).isNotNull()
         assertThat(error!!.timeMs).isEqualTo(1_700_000_000_000L)

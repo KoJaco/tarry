@@ -647,6 +647,20 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
+    fun bulkSetBillableFreezesAllItemsAndUndoRestoresThem() = runTest {
+        seedDay()
+        val before = state()
+
+        val r = editor.bulk(listOf(ItemRef.visit("A"), ItemRef.visit("C")), AnnotationOp.SetBillable(false))
+
+        assertThat(visitById("A").billable).isFalse()
+        assertThat(visitById("C").billable).isFalse()
+        assertThat(visitById("A").frozen).isTrue()
+        editor.restore(r.undo())
+        assertThat(state()).isEqualTo(before)
+    }
+
+    @Test
     fun bulkIgnorePlaceMarksThePlacesAndUndoClearsIt() = runTest {
         seedDay()
         val before = state()

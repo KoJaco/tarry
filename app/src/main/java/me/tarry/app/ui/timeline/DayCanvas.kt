@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -60,6 +61,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.isTraversalGroup
@@ -113,6 +115,11 @@ private object DayCanvasDefaults {
     /** Half the now-pill's height: centres the pill on the now-line. */
     val NowPillHalfHeight = 10.dp
     val NowLineHeight = 2.dp
+
+    /** The ink check badge on a selected visit block, and its inset from the block's corner. */
+    val CheckBadge = 24.dp
+    val CheckIcon = 16.dp
+    val CheckInset = 4.dp
 
     val BlockPaddingV = 6.dp
     val OneLinePaddingV = 2.dp
@@ -170,6 +177,12 @@ fun DayCanvas(
     /** The visit whose resize handles are shown; a single tap on a visit block selects it. */
     selectedVisitId: String? = null,
     onSelectVisit: (String) -> Unit = {},
+    /** Multi-select mode: taps toggle visits in [selectedIds]; the single-tap select, double tap and handles are off. */
+    selecting: Boolean = false,
+    selectedIds: Set<String> = emptySet(),
+    /** Long press on a visit block (or the TalkBack "Select for bulk edit" action) enters selection mode. */
+    onLongPressVisit: (String) -> Unit = {},
+    onToggleVisit: (String) -> Unit = {},
     /** A handle drag was released: the visit's new start and end (UTC epoch ms, snapped, already clamped). */
     onResizeVisit: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
     /** Shortest a visit may be dragged to, and the least a trimmed neighbour keeps. */
@@ -273,11 +286,15 @@ fun DayCanvas(
                         when (val item = placed.item) {
                             is TimelineItem.Visit -> VisitBlock(
                                 item, shown as? PlacedBlock ?: placed, times, description, index, fontScale, dimmed, position,
-                                selected = item.id == selectedVisitId,
+                                selected = if (selecting) item.id in selectedIds else item.id == selectedVisitId,
+                                selecting = selecting,
                                 onSelect = { onSelectVisit(item.id) },
                                 onOpen = { onOpenVisit(item.id) },
+                                onLongPress = { onLongPressVisit(item.id) },
+                                onToggle = { onToggleVisit(item.id) },
                             )
-                            is TimelineItem.Gap -> GapBlock(item, placed, times, description, index, fontScale, dimmed, position) { onOpenGap(item, placed.cluster) }
+                            // Trips and gaps are not selectable: while selecting they are disabled, so they expose no "Open" action either.
+                            is TimelineItem.Gap -> GapBlock(item, placed, times, description, index, fontScale, dimmed, position, enabled = !selecting) { onOpenGap(item, placed.cluster) }
                             is TimelineItem.Trip -> Unit // Trips are placed as PlacedTrip, never as blocks.
                         }
                     }
@@ -288,11 +305,12 @@ fun DayCanvas(
                         index,
                         dimmed,
                         position,
+                        enabled = !selecting,
                     ) { onOpenTrip(placed.trip.id) }
                 }
             }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
-            val selectedBlock = selectedVisitId?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
+            val selectedBlock = selectedVisitId?.takeUnless { selecting }?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
             val selectedVisit = selectedBlock?.item as? TimelineItem.Visit
             if (selectedBlock != null && selectedVisit != null) {
                 val index = visitItems.indexOfFirst { it.id == selectedVisit.id }
@@ -358,8 +376,11 @@ private fun VisitBlock(
     dimmed: Boolean,
     modifier: Modifier,
     selected: Boolean,
+    selecting: Boolean,
     onSelect: () -> Unit,
     onOpen: () -> Unit,
+    onLongPress: () -> Unit,
+    onToggle: () -> Unit,
 ) {
     val c = TarryTheme.colors
     val job: JobColors? = visit.jobName?.let { JobPalette.lookup(visit.jobColorArgb, visit.jobId ?: it).colors(TarryTheme.isDark) }
@@ -371,6 +392,10 @@ private fun VisitBlock(
     val openLabel = stringResource(R.string.timeline_edit_visit)
     val currentSelect by rememberUpdatedState(onSelect)
     val currentOpen by rememberUpdatedState(onOpen)
+    val currentLongPress by rememberUpdatedState(onLongPress)
+    val currentToggle by rememberUpdatedState(onToggle)
+    val toggleLabel = stringResource(R.string.timeline_toggle_selection)
+    val bulkLabel = stringResource(R.string.timeline_select_for_bulk)
     val title = visit.placeLabel ?: unknown
     val oneLine = placed.compact || placed.heightDp < DayCanvasDefaults.OneLineBelowDp * fontScale
     val showChip = !oneLine && job == null && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
@@ -393,23 +418,39 @@ private fun VisitBlock(
         modifier = modifier
             .then(dots)
             .then(look)
-            // Single tap selects (confirmed after the double-tap timeout), double tap opens the drawer. A long press is
-            // reserved for multi-select and does nothing yet. TalkBack's activate opens the drawer directly.
-            .pointerInput(Unit) { detectTapGestures(onTap = { currentSelect() }, onDoubleTap = { currentOpen() }) }
+            // Single tap selects (confirmed after the double-tap timeout), double tap opens the drawer, long press enters
+            // multi-select. While selecting, a tap just toggles this block. TalkBack's activate opens the drawer directly.
+            .pointerInput(selecting) {
+                if (selecting) {
+                    detectTapGestures(onTap = { currentToggle() })
+                } else {
+                    detectTapGestures(
+                        onTap = { currentSelect() },
+                        onDoubleTap = { currentOpen() },
+                        onLongPress = { currentLongPress() },
+                    )
+                }
+            }
             // Keyboard / switch access (WCAG 2.1.1): focusable, with a visible ink ring; Enter or Space opens the drawer.
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .then(if (focused) Modifier.border(DayCanvasDefaults.BorderWidth * 2, c.ink, shape) else Modifier)
             .onKeyEvent { e ->
                 val activate = e.key == Key.Enter || e.key == Key.NumPadEnter || e.key == Key.Spacebar
-                if (activate && e.type == KeyEventType.KeyUp) currentOpen()
+                if (activate && e.type == KeyEventType.KeyUp) { if (selecting) currentToggle() else currentOpen() }
                 activate
             }
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                onClick(label = openLabel) {
-                    currentOpen()
+                onClick(label = if (selecting) toggleLabel else openLabel) {
+                    if (selecting) currentToggle() else currentOpen()
                     true
+                }
+                if (!selecting) {
+                    onLongClick(label = bulkLabel) {
+                        currentLongPress()
+                        true
+                    }
                 }
                 this.selected = selected
                 contentDescription = description
@@ -429,7 +470,7 @@ private fun VisitBlock(
             .fillMaxSize()
             .padding(
                 start = TarryTheme.space.m,
-                end = TarryTheme.space.m,
+                end = TarryTheme.space.m + (if (selected && selecting) DayCanvasDefaults.CheckBadge + TarryTheme.space.xs else 0.dp),
                 top = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV,
                 bottom = if (oneLine) DayCanvasDefaults.OneLinePaddingV else DayCanvasDefaults.BlockPaddingV,
             ),
@@ -494,6 +535,26 @@ private fun VisitBlock(
             }
         }
     }
+    if (selected && selecting) {
+        // Selected look from the theme: a heavier ink ring plus an ink badge with a check (state is also in semantics).
+        Box(Modifier.matchParentSize().border(DayCanvasDefaults.BorderWidth * 2, c.ink, shape))
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(DayCanvasDefaults.CheckInset)
+                .size(DayCanvasDefaults.CheckBadge)
+                .clip(CircleShape)
+                .background(c.ink),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_check),
+                contentDescription = null,
+                tint = c.onInk,
+                modifier = Modifier.size(DayCanvasDefaults.CheckIcon),
+            )
+        }
+    }
     }
 }
 
@@ -525,6 +586,7 @@ private fun GapBlock(
     fontScale: Float,
     dimmed: Boolean,
     modifier: Modifier,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val c = TarryTheme.colors
@@ -536,7 +598,8 @@ private fun GapBlock(
             .background(c.alertSoft)
             .hatch(c.alert.copy(alpha = DayCanvasDefaults.HatchAlpha))
             .border(DayCanvasDefaults.BorderWidth, c.alert, shape)
-            .clickable(onClickLabel = stringResource(R.string.timeline_show_details), role = Role.Button, onClick = onClick)
+            // Not merely disabled: a disabled clickable still exposes its click action, so it is left off while selecting.
+            .then(if (enabled) Modifier.clickable(onClickLabel = stringResource(R.string.timeline_show_details), role = Role.Button, onClick = onClick) else Modifier)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = index.toFloat()
@@ -582,6 +645,7 @@ private fun TripRow(
     index: Int,
     dimmed: Boolean,
     modifier: Modifier,
+    enabled: Boolean,
     onClick: () -> Unit,
 ) {
     val c = TarryTheme.colors
@@ -593,7 +657,7 @@ private fun TripRow(
     )
     Row(
         modifier = modifier
-            .clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick)
+            .then(if (enabled) Modifier.clickable(onClickLabel = stringResource(R.string.timeline_edit_trip), role = Role.Button, onClick = onClick) else Modifier)
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = index.toFloat()

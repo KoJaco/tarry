@@ -1,6 +1,13 @@
 package me.tarry.app.ui
 
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -12,9 +19,12 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.navigation.JobsRoute
+import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.settings.SettingsContent
@@ -83,6 +93,42 @@ class TarryAppShellTest {
     }
 
     @Test
+    fun settingsRows_pushJobsAndTagsOverSettings_andTheSettingsTabReturns() {
+        val backStack = mutableStateListOf<NavKey>(TimelineRoute)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = { backStack.navigateTopLevel(it) },
+                onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+                onToggleClick = {},
+                settingsContent = {
+                    SettingsContent(
+                        Settings(),
+                        onOpenJobs = { backStack.add(JobsRoute) },
+                        onOpenTags = { backStack.add(TagsRoute) },
+                    )
+                },
+                timelineContent = { Text("Timeline screen") },
+                jobsContent = { Text("Jobs screen") },
+                tagsContent = { Text("Tags screen") },
+            )
+        }
+        settingsTab.performClick()
+
+        composeRule.onNodeWithText("Jobs").performScrollTo().performClick()
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.onNodeWithText("Jobs screen").assertIsDisplayed()
+        settingsTab.assertIsSelected()
+        settingsTab.performClick()
+        composeRule.onNodeWithText("Stop radius").assertIsDisplayed()
+
+        composeRule.onNodeWithText("Tags").performScrollTo().performClick()
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.onNodeWithText("Tags screen").assertIsDisplayed()
+    }
+
+    @Test
     fun tappingToggle_invokesCallback_withoutNavigating() {
         var clicks = 0
         setShell(onToggle = { clicks++ })
@@ -120,6 +166,32 @@ class TarryAppShellTest {
         composeRule.onNodeWithContentDescription("Tracking: off")
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun selectionBar_replacesTheBottomNavigation() {
+        val backStack = mutableStateListOf<NavKey>(TimelineRoute)
+        var selecting by mutableStateOf(true)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = {},
+                onBack = {},
+                onToggleClick = {},
+                settingsContent = {},
+                timelineContent = {},
+                selectionBar = if (selecting) ({ Text("3 selected", Modifier.testTag("selection_bar_stub")) }) else null,
+            )
+        }
+        composeRule.onNodeWithTag("selection_bar_stub").assertIsDisplayed()
+        timelineTab.assertDoesNotExist()
+        settingsTab.assertDoesNotExist()
+
+        composeRule.runOnUiThread { selecting = false }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("selection_bar_stub").assertDoesNotExist()
+        timelineTab.assertIsDisplayed()
     }
 
     private fun assertEqualsInt(expected: Int, actual: Int) =

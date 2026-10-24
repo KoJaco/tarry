@@ -34,6 +34,7 @@ class ContrastGuardTest {
         Pairing("ink on paper", { it.ink }, { it.paper }, 15.4, 16.0),
         Pairing("muted on paper", { it.muted }, { it.paper }, 5.6, 7.3),
         Pairing("muted on inset", { it.muted }, { it.inset }, 5.3, 5.6),
+        Pairing("muted on card", { it.muted }, { it.card }, 6.4, 6.5),
         Pairing("accentStrong on card", { it.accentStrong }, { it.card }, 6.3, 8.9),
         Pairing("onAccent on accent", { it.onAccent }, { it.accent }, 9.4, 9.4),
         Pairing("onAlertSoft on alertSoft", { it.onAlertSoft }, { it.alertSoft }, 7.2, 11.0),

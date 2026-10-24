@@ -4,8 +4,10 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -25,7 +27,16 @@ import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.repository.JobRepository
+import me.tarry.core.data.repository.AnnotationOp
+import me.tarry.core.data.repository.EditResult
+import me.tarry.core.data.repository.ItemRef
 import me.tarry.core.data.repository.PlaceRepository
+import me.tarry.core.data.repository.Snapshot
+import me.tarry.core.data.repository.TagRepository
+import me.tarry.core.data.db.entity.Tag
+import me.tarry.core.data.db.entity.TagGroup
+import me.tarry.app.R
+import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.core.data.repository.TimelineRepository
 import org.junit.After
 import org.junit.Before
@@ -46,6 +57,7 @@ class TimelineViewModelTest {
     private lateinit var timeline: TimelineRepository
     private lateinit var places: PlaceRepository
     private lateinit var jobs: JobRepository
+    private lateinit var tags: TagRepository
 
     @Before
     fun setUp() {
@@ -56,6 +68,7 @@ class TimelineViewModelTest {
         timeline = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         places = PlaceRepository(db.placeDao())
         jobs = JobRepository(db.jobDao())
+        tags = TagRepository(db.tagDao())
     }
 
     @After
@@ -67,10 +80,16 @@ class TimelineViewModelTest {
     private fun at(date: LocalDate, hour: Int, minute: Int = 0): Long =
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private fun viewModel(today: () -> LocalDate = { day }) = TimelineViewModel(timeline, places, jobs, zone, today)
+    private fun viewModel(today: () -> LocalDate = { day }) = TimelineViewModel(timeline, places, jobs, tags, zone, today)
 
     private fun TimelineViewModel.awaitItems(predicate: (List<TimelineItem>) -> Boolean): List<TimelineItem> =
         runBlocking { withTimeout(10_000) { items.first { it != null && predicate(it) } } }.orEmpty()
+
+    /** Saves one live visit per id on [day] and returns a view model that has already loaded them (selection is pruned to live visits). */
+    private fun loadedViewModel(vararg ids: String, build: () -> TimelineViewModel = { viewModel() }): TimelineViewModel {
+        runBlocking { ids.forEachIndexed { i, id -> timeline.saveVisit(visit(id, at(day, 8 + 2 * i), at(day, 9 + 2 * i), null)) } }
+        return build().also { it.awaitItems { rows -> rows.size == ids.size } }
+    }
 
     private fun visit(id: String, start: Long, end: Long, placeId: String?, jobId: String? = null) = Visit(
         id = id, placeId = placeId, jobId = jobId, start = start, end = end, zoneId = zone.id,
@@ -268,5 +287,198 @@ class TimelineViewModelTest {
         assertThat(v.placeIgnored).isTrue()
         assertThat(v.jobInherited).isFalse()
         assertThat(v.needsReview).isFalse() // ignored place
+    }
+
+    private val emptySnapshot = Snapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+
+    private class BulkCall(val refs: List<ItemRef>, val op: AnnotationOp)
+
+    @Test
+    fun bulkActionEmitsExactlyOneUndoEventForAllSelectedAndLeavesSelection() = runBlocking {
+        val calls = mutableListOf<BulkCall>()
+        val undos = mutableListOf<UndoEvent>()
+        var reSegmented = 0
+        val vm = loadedViewModel("a", "b", "c") {
+            TimelineViewModel(
+                timeline, places, jobs, tags, zone, { day },
+                offerUndo = { undos += it }, onEdited = { reSegmented++ },
+                bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
+            )
+        }
+        vm.startSelection("a")
+        vm.toggleSelected("b")
+        vm.toggleSelected("c")
+        assertThat(vm.selection.value).containsExactly("a", "b", "c").inOrder()
+
+        vm.bulkSetBillable(true)
+
+        assertThat(calls).hasSize(1)
+        assertThat(calls.single().refs).containsExactly(ItemRef.visit("a"), ItemRef.visit("b"), ItemRef.visit("c")).inOrder()
+        assertThat(calls.single().op).isEqualTo(AnnotationOp.SetBillable(true))
+        assertThat(undos).hasSize(1)
+        assertThat(undos.single().message).isEqualTo(R.plurals.selection_undo_updated)
+        assertThat(undos.single().count).isEqualTo(3)
+        assertThat(reSegmented).isEqualTo(0) // annotations do not re-segment
+        assertThat(vm.selection.value).isEmpty()
+    }
+
+    @Test
+    fun aDoubleTapOnABarActionRunsTheBulkOnceAndOffersOneUndo() = runBlocking {
+        val calls = mutableListOf<BulkCall>()
+        val undos = mutableListOf<UndoEvent>()
+        val gate = CompletableDeferred<Unit>()
+        val vm = loadedViewModel("a", "b") {
+            TimelineViewModel(
+                timeline, places, jobs, tags, zone, { day },
+                offerUndo = { undos += it },
+                // Suspends like a real Room write, so the second tap lands before the first bulk has finished.
+                bulk = { refs, op -> calls += BulkCall(refs, op); gate.await(); EditResult.Ok(undo = emptySnapshot) },
+            )
+        }
+        vm.startSelection("a")
+        vm.toggleSelected("b")
+
+        vm.bulkSetBillable(true)
+        vm.bulkSetBillable(true)
+        gate.complete(Unit)
+        withTimeout(10_000) { while (undos.isEmpty()) delay(10) }
+
+        assertThat(calls).hasSize(1)
+        assertThat(undos).hasSize(1)
+        assertThat(undos.single().count).isEqualTo(2)
+        assertThat(vm.selection.value).isEmpty()
+    }
+
+    @Test
+    fun aDoubleTapOnNewJobCreatesOneJobAndRunsOneBulk() = runBlocking {
+        val calls = mutableListOf<BulkCall>()
+        var created = 0
+        val gate = CompletableDeferred<Unit>()
+        val vm = loadedViewModel("a") {
+            TimelineViewModel(
+                timeline, places, jobs, tags, zone, { day },
+                bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
+                createJob = { created++; gate.await(); EditResult.Ok(id = "new-job") },
+            )
+        }
+        vm.startSelection("a")
+
+        vm.bulkSetNewJob("Acme")
+        vm.bulkSetNewJob("Acme")
+        gate.complete(Unit)
+        withTimeout(10_000) { while (calls.isEmpty()) delay(10) }
+
+        assertThat(created).isEqualTo(1)
+        assertThat(calls).hasSize(1)
+    }
+
+    @Test
+    fun selectionExitsWhenEmptiedCancelledOrTheDayChanges() = runBlocking {
+        val vm = loadedViewModel("a")
+        vm.startSelection("a")
+        vm.toggleSelected("a")
+        assertThat(vm.selection.value).isEmpty()
+
+        vm.toggleSelected("b") // not selecting: ignored
+        assertThat(vm.selection.value).isEmpty()
+
+        vm.startSelection("a")
+        vm.clearSelection()
+        assertThat(vm.selection.value).isEmpty()
+
+        vm.startSelection("a")
+        vm.previousDay()
+        assertThat(vm.selection.value).isEmpty()
+
+        vm.nextDay()
+        vm.awaitItems { it.size == 1 }
+        vm.startSelection("a")
+        vm.selectDate(vm.selectedDate.value)
+        assertThat(vm.selection.value).containsExactly("a") // same day: still selecting
+        vm.previousDay()
+        vm.startSelection("a")
+        vm.nextDay()
+        assertThat(vm.selection.value).isEmpty()
+    }
+
+    @Test
+    fun selectionDropsVisitsThatNoLongerExistAndExitsWhenNoneRemain() = runBlocking<Unit> {
+        val vm = loadedViewModel("a", "b")
+        vm.startSelection("a")
+        vm.toggleSelected("b")
+
+        timeline.saveVisit(visit("a", at(day, 8), at(day, 9), null).copy(deleted = true))
+        withTimeout(10_000) { vm.selection.first { it == setOf("b") } }
+
+        timeline.saveVisit(visit("b", at(day, 10), at(day, 11), null).copy(deleted = true))
+        withTimeout(10_000) { vm.selection.first { it.isEmpty() } }
+    }
+
+    @Test
+    fun aRefusedBulkShowsANoticeWithNoUndoAndStillExitsSelection() = runBlocking {
+        val undos = mutableListOf<UndoEvent>()
+        val vm = loadedViewModel("a") {
+            TimelineViewModel(timeline, places, jobs, tags, zone, { day }, offerUndo = { undos += it })
+        }
+        vm.startSelection("a")
+        vm.bulkIgnorePlace() // default bulk returns NotFound
+        assertThat(undos).hasSize(1)
+        assertThat(undos.single().message).isEqualTo(R.string.edit_error_not_found)
+        assertThat(undos.single().snapshot).isNull()
+        assertThat(vm.selection.value).isEmpty()
+    }
+
+    @Test
+    fun aFailedNewJobShowsANoticeAndRunsNoBulk() = runBlocking {
+        val calls = mutableListOf<BulkCall>()
+        val undos = mutableListOf<UndoEvent>()
+        val vm = loadedViewModel("a") {
+            TimelineViewModel(
+                timeline, places, jobs, tags, zone, { day }, offerUndo = { undos += it },
+                bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
+                createJob = { EditResult.BlankName },
+            )
+        }
+        vm.startSelection("a")
+        vm.bulkSetNewJob(" ")
+        assertThat(calls).isEmpty()
+        assertThat(undos.single().message).isEqualTo(R.string.edit_error_blank_name)
+    }
+
+    @Test
+    fun newJobFromTheBulkPickerCreatesItThenSetsItOnEverySelectedVisit() = runBlocking {
+        val calls = mutableListOf<BulkCall>()
+        val vm = loadedViewModel("a", "b") {
+            TimelineViewModel(
+                timeline, places, jobs, tags, zone, { day },
+                bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
+                createJob = { EditResult.Ok(id = "new-job") },
+            )
+        }
+        vm.startSelection("a")
+        vm.toggleSelected("b")
+        vm.bulkSetNewJob("Acme")
+        assertThat(calls.single().op).isEqualTo(AnnotationOp.SetJob("new-job"))
+        assertThat(calls.single().refs).hasSize(2)
+        assertThat(vm.selection.value).isEmpty()
+    }
+
+    @Test
+    fun pickersHideArchivedJobsAndTagsAndEmptyGroups() = runBlocking {
+        jobs.save(Job(id = "live", name = "Live", colorArgb = 0, updatedAt = 0))
+        jobs.save(Job(id = "old", name = "Old", colorArgb = 0, archived = true, updatedAt = 0))
+        tags.saveGroup(TagGroup(id = "g1", name = "Kind", colorArgb = 0, sortOrder = 0, updatedAt = 0))
+        tags.saveGroup(TagGroup(id = "g2", name = "Gone", colorArgb = 0, sortOrder = 1, updatedAt = 0))
+        tags.save(Tag(id = "t1", groupId = "g1", name = "Rush", sortOrder = 0, updatedAt = 0))
+        tags.save(Tag(id = "t2", groupId = "g1", name = "Old tag", sortOrder = 1, archived = true, updatedAt = 0))
+        tags.save(Tag(id = "t3", groupId = "g2", name = "Only archived", sortOrder = 0, archived = true, updatedAt = 0))
+        val vm = viewModel()
+
+        val pickedJobs = withTimeout(10_000) { vm.pickerJobs.first { it.isNotEmpty() } }
+        val pickedGroups = withTimeout(10_000) { vm.pickerTagGroups.first { it.isNotEmpty() } }
+
+        assertThat(pickedJobs.map { it.id }).containsExactly("live")
+        assertThat(pickedGroups.map { it.id }).containsExactly("g1")
+        assertThat(pickedGroups.single().tags.map { it.id }).containsExactly("t1").inOrder()
     }
 }

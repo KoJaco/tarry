@@ -31,6 +31,10 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.catalog.JobsScreen
+import me.tarry.app.ui.catalog.TagsScreen
+import me.tarry.app.ui.navigation.JobsRoute
+import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.PermissionsRoute
 import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
@@ -41,19 +45,29 @@ import me.tarry.app.ui.sessions.SessionsScreen
 import me.tarry.app.ui.settings.SettingsScreen
 import me.tarry.app.ui.shell.ShellViewModel
 import me.tarry.app.ui.shell.TarryBottomBar
+import me.tarry.app.ui.timeline.SelectionBar
 import me.tarry.app.ui.timeline.TimelineScreen
+import me.tarry.app.ui.timeline.TimelineViewModel
 
 /** Hilt-wired root. Owns the back stack and connects ViewModels to [TarryAppContent]. */
 @Composable
 fun TarryApp(
     shellViewModel: ShellViewModel = hiltViewModel(),
     statusViewModel: ShellStatusViewModel = hiltViewModel(),
+    // Owned here, not by the Timeline entry, so the shell can swap its bottom bar while visits are selected.
+    timelineViewModel: TimelineViewModel = hiltViewModel(),
 ) {
     val backStack = rememberNavBackStack(TimelineRoute)
     val snackbarHostState = remember { SnackbarHostState() }
     UndoSnackbarEffect(statusViewModel.undoEvents, snackbarHostState, statusViewModel::undo)
     val trackingState by shellViewModel.trackingState.collectAsStateWithLifecycle()
     val trackingDetails by shellViewModel.trackingDetails.collectAsStateWithLifecycle()
+    val selection by timelineViewModel.selection.collectAsStateWithLifecycle()
+    val pickerJobs by timelineViewModel.pickerJobs.collectAsStateWithLifecycle()
+    val pickerTagGroups by timelineViewModel.pickerTagGroups.collectAsStateWithLifecycle()
+    // Selection belongs to the Timeline screen: leaving it (Settings, Permissions, Sessions) ends it.
+    val onTimeline = backStack.lastOrNull() == TimelineRoute
+    LaunchedEffect(onTimeline) { if (!onTimeline) timelineViewModel.clearSelection() }
     var sheetVisible by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val openPermissions = { if (backStack.lastOrNull() != PermissionsRoute) backStack.add(PermissionsRoute) }
@@ -71,16 +85,38 @@ fun TarryApp(
         onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
         onToggleClick = { sheetVisible = true },
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        selectionBar = if (selection.isNotEmpty() && onTimeline) {
+            {
+                SelectionBar(
+                    count = selection.size,
+                    jobs = pickerJobs,
+                    tagGroups = pickerTagGroups,
+                    onSetJob = timelineViewModel::bulkSetJob,
+                    onNewJob = timelineViewModel::bulkSetNewJob,
+                    onAddTags = timelineViewModel::bulkAddTags,
+                    onSetBillable = timelineViewModel::bulkSetBillable,
+                    onIgnorePlace = timelineViewModel::bulkIgnorePlace,
+                    onCancel = timelineViewModel::clearSelection,
+                )
+            }
+        } else {
+            null
+        },
+        timelineContent = { TimelineScreen(viewModel = timelineViewModel) },
         settingsContent = {
             SettingsScreen(
                 onOpenPermissions = { openPermissions() },
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
+                onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
+                onOpenTags = { if (backStack.lastOrNull() != TagsRoute) backStack.add(TagsRoute) },
             )
         },
         permissionsContent = {
             PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
         },
         sessionsContent = { SessionsScreen() },
+        jobsContent = { JobsScreen() },
+        tagsContent = { TagsScreen() },
     )
     if (sheetVisible) {
         val openAppSettings = { context.startActivity(appSettingsIntent(context)) }
@@ -123,14 +159,18 @@ fun TarryAppContent(
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
+    jobsContent: @Composable () -> Unit = {},
+    tagsContent: @Composable () -> Unit = {},
     modifier: Modifier = Modifier,
     snackbarHost: @Composable () -> Unit = {},
+    /** Replaces the bottom navigation while visits are selected for a bulk edit (null = the normal bar). */
+    selectionBar: (@Composable () -> Unit)? = null,
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute }
     Scaffold(
         modifier = modifier,
         snackbarHost = snackbarHost,
-        bottomBar = {
+        bottomBar = selectionBar ?: {
             TarryBottomBar(
                 trackingState = trackingState,
                 timelineSelected = topLevel != SettingsRoute,
@@ -154,6 +194,8 @@ fun TarryAppContent(
                 entry<SettingsRoute> { settingsContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }
+                entry<JobsRoute> { jobsContent() }
+                entry<TagsRoute> { tagsContent() }
             },
         )
     }

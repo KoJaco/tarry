@@ -30,8 +30,11 @@ import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
+import me.tarry.core.data.db.entity.Tag
+import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.Trip
 import me.tarry.core.data.db.entity.Visit
+import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.EditClock
@@ -190,7 +193,7 @@ class EditDrawerViewModelTest {
 
         val event = withTimeout(10_000) { offered.await() }
         assertThat(event.message).isEqualTo(R.string.edit_undo_deleted)
-        assertThat(event.snapshot.visits.map { it.id }).contains("v")
+        assertThat(event.snapshot!!.visits.map { it.id }).contains("v")
         assertThat(timeline.visit("v")!!.deleted).isTrue()
         assertThat(withTimeout(10_000) { viewModel.events.first() }).isEqualTo(EditDrawerEvent.Dismiss)
         assertThat(workManager.getWorkInfosForUniqueWork(SegmentationScheduler.NOW).get()).hasSize(1)
@@ -416,6 +419,44 @@ class EditDrawerViewModelTest {
         assertThat(timeline.trip("t")!!.attributedJobId).isNull()
     }
 
+    @Test
+    fun archivedJobsAreHiddenFromThePickerUnlessCurrentOrThePlaceDefault() = runBlocking<Unit> {
+        jobs.save(Job(id = "live", name = "Live", colorArgb = 1, updatedAt = 0))
+        jobs.save(Job(id = "old", name = "Old", colorArgb = 2, archived = true, updatedAt = 0))
+        jobs.save(Job(id = "gone", name = "Gone", colorArgb = 3, archived = true, updatedAt = 0))
+        places.save(place())
+        timeline.saveVisit(visit("v", 0, 60))
+        timeline.saveVisit(visit("w", 100, 160).copy(jobId = "old"))
+        viewModel.load(EditTarget.Visit("v"))
+
+        assertThat(awaitState().jobs.map { it.id }).containsExactly("live")
+
+        viewModel.load(EditTarget.Visit("w"))
+
+        val state = awaitState { it.id == "w" }
+        assertThat(state.jobs.map { it.id }).containsExactly("live", "old")
+        assertThat(state.ownJob?.id).isEqualTo("old")
+    }
+
+    @Test
+    fun archivedTagsAreHiddenFromThePickerUnlessAlreadyApplied() = runBlocking<Unit> {
+        tags.saveGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 0))
+        tags.saveGroup(TagGroup(id = "h", name = "H", colorArgb = 0, sortOrder = 1, updatedAt = 0))
+        tags.save(Tag(id = "live", groupId = "g", name = "Live", sortOrder = 0, updatedAt = 0))
+        tags.save(Tag(id = "applied", groupId = "g", name = "Applied", sortOrder = 1, archived = true, updatedAt = 0))
+        tags.save(Tag(id = "old", groupId = "g", name = "Old", sortOrder = 2, archived = true, updatedAt = 0))
+        tags.save(Tag(id = "onlyOld", groupId = "h", name = "OnlyOld", sortOrder = 0, archived = true, updatedAt = 0))
+        places.save(place())
+        timeline.saveVisit(visit("v", 0, 60))
+        timeline.tagVisit(VisitTag("v", "applied"))
+        viewModel.load(EditTarget.Visit("v"))
+
+        val state = awaitState()
+
+        assertThat(state.tagGroups.map { it.id }).containsExactly("g")
+        assertThat(state.tagGroups.single().tags.map { it.id }).containsExactly("live", "applied").inOrder()
+        assertThat(state.tagIds).containsExactly("applied")
+    }
     @Test
     fun newVisitTargetHasATitleOnlyState() = runBlocking<Unit> {
         viewModel.load(EditTarget.NewVisit(base, base + 30 * minute, contextTripId = "t"))

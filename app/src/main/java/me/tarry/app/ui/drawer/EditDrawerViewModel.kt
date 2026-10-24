@@ -49,7 +49,16 @@ private class Catalog(
     val jobs: List<JobOption>,
     val tagGroups: List<TagGroupOption>,
     val places: List<PlaceOption>,
-)
+    val archivedJobIds: Set<String>,
+    val archivedTagIds: Set<String>,
+) {
+    /** Pickers hide archived jobs unless one is the item's current value ([keep]). Lookups by id still see every job. */
+    fun pickableJobs(keep: Set<String?>): List<JobOption> = jobs.filter { it.id !in archivedJobIds || it.id in keep }
+
+    /** Pickers hide archived tags unless already applied ([applied]); groups left empty drop out. */
+    fun pickableTagGroups(applied: Set<String>): List<TagGroupOption> =
+        tagGroups.map { g -> g.copy(tags = g.tags.filter { it.id !in archivedTagIds || it.id in applied }) }.filter { it.tags.isNotEmpty() }
+}
 
 private class Inputs(val target: EditTarget?, val error: EditError?, val catalog: Catalog)
 
@@ -100,6 +109,8 @@ class EditDrawerViewModel @Inject constructor(
             tagGroups = groups.map { g -> TagGroupOption(g.id, g.name, tagsByGroup[g.id].orEmpty().map { TagOption(it.id, it.name) }) }
                 .filter { it.tags.isNotEmpty() },
             places = allPlaces.filter { it.mergedIntoId == null }.map { PlaceOption(it.id, it.displayLabel(), it.address?.takeIf { a -> a.isNotBlank() }) },
+            archivedJobIds = allJobs.filter { it.archived }.map { it.id }.toSet(),
+            archivedTagIds = allTags.filter { it.archived }.map { it.id }.toSet(),
         )
     }
 
@@ -254,7 +265,8 @@ class EditDrawerViewModel @Inject constructor(
         if (t is EditTarget.NewVisit) {
             return EditDrawerState(
                 kind = EditKind.NEW_VISIT, id = null, start = t.start, end = t.end, zoneId = ZoneId.systemDefault().id,
-                jobs = catalog.jobs, tagGroups = catalog.tagGroups, places = catalog.places, error = inputs.error,
+                jobs = catalog.pickableJobs(emptySet()), tagGroups = catalog.pickableTagGroups(emptySet()), places = catalog.places,
+                error = inputs.error,
             )
         }
         val data = loadItem(t) ?: return null
@@ -270,7 +282,8 @@ class EditDrawerViewModel @Inject constructor(
                 placeLabel = place?.displayLabel(), placeLabelIsCoordinates = place?.labelIsCoordinates() ?: false,
                 placeName = place?.name?.takeIf { it.isNotBlank() },
                 hasPlace = place != null, placeIgnored = place?.ignored ?: false,
-                jobs = catalog.jobs, tagGroups = catalog.tagGroups, places = catalog.places,
+                jobs = catalog.pickableJobs(setOf(v.jobId, place?.defaultJobId)), tagGroups = catalog.pickableTagGroups(data.effectiveTags),
+                places = catalog.places,
                 ownJob = job(v.jobId), placeJob = job(place?.defaultJobId),
                 billable = v.billable, placeBillable = place?.defaultBillable,
                 tagIds = data.effectiveTags, tagsInherited = data.tagsInherited,
@@ -281,7 +294,8 @@ class EditDrawerViewModel @Inject constructor(
         return EditDrawerState(
             kind = EditKind.TRIP, id = trip.id, start = trip.start, end = trip.end, zoneId = trip.zoneId,
             tripMode = trip.mode, distanceM = trip.distanceM,
-            jobs = catalog.jobs, tagGroups = catalog.tagGroups, places = catalog.places,
+            jobs = catalog.pickableJobs(setOf(trip.attributedJobId)), tagGroups = catalog.pickableTagGroups(data.ownTags),
+            places = catalog.places,
             ownJob = job(trip.attributedJobId), billable = trip.billable, tagIds = data.ownTags,
             notes = trip.freeNotes, frozen = trip.frozen, error = inputs.error,
         )

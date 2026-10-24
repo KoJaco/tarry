@@ -1,5 +1,6 @@
 package me.tarry.app.ui.timeline
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -70,11 +71,19 @@ fun TimelineContent(
     /** A visit's edge was dragged and released: the new start and end (UTC epoch ms, snapped and clamped). */
     onResizeVisit: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
     minStayMs: Long = DefaultMinStayMs,
+    /** Ids of the visits selected for a bulk edit; selection mode is on while this is not empty. */
+    selection: Set<String> = emptySet(),
+    onStartSelection: (String) -> Unit = {},
+    onToggleSelected: (String) -> Unit = {},
+    onClearSelection: () -> Unit = {},
 ) {
+    val selecting = selection.isNotEmpty()
+    BackHandler(enabled = selecting, onBack = onClearSelection)
     val scroll = rememberScrollState()
     // The visit whose resize handles show. Cleared by a day change, a scroll or a tap anywhere else.
     var selectedVisit by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(date) { selectedVisit = null }
+    LaunchedEffect(selecting) { if (selecting) selectedVisit = null }
     LaunchedEffect(scroll) { snapshotFlow { scroll.isScrollInProgress }.filter { it }.collect { selectedVisit = null } }
     var reviewOnly by rememberSaveable { mutableStateOf(false) }
     var gapSheetId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -128,6 +137,10 @@ fun TimelineContent(
                         onOpenVisit = { onEdit(EditTarget.Visit(it)) },
                         selectedVisitId = selectedVisit,
                         onSelectVisit = { selectedVisit = it },
+                        selecting = selecting,
+                        selectedIds = selection,
+                        onLongPressVisit = onStartSelection,
+                        onToggleVisit = onToggleSelected,
                         onResizeVisit = onResizeVisit,
                         minStayMs = minStayMs,
                         onOpenTrip = { onEdit(EditTarget.Trip(it)) },

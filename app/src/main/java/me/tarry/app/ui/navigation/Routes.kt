@@ -27,3 +27,11 @@ fun MutableList<NavKey>.navigateTopLevel(route: NavKey) {
     add(TimelineRoute)
     if (route != TimelineRoute) add(route)
 }
+
+/** Jobs management (phase 4a). Pushed on top of [SettingsRoute]. */
+@Serializable
+data object JobsRoute : NavKey
+
+/** Tags and tag groups management (phase 4a). Pushed on top of [SettingsRoute]. */
+@Serializable
+data object TagsRoute : NavKey

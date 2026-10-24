@@ -11,13 +11,22 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.tarry.app.R
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
+import me.tarry.app.ui.undo.noticeRes
+import me.tarry.app.ui.drawer.JobOption
+import me.tarry.app.ui.drawer.TagGroupOption
+import me.tarry.app.ui.drawer.TagOption
+import me.tarry.app.ui.theme.JobPalette
+import me.tarry.core.data.repository.AnnotationOp
 import me.tarry.core.data.repository.EditResult
+import me.tarry.core.data.repository.ItemRef
+import me.tarry.core.data.repository.TagRepository
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.segmentation.SegmentationParams
 import me.tarry.core.data.db.entity.Place
@@ -118,11 +127,14 @@ class TimelineViewModel internal constructor(
     timeline: TimelineRepository,
     places: PlaceRepository,
     jobs: JobRepository,
+    tags: TagRepository,
     zone: ZoneId,
     private val todayProvider: () -> LocalDate,
     private val resize: suspend (id: String, start: Long, end: Long) -> EditResult = { _, _, _ -> EditResult.NotFound },
     private val offerUndo: (UndoEvent) -> Unit = {},
     private val onEdited: () -> Unit = {},
+    private val bulk: suspend (List<ItemRef>, AnnotationOp) -> EditResult = { _, _ -> EditResult.NotFound },
+    private val createJob: suspend (String) -> EditResult = { EditResult.NotFound },
     /** Shortest a visit may be resized to; `SegmentationParams.minStayDurationMs`. */
     val minStayMs: Long = DEFAULT_MIN_STAY_MS,
 ) : ViewModel() {
@@ -131,15 +143,19 @@ class TimelineViewModel internal constructor(
         timeline: TimelineRepository,
         places: PlaceRepository,
         jobs: JobRepository,
+        tags: TagRepository,
         editor: TimelineEditor,
         undoEvents: UndoEvents,
         scheduler: SegmentationScheduler,
         params: SegmentationParams,
     ) :
         this(
-            timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
+            timeline, places, jobs, tags, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
             { id, start, end -> editor.resize(id, start, end, params.minStayDurationMs) },
-            undoEvents::offer, scheduler::enqueueNow, params.minStayDurationMs,
+            undoEvents::offer, scheduler::enqueueNow,
+            bulk = editor::bulk,
+            createJob = { name -> editor.createJob(name, JobPalette.slots.map { it.key }) },
+            minStayMs = params.minStayDurationMs,
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -196,21 +212,127 @@ class TimelineViewModel internal constructor(
         val old = _today.value
         if (now == old) return
         _today.value = now
-        if (_selectedDate.value == old) _selectedDate.value = now
+        if (_selectedDate.value == old) setDate(now)
     }
 
     fun previousDay() {
-        _selectedDate.value = _selectedDate.value.minusDays(1)
+        setDate(_selectedDate.value.minusDays(1))
     }
 
     fun nextDay() {
-        if (_selectedDate.value < _today.value) _selectedDate.value = _selectedDate.value.plusDays(1)
+        if (_selectedDate.value < _today.value) setDate(_selectedDate.value.plusDays(1))
     }
 
     /** Jumps to [date] (week strip, date picker). A date after today is clamped to today. */
     fun selectDate(date: LocalDate) {
-        _selectedDate.value = if (date > _today.value) _today.value else date
+        setDate(if (date > _today.value) _today.value else date)
     }
+
+    /** Changing the day always leaves multi-select mode. */
+    private fun setDate(date: LocalDate) {
+        if (date != _selectedDate.value) _selection.value = emptySet()
+        _selectedDate.value = date
+    }
+
+    // region multi-select (phase 4 T2)
+
+    private val _selection = MutableStateFlow<Set<String>>(emptySet())
+
+    /** Ids of the selected visits, in selection order. Selecting mode is exactly "not empty". */
+    val selection: StateFlow<Set<String>> = _selection
+
+    init {
+        // A selected visit can vanish under us (undo, re-segmentation, delete): drop it, and leave the mode when none remain.
+        viewModelScope.launch {
+            items.collect { rows ->
+                if (rows == null) return@collect
+                val live = rows.mapNotNullTo(HashSet()) { (it as? TimelineItem.Visit)?.id }
+                val current = _selection.value
+                val kept = current.filterTo(linkedSetOf()) { it in live }
+                if (kept.size != current.size) _selection.value = kept
+            }
+        }
+    }
+
+    /** Long press on a visit: enters selection mode with it selected. */
+    fun startSelection(visitId: String) {
+        if (_selection.value.isEmpty()) _selection.value = linkedSetOf(visitId)
+    }
+
+    /** A tap while selecting. Deselecting the last visit leaves selection mode. */
+    fun toggleSelected(visitId: String) {
+        val current = _selection.value
+        if (current.isEmpty()) return
+        _selection.value = if (visitId in current) current - visitId else current + visitId
+    }
+
+    fun clearSelection() {
+        _selection.value = emptySet()
+    }
+
+    /** Jobs the pickers offer: archived ones are hidden (nothing is "current" for a bulk edit). */
+    val pickerJobs: StateFlow<List<JobOption>> = jobs.observeAll()
+        .map { all -> all.filter { !it.archived }.map { JobOption(it.id, it.name, it.colorArgb) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
+    /** Tags the bulk "Add tags" sheet offers, grouped; archived tags are hidden and groups left empty drop out. */
+    val pickerTagGroups: StateFlow<List<TagGroupOption>> = combine(tags.observeGroups(), tags.observeTags()) { groups, all ->
+        val live = all.filter { !it.archived }.groupBy { it.groupId }
+        groups.map { g -> TagGroupOption(g.id, g.name, live[g.id].orEmpty().map { TagOption(it.id, it.name) }) }
+            .filter { it.tags.isNotEmpty() }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
+    fun bulkSetJob(jobId: String?) = applyBulk(AnnotationOp.SetJob(jobId))
+
+    fun bulkAddTags(tagIds: Set<String>) {
+        if (tagIds.isNotEmpty()) applyBulk(AnnotationOp.AddTags(tagIds)) else clearSelection()
+    }
+
+    fun bulkSetBillable(billable: Boolean) = applyBulk(AnnotationOp.SetBillable(billable))
+
+    fun bulkIgnorePlace() = applyBulk(AnnotationOp.IgnorePlace())
+
+    /** "New job…" from the bulk picker: creates the job, then sets it on every selected visit. */
+    fun bulkSetNewJob(name: String) {
+        val ids = takeSelection() ?: return
+        viewModelScope.launch {
+            val created = createJob(name)
+            val newId = (created as? EditResult.Ok)?.id
+            if (newId != null) runBulk(ids, AnnotationOp.SetJob(newId)) else notifyRefused(created)
+        }
+    }
+
+    /** One editor call over every selected id, one undo event, then back to normal mode. Annotations do not re-segment. */
+    private fun applyBulk(op: AnnotationOp) {
+        val ids = takeSelection() ?: return
+        viewModelScope.launch { runBulk(ids, op) }
+    }
+
+    /**
+     * Captures the selected ids and leaves selection mode in the same synchronous step, so a second tap on a bar action
+     * (before the launched edit has run) finds nothing selected instead of running the bulk twice. Null when empty.
+     */
+    private fun takeSelection(): List<String>? {
+        val ids = _selection.value.toList()
+        if (ids.isEmpty()) return null
+        clearSelection()
+        return ids
+    }
+
+    private suspend fun runBulk(ids: List<String>, op: AnnotationOp) {
+        val result = bulk(ids.map { ItemRef.visit(it) }, op)
+        if (result is EditResult.Ok) {
+            result.undo?.let { offerUndo(UndoEvent(R.plurals.selection_undo_updated, it, count = ids.size)) }
+        } else {
+            notifyRefused(result)
+        }
+    }
+
+    private fun notifyRefused(result: EditResult) {
+        result.noticeRes()?.let { offerUndo(UndoEvent(it, null)) }
+    }
+
+    // endregion
 
     /**
      * A visit edge was dragged and released (phase 3 R2). Trims neighbours in one edit, offers "Visit times changed"
