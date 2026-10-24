@@ -177,7 +177,7 @@ class TimelineViewModel internal constructor(
                         timeline.observeVisits(from, to),
                         timeline.observeTrips(from, to),
                         timeline.observeGaps(from, to),
-                        places.observeAll(),
+                        places.observeLabels(), // includes deleted places: frozen visits there keep their label and inherited job
                         jobs.observeAll(), // excludes deleted jobs
                     ) { visits, trips, gaps, allPlaces, allJobs ->
                         val byId = allPlaces.associateBy { it.id }
