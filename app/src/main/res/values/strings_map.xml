@@ -13,6 +13,11 @@
     <string name="map_attribution_close">Close</string>
     <string name="map_route_missing">No route for this day: its location history is not available. Visits are shown at their places.</string>
     <string name="map_nothing_recorded">Nothing recorded on this day.</string>
+    <string name="map_scrub_description">Time on the map</string>
+    <string name="map_scrub_previous_visit">Previous visit</string>
+    <string name="map_scrub_next_visit">Next visit</string>
+    <string name="map_scrub_jump">Jump to a date and time</string>
+    <string name="map_scrub_jump_time">Jump to time</string>
     <plurals name="map_day_summary">
         <item quantity="one">%1$s: %2$d visit, %3$s</item>
         <item quantity="other">%1$s: %2$d visits, %3$s</item>

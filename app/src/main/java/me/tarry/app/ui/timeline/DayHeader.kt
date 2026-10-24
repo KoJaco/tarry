@@ -116,7 +116,7 @@ fun DayHeader(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DayPickerDialog(
+internal fun DayPickerDialog(
     date: LocalDate,
     today: LocalDate,
     onDismiss: () -> Unit,

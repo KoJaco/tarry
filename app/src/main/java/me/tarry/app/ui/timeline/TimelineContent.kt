@@ -42,6 +42,7 @@ import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.rememberReducedMotion
 import androidx.compose.ui.res.pluralStringResource
 import me.tarry.app.map.DayMap
+import me.tarry.app.map.ScrubberModel
 import me.tarry.app.ui.map.DayMapView
 import me.tarry.app.ui.theme.TarryTheme
 import java.time.LocalDate
@@ -136,13 +137,39 @@ fun TimelineContent(
                 val trips = pluralStringResource(R.plurals.map_trip_count, dayMap.tripCount, dayMap.tripCount)
                 pluralStringResource(R.plurals.map_day_summary, dayMap.visitCount, dateText, dayMap.visitCount, trips)
             }
+            val (dayStart, dayEnd) = dayBounds(date, zone)
+            val rows = items.orEmpty()
+            val points = dayMap?.points.orEmpty()
+            val scrub = remember(rows, points, dayStart, dayEnd) { ScrubberModel(rows.toScrubItems(), dayStart, dayEnd, points) }
+            // Kept across day changes only for a date-time jump; otherwise the day starts at its first item.
+            var scrubTime by rememberSaveable { mutableStateOf<Long?>(null) }
+            val range = scrub.range
+            val time = scrubTime?.takeIf { range != null && it in range.start..range.end } ?: range?.start
             DayMapView(
                 dayMap = dayMap,
                 date = date,
                 contentDescription = description,
                 onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                marker = time?.let(scrub::positionAt),
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
+            if (time != null) {
+                DayScrubber(
+                    model = scrub,
+                    visits = rows.filterIsInstance<TimelineItem.Visit>(),
+                    time = time,
+                    onTimeChange = { scrubTime = it },
+                    onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                    date = date,
+                    today = today,
+                    zone = zone,
+                    onJump = { day, ms ->
+                        scrubTime = ms
+                        onSelectDate(day)
+                    },
+                    modifier = gutter.padding(bottom = TarryTheme.space.s),
+                )
+            }
             return@Column
         }
         Column(

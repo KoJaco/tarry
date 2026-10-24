@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.map.DayMap
 import me.tarry.app.map.GeoBounds
+import me.tarry.app.map.GeoPoint
 import me.tarry.app.map.MapConfig
 import me.tarry.app.map.VisitPin
 import me.tarry.app.ui.theme.JobPalette
@@ -47,6 +48,7 @@ import java.time.LocalDate
 
 private const val RouteId = "day-route"
 private const val PinsId = "day-pins"
+private const val MarkerId = "day-marker"
 private const val PinCircleLayer = "$PinsId-circle"
 private const val PinFont = "Noto Sans Bold" // served by the OpenFreeMap glyph endpoint the style already uses
 private const val SinglePlaceZoom = 16.0
@@ -66,12 +68,15 @@ fun DayMapView(
     contentDescription: String,
     onOpenVisit: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /** The scrubber's position on the route (null: none at that time, e.g. inside a break); the camera follows it. */
+    marker: GeoPoint? = null,
     config: MapConfig = MapConfig(),
 ) {
     val colors = TarryTheme.colors
     val dark = TarryTheme.isDark
     var loaded by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
     var fittedFor by remember { mutableStateOf<LocalDate?>(null) }
+    var markerSeenFor by remember { mutableStateOf<LocalDate?>(null) }
     val openVisit by rememberUpdatedState(onOpenVisit)
     val touchPx = with(LocalDensity.current) { config.pinTouchDp.dp.toPx() }
     val fitPaddingPx = with(LocalDensity.current) { 56.dp.toPx() }.toInt()
@@ -104,6 +109,14 @@ fun DayMapView(
                 dayMap.bounds?.let { map.fitTo(it, fitPaddingPx) }
                 fittedFor = date
             }
+        }
+        LaunchedEffect(current, marker, colors) {
+            val (map, style) = current ?: return@LaunchedEffect
+            if (!style.isFullyLoaded) return@LaunchedEffect
+            style.setMarker(marker, colors)
+            // The day's first marker position must not undo the day fit; follow it only once the user scrubs.
+            if (marker != null && markerSeenFor == date) map.moveCamera(CameraUpdateFactory.newLatLng(marker.toLatLng()))
+            markerSeenFor = date
         }
         val banner = when {
             dayMap == null -> null
@@ -143,7 +156,7 @@ private fun MapLibreMap.fitTo(bounds: GeoBounds, paddingPx: Int) {
 
 private fun Style.source(id: String): GeoJsonSource = getSourceAs(id) ?: GeoJsonSource(id).also { addSource(it) }
 
-private fun Style.setRoute(route: List<List<me.tarry.app.map.GeoPoint>>, colors: TarryColors) {
+private fun Style.setRoute(route: List<List<GeoPoint>>, colors: TarryColors) {
     val lines = route.map { seg -> Feature.fromGeometry(LineString.fromLngLats(seg.map { it.toPoint() })) }
     source("$RouteId-src").setGeoJson(FeatureCollection.fromFeatures(lines))
     val layer = getLayer("$RouteId-line") as LineLayer?
@@ -155,6 +168,22 @@ private fun Style.setRoute(route: List<List<me.tarry.app.map.GeoPoint>>, colors:
         PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
         PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
     )
+}
+
+/** The scrubber position: an `accent` dot ringed in `ink`, drawn above the pins. */
+private fun Style.setMarker(marker: GeoPoint?, colors: TarryColors) {
+    val features = listOfNotNull(marker?.let { Feature.fromGeometry(it.toPoint()) })
+    source("$MarkerId-src").setGeoJson(FeatureCollection.fromFeatures(features))
+    if (getLayer("$MarkerId-dot") == null) {
+        addLayer(
+            CircleLayer("$MarkerId-dot", "$MarkerId-src").withProperties(
+                PropertyFactory.circleRadius(8f),
+                PropertyFactory.circleColor(mapColor(colors.accent.toArgb())),
+                PropertyFactory.circleStrokeColor(mapColor(colors.ink.toArgb())),
+                PropertyFactory.circleStrokeWidth(3f),
+            ),
+        )
+    }
 }
 
 /** Pins carry their own colours as properties so job colours need no per-job layers. */
