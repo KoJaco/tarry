@@ -39,10 +39,14 @@ import androidx.compose.ui.res.stringResource
 import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
+import me.tarry.app.ui.components.SegmentedControl
 import me.tarry.app.ui.components.rememberReducedMotion
+import me.tarry.app.ui.map.TarryMap
 import me.tarry.app.ui.theme.TarryTheme
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 private const val DaySlideMillis = 200
 private const val DaySlideDp = 24
@@ -76,6 +80,9 @@ fun TimelineContent(
     onStartSelection: (String) -> Unit = {},
     onToggleSelected: (String) -> Unit = {},
     onClearSelection: () -> Unit = {},
+    /** Timeline | Map: true shows the day on the map instead of the canvas. */
+    showMap: Boolean = false,
+    onShowMapChange: (Boolean) -> Unit = {},
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -95,7 +102,8 @@ fun TimelineContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
+            // The map pans itself, so it takes the remaining height instead of scrolling with the page.
+            .then(if (showMap) Modifier else Modifier.verticalScroll(scroll))
             // A tap nothing else consumed (blocks, buttons and handles consume theirs) deselects.
             .pointerInput(Unit) { detectTapGestures(onTap = { selectedVisit = null }) }
             .padding(horizontal = TarryTheme.space.gutter),
@@ -103,6 +111,21 @@ fun TimelineContent(
     ) {
         DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate)
         WeekStrip(date, today, onSelectDate)
+        SegmentedControl(
+            options = listOf(stringResource(R.string.timeline_view_day), stringResource(R.string.timeline_view_map)),
+            selectedIndex = if (showMap) 1 else 0,
+            onSelect = { onShowMapChange(it == 1) },
+        )
+        if (showMap) {
+            TarryMap(
+                contentDescription = stringResource(
+                    R.string.map_day_description,
+                    date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG)),
+                ),
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = TarryTheme.space.l),
+            )
+            return@Column
+        }
         ReviewRow(
             reviewOnly = reviewOnly,
             showToggle = !items.isNullOrEmpty(),

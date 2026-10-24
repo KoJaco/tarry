@@ -24,6 +24,7 @@ fun TimelineScreen(
     val items by viewModel.items.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     var editTarget by rememberSaveable(stateSaver = EditTargetSaver) { mutableStateOf<EditTarget?>(null) }
+    var showMap by rememberSaveable { mutableStateOf(false) }
     // After midnight the old "today" would stay selected; re-derive it when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
     TimelineContent(
@@ -40,6 +41,8 @@ fun TimelineScreen(
         onStartSelection = viewModel::startSelection,
         onToggleSelected = viewModel::toggleSelected,
         onClearSelection = viewModel::clearSelection,
+        showMap = showMap,
+        onShowMapChange = { showMap = it },
         modifier = modifier,
     )
     editTarget?.let { target ->

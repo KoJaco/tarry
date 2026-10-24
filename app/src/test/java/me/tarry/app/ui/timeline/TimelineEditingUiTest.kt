@@ -57,7 +57,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35], application = android.app.Application::class, qualifiers = "w320dp-h1000dp")
+@Config(sdk = [35], application = android.app.Application::class, qualifiers = "w320dp-h1200dp")
 class TimelineEditingUiTest {
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()

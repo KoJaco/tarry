@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Not "Timeline": the bottom bar already has a Timeline tab, and two same-named tabs confuse TalkBack. -->
+    <string name="timeline_view_day">Day</string>
+    <string name="timeline_view_map">Map</string>
+    <string name="map_day_description">Map of %1$s</string>
+    <string name="map_attribution_short">© OpenFreeMap · OpenMapTiles · OpenStreetMap</string>
+    <string name="map_attribution_action">Map data credits</string>
+    <string name="map_attribution_title">Map data</string>
+    <string name="map_attribution_openfreemap">OpenFreeMap</string>
+    <string name="map_attribution_openmaptiles">© OpenMapTiles</string>
+    <string name="map_attribution_osm">Data from OpenStreetMap contributors</string>
+    <string name="map_attribution_close">Close</string>
+</resources>

@@ -37,6 +37,14 @@ Code uses these names through `TarryTheme.colors` (an extended colour object), m
 | `alertDot` | `#FF6B5E` | `#FF6B5E` | The red badge dot on the ATTENTION toggle (on `ink`) |
 | `pulse` | `#F2B064` @ 35 % | `#F2B064` @ 25 % | Tracking pulse ring |
 
+### Map tokens
+The map style (`app/src/main/assets/map/style.json`, derived from OpenFreeMap Positron) uses `{{token}}` placeholders, never colour literals. `MapStyle.build` fills them from `TarryColors`. Base map features use `paper` (land), `inset` (residential, buildings, tunnels), `card` (major roads, ice, aeroways), `line` (minor roads, casings, rail, building outlines), `outline` (boundaries), `ink` (place labels), `muted` (other labels) and `paper` (label halos). There are two map-only tokens. They are decorative fills, so no contrast target applies; tune them on device.
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `mapWater` | `#CAD7DD` | `#1B2830` | Water bodies, waterways |
+| `mapGreen` | `#E2E5D4` | `#1C211A` | Parks, woods |
+
 Contrast, computed with WCAG 2.x relative luminance (keep these passing when tuning):
 
 | Pair | Light | Dark |
