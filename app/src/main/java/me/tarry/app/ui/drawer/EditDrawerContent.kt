@@ -43,6 +43,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import me.tarry.app.R
+import me.tarry.app.map.GeoPoint
+import me.tarry.app.map.PlacePick
+import me.tarry.app.map.formatPinCoordinates
 import me.tarry.app.ui.components.DestructiveButton
 import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SecondaryButton
@@ -79,6 +82,7 @@ private sealed interface DrawerDialog {
     data object NewStart : DrawerDialog
     data object NewEnd : DrawerDialog
     data object NewPlace : DrawerDialog
+    data object PickOnMap : DrawerDialog
 }
 
 /**
@@ -99,6 +103,8 @@ fun EditDrawerContent(
     var newStart by rememberSaveable(state.start) { mutableLongStateOf(state.start) }
     var newEnd by rememberSaveable(state.end) { mutableLongStateOf(state.end) }
     var newPlaceId by rememberSaveable { mutableStateOf<String?>(null) }
+    // A map pin chosen as a NEW place ([lat, lng]); exclusive with newPlaceId. ArrayList so it survives rotation.
+    var newPin by rememberSaveable { mutableStateOf<ArrayList<Double>?>(null) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -115,8 +121,14 @@ fun EditDrawerContent(
                 start = newStart,
                 end = newEnd,
                 placeId = newPlaceId,
+                pin = newPin?.let { GeoPoint(it[0], it[1]) },
                 onOpen = { dialog = it },
-                onSave = { newPlaceId?.let { actions.onCreateManual(it, newStart, newEnd) } },
+                onSave = {
+                    val pin = newPin
+                    val id = newPlaceId
+                    if (pin != null) actions.onCreateManualAtNewPlace(pin[0], pin[1], newStart, newEnd)
+                    else if (id != null) actions.onCreateManual(id, newStart, newEnd)
+                },
                 placeExtras = placeExtras,
             )
             EditKind.TRIP -> {
@@ -145,10 +157,32 @@ fun EditDrawerContent(
             places = state.places,
             onSelect = {
                 newPlaceId = it
+                newPin = null
                 dialog = null
             },
             onDismiss = { dialog = null },
             title = stringResource(R.string.edit_new_picker_title),
+        )
+    }
+    if (dialog == DrawerDialog.PickOnMap) {
+        val pin = newPin
+        PinPickerDialog(
+            places = state.places,
+            chosenCentre = pin?.let { GeoPoint(it[0], it[1]) } ?: state.places.firstOrNull { it.id == newPlaceId }?.centre,
+            onPick = { pick ->
+                when (pick) {
+                    is PlacePick.Known -> {
+                        newPlaceId = pick.placeId
+                        newPin = null
+                    }
+                    is PlacePick.New -> {
+                        newPlaceId = null
+                        newPin = arrayListOf(pick.lat, pick.lng)
+                    }
+                }
+                dialog = null
+            },
+            onDismiss = { dialog = null },
         )
     }
     if (dialog == DrawerDialog.NewStart || dialog == DrawerDialog.NewEnd) {
@@ -176,13 +210,19 @@ private fun NewVisitForm(
     start: Long,
     end: Long,
     placeId: String?,
+    pin: GeoPoint?,
     onOpen: (DrawerDialog) -> Unit,
     onSave: () -> Unit,
     placeExtras: SettingsGroupScope.() -> Unit,
 ) {
     val formats = rememberTimeFormats()
     val zone = rememberZone(state.zoneId)
-    val placeLabel = placeId?.let { id -> state.places.firstOrNull { it.id == id }?.label }
+    val placeLabel = if (pin != null) {
+        stringResource(R.string.edit_new_place_at, formatPinCoordinates(pin.lat, pin.lng))
+    } else {
+        placeId?.let { id -> state.places.firstOrNull { it.id == id }?.label }
+    }
+    val pickOnMap = stringResource(R.string.edit_new_pick_on_map)
     val startTitle = stringResource(R.string.edit_new_start)
     val endTitle = stringResource(R.string.edit_new_end)
     val choose = stringResource(R.string.edit_new_choose_place)
@@ -196,9 +236,10 @@ private fun NewVisitForm(
     Section(R.string.edit_new_section_place) {
         SettingsGroup {
             row(choose, onClick = { onOpen(DrawerDialog.NewPlace) }, value = placeLabel)
+            row(pickOnMap, onClick = { onOpen(DrawerDialog.PickOnMap) }, icon = R.drawable.ic_location_pin)
             placeExtras()
         }
-        if (placeId == null) {
+        if (placeId == null && pin == null) {
             Text(
                 stringResource(R.string.edit_new_choose_place_required),
                 style = MaterialTheme.typography.bodySmall,
@@ -209,7 +250,7 @@ private fun NewVisitForm(
     PrimaryButton(
         stringResource(R.string.edit_new_save),
         onClick = onSave,
-        enabled = placeId != null,
+        enabled = placeId != null || pin != null,
         modifier = Modifier.fillMaxWidth(),
     )
 }

@@ -92,6 +92,8 @@ data class Snapshot(
     val placeDefaultJobs: Map<String, String> = emptyMap(),
     /** placeId to its exact default-tag set before a place merge; restore replaces the place's links with these (live tags only). */
     val replaceDefaultTags: Map<String, List<PlaceDefaultTag>> = emptyMap(),
+    /** Places the edit created (a manual visit at a new map pin); restore soft-deletes each one that no live visit uses any more. */
+    val createdPlaceIds: List<String> = emptyList(),
 )
 
 /** Limits of a place's circle, in metres. */
@@ -410,20 +412,38 @@ class TimelineEditor @Inject constructor(
 
     /** A frozen [VisitOrigin.MANUAL] visit. Rejected if it overlaps a live visit; trips may overlap (they are derived). */
     suspend fun createManual(placeId: String, start: Long, end: Long, zoneId: String = ZoneId.systemDefault().id): EditResult =
-        db.withTransaction {
-            if (end <= start) return@withTransaction EditResult.EmptyRange
-            if (places.getById(placeId)?.deleted != false) return@withTransaction EditResult.NotFound
-            if (visits.getInRange(start, end).isNotEmpty()) return@withTransaction EditResult.Overlap
-            val undo = snapshotRange(start, end)
-            val visit = Visit(
-                placeId = placeId, start = start, end = end, zoneId = zoneId, frozen = true,
-                origin = VisitOrigin.MANUAL, confidence = 1f, updatedAt = clock.nowMs(),
-            )
-            visits.upsert(visit)
-            unfreezeTripsOver(start, end)
-            rewindCheckpoint(start)
-            EditResult.Ok(undo, id = visit.id)
-        }
+        db.withTransaction { insertManual(placeId, start, end, zoneId, newPlace = null) }
+
+    /**
+     * [createManual] at a new, unnamed place centred on the pin ([lat], [lng]; default radius), in one transaction. Any
+     * failure inserts nothing. The undo removes the visit and the new place together. The address is filled later by the geocoder.
+     */
+    suspend fun createManualAtNewPlace(
+        lat: Double,
+        lng: Double,
+        start: Long,
+        end: Long,
+        zoneId: String = ZoneId.systemDefault().id,
+    ): EditResult = db.withTransaction {
+        val place = Place(centroidLat = lat, centroidLng = lng, lastVisitAt = end, updatedAt = clock.nowMs())
+        insertManual(place.id, start, end, zoneId, newPlace = place)
+    }
+
+    private suspend fun insertManual(placeId: String, start: Long, end: Long, zoneId: String, newPlace: Place?): EditResult {
+        if (end <= start) return EditResult.EmptyRange
+        if (newPlace == null && places.getById(placeId)?.deleted != false) return EditResult.NotFound
+        if (visits.getInRange(start, end).isNotEmpty()) return EditResult.Overlap
+        val undo = snapshotRange(start, end)
+        newPlace?.let { places.upsert(it) }
+        val visit = Visit(
+            placeId = placeId, start = start, end = end, zoneId = zoneId, frozen = true,
+            origin = VisitOrigin.MANUAL, confidence = 1f, updatedAt = clock.nowMs(),
+        )
+        visits.upsert(visit)
+        unfreezeTripsOver(start, end)
+        rewindCheckpoint(start)
+        return EditResult.Ok(undo.copy(createdPlaceIds = listOfNotNull(newPlace?.id)), id = visit.id)
+    }
 
     /**
      * Clears job, billable, notes and tags, unfreezes, and soft-deletes the exclusions inside the visit's span, so the
@@ -489,6 +509,10 @@ class TimelineEditor @Inject constructor(
             snapshot.tripTags.filter { it.tripId == t.id }.forEach { trips.upsertTag(it) }
         }
         snapshot.exclusions.forEach { excluded.upsert(it) }
+        snapshot.createdPlaceIds.forEach { id ->
+            val created = livePlace(id)
+            if (created != null && visits.getLiveByPlace(id).isEmpty()) places.upsert(created.copy(deleted = true, updatedAt = now))
+        }
         snapshot.range?.let { rewindCheckpoint(if (snapshot.places.isNotEmpty()) maxOf(it.first, rewindFloor.floorMs()) else it.first) }
         EditResult.Ok()
     }
