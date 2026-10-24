@@ -39,7 +39,6 @@ import androidx.compose.ui.res.stringResource
 import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
-import me.tarry.app.ui.components.SegmentedControl
 import me.tarry.app.ui.components.rememberReducedMotion
 import me.tarry.app.ui.map.TarryMap
 import me.tarry.app.ui.theme.TarryTheme
@@ -105,27 +104,13 @@ fun TimelineContent(
             // The map pans itself, so it takes the remaining height instead of scrolling with the page.
             .then(if (showMap) Modifier else Modifier.verticalScroll(scroll))
             // A tap nothing else consumed (blocks, buttons and handles consume theirs) deselects.
-            .pointerInput(Unit) { detectTapGestures(onTap = { selectedVisit = null }) }
-            .padding(horizontal = TarryTheme.space.gutter),
+            .pointerInput(Unit) { detectTapGestures(onTap = { selectedVisit = null }) },
         verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xl),
     ) {
-        DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate)
-        WeekStrip(date, today, onSelectDate)
-        SegmentedControl(
-            options = listOf(stringResource(R.string.timeline_view_day), stringResource(R.string.timeline_view_map)),
-            selectedIndex = if (showMap) 1 else 0,
-            onSelect = { onShowMapChange(it == 1) },
-        )
-        if (showMap) {
-            TarryMap(
-                contentDescription = stringResource(
-                    R.string.map_day_description,
-                    date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG)),
-                ),
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(bottom = TarryTheme.space.l),
-            )
-            return@Column
-        }
+        // The gutter is per child so the map can run edge to edge.
+        val gutter = Modifier.padding(horizontal = TarryTheme.space.gutter)
+        DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate, gutter)
+        WeekStrip(date, today, onSelectDate, gutter)
         ReviewRow(
             reviewOnly = reviewOnly,
             showToggle = !items.isNullOrEmpty(),
@@ -134,9 +119,23 @@ fun TimelineContent(
                 val (start, end) = firstFreeSlot(date, zone, items.orEmpty().filterIsInstance<TimelineItem.Visit>())
                 onEdit(EditTarget.NewVisit(start, end))
             },
+            showMap = showMap,
+            onShowMapChange = onShowMapChange,
+            modifier = gutter,
         )
+        if (showMap) {
+            // Full width, down to the bottom bar (the shell's inner padding).
+            TarryMap(
+                contentDescription = stringResource(
+                    R.string.map_day_description,
+                    date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG)),
+                ),
+                modifier = Modifier.fillMaxWidth().weight(1f),
+            )
+            return@Column
+        }
         Column(
-            modifier = Modifier.fillMaxWidth().daySlide(date),
+            modifier = Modifier.fillMaxWidth().then(gutter).daySlide(date),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
         ) {
             when {
