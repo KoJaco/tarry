@@ -90,4 +90,13 @@
         <item quantity="one">%1$d visit updated</item>
         <item quantity="other">%1$d visits updated</item>
     </plurals>
+
+    <!-- Tracking start/stop marks on the day canvas. -->
+    <string name="timeline_tracking_started">Tracking started %1$s</string>
+    <string name="timeline_tracking_stopped">Tracking stopped %1$s</string>
+    <string name="timeline_tracking_paused">Tracking paused %1$s</string>
+    <string name="timeline_tracking_ended">Tracking ended %1$s</string>
+    <string name="timeline_tracking_interrupted">Tracking interrupted %1$s</string>
+    <string name="timeline_tracking_no_permission">Tracking stopped, no permission %1$s</string>
+    <string name="timeline_tracking_restarted">Tracking stopped %1$s · started %2$s</string>
 </resources>

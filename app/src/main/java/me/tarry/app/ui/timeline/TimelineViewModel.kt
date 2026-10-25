@@ -46,6 +46,7 @@ import me.tarry.core.data.repository.TagRepository
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.segmentation.SegmentationParams
 import me.tarry.core.data.db.entity.Place
+import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
@@ -162,6 +163,8 @@ class TimelineViewModel internal constructor(
     /** Live ping positions in `[from, to)`, for the Map tab only. */
     private val pingPositions: (from: Long, to: Long) -> Flow<List<PingPosition>> = { _, _ -> flowOf(emptyList()) },
     private val mapConfig: MapConfig = MapConfig(),
+    /** Tracking sessions overlapping `[from, to)`, live, for the start/stop marks on the day canvas. */
+    private val trackingSessions: (from: Long, to: Long) -> Flow<List<TrackingSession>> = { _, _ -> flowOf(emptyList()) },
 ) : ViewModel() {
     @Inject
     constructor(
@@ -183,6 +186,7 @@ class TimelineViewModel internal constructor(
             createJob = { name -> editor.createJob(name, JobPalette.slots.map { it.key }) },
             minStayMs = params.minStayDurationMs,
             pingPositions = tracking::observePingPositions,
+            trackingSessions = tracking::observeSessionsOverlapping,
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -234,6 +238,14 @@ class TimelineViewModel internal constructor(
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
+    /** The selected day's tracking start/stop marks (see [trackingMarkers]); empty while loading. Re-emits only when a session row changes. */
+    val trackingMarkers: StateFlow<List<TrackingMarker>> = _selectedDate
+        .flatMapLatest { date ->
+            val (from, to) = dayBounds(date, zone)
+            trackingSessions(from, to).map { trackingMarkers(it, from, to) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
 
     /**
      * The selected day for the Map tab: route from that day's pings, pins at place centroids. Null while loading.

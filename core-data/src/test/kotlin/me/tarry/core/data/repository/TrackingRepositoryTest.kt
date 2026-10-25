@@ -73,6 +73,17 @@ class TrackingRepositoryTest : DbTestBase() {
     }
 
     @Test
+    fun observeSessionsOverlapping_includesOpenAndCrossingSessionsOnly() = runTest {
+        val r = repo()
+        r.saveSession(TrackingSession(start = 0, end = 10, zoneId = "UTC", trigger = SessionTrigger.MANUAL)) // before
+        val crossing = r.saveSession(TrackingSession(start = 5, end = 25, zoneId = "UTC", trigger = SessionTrigger.MANUAL))
+        val open = r.saveSession(TrackingSession(start = 30, zoneId = "UTC", trigger = SessionTrigger.MANUAL))
+        r.saveSession(TrackingSession(start = 50, end = 60, zoneId = "UTC", trigger = SessionTrigger.MANUAL)) // after
+
+        assertThat(r.observeSessionsOverlapping(10, 40).first().map { it.id }).containsExactly(crossing, open).inOrder()
+    }
+
+    @Test
     fun saveOverride_updateReturnsRealId() = runTest {
         val r = repo()
         val id = r.saveOverride(

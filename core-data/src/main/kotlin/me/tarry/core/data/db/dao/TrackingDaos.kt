@@ -30,6 +30,10 @@ interface TrackingSessionDao {
     @Query("SELECT * FROM tracking_session WHERE start < :to AND (`end` IS NULL OR `end` > :from) ORDER BY start")
     suspend fun getOverlapping(from: Long, to: Long): List<TrackingSession>
 
+    /** [getOverlapping], live: re-emits only when a session row changes (start, stop), not per ping. */
+    @Query("SELECT * FROM tracking_session WHERE start < :to AND (`end` IS NULL OR `end` > :from) ORDER BY start")
+    fun observeOverlapping(from: Long, to: Long): Flow<List<TrackingSession>>
+
     @Query("SELECT * FROM tracking_session WHERE `end` IS NULL ORDER BY start DESC LIMIT 1")
     suspend fun getOpenSession(): TrackingSession?
 

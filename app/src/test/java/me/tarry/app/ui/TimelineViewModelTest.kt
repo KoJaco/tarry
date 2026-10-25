@@ -159,6 +159,26 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun trackingMarkersFollowTheSelectedDaysSessions() = runBlocking {
+        val asked = mutableListOf<Pair<Long, Long>>()
+        val sessions = listOf(
+            me.tarry.core.data.db.entity.TrackingSession(
+                start = at(day, 7, 2), end = at(day, 17, 4), zoneId = zone.id,
+                trigger = me.tarry.core.data.model.SessionTrigger.SCHEDULE, endReason = me.tarry.core.data.model.SessionEndReason.SCHEDULE_END,
+            ),
+        )
+        val vm = TimelineViewModel(
+            timeline, places, jobs, tags, zone, { day },
+            trackingSessions = { from, to -> asked += from to to; flowOf(sessions) },
+        ).managed()
+
+        val markers = withTimeout(10_000) { vm.trackingMarkers.first { it.isNotEmpty() } }
+
+        assertThat(asked.first()).isEqualTo(dayBounds(day, zone))
+        assertThat(markers.map { it.startedMs to it.stoppedMs }).containsExactly(at(day, 7, 2) to null, null to at(day, 17, 4)).inOrder()
+    }
+
+    @Test
     fun dayMapNeverMixesTwoDaysWhenTheDateChanges() = runBlocking {
         // Each day's place and pings share one latitude, so a mixed map has pins and route at different latitudes.
         val yesterday = day.minusDays(1)

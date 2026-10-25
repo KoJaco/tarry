@@ -124,6 +124,8 @@ fun layoutDay(
     fontScale: Float,
     params: DayLayoutParams = DayLayoutParams(),
     window: Pair<Long, Long>? = null,
+    /** Instants (clamped to the day) the canvas must reach, e.g. tracking start/stop marks outside the visits. */
+    extraInstants: List<Long> = emptyList(),
 ): DayLayout {
     val (dayStart, dayEnd) = dayBounds
     val fs = maxOf(1f, fontScale)
@@ -224,6 +226,10 @@ fun layoutDay(
         bands.forEach {
             rawStart = minOf(rawStart, it.start)
             rawEnd = maxOf(rawEnd, it.end)
+        }
+        extraInstants.forEach {
+            rawStart = minOf(rawStart, it.coerceIn(dayStart, dayEnd))
+            rawEnd = maxOf(rawEnd, it.coerceIn(dayStart, dayEnd))
         }
         if (win != null) {
             rawStart = minOf(rawStart, win.first)
