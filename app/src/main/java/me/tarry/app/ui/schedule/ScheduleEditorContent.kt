@@ -5,6 +5,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -24,7 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import me.tarry.app.R
@@ -40,6 +47,11 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private val RowHeightDp = 48.dp
+private const val MinGridRows = 4
+/** Room kept below the grid for the Save / Discard bar and a save error line. */
+private val SaveBarReserve = 120.dp
 
 /** What the editor can do. The ViewModel wires these; tests record them. */
 data class ScheduleEditorActions(
@@ -79,15 +91,23 @@ fun ScheduleEditorContent(
     var confirmBack by rememberSaveable { mutableStateOf(false) }
     val weekMode = state.mode == ScheduleMode.WEEK
 
-    BackHandler(enabled = state.dirty) { confirmBack = true }
+    // While a save is in flight Back does nothing: there is nothing to discard and nothing to lose by waiting.
+    BackHandler(enabled = state.dirty || state.saving) { if (!state.saving) confirmBack = true }
 
-    Column(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = space.gutter)
             .padding(top = space.l),
-        verticalArrangement = Arrangement.spacedBy(space.s),
     ) {
+    // The controls scroll away at large font scales, so the grid always keeps at least [MinGridRows] rows.
+    val barReserve = if (state.dirty) SaveBarReserve else 0.dp
+    val controlsMax = (maxHeight - RowHeightDp * MinGridRows - barReserve - space.s * 3).coerceAtLeast(0.dp)
+    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(space.s)) {
+      Column(
+        modifier = Modifier.heightIn(max = controlsMax).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(space.s),
+      ) {
         Text(
             text = stringResource(R.string.schedule_title),
             style = MaterialTheme.typography.headlineMedium,
@@ -98,6 +118,7 @@ fun ScheduleEditorContent(
             options = listOf(stringResource(R.string.schedule_mode_every_week), stringResource(R.string.schedule_mode_this_week)),
             selectedIndex = if (weekMode) 1 else 0,
             onSelect = { actions.onModeChange(if (it == 1) ScheduleMode.WEEK else ScheduleMode.TEMPLATE) },
+            enabled = !state.saving,
         )
         if (weekMode) {
             WeekNav(state, actions.onShiftWeek)
@@ -113,6 +134,7 @@ fun ScheduleEditorContent(
             SecondaryButton(stringResource(R.string.schedule_preset_work_week), onClick = actions.onWorkWeekPreset)
             SecondaryButton(stringResource(R.string.schedule_preset_clear), onClick = actions.onClearAll)
         }
+      }
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -129,6 +151,14 @@ fun ScheduleEditorContent(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+        if (state.saveFailed) {
+            Text(
+                text = stringResource(R.string.schedule_save_failed),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.alert,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
         if (state.dirty) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = space.s),
@@ -138,6 +168,7 @@ fun ScheduleEditorContent(
                 PrimaryButton(stringResource(R.string.schedule_save), onClick = actions.onSave, enabled = !state.saving, modifier = Modifier.weight(1f))
             }
         }
+    }
     }
 
     sheetDay?.let { day ->
@@ -198,7 +229,7 @@ private fun WeekNav(state: ScheduleUiState, onShift: (Int) -> Unit) {
             icon = R.drawable.ic_chevron_left,
             contentDescription = stringResource(R.string.schedule_previous_week),
             onClick = { onShift(-1) },
-            enabled = state.canGoPrevious,
+            enabled = state.canGoPrevious && !state.saving,
         )
         Text(
             text = weekRangeLabel(state.viewedWeek, locale),
@@ -211,6 +242,7 @@ private fun WeekNav(state: ScheduleUiState, onShift: (Int) -> Unit) {
             icon = R.drawable.ic_chevron_right,
             contentDescription = stringResource(R.string.schedule_next_week),
             onClick = { onShift(1) },
+            enabled = !state.saving,
         )
     }
 }

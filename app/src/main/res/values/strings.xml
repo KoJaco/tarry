@@ -241,6 +241,7 @@
     <string name="schedule_preset_work_week">Mon–Fri 07:00–17:00</string>
     <string name="schedule_preset_clear">Clear</string>
     <string name="schedule_save">Save</string>
+    <string name="schedule_save_failed">Couldn\'t save the schedule. Your changes are kept; try again.</string>
     <string name="schedule_discard">Discard</string>
     <string name="schedule_discard_title">Discard changes?</string>
     <string name="schedule_discard_body">Your unsaved schedule changes will be lost.</string>
@@ -253,10 +254,6 @@
     <string name="schedule_set_hours">Set hours</string>
     <string name="schedule_hours_start">Start</string>
     <string name="schedule_hours_end">End</string>
-    <string name="schedule_start_earlier">Start earlier</string>
-    <string name="schedule_start_later">Start later</string>
-    <string name="schedule_end_earlier">End earlier</string>
-    <string name="schedule_end_later">End later</string>
     <string name="schedule_copy_to">Copy to…</string>
     <string name="schedule_copy_weekdays">Weekdays</string>
     <string name="schedule_copy_apply">Copy</string>

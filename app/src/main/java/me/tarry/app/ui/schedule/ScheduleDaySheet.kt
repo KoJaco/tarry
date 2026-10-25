@@ -1,6 +1,18 @@
 package me.tarry.app.ui.schedule
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import me.tarry.app.ui.components.TertiaryButton
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -8,7 +20,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CornerSize
@@ -26,15 +37,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.DestructiveButton
-import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.TarryChip
@@ -42,6 +52,9 @@ import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.Schedule
 import java.time.DayOfWeek
 import java.time.format.TextStyle
+
+/** Test tag of the scrolling list of times in a start / end picker. */
+internal const val ScheduleTimeListTag = "schedule_time_list"
 
 private val WEEKDAYS = DayOfWeek.entries.take(5)
 
@@ -99,25 +112,21 @@ fun ScheduleDaySheetContent(day: DayOfWeek, schedule: Schedule, actions: Schedul
         )
 
         SectionHeader(stringResource(R.string.schedule_set_hours), Modifier.padding(top = space.s))
-        HoursStepper(
+        // Start 00:00 to 23:30; end 00:30 to 24:00, always after the start (picking a later start pushes the end along).
+        TimePickerField(
             label = stringResource(R.string.schedule_hours_start),
             slot = start,
-            earlierDescription = stringResource(R.string.schedule_start_earlier),
-            laterDescription = stringResource(R.string.schedule_start_later),
-            canGoEarlier = start > 0,
-            canGoLater = start < end - 1,
-            onEarlier = { start -= 1 },
-            onLater = { start += 1 },
+            options = 0 until Schedule.SLOTS_PER_DAY,
+            onPick = {
+                start = it
+                if (end <= it) end = it + 1
+            },
         )
-        HoursStepper(
+        TimePickerField(
             label = stringResource(R.string.schedule_hours_end),
             slot = end,
-            earlierDescription = stringResource(R.string.schedule_end_earlier),
-            laterDescription = stringResource(R.string.schedule_end_later),
-            canGoEarlier = end > start + 1,
-            canGoLater = end < Schedule.SLOTS_PER_DAY,
-            onEarlier = { end -= 1 },
-            onLater = { end += 1 },
+            options = (start + 1)..Schedule.SLOTS_PER_DAY,
+            onPick = { end = it },
         )
         PrimaryButton(
             stringResource(R.string.schedule_set_hours),
@@ -130,7 +139,6 @@ fun ScheduleDaySheetContent(day: DayOfWeek, schedule: Schedule, actions: Schedul
 
         SectionHeader(stringResource(R.string.schedule_copy_to), Modifier.padding(top = space.m))
         FlowRow(
-            modifier = Modifier.selectableGroup(),
             horizontalArrangement = Arrangement.spacedBy(space.s),
             verticalArrangement = Arrangement.spacedBy(space.xs),
         ) {
@@ -173,28 +181,60 @@ fun ScheduleDaySheetContent(day: DayOfWeek, schedule: Schedule, actions: Schedul
     }
 }
 
+/** A row showing "label  time" that opens a list of the half-hour [options] (slots; 48 = 24:00) to pick from. */
 @Composable
-private fun HoursStepper(
-    label: String,
-    slot: Int,
-    earlierDescription: String,
-    laterDescription: String,
-    canGoEarlier: Boolean,
-    canGoLater: Boolean,
-    onEarlier: () -> Unit,
-    onLater: () -> Unit,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
-        Text(label, style = MaterialTheme.typography.titleSmall, color = TarryTheme.colors.ink, modifier = Modifier.weight(1f))
-        IconCircleButton(R.drawable.ic_minus, earlierDescription, onEarlier, enabled = canGoEarlier, containerColor = TarryTheme.colors.inset)
-        Text(
-            text = slotTime(slot),
-            style = MaterialTheme.typography.titleMedium,
-            color = TarryTheme.colors.ink,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(min = 64.dp),
+private fun TimePickerField(label: String, slot: Int, options: IntRange, onPick: (Int) -> Unit) {
+    val c = TarryTheme.colors
+    var open by rememberSaveable(label) { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(TarryTheme.shapes.pill)
+            .background(c.inset)
+            .clickable(role = Role.Button) { open = true }
+            .padding(horizontal = TarryTheme.space.l),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.titleSmall, color = c.ink, modifier = Modifier.weight(1f))
+        Text(slotTime(slot), style = MaterialTheme.typography.titleMedium, color = c.ink)
+    }
+    if (open) {
+        val listState = rememberLazyListState(initialFirstVisibleItemIndex = (slot - options.first).coerceAtLeast(0))
+        AlertDialog(
+            onDismissRequest = { open = false },
+            shape = TarryTheme.shapes.container,
+            containerColor = c.card,
+            title = { Text(label, style = MaterialTheme.typography.titleLarge, color = c.ink) },
+            text = {
+                LazyColumn(state = listState, modifier = Modifier.testTag(ScheduleTimeListTag).selectableGroup()) {
+                    items(options.toList(), key = { it }) { option ->
+                        val selected = option == slot
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .clip(TarryTheme.shapes.pill)
+                                .background(if (selected) c.accentSoft else Color.Transparent)
+                                .selectable(selected = selected, role = Role.RadioButton) {
+                                    onPick(option)
+                                    open = false
+                                }
+                                .padding(horizontal = TarryTheme.space.l),
+                            contentAlignment = Alignment.CenterStart,
+                        ) {
+                            Text(
+                                slotTime(option),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = if (selected) c.onAccentSoft else c.ink,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = { open = false }) },
         )
-        IconCircleButton(R.drawable.ic_plus, laterDescription, onLater, enabled = canGoLater, containerColor = TarryTheme.colors.inset)
     }
 }
 

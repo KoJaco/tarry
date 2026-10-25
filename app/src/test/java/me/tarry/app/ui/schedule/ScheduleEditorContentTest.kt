@@ -1,6 +1,13 @@
 package me.tarry.app.ui.schedule
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -166,11 +173,67 @@ class ScheduleEditorContentTest {
 
         composeRule.onNodeWithContentDescription("Edit Tuesday").performClick()
         composeRule.onNodeWithText("Tuesday").assertIsDisplayed()
-        composeRule.onNodeWithContentDescription("Start later").performClick()
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.onNodeWithText("07:30").performClick()
         // Section header (upper case) and button share the words; the button is the exact-case one.
         composeRule.onNodeWithText("Set hours").performClick()
 
         assertThat(calls).containsExactly("hours:TUESDAY:15:34")
+    }
+
+    @Test
+    fun endPickerOffersOnlyTimesAfterTheStartAndALaterStartPushesTheEnd() {
+        show(state())
+
+        composeRule.onNodeWithContentDescription("Edit Tuesday").performClick()
+        composeRule.onNodeWithText("End").performClick()
+        composeRule.onNodeWithTag(ScheduleTimeListTag).performScrollToNode(hasText("24:00"))
+        composeRule.onNodeWithText("24:00").performClick()
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.onNodeWithTag(ScheduleTimeListTag).performScrollToNode(hasText("23:30"))
+        composeRule.onNodeWithText("23:30").performClick()
+        composeRule.onNodeWithText("Set hours").performClick()
+
+        assertThat(calls).containsExactly("hours:TUESDAY:47:48")
+    }
+
+    @Test
+    fun savingDisablesModeAndWeekNavigation() {
+        show(state(mode = ScheduleMode.WEEK, viewedWeek = currentWeek.plusWeeks(1), draft = Schedule.EMPTY).copy(saving = true))
+
+        composeRule.onNodeWithContentDescription("Previous week").assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Next week").assertIsNotEnabled()
+        composeRule.onNodeWithText("Every week").assertIsNotEnabled()
+    }
+
+    @Test
+    fun aFailedSaveShowsAnErrorAndKeepsTheBar() {
+        show(state(draft = Schedule.EMPTY).copy(saveFailed = true))
+
+        composeRule.onNodeWithText("Couldn't save the schedule", substring = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Save").assertIsEnabled()
+    }
+
+    @Test
+    fun atFontScaleTwoTheGridKeepsAtLeastFourRows() {
+        composeRule.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = 2f),
+            ) {
+                androidx.compose.foundation.layout.Box(
+                    androidx.compose.ui.Modifier.width(360.dp).height(640.dp),
+                ) {
+                    ScheduleEditorContent(
+                        state(mode = ScheduleMode.WEEK, hasOverride = true, draft = Schedule.EMPTY),
+                        actions,
+                        onClose = {},
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithTag(ScheduleGridTag).assertHeightIsAtLeast(48.dp * 4)
     }
 
     @Test
