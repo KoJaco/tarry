@@ -21,6 +21,7 @@ The manual-visit create form was never built, so it is built here first. Recon f
 - **Drawer mini map:** the place and its radius only.
 - **Map-pin manual visit:** it may create a new place.
 - **Deferred:** boat-over-water detection (post-MVP).
+- **Deferred (2026-10-25): map matching** (snapping trip lines to streets, e.g. a hidden Markov model matcher like OSRM match or Valhalla Meili) goes post-MVP. It needs an on-device road graph (privacy rule 2), so it sits with offline regions. Heavy smoothing is not wanted. Known symptom: on 24 Oct some stretches of the trip line stray off the roads when zoomed in.
 - **Day-3 tweaks:** none reported yet.
 
 ## Device-pass revisions (2026-10-25, owner)
@@ -30,7 +31,7 @@ The manual-visit create form was never built, so it is built here first. Recon f
 - **Attribution sits top right** of every map, clear of the scrubber; the compass sits below it. The drawer mini map uses the credit MapLibre prints into the snapshot.
 - **Only fixes within 50 m make trip lines** (`MapConfig.routeMaxAccuracyM`). Network fixes (50–100 m) jumped hundreds of metres and landed offshore on 23 Oct; on a GPS day the cap drops about 4% of trip fixes. A spike filter was tested on 24 Oct and rejected, because it only removed accurate GPS turns.
 - **The scrubber is an overlay.** The map runs down to the bottom bar. The scrubber floats over it as a slim card: one line with coloured visit dots, smaller arrows (48 dp targets kept) and a smaller time pill.
-- **Follow-up, a capture bug outside phase 5:** two water crossings had about 12 minutes with no pings while moving, and no Gap was recorded. They were 23 Oct 09:36–09:48 and 24 Oct 11:16–11:28. That breaks AGENTS.md rule 6, so it needs `debug-triage` on the tracking side. The map shows these stretches as breaks in the line.
+- **Follow-up, a capture bug outside phase 5:** on 24 Oct, 11:17–11:28, tracking recorded no fixes while the owner drove about 2.8 km. Fixes before and after were GPS-grade (8–30 m), and no Gap was recorded. That breaks AGENTS.md rule 6, so it needs `debug-triage` on the tracking side. The 23 Oct hole (09:36–09:48) was a boat trip on a network-fix-only day, so it is put down to the old low-accuracy tracking; re-check on the next water trip. The map shows both as breaks in the line.
 
 ## Design
 - **No schema change.** The DB stays v1. The only data addition is a `LocationPingDao.observeInRange` Flow query.
