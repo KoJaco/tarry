@@ -100,75 +100,75 @@ fun ScheduleEditorContent(
             .padding(horizontal = space.gutter)
             .padding(top = space.l),
     ) {
-    // The controls scroll away at large font scales, so the grid always keeps at least [MinGridRows] rows.
-    val barReserve = if (state.dirty) SaveBarReserve else 0.dp
-    val controlsMax = (maxHeight - RowHeightDp * MinGridRows - barReserve - space.s * 3).coerceAtLeast(0.dp)
-    Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(space.s)) {
-      Column(
-        modifier = Modifier.heightIn(max = controlsMax).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(space.s),
-      ) {
-        Text(
-            text = stringResource(R.string.schedule_title),
-            style = MaterialTheme.typography.headlineMedium,
-            color = colors.ink,
-            modifier = Modifier.semantics { heading() },
-        )
-        SegmentedControl(
-            options = listOf(stringResource(R.string.schedule_mode_every_week), stringResource(R.string.schedule_mode_this_week)),
-            selectedIndex = if (weekMode) 1 else 0,
-            onSelect = { actions.onModeChange(if (it == 1) ScheduleMode.WEEK else ScheduleMode.TEMPLATE) },
-            enabled = !state.saving,
-        )
-        if (weekMode) {
-            WeekNav(state, actions.onShiftWeek)
-            if (state.hasOverride) OverrideBanner(onUseEveryWeek = { confirmEveryWeek = true })
-        } else if (state.currentWeekHasOverride) {
-            Text(
-                text = stringResource(R.string.schedule_template_note_override),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.muted,
-            )
-        }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
-            SecondaryButton(stringResource(R.string.schedule_preset_work_week), onClick = actions.onWorkWeekPreset)
-            SecondaryButton(stringResource(R.string.schedule_preset_clear), onClick = actions.onClearAll)
-        }
-      }
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .clip(TarryTheme.shapes.card)
-                .background(colors.card),
-        ) {
-            ScheduleGrid(
-                schedule = state.draft,
-                onToggle = actions.onToggleCell,
-                onStroke = actions.onStroke,
-                onDayHeaderClick = { sheetDay = it },
-                highlightDay = if (weekMode && state.viewedWeek == state.currentWeek) state.today.dayOfWeek else null,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        if (state.saveFailed) {
-            Text(
-                text = stringResource(R.string.schedule_save_failed),
-                style = MaterialTheme.typography.bodyMedium,
-                color = colors.alert,
-                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-            )
-        }
-        if (state.dirty) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = space.s),
-                horizontalArrangement = Arrangement.spacedBy(space.s),
+        // The controls scroll away at large font scales, so the grid always keeps at least [MinGridRows] rows.
+        val barReserve = if (state.dirty) SaveBarReserve else 0.dp
+        val controlsMax = (maxHeight - RowHeightDp * MinGridRows - barReserve - space.s * 3).coerceAtLeast(0.dp)
+        Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(space.s)) {
+            Column(
+                modifier = Modifier.heightIn(max = controlsMax).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(space.s),
             ) {
-                SecondaryButton(stringResource(R.string.schedule_discard), onClick = actions.onDiscard, modifier = Modifier.weight(1f))
-                PrimaryButton(stringResource(R.string.schedule_save), onClick = actions.onSave, enabled = !state.saving, modifier = Modifier.weight(1f))
+                Text(
+                    text = stringResource(R.string.schedule_title),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = colors.ink,
+                    modifier = Modifier.semantics { heading() },
+                )
+                SegmentedControl(
+                    options = listOf(stringResource(R.string.schedule_mode_every_week), stringResource(R.string.schedule_mode_this_week)),
+                    selectedIndex = if (weekMode) 1 else 0,
+                    onSelect = { actions.onModeChange(if (it == 1) ScheduleMode.WEEK else ScheduleMode.TEMPLATE) },
+                    enabled = !state.saving,
+                )
+                if (weekMode) {
+                    WeekNav(state, actions.onShiftWeek)
+                    if (state.hasOverride) OverrideBanner(onUseEveryWeek = { confirmEveryWeek = true })
+                } else if (state.currentWeekHasOverride) {
+                    Text(
+                        text = stringResource(R.string.schedule_template_note_override),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = colors.muted,
+                    )
+                }
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
+                    SecondaryButton(stringResource(R.string.schedule_preset_work_week), onClick = actions.onWorkWeekPreset)
+                    SecondaryButton(stringResource(R.string.schedule_preset_clear), onClick = actions.onClearAll)
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(TarryTheme.shapes.card)
+                    .background(colors.card),
+            ) {
+                ScheduleGrid(
+                    schedule = state.draft,
+                    onToggle = actions.onToggleCell,
+                    onStroke = actions.onStroke,
+                    onDayHeaderClick = { sheetDay = it },
+                    highlightDay = if (weekMode && state.viewedWeek == state.currentWeek) state.today.dayOfWeek else null,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            if (state.saveFailed) {
+                Text(
+                    text = stringResource(R.string.schedule_save_failed),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.alert,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
+            if (state.dirty) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = space.s),
+                    horizontalArrangement = Arrangement.spacedBy(space.s),
+                ) {
+                    SecondaryButton(stringResource(R.string.schedule_discard), onClick = actions.onDiscard, modifier = Modifier.weight(1f))
+                    PrimaryButton(stringResource(R.string.schedule_save), onClick = actions.onSave, enabled = !state.saving, modifier = Modifier.weight(1f))
+                }
             }
         }
-    }
     }
 
     sheetDay?.let { day ->
