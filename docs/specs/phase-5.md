@@ -41,7 +41,8 @@ Pixel 10 for the map, pin taps and the drawer; emulator (Medium Phone API 35, wi
 - **Network:** while the map loaded, panned and opened a drawer, every TCP connection from the app's UID went to 172.67.74.56:443, an address of `tiles.openfreemap.org`. The release classpath has no analytics, crash or telemetry modules.
 - **Fixed during the pass:** the drawer mini map crash, straight lines over unrecorded stretches, network fixes drawn as trips, the lost whole-day fit, the credit at large font sizes, and the TalkBack description.
 - **Known:** the credit MapLibre prints into the mini map image is faint in dark mode.
-- **Not covered:** the scrubber drag while tracking on the Pixel (the S1 regression check).
+- **Scrubber drag while tracking** (the S1 regression check): the owner confirmed it works on the Pixel.
+- **Dogfood, 2026-10-25 (a few hours, manual session):** two short drives, both fully drawn from fixes within 50 m. The service was killed once (12:56:59); a `SERVICE_KILLED` gap was recorded, so the map shows a break. A full work week of dogfooding starts on 2026-10-26.
 
 ## Design
 - **No schema change.** The DB stays v1. The only data addition is a `LocationPingDao.observeInRange` Flow query.
@@ -82,7 +83,7 @@ Pixel 10 for the map, pin taps and the drawer; emulator (Medium Phone API 35, wi
 | T5 | Map-pin placement: centre-pin picker, nearby places, `createManualAtNewPlace` with a single undo | M | claude + test-writer | Done (device pass pending) |
 | T6 | Drawer mini map (`MapSnapshotter`, cached) | S | implementer | Done (device pass pending) |
 | T7 | Radius sheet live map (circle follows the slider, visit dots) | S | implementer | Done (device pass pending) |
-| T8 | Review, security pass (network/telemetry), device pass | M | claude | Device pass done 2026-10-25 (Pixel + emulator, see below); final review pending |
+| T8 | Review, security pass (network/telemetry), device pass | M | claude | Done 2026-10-25: device pass (Pixel + emulator, see above) and review |
 
 ## Acceptance criteria
 - **Map view:**
