@@ -174,6 +174,9 @@ interface ScheduleDao {
     @Query("SELECT * FROM schedule_override WHERE weekStart = :weekStart")
     suspend fun getOverride(weekStart: String): ScheduleOverride?
 
+    @Query("SELECT * FROM schedule_override WHERE weekStart = :weekStart")
+    fun observeOverride(weekStart: String): Flow<ScheduleOverride?>
+
     @Query("SELECT * FROM schedule_override WHERE weekStart >= :fromWeek AND weekStart < :toWeek ORDER BY weekStart")
     suspend fun getOverridesInRange(fromWeek: String, toWeek: String): List<ScheduleOverride>
 

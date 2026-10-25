@@ -154,6 +154,9 @@ class ScheduleRepository @Inject constructor(private val schedules: ScheduleDao)
     suspend fun override(weekStart: String): Schedule? =
         schedules.getOverride(weekStart)?.let { Schedule.fromBytes(it.slots) }
 
+    fun observeOverride(weekStart: String): Flow<Schedule?> =
+        schedules.observeOverride(weekStart).map { row -> row?.let { Schedule.fromBytes(it.slots) } }
+
     suspend fun saveOverride(weekStart: String, schedule: Schedule, updatedAt: Long) =
         schedules.upsertOverride(ScheduleOverride(weekStart, schedule.toBytes(), updatedAt))
 

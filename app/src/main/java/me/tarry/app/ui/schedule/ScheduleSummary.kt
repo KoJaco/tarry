@@ -46,3 +46,6 @@ fun formatUniform(summary: ScheduleSummary.Uniform, dayName: (DayOfWeek) -> Stri
     }
     return "$days ${time(summary.startSlot)}–${time(summary.endSlotExclusive)}"
 }
+
+/** This week's effective schedule at a glance; [hasOverride] when the week has its own schedule. */
+data class WeekScheduleSummary(val summary: ScheduleSummary, val hasOverride: Boolean)
