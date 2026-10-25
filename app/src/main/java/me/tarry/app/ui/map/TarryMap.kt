@@ -54,6 +54,15 @@ import org.maplibre.android.maps.Style
 
 private val MinTouch = 48.dp
 
+/** Height of the top strip the attribution takes; maps keep their content clear of it. */
+internal val MapAttributionClearance = MinTouch
+
+/** The credit line grows with the font scale only up to this, so it stays one line over the map (the dialog it opens scales fully). */
+private const val AttributionMaxFontScale = 1.3f
+
+/** Multiplier for the credit line's sp size so its rendered scale is the user's, capped at [AttributionMaxFontScale]. */
+internal fun attributionFontFactor(fontScale: Float): Float = if (fontScale <= AttributionMaxFontScale) 1f else AttributionMaxFontScale / fontScale
+
 /** Token name to ARGB for [MapStyle.build]; the names match `docs/design/tokens.md` and the template placeholders. */
 internal fun TarryColors.mapPalette(): Map<String, Int> = mapOf(
     "paper" to paper.toArgb(),
@@ -173,7 +182,7 @@ private fun MapAttribution(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = stringResource(R.string.map_attribution_short),
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall.let { it.copy(fontSize = it.fontSize * attributionFontFactor(LocalDensity.current.fontScale)) },
             color = c.ink,
             modifier = Modifier
                 .background(c.paper.copy(alpha = 0.85f), TarryTheme.shapes.pill)

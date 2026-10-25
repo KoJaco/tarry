@@ -62,6 +62,8 @@ private const val SinglePlaceZoom = 16.0
 /** A box smaller than this (degrees) is effectively one place: zoom to it instead of fitting. */
 private const val TinySpanDeg = 0.001
 private val BannerTop = 48.dp
+/** Margin around the day when fitting it, inside the attribution strip and the bottom overlay (a pin is 26 dp across). */
+private val FitPadding = 32.dp
 private const val BreakEndRadius = 4f
 private const val FadedRouteOpacity = 0.3f
 
@@ -93,7 +95,8 @@ fun DayMapView(
     val markerFollow = remember { MarkerFollow() }
     val openVisit by rememberUpdatedState(onOpenVisit)
     val touchPx = with(LocalDensity.current) { config.pinTouchDp.dp.toPx() }
-    val fitPaddingPx = with(LocalDensity.current) { 56.dp.toPx() }.toInt()
+    val fitPaddingPx = with(LocalDensity.current) { FitPadding.toPx() }.toInt()
+    val topInsetPx = with(LocalDensity.current) { MapAttributionClearance.toPx() }.toDouble()
 
     Box(modifier) {
         TarryMap(
@@ -130,13 +133,14 @@ fun DayMapView(
             style.setRoutes(dayMap.routes, activeTrip, colors)
             style.setPins(dayMap.pins, colors, dark)
             if (fittedFor != date) {
-                dayMap.bounds?.let { map.fitTo(it, fitPaddingPx) }
+                dayMap.bounds?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomInsetPx) }
                 fittedFor = date
             }
         }
-        LaunchedEffect(current, bottomInsetPx) {
+        LaunchedEffect(current, bottomInsetPx, topInsetPx) {
             val (map, _) = current ?: return@LaunchedEffect
-            map.moveCamera(CameraUpdateFactory.paddingTo(0.0, 0.0, 0.0, bottomInsetPx.toDouble()))
+            // Centre between the attribution strip and whatever floats over the bottom.
+            map.moveCamera(CameraUpdateFactory.paddingTo(0.0, topInsetPx, 0.0, bottomInsetPx.toDouble()))
         }
         LaunchedEffect(current, marker, colors) {
             val (map, style) = current ?: return@LaunchedEffect
@@ -169,7 +173,12 @@ fun DayMapView(
     }
 }
 
-private fun MapLibreMap.fitTo(bounds: GeoBounds, paddingPx: Int) {
+/**
+ * Fits [bounds] inside the map less the attribution strip ([topPx]) and the bottom overlay ([bottomPx]), then restores
+ * the camera padding the marker centring uses. MapLibre adds a bounds fit's padding to the camera's current padding, so
+ * that is cleared first. The fit's extra padding is equal top and bottom, so restoring the padding doesn't move the view.
+ */
+private fun MapLibreMap.fitTo(bounds: GeoBounds, paddingPx: Int, topPx: Int, bottomPx: Int) {
     val tiny = bounds.north - bounds.south < TinySpanDeg && bounds.east - bounds.west < TinySpanDeg
     val update = if (tiny) {
         CameraUpdateFactory.newLatLngZoom(
@@ -177,9 +186,11 @@ private fun MapLibreMap.fitTo(bounds: GeoBounds, paddingPx: Int) {
             SinglePlaceZoom,
         )
     } else {
-        CameraUpdateFactory.newLatLngBounds(bounds.toLatLngBounds(), paddingPx)
+        CameraUpdateFactory.newLatLngBounds(bounds.toLatLngBounds(), paddingPx, topPx + paddingPx, paddingPx, bottomPx + paddingPx)
     }
+    moveCamera(CameraUpdateFactory.paddingTo(0.0, 0.0, 0.0, 0.0))
     moveCamera(update)
+    moveCamera(CameraUpdateFactory.paddingTo(0.0, topPx.toDouble(), 0.0, bottomPx.toDouble()))
 }
 
 /** Route and pins always sit below the scrubber marker, whichever was added first. */
