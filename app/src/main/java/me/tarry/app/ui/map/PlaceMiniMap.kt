@@ -8,16 +8,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
@@ -100,22 +96,13 @@ fun PlaceMiniMap(
         }
         val frame = Modifier.fillMaxWidth().height(config.heightDp.dp).clip(shape)
         Box(frame.background(colors.inset).clearAndSetSemantics { contentDescription = description }) {
+            // The snapshot carries MapLibre's own credit line (bottom right), so none is drawn over it here.
             bitmap?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxWidth().height(config.heightDp.dp),
-                )
-                Text(
-                    text = stringResource(R.string.map_attribution_short),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = colors.ink,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(TarryTheme.space.xs)
-                        .background(colors.paper.copy(alpha = 0.85f), TarryTheme.shapes.pill)
-                        .padding(horizontal = TarryTheme.space.s, vertical = 2.dp),
                 )
             }
         }
