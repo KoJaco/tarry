@@ -10,12 +10,17 @@ import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.core.data.model.ManualOverrideType
+import me.tarry.core.data.model.Schedule
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.repository.ScheduleRepository
 import me.tarry.core.data.repository.TrackingRepository
+import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -70,6 +75,7 @@ class TrackingController @Inject constructor(
     private val launcher: ServiceLauncher,
     private val statusStore: TrackingStatusStore,
     private val trackingRepo: TrackingRepository,
+    private val scheduleRepo: ScheduleRepository,
     private val inputsProvider: ScheduleInputsProvider,
     private val calculator: EffectiveScheduleCalculator,
     private val alarmScheduler: ScheduleAlarmScheduler,
@@ -122,6 +128,66 @@ class TrackingController @Inject constructor(
         }
         trackingRepo.saveOverride(row)
         reconcileLocked(ReconcileSource.UI)
+    }
+
+    /** Manual PAUSE for [durationMin] minutes from now. Replaces any active pause. */
+    suspend fun pause(durationMin: Int) = mutex.withLock {
+        require(durationMin > 0) { "durationMin must be positive" }
+        val now = clock.nowMs()
+        deactivateActive(ManualOverrideType.PAUSE, now)
+        trackingRepo.saveOverride(
+            override(ManualOverrideType.PAUSE, ManualOverrideEndMode.DURATION, now, now + durationMin * MS_PER_MIN),
+        )
+        reconcileLocked(ReconcileSource.UI)
+    }
+
+    /**
+     * Saves a schedule change and applies it at once: records that the edit counts from now (no Gap for the past),
+     * re-bounds a Stop, then reconciles, which starts or stops capture and re-arms the single alarm. Painting out
+     * the current window ends it through the normal window-end path (grace, SCHEDULE_END).
+     */
+    suspend fun updateSchedule(change: ScheduleChange) = mutex.withLock {
+        val now = clock.nowMs()
+        val zone = clock.zone()
+        val nowInstant = Instant.ofEpochMilli(now)
+        val weekStart = nowInstant.atZone(zone).toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        inputsProvider.seedTemplateIfMissing()
+        val before = effectiveWeek(weekStart)
+        when (change) {
+            is ScheduleChange.SaveTemplate -> scheduleRepo.saveTemplate(change.schedule, now)
+            is ScheduleChange.SaveWeek -> scheduleRepo.saveOverride(change.weekStart.toString(), change.schedule, now)
+            is ScheduleChange.ClearWeek -> scheduleRepo.clearOverride(change.weekStart.toString())
+        }
+        if (effectiveWeek(weekStart) != before) {
+            statusStore.setScheduleEdit(ScheduleEdit.record(statusStore.current().scheduleEdit, before, weekStart, now, zone))
+        }
+        rebindStop(nowInstant, zone)
+        reconcileLocked(ReconcileSource.UI)
+    }
+
+    private suspend fun effectiveWeek(weekStart: LocalDate): Schedule =
+        scheduleRepo.override(weekStart.toString()) ?: checkNotNull(scheduleRepo.template()) { "template was just seeded" }
+
+    /**
+     * A Stop inside a window is a PAUSE (UNTIL_STOPPED) ending at the next window start; after a schedule change that
+     * start may have moved (a window painted later today), so recompute its end the way [stop] does.
+     */
+    private suspend fun rebindStop(now: Instant, zone: ZoneId) {
+        val stops = trackingRepo.observeActiveOverrides().first().filter {
+            it.type == ManualOverrideType.PAUSE && it.endMode == ManualOverrideEndMode.UNTIL_STOPPED &&
+                (it.end ?: return@filter false) > now.toEpochMilli()
+        }
+        if (stops.isEmpty()) return
+        val inputs = inputsProvider.inputs(now, now, zone)
+        val untilNext = calculator.resolveEnd(
+            inputs,
+            override(ManualOverrideType.PAUSE, ManualOverrideEndMode.NEXT_WINDOW, now.toEpochMilli(), null),
+            zone,
+            now,
+        ) ?: now.plus(Duration.ofDays(config.scheduleLookAheadDays))
+        for (s in stops) {
+            if (s.end != untilNext.toEpochMilli()) trackingRepo.saveOverride(s.copy(end = untilNext.toEpochMilli()))
+        }
     }
 
     /** Ends any manual pause now. */

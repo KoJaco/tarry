@@ -87,6 +87,9 @@ data class TrackingConfig(
     // Manual controls.
     val pauseShortMin: Long = 30L,
     val pauseLongMin: Long = 60L,
+    // Custom manual duration (long-press sheet): chosen in steps of [customDurationStepMin] up to [customDurationMaxMin].
+    val customDurationStepMin: Int = 15,
+    val customDurationMaxMin: Int = 720,
     val manualStartDurationsMin: List<Int> = listOf(60, 120, 240),
     // Debug-only test window: starts [debugTestWindowDelayMs] after the request and lasts [debugTestWindowLengthMs].
     val debugTestWindowDelayMs: Long = 2 * 60_000L,
