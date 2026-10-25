@@ -79,6 +79,8 @@ fun TarryApp(
     LaunchedEffect(onTimeline) { if (!onTimeline) timelineViewModel.clearSelection() }
     var sheetVisible by rememberSaveable { mutableStateOf(false) }
     var customSheetVisible by rememberSaveable { mutableStateOf(false) }
+    // ATTENTION has no custom duration: drop the request so the sheet cannot pop up once tracking recovers.
+    LaunchedEffect(trackingState) { if (trackingState == TrackingState.ATTENTION) customSheetVisible = false }
     val context = LocalContext.current
     val openPermissions = { if (backStack.lastOrNull() != PermissionsRoute) backStack.add(PermissionsRoute) }
     var initialChecked by rememberSaveable { mutableStateOf(false) }
@@ -151,6 +153,8 @@ fun TarryApp(
             actions = CustomDurationActions(
                 onStart = { shellViewModel.start(ManualOverrideEndMode.DURATION, it) },
                 onPause = shellViewModel::pauseFor,
+                onStartUntil = shellViewModel::startUntil,
+                onPauseUntil = shellViewModel::pauseUntil,
             ),
             onDismiss = { customSheetVisible = false },
         )
