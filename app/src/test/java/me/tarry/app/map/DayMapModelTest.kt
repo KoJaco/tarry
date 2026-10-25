@@ -21,9 +21,12 @@ class DayMapModelTest {
         )
         val trip = map.routes.single()
         assertThat(trip.solid.flatten().first()).isEqualTo(home)
-        // 13 → 19 min is past tripBreakMs: that stretch is dashed, the rest solid, ending at the arrival place.
-        assertThat(trip.dashed).hasSize(1)
-        assertThat(trip.solid.last().last()).isEqualTo(site)
+        // 13 → 19 min is past tripBreakMs: the line breaks there (nothing drawn across it), with the fixes either side
+        // marked, and the last stretch ends at the arrival place.
+        assertThat(trip.solid).hasSize(2)
+        assertThat(trip.solid.first().last()).isEqualTo(GeoPoint(-33.93, 151.2))
+        assertThat(trip.solid.last()).containsExactly(GeoPoint(-33.94, 151.2), site).inOrder()
+        assertThat(trip.breakEnds).containsExactly(GeoPoint(-33.93, 151.2), GeoPoint(-33.94, 151.2)).inOrder()
         assertThat(map.pins.map { it.number }).containsExactly(1, 2).inOrder()
         assertThat(map.pins.first().radiusM).isEqualTo(75f)
         assertThat(map.routeMissing).isFalse()
@@ -39,8 +42,9 @@ class DayMapModelTest {
     }
 
     @Test
-    fun aTripWithNoFixesIsOneDashedLineBetweenItsPlaces() {
-        // A ferry leg with no pings: honest "not recorded", not a solid line or nothing.
+    fun aTripWithNoFixesDrawsNoLine() {
+        // A ferry leg with no pings: the path is unknown, so no straight line between the places. Their pins mark the
+        // ends, so there are no break dots either.
         val map = buildDayMap(
             visits = listOf(visit("a", 0, 10 * min, home), visit("b", 40 * min, 50 * min, site)),
             trips = listOf(TimeSpan(10 * min, 40 * min)),
@@ -48,19 +52,21 @@ class DayMapModelTest {
             points = listOf(ping(5 * min, -33.90)),
         )
         assertThat(map.routes.single().solid).isEmpty()
-        assertThat(map.routes.single().dashed).containsExactly(listOf(home, site))
+        assertThat(map.routes.single().breakEnds).isEmpty()
+        assertThat(map.bounds).isEqualTo(GeoBounds(site.lat, home.lng, home.lat, home.lng))
     }
 
     @Test
-    fun aRecordedGapInsideATripIsDashed() {
+    fun aRecordedGapInsideATripBreaksTheLine() {
         val map = buildDayMap(
             visits = emptyList(),
             trips = listOf(TimeSpan(0, 10 * min)),
             gaps = listOf(TimeSpan(2 * min, 3 * min)),
             points = listOf(ping(1 * min, -33.91), ping(90_000, -33.915), ping(4 * min, -33.93), ping(5 * min, -33.94)),
         )
-        assertThat(map.routes.single().dashed).hasSize(1)
-        assertThat(map.routes.single().solid).hasSize(2)
+        val trip = map.routes.single()
+        assertThat(trip.solid).hasSize(2)
+        assertThat(trip.breakEnds).containsExactly(GeoPoint(-33.915, 151.2), GeoPoint(-33.93, 151.2)).inOrder()
     }
 
     @Test

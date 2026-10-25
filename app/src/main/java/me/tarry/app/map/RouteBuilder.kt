@@ -121,19 +121,20 @@ private fun distToSegment(px: Double, py: Double, ax: Double, ay: Double, bx: Do
 data class TripLeg(val start: Long, val end: Long, val from: GeoPoint?, val to: GeoPoint?)
 
 /**
- * One trip's drawing: recorded stretches ([solid], simplified) and unrecorded ones ([dashed], straight two-point lines).
+ * One trip's drawing: recorded stretches ([solid], simplified) and the recorded fixes either side of each unrecorded
+ * stretch ([breakEnds]), where the line stops and starts again. Nothing is drawn across an unrecorded stretch.
  * [start]/[end] identify the trip in time, so the map can emphasise the one the scrubber is on.
  */
-data class TripRoute(val start: Long, val end: Long, val solid: List<List<GeoPoint>>, val dashed: List<List<GeoPoint>>) {
-    val points: List<GeoPoint> get() = solid.flatten() + dashed.flatten()
+data class TripRoute(val start: Long, val end: Long, val solid: List<List<GeoPoint>>, val breakEnds: List<GeoPoint>) {
+    val points: List<GeoPoint> get() = solid.flatten() + breakEnds
 }
 
 /**
  * The day's movement drawn from trips only: stays are shown as their place's circle, so the jitter of pings during a
  * visit never becomes lines. Each leg runs from its departure place through the trip's pings to its arrival place. Where
- * consecutive points are more than `tripBreakMs` apart or a recorded gap lies between them, the stretch is [dashed]
- * (a straight "not recorded" line) rather than drawn as if it were known; a trip with no usable pings is one dashed
- * line between its places.
+ * consecutive points are more than `tripBreakMs` apart or a recorded gap lies between them, the line breaks: the real
+ * path is unknown (no routing service, AGENTS.md rule 2), so it is left out rather than drawn as a straight guess. The
+ * fixes either side become [TripRoute.breakEnds]; departure and arrival places are left out (their pins mark them).
  */
 fun buildTripRoutes(
     points: List<RoutePoint>,
@@ -144,7 +145,7 @@ fun buildTripRoutes(
     val usable = points.filter { it.accuracyM <= config.routeMaxAccuracyM }.sortedBy { it.timestamp }
     return legs.map { leg ->
         val solid = mutableListOf<List<GeoPoint>>()
-        val dashed = mutableListOf<List<GeoPoint>>()
+        val ends = LinkedHashSet<GeoPoint>()
         val stops = buildList {
             leg.from?.let { add(leg.start to it) }
             usable.filter { it.timestamp in leg.start..leg.end }.forEach { add(it.timestamp to GeoPoint(it.lat, it.lng)) }
@@ -158,13 +159,14 @@ fun buildTripRoutes(
             val unrecorded = tb - ta > config.tripBreakMs || gaps.any { it.start < tb && it.end > ta }
             if (unrecorded) {
                 if (run.size >= 2) solid += simplifyWindowed(run, config.routeSimplifyToleranceM)
-                if (a != b) dashed += listOf(a, b)
+                if (!(i == 1 && leg.from != null)) ends += a
+                if (!(i == stops.lastIndex && leg.to != null)) ends += b
                 run = mutableListOf(b)
             } else {
                 run += b
             }
         }
         if (run.size >= 2) solid += simplifyWindowed(run, config.routeSimplifyToleranceM)
-        TripRoute(leg.start, leg.end, solid, dashed)
+        TripRoute(leg.start, leg.end, solid, ends.toList())
     }
 }

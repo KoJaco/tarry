@@ -1,7 +1,7 @@
 package me.tarry.app.map
 
 /**
- * Everything the day map draws. [routes] are the trips (recorded stretches solid, unrecorded dashed); [pins] are
+ * Everything the day map draws. [routes] are the trips (recorded stretches only; unrecorded ones are left out); [pins] are
  * numbered visits at their place centroid, each drawn with its place radius, so a stay is one circle rather than its
  * ping jitter. [points] are the accuracy-filtered pings and [visitCentres] the pinned visits' positions, for the
  * scrubber marker. [bounds] covers routes and pins. [routeMissing] is true when the day has visits or trips but no

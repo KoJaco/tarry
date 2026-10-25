@@ -39,13 +39,8 @@ import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.timeline.formatDistance
 import org.maplibre.android.maps.Style
 import org.maplibre.android.snapshotter.MapSnapshotter
-import org.maplibre.android.style.layers.FillLayer
-import org.maplibre.android.style.layers.LineLayer
-import org.maplibre.android.style.layers.PropertyFactory
-import org.maplibre.android.style.sources.GeoJsonSource
-import org.maplibre.geojson.Feature
-import org.maplibre.geojson.Polygon
 import me.tarry.app.map.circlePolygon
+import me.tarry.app.map.miniMapStyle
 
 private val MiniMapConfigDefault = MiniMapConfig()
 
@@ -83,18 +78,9 @@ fun PlaceMiniMap(
             val palette = colors.mapPalette()
             DisposableEffect(key) {
                 MapLibreInit.ensure(context)
-                val styleJson = MapStyle.build(context.styleTemplate(), palette)
-                val ring = circlePolygon(centre, radiusM.toDouble(), MapConfig().circleSegments).map { it.toPoint() }
-                val builder = Style.Builder()
-                    .fromJson(styleJson)
-                    .withSource(GeoJsonSource("place-src", Feature.fromGeometry(Polygon.fromLngLats(listOf(ring)))))
-                    .withLayer(FillLayer("place-fill", "place-src").withProperties(PropertyFactory.fillColor(mapColor(fill))))
-                    .withLayer(
-                        LineLayer("place-line", "place-src").withProperties(
-                            PropertyFactory.lineColor(mapColor(outline)),
-                            PropertyFactory.lineWidth(2f),
-                        ),
-                    )
+                val ring = circlePolygon(centre, radiusM.toDouble(), MapConfig().circleSegments)
+                val styleJson = miniMapStyle(MapStyle.build(context.styleTemplate(), palette), ring, mapColor(fill), mapColor(outline))
+                val builder = Style.Builder().fromJson(styleJson)
                 val ratio = density.density
                 val options = MapSnapshotter.Options((widthPx / ratio).toInt().coerceAtLeast(1), config.heightDp)
                     .withPixelRatio(ratio)
@@ -126,7 +112,7 @@ fun PlaceMiniMap(
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.ink,
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
+                        .align(Alignment.TopEnd)
                         .padding(TarryTheme.space.xs)
                         .background(colors.paper.copy(alpha = 0.85f), TarryTheme.shapes.pill)
                         .padding(horizontal = TarryTheme.space.s, vertical = 2.dp),

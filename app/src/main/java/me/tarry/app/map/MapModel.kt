@@ -22,8 +22,8 @@ data class MapConfig(
     /** Consecutive pings further apart in time than this are not joined by the route line. */
     val routeBreakMs: Long = 10 * 60_000L,
     /**
-     * Inside a trip, consecutive pings further apart than this are joined by a dashed "not recorded" line instead of
-     * the solid route (e.g. a ferry leg with no fixes).
+     * Inside a trip, consecutive pings further apart than this break the route line: the unrecorded stretch is left
+     * out, not drawn as a straight guess (e.g. a ferry leg with no fixes).
      */
     val tripBreakMs: Long = 2 * 60_000L,
     /** Pings less accurate than this are left out of the route line (network fixes at noisy sites). */

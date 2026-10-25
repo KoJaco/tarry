@@ -60,6 +60,9 @@ private const val PinFont = "Noto Sans Bold" // served by the OpenFreeMap glyph 
 private const val SinglePlaceZoom = 16.0
 /** A box smaller than this (degrees) is effectively one place: zoom to it instead of fitting. */
 private const val TinySpanDeg = 0.001
+private val BannerTop = 48.dp
+private const val BreakEndRadius = 4f
+private const val FadedRouteOpacity = 0.3f
 
 /**
  * The Map tab: the day's route (broken at gaps) and numbered visit pins in job colours. Tapping a pin (48 dp touch box)
@@ -95,7 +98,6 @@ fun DayMapView(
         TarryMap(
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
-            attributionBottomPadding = with(LocalDensity.current) { bottomInsetPx.toDp() },
             onStyleLoaded = { map, style ->
                 if (loaded?.first !== map) {
                     map.addOnMapClickListener { latLng ->
@@ -157,6 +159,8 @@ fun DayMapView(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    // Below the attribution, which sits in the top-right corner.
+                    .padding(top = BannerTop)
                     .padding(TarryTheme.space.m)
                     .background(colors.card, TarryTheme.shapes.block)
                     .padding(TarryTheme.space.m)
@@ -190,22 +194,30 @@ private fun List<List<GeoPoint>>.toLines() =
     FeatureCollection.fromFeatures(map { seg -> Feature.fromGeometry(LineString.fromLngLats(seg.map { it.toPoint() })) })
 
 /**
- * The trip the scrubber is on ([activeTrip], its start): recorded stretches solid, unrecorded ones (no fixes, e.g. a
- * ferry leg) dashed. Every other trip is faded and dashed, so where the user is reads at a glance.
+ * The trip the scrubber is on ([activeTrip], its start) at full strength; every other trip faded, so where the user is
+ * reads at a glance. Only recorded stretches are lines: an unrecorded one (no fixes, e.g. a ferry leg) is a break,
+ * with a small hollow dot at the fix either side.
  */
 private fun Style.setRoutes(routes: List<TripRoute>, activeTrip: Long?, colors: TarryColors) {
     val (active, others) = routes.partition { it.start == activeTrip }
     source("$RouteId-src").setGeoJson(active.flatMap { it.solid }.toLines())
-    source("$RouteId-gap-src").setGeoJson(active.flatMap { it.dashed }.toLines())
-    source("$RouteId-rest-src").setGeoJson(others.flatMap { it.solid + it.dashed }.toLines())
+    source("$RouteId-rest-src").setGeoJson(others.flatMap { it.solid }.toLines())
+    source("$RouteId-ends-src").setGeoJson(
+        FeatureCollection.fromFeatures(
+            routes.flatMap { r ->
+                r.breakEnds.map { Feature.fromGeometry(it.toPoint()).apply { addBooleanProperty("active", r.start == activeTrip) } }
+            },
+        ),
+    )
     val ink = mapColor(colors.ink.toArgb())
     val rest = getLayer("$RouteId-rest") as LineLayer?
         ?: LineLayer("$RouteId-rest", "$RouteId-rest-src").also { addBelowMarker(it) }
     rest.setProperties(
         PropertyFactory.lineColor(ink),
         PropertyFactory.lineWidth(RouteWidth * 0.75f),
-        PropertyFactory.lineOpacity(0.35f),
-        PropertyFactory.lineDasharray(arrayOf(2f, 2f)),
+        PropertyFactory.lineOpacity(FadedRouteOpacity),
+        PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
+        PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
     )
     val solid = getLayer("$RouteId-line") as LineLayer?
         ?: LineLayer("$RouteId-line", "$RouteId-src").also { addBelowMarker(it) }
@@ -216,13 +228,16 @@ private fun Style.setRoutes(routes: List<TripRoute>, activeTrip: Long?, colors: 
         PropertyFactory.lineCap(Property.LINE_CAP_ROUND),
         PropertyFactory.lineJoin(Property.LINE_JOIN_ROUND),
     )
-    val dashed = getLayer("$RouteId-gap") as LineLayer?
-        ?: LineLayer("$RouteId-gap", "$RouteId-gap-src").also { addBelowMarker(it) }
-    dashed.setProperties(
-        PropertyFactory.lineColor(ink),
-        PropertyFactory.lineWidth(RouteWidth * 0.75f),
-        PropertyFactory.lineOpacity(0.5f),
-        PropertyFactory.lineDasharray(arrayOf(1.5f, 2f)),
+    val ends = getLayer("$RouteId-ends") as CircleLayer?
+        ?: CircleLayer("$RouteId-ends", "$RouteId-ends-src").also { addBelowMarker(it) }
+    val endOpacity = Expression.switchCase(Expression.get("active"), Expression.literal(1f), Expression.literal(FadedRouteOpacity))
+    ends.setProperties(
+        PropertyFactory.circleRadius(BreakEndRadius),
+        PropertyFactory.circleColor(mapColor(colors.paper.toArgb())),
+        PropertyFactory.circleStrokeColor(ink),
+        PropertyFactory.circleStrokeWidth(2f),
+        PropertyFactory.circleOpacity(endOpacity),
+        PropertyFactory.circleStrokeOpacity(endOpacity),
     )
 }
 
