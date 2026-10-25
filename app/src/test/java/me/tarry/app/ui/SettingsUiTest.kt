@@ -14,6 +14,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import me.tarry.app.ui.schedule.ScheduleSummary
+import me.tarry.app.ui.schedule.WeekScheduleSummary
+import me.tarry.app.ui.schedule.summarize
+import me.tarry.core.data.model.Schedule
 import me.tarry.app.ui.settings.SettingsContent
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
@@ -61,11 +68,49 @@ class SettingsUiTest {
         }
 
         composeRule.onNodeWithText("Labels", ignoreCase = true).assertExists()
-        composeRule.onNodeWithText("Jobs").assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithText("Jobs").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithText("Tags").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithText("Places").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
 
         assertThat(opened).containsExactly("jobs", "tags", "places").inOrder()
+    }
+
+    @Test
+    fun scheduleRowIsFirstInTrackingAndShowsThisWeeksSchedule() {
+        val opened = mutableListOf<String>()
+        composeRule.setContent {
+            SettingsContent(
+                Settings(),
+                schedule = WeekScheduleSummary(summarize(Schedule.MON_FRI_7_TO_17), hasOverride = false),
+                onOpenSchedule = { opened += "schedule" },
+            )
+        }
+
+        composeRule.onNodeWithText("Mon–Fri 07:00–17:00").assertExists()
+        composeRule.onNodeWithText("Schedule").assertHeightIsAtLeast(48.dp).performClick()
+
+        assertThat(opened).containsExactly("schedule")
+    }
+
+    @Test
+    fun scheduleRowSaysWhenThisWeekHasItsOwnSchedule() {
+        composeRule.setContent {
+            SettingsContent(
+                Settings(),
+                schedule = WeekScheduleSummary(summarize(Schedule.MON_FRI_7_TO_17), hasOverride = true),
+            )
+        }
+        composeRule.onNodeWithText("This week: Mon–Fri 07:00–17:00 (own schedule)").assertExists()
+    }
+
+    @Test
+    fun scheduleRowShowsOffAndCustom() {
+        var summary by mutableStateOf(WeekScheduleSummary(ScheduleSummary.Off, false))
+        composeRule.setContent { SettingsContent(Settings(), schedule = summary) }
+        composeRule.onNode(hasText("Schedule") and hasText("Off")).assertExists()
+
+        summary = WeekScheduleSummary(ScheduleSummary.Custom, false)
+        composeRule.onNode(hasText("Schedule") and hasText("Custom")).assertExists()
     }
 
     private val radioOption =SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton)
