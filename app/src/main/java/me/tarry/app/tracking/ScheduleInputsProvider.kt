@@ -42,7 +42,7 @@ class ScheduleInputsProvider @Inject constructor(
             weekOverrides = overrides,
             manualOverrides = trackingRepo.overridesInRange(lo.toEpochMilli(), hi.toEpochMilli()),
             testWindowStartMs = status.debugTestWindowStartMs,
-            edit = status.scheduleEdit,
+            edits = status.scheduleEdits,
         )
     }
 

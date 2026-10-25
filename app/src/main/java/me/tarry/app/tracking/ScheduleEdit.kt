@@ -1,38 +1,39 @@
 package me.tarry.app.tracking
 
 import me.tarry.core.data.model.Schedule
-import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
 /**
- * The "edits count from save" marker: a schedule saved at [atMs] only applies from then on, so slots painted
- * for earlier today never count as scheduled (no Gap for the past).
- *
- * @property weekStart Monday of the week containing [atMs].
- * @property before that week's effective bitmap (override, else template) as it really was in force before the save.
+ * The override of [weekStart] (Monday) as it was before a week save or clear; [overrideBefore] null means there was none.
  */
-data class ScheduleEdit(val atMs: Long, val weekStart: LocalDate, val before: Schedule) {
+data class WeekBefore(val weekStart: LocalDate, val overrideBefore: Schedule?)
+
+/**
+ * One schedule save, kept in a short history so that "an edit counts from the moment it is saved" holds for the whole
+ * past, not just the current week: newly painted past slots never become Gaps, removed past slots still count.
+ *
+ * Every edit records the template as it was before the save ([templateBefore]) even when only a week override changed,
+ * plus [weekBefore] when the save touched a week override (SaveWeek or ClearWeek).
+ *
+ * The schedule in force at an instant is reconstructed from the current schedules and the edits after that instant
+ * (see [ScheduleInputs.scheduleAt]). The history is pruned by age and count (`TrackingConfig.scheduleEditRetentionDays`
+ * and `scheduleEditMax`); time older than the oldest kept edit is judged by the schedule as it was before that edit
+ * (in practice the current schedule once the history has aged out).
+ */
+data class ScheduleEdit(val atMs: Long, val templateBefore: Schedule, val weekBefore: WeekBefore? = null) {
     companion object {
         /**
-         * The marker for a save at [atMs]. [effectiveBefore] is the week's effective bitmap just before the save.
-         * If [prev] is for the same week, slots whose wall-clock end is at or before `prev.atMs` keep
-         * `prev.before` (that part of the week was already protected), so repeated saves lose nothing.
+         * [history] (ascending) with [edit] appended, dropping edits older than [retentionDays] before [edit] and then
+         * the oldest ones beyond [max].
          */
-        fun record(prev: ScheduleEdit?, effectiveBefore: Schedule, weekStart: LocalDate, atMs: Long, zone: ZoneId): ScheduleEdit {
-            if (prev == null || prev.weekStart != weekStart) return ScheduleEdit(atMs, weekStart, effectiveBefore)
-            var merged = effectiveBefore
-            for (day in DayOfWeek.entries) {
-                val date = weekStart.plusDays(day.ordinal.toLong())
-                for (slot in 0 until Schedule.SLOTS_PER_DAY) {
-                    if (slotInstant(date, slot + 1, zone).toEpochMilli() <= prev.atMs) {
-                        merged = merged.set(day, slot, prev.before.isActive(day, slot))
-                    }
-                }
-            }
-            return ScheduleEdit(atMs, weekStart, merged)
+        fun append(history: List<ScheduleEdit>, edit: ScheduleEdit, retentionDays: Long, max: Int): List<ScheduleEdit> {
+            val oldest = edit.atMs - retentionDays * MS_PER_DAY
+            return (history + edit).filter { it.atMs >= oldest }.sortedBy { it.atMs }.takeLast(max)
         }
+
+        private const val MS_PER_DAY = 24 * 60 * 60 * 1000L
     }
 }
 

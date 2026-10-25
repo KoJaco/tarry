@@ -18,15 +18,15 @@ The schedule is still the seeded Mon–Fri 07:00–17:00 template (`ScheduleInpu
 - `core-data/.../model/Schedule.kt` — add `withSlots(day, slots: IntRange, active)`, `copyDay(from, to: Set<DayOfWeek>)`, `clearDay(day)`, `daySlots(day): List<Boolean>`. Reused by onboarding (phase 8).
 - `app/.../ui/schedule/PaintStroke.kt` — stroke state: first cell sets mode (paint if it was off, erase if on); cells passed along the drag (interpolated between pointer samples within one day column and across columns) get that mode; returns the new `Schedule`.
 - `app/.../ui/schedule/ScheduleSummary.kt` — subtitle text for the Settings row: "Mon–Fri 07:00–17:00", "Off", or "Custom" (days sharing one identical contiguous range are grouped).
-- `app/.../tracking/ScheduleEdit.kt` — the "counts from save" marker: `ScheduleEdit(atMs, weekStart, before: Schedule)` = the effective bitmap of the week containing `atMs` as it really was before the save. `ScheduleEdit.record(prev, effectiveBefore, weekStart, at)` merges with a previous edit in the same week (slots ending ≤ `prev.atMs` keep `prev.before`), so repeated saves don't lose earlier protection. Stored in `TrackingStatusStore` (DataStore, local control state; add `scheduleEdit` field + setter).
-- `EffectiveScheduleCalculator` — `ScheduleInputs` gets `edit: ScheduleEdit?`. In `buildWindows`, for dates in `edit.weekStart`'s week, slot time before `edit.atMs` comes from `edit.before`; a slot spanning `atMs` that was off before starts at `atMs`. Live state/next transition are unaffected (they're ≥ now). `ScheduleInputsProvider.inputs` passes it through.
+- `app/.../tracking/ScheduleEdit.kt` — the edit history ("an edit counts from the moment it is saved"): each save appends `ScheduleEdit(atMs, templateBefore, weekBefore: WeekBefore?)`, `WeekBefore(weekStart, overrideBefore: Schedule?)` for SaveWeek/ClearWeek (null = there was no override). Every edit records `templateBefore`, even when only an override changed. The schedule in force at instant t for week W: template = the earliest edit after t's `templateBefore`, else the current template; override = the earliest edit after t that touched W gives its `overrideBefore`, else the current override; effective = override ?: template (`ScheduleInputs.scheduleAt`). Persisted in `TrackingStatusStore` as one compact DataStore string (malformed reads as empty), pruned on append by `TrackingConfig.scheduleEditRetentionDays` (14) and `scheduleEditMax` (50); time older than the oldest kept edit is judged by the schedule as it was before that edit (the current one once the history has aged out).
+- `EffectiveScheduleCalculator` — `ScheduleInputs` gets `edits: List<ScheduleEdit>` (ascending). In `buildWindows`, each slot is split at any edit `atMs` strictly inside it and each piece is active iff `scheduleAt(week, pieceStart)` has the slot active; so added slots before a save never count (also past weeks, for template saves), removed ones still do, and a repeat save cannot make an earlier part of a slot count. Live state/next transition are unaffected (they're ≥ now). `ScheduleInputsProvider.inputs` passes the history through.
   - **DST:** keep the existing `ZonedDateTime` slot semantics. Add calculator tests for Sydney spring-forward (2026-10-04, 02:00–03:00 doesn't exist) and fall-back (2026-04-05, 02:00–03:00 twice) with painted 02:00/02:30 slots: no crash, windows non-overlapping and sane. Grid shows wall-clock slots; no special UI.
 
 ### Saving re-arms (rule 5, rule 6)
 - `TrackingController.updateSchedule(change: ScheduleChange)` under the mutex, `ScheduleChange` = `SaveTemplate(schedule)` | `SaveWeek(weekStart, schedule)` | `ClearWeek(weekStart)`:
-  1. compute the current week's effective bitmap before;
-  2. write via `ScheduleRepository` (inject it into the controller);
-  3. if the current week's effective bitmap changed, record `ScheduleEdit`;
+  1. read the template and (for SaveWeek/ClearWeek) the touched week's override as they are before; if the save changes neither, stop here (no edit, no write);
+  2. append the `ScheduleEdit` first (a crash before step 3 is harmless: its "before" is still current);
+  3. write via `ScheduleRepository` (inject it into the controller);
   4. **re-bound a Stop:** an active PAUSE with end mode UNTIL_STOPPED and `end > now` (how `stop()` encodes "until next window") gets `end` recomputed against the new schedule (next window start, or look-ahead bound) — otherwise a window painted later today would stay suppressed;
   5. `reconcileLocked(ReconcileSource.UI)` → starts/stops capture and re-arms the single alarm.
 - PAUSE NEXT_WINDOW resolves dynamically already — no change. Override for the current week works through the same path (it is the effective schedule).
@@ -53,7 +53,7 @@ The schedule is still the seeded Mon–Fri 07:00–17:00 template (`ScheduleInpu
 |---|---|---|
 | T0 | Branch + worktree; copy this plan to `docs/specs/phase-6.md`; build-plan status line | main |
 | T1 | `Schedule` helpers, `PaintStroke`, `ScheduleSummary` + JVM tests | implementer → test-writer |
-| T2 | `ScheduleEdit` + calculator clipping + DST tests; status-store field | implementer → test-writer |
+| T2 | `ScheduleEdit` history + calculator slot splitting + DST tests; status-store list | implementer → test-writer |
 | T3 | `TrackingController.updateSchedule` + stop re-bound + `pause(durationMin)`; controller tests | implementer → test-writer |
 | T4 | Schedule screen, VM, grid, day sheet, route, Settings row; VM + Compose tests | implementer → test-writer → ui-reviewer |
 | T5 | Long-press `CustomDurationSheet` + wiring; Compose tests | implementer → test-writer → ui-reviewer |
@@ -64,7 +64,7 @@ Follow-ups from the handoff (phase 5 nits, map items, the 24 Oct no-Gap drive bu
 ## Tests (rule 7)
 - core-data `ScheduleTest`: `withSlots`, `copyDay`, `clearDay`, `daySlots`.
 - `PaintStrokeTest`: first-cell mode, erase, interpolation, cross-column.
-- `ScheduleEditTest` + `EffectiveScheduleCalculatorTest`: added slots before `atMs` aren't active in `activeIntervals`; removed slots before `atMs` still are; repeated saves; other weeks untouched; DST cases.
+- `ScheduleEditTest` + `EffectiveScheduleCalculatorTest`: added slots before `atMs` aren't active in `activeIntervals` (incl. last week for a template save); removed slots before `atMs` still are; Sunday edit then Monday save; repeated saves; override saved then cleared; retention and cap; malformed storage; DST cases.
 - `TrackingControllerTest` (existing fakes in `TrackingFakes*.kt`): save re-arms the alarm at the new next transition; painting out the current window → grace then SCHEDULE_END; painting in a started window → service starts, no Gap for the earlier part; current-week override; stop then paint a later window today → tracking resumes at it; custom pause.
 - Robolectric Compose: `ScheduleGridTest` (tap toggles, long-press-drag paints, first cell erases, semantics/content descriptions), `ScheduleEditorContentTest` (Save/Discard, mode switch, drop override), `CustomDurationSheetTest`, `TrackingToggle` long-press callback; `ScheduleViewModelTest`.
 

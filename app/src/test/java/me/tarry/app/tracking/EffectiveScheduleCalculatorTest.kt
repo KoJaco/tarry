@@ -303,83 +303,127 @@ class EffectiveScheduleCalculatorTest {
         for ((a, b) in list.zipWithNext()) assertThat(a.end).isLessThan(b.start)
     }
 
+    private val monFri = Schedule.MON_FRI_7_TO_17
+
+    private fun edit(at: Instant, templateBefore: Schedule, weekBefore: WeekBefore? = null) =
+        ScheduleEdit(at.toEpochMilli(), templateBefore, weekBefore)
+
+    private fun intervals(inputs: ScheduleInputs, from: Instant, to: Instant) =
+        calculator.activeIntervals(inputs, from, to, sydney)
+
     @Test
     fun editAddedSlotsBeforeTheSaveDoNotCount() {
-        val painted = Schedule.MON_FRI_7_TO_17.withSlots(DayOfWeek.MONDAY, 10..13, true) // 05:00-07:00
-        val inputs = ScheduleInputs(painted, edit = ScheduleEdit(at(19, 10).toEpochMilli(), editWeek, Schedule.MON_FRI_7_TO_17))
-        assertThat(calculator.activeIntervals(inputs, at(19, 0), at(20, 0), sydney))
-            .containsExactly(WindowBounds(at(19, 7), at(19, 17)))
-        assertThat(calculator.activeIntervals(ScheduleInputs(painted), at(19, 0), at(20, 0), sydney))
+        val painted = monFri.withSlots(DayOfWeek.MONDAY, 10..13, true) // 05:00-07:00
+        val inputs = ScheduleInputs(painted, edits = listOf(edit(at(19, 10), monFri)))
+        assertThat(intervals(inputs, at(19, 0), at(20, 0))).containsExactly(WindowBounds(at(19, 7), at(19, 17)))
+        assertThat(intervals(ScheduleInputs(painted), at(19, 0), at(20, 0)))
             .containsExactly(WindowBounds(at(19, 5), at(19, 17)))
     }
 
     @Test
     fun editRemovedSlotsBeforeTheSaveStillCount() {
-        val erased = Schedule.MON_FRI_7_TO_17.withSlots(DayOfWeek.MONDAY, 16..17, false) // 08:00-09:00
-        val inputs = ScheduleInputs(erased, edit = ScheduleEdit(at(19, 10).toEpochMilli(), editWeek, Schedule.MON_FRI_7_TO_17))
-        assertThat(calculator.activeIntervals(inputs, at(19, 0), at(20, 0), sydney))
-            .containsExactly(WindowBounds(at(19, 7), at(19, 17)))
+        val erased = monFri.withSlots(DayOfWeek.MONDAY, 16..17, false) // 08:00-09:00
+        val inputs = ScheduleInputs(erased, edits = listOf(edit(at(19, 10), monFri)))
+        assertThat(intervals(inputs, at(19, 0), at(20, 0))).containsExactly(WindowBounds(at(19, 7), at(19, 17)))
     }
 
     @Test
     fun editSlotSpanningTheSaveIsClippedAtTheSave() {
-        val save = at(19, 10, 15).toEpochMilli()
+        val save = at(19, 10, 15)
         // Added slot 10:00-10:30 spans the save: counts from 10:15.
-        val added = ScheduleInputs(
-            Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..20, true),
-            edit = ScheduleEdit(save, editWeek, Schedule.EMPTY),
-        )
-        assertThat(calculator.activeIntervals(added, at(19, 0), at(20, 0), sydney))
-            .containsExactly(WindowBounds(at(19, 10, 15), at(19, 10, 30)))
+        val added = ScheduleInputs(Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..20, true), edits = listOf(edit(save, Schedule.EMPTY)))
+        assertThat(intervals(added, at(19, 0), at(20, 0))).containsExactly(WindowBounds(at(19, 10, 15), at(19, 10, 30)))
         // Removed slot 10:00-10:30 spans the save: ends at 10:15.
         val removed = ScheduleInputs(
             Schedule.EMPTY,
-            edit = ScheduleEdit(save, editWeek, Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..20, true)),
+            edits = listOf(edit(save, Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..20, true))),
         )
-        assertThat(calculator.activeIntervals(removed, at(19, 0), at(20, 0), sydney))
-            .containsExactly(WindowBounds(at(19, 10), at(19, 10, 15)))
+        assertThat(intervals(removed, at(19, 0), at(20, 0))).containsExactly(WindowBounds(at(19, 10), at(19, 10, 15)))
     }
 
     @Test
     fun editSlotsAfterTheSaveUseTheCurrentSchedule() {
-        val painted = Schedule.MON_FRI_7_TO_17.withSlots(DayOfWeek.MONDAY, 36..37, true) // 18:00-19:00
-        val inputs = ScheduleInputs(painted, edit = ScheduleEdit(at(19, 10).toEpochMilli(), editWeek, Schedule.MON_FRI_7_TO_17))
-        assertThat(calculator.activeIntervals(inputs, at(19, 0), at(20, 0), sydney))
+        val painted = monFri.withSlots(DayOfWeek.MONDAY, 36..37, true) // 18:00-19:00
+        val inputs = ScheduleInputs(painted, edits = listOf(edit(at(19, 10), monFri)))
+        assertThat(intervals(inputs, at(19, 0), at(20, 0)))
             .containsExactly(WindowBounds(at(19, 7), at(19, 17)), WindowBounds(at(19, 18), at(19, 19)))
         assertThat(calc(inputs, at(19, 10)).nextTransition).isEqualTo(at(19, 17))
     }
 
     @Test
-    fun repeatedSavesKeepEarlierProtection() {
-        val first = Schedule.MON_FRI_7_TO_17.withSlots(DayOfWeek.MONDAY, 10..13, true) // save 1 at 10:00 paints 05:00-07:00
-        val edit1 = ScheduleEdit.record(null, Schedule.MON_FRI_7_TO_17, editWeek, at(19, 10).toEpochMilli(), sydney)
-        val second = first.withSlots(DayOfWeek.MONDAY, 22..22, false) // save 2 at 12:00 erases 11:00-11:30
-        val edit2 = ScheduleEdit.record(edit1, first, editWeek, at(19, 12).toEpochMilli(), sydney)
-        val inputs = ScheduleInputs(second, edit = edit2)
-        assertThat(calculator.activeIntervals(inputs, at(19, 0), at(20, 0), sydney))
-            .containsExactly(WindowBounds(at(19, 7), at(19, 17)))
+    fun aTemplateSaveOnMondayDoesNotMakeLastSaturdayCount() {
+        val withSaturday = monFri.withSlots(DayOfWeek.SATURDAY, 18..19, true) // 09:00-10:00
+        val inputs = ScheduleInputs(withSaturday, edits = listOf(edit(at(19, 10), monFri)))
+        assertThat(intervals(inputs, at(17, 0), at(18, 0))).isEmpty()
+        assertThat(intervals(inputs, at(24, 0), at(25, 0))).containsExactly(WindowBounds(at(24, 9), at(24, 10)))
     }
 
     @Test
-    fun editLeavesOtherWeeksUntouched() {
-        val painted = Schedule.MON_FRI_7_TO_17.withSlots(DayOfWeek.MONDAY, 10..13, true)
-        val inputs = ScheduleInputs(painted, edit = ScheduleEdit(at(19, 10).toEpochMilli(), editWeek, Schedule.MON_FRI_7_TO_17))
-        assertThat(calculator.activeIntervals(inputs, at(26, 0), at(27, 0), sydney))
-            .containsExactly(WindowBounds(at(26, 5), at(26, 17)))
-        assertThat(calculator.activeIntervals(inputs, at(12, 0), at(13, 0), sydney))
-            .containsExactly(WindowBounds(at(12, 5), at(12, 17)))
+    fun aSundayEditStaysProtectedAfterAMondaySave() {
+        val sunday = monFri.withSlots(DayOfWeek.SUNDAY, 12..15, true) // 06:00-08:00
+        val monday = sunday.withSlots(DayOfWeek.MONDAY, 10..13, true) // 05:00-07:00
+        val inputs = ScheduleInputs(monday, edits = listOf(edit(at(18, 10), monFri), edit(at(19, 10), sunday)))
+        assertThat(intervals(inputs, at(18, 0), at(19, 0))).isEmpty()
+        assertThat(intervals(inputs, at(19, 0), at(20, 0))).containsExactly(WindowBounds(at(19, 7), at(19, 17)))
+        assertThat(intervals(inputs, at(25, 0), at(26, 0))).containsExactly(WindowBounds(at(25, 6), at(25, 8)))
+    }
+
+    @Test
+    fun aRepeatSaveNeverMakesTheEarlierPartOfASlotCount() {
+        val first = Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..20, true) // save 1 at 10:15 turns on 10:00-10:30
+        val second = first.withSlots(DayOfWeek.MONDAY, 30..30, true) // save 2 at 10:45 paints 15:00-15:30
+        val inputs = ScheduleInputs(
+            second,
+            edits = listOf(edit(at(19, 10, 15), Schedule.EMPTY), edit(at(19, 10, 45), first)),
+        )
+        assertThat(intervals(inputs, at(19, 0), at(20, 0)))
+            .containsExactly(WindowBounds(at(19, 10, 15), at(19, 10, 30)), WindowBounds(at(19, 15), at(19, 15, 30)))
+    }
+
+    @Test
+    fun anOverrideSavedThenClearedJudgesThePastByTheOverrideThatWasInForce() {
+        val override = Schedule.EMPTY.withSlots(DayOfWeek.TUESDAY, 24..25, true) // 12:00-13:00
+        val inputs = ScheduleInputs(
+            monFri, // current: no override for the week
+            edits = listOf(
+                edit(at(20, 9), monFri, WeekBefore(editWeek, null)), // saved the override
+                edit(at(21, 9), monFri, WeekBefore(editWeek, override)), // then cleared it
+            ),
+        )
+        assertThat(intervals(inputs, at(19, 0), at(20, 0))).containsExactly(WindowBounds(at(19, 7), at(19, 17)))
+        assertThat(intervals(inputs, at(20, 0), at(21, 0)))
+            .containsExactly(WindowBounds(at(20, 7), at(20, 9)), WindowBounds(at(20, 12), at(20, 13)))
+        assertThat(intervals(inputs, at(21, 9), at(22, 0))).containsExactly(WindowBounds(at(21, 9), at(21, 17)))
+    }
+
+    @Test
+    fun aWeekEditLeavesOtherWeeksOverridesAlone() {
+        val otherWeek = LocalDate.of(2026, 10, 26)
+        val other = Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..21, true) // 10:00-11:00
+        val inputs = ScheduleInputs(
+            monFri,
+            weekOverrides = mapOf(otherWeek to other),
+            edits = listOf(edit(at(19, 10), monFri, WeekBefore(editWeek, null))),
+        )
+        assertThat(intervals(inputs, at(26, 0), at(27, 0))).containsExactly(WindowBounds(at(26, 10), at(26, 11)))
+    }
+
+    @Test
+    fun editLeavesNonEditedTimeUntouched() {
+        val painted = monFri.withSlots(DayOfWeek.MONDAY, 10..13, true)
+        val inputs = ScheduleInputs(painted, edits = listOf(edit(at(19, 10), monFri)))
+        assertThat(intervals(inputs, at(26, 0), at(27, 0))).containsExactly(WindowBounds(at(26, 5), at(26, 17)))
     }
 
     @Test
     fun editAppliesToAWeekOverrideToo() {
         val overrideWeek = Schedule.EMPTY.withSlots(DayOfWeek.TUESDAY, 18..19, true) // 09:00-10:00
         val inputs = ScheduleInputs(
-            Schedule.MON_FRI_7_TO_17,
+            monFri,
             weekOverrides = mapOf(editWeek to overrideWeek),
-            edit = ScheduleEdit(at(20, 9, 30).toEpochMilli(), editWeek, Schedule.EMPTY),
+            edits = listOf(edit(at(20, 9, 30), monFri, WeekBefore(editWeek, Schedule.EMPTY))),
         )
-        assertThat(calculator.activeIntervals(inputs, at(20, 0), at(21, 0), sydney))
-            .containsExactly(WindowBounds(at(20, 9, 30), at(20, 10)))
+        assertThat(intervals(inputs, at(20, 0), at(21, 0))).containsExactly(WindowBounds(at(20, 9, 30), at(20, 10)))
     }
 
     @Test
@@ -390,7 +434,7 @@ class EffectiveScheduleCalculatorTest {
         assertAscendingAndDisjoint(list)
         assertThat(total(list)).isEqualTo(30)
         // Saved inside the gap: still no crash, still ordered.
-        val edited = ScheduleInputs(sunday, edit = ScheduleEdit(at(4, 3, 15).toEpochMilli(), LocalDate.of(2026, 9, 28), Schedule.EMPTY))
+        val edited = ScheduleInputs(sunday, edits = listOf(ScheduleEdit(at(4, 3, 15).toEpochMilli(), Schedule.EMPTY, WeekBefore(LocalDate.of(2026, 9, 28), Schedule.EMPTY))))
         assertAscendingAndDisjoint(calculator.activeIntervals(edited, at(4, 0), at(5, 0), sydney))
     }
 
@@ -404,7 +448,7 @@ class EffectiveScheduleCalculatorTest {
         assertThat(total(list)).isEqualTo(150)
         val edited = ScheduleInputs(
             sunday,
-            edit = ScheduleEdit(at(5, 2, 45, month = 4).toEpochMilli(), LocalDate.of(2026, 3, 30), Schedule.EMPTY),
+            edits = listOf(ScheduleEdit(at(5, 2, 45, month = 4).toEpochMilli(), Schedule.EMPTY, WeekBefore(LocalDate.of(2026, 3, 30), Schedule.EMPTY))),
         )
         val editedList = calculator.activeIntervals(edited, at(5, 0, month = 4), at(6, 0, month = 4), sydney)
         assertAscendingAndDisjoint(editedList)

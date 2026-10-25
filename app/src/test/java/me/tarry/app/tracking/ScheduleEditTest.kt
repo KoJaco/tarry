@@ -4,48 +4,78 @@ import com.google.common.truth.Truth.assertThat
 import me.tarry.core.data.model.Schedule
 import org.junit.Test
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
-import java.time.ZonedDateTime
 
 class ScheduleEditTest {
-    private val sydney = ZoneId.of("Australia/Sydney")
     private val week = LocalDate.of(2026, 10, 19)
+    private val otherWeek = LocalDate.of(2026, 10, 26)
     private val base = Schedule.MON_FRI_7_TO_17
+    private val dayMs = 24 * 60 * 60 * 1000L
 
-    private fun ms(day: Int, hour: Int) = ZonedDateTime.of(2026, 10, day, hour, 0, 0, 0, sydney).toInstant().toEpochMilli()
+    private fun edit(atMs: Long) = ScheduleEdit(atMs, base)
 
     @Test
-    fun noPrevious_usesTheEffectiveBitmap() {
-        val e = ScheduleEdit.record(null, base, week, ms(19, 10), sydney)
-        assertThat(e).isEqualTo(ScheduleEdit(ms(19, 10), week, base))
+    fun appendKeepsAscendingOrder() {
+        val out = ScheduleEdit.append(listOf(edit(2 * dayMs)), edit(3 * dayMs), retentionDays = 14, max = 50)
+        assertThat(out.map { it.atMs }).containsExactly(2 * dayMs, 3 * dayMs).inOrder()
     }
 
     @Test
-    fun previousInAnotherWeek_isIgnored() {
-        val prev = ScheduleEdit(ms(12, 10), LocalDate.of(2026, 10, 12), Schedule.EMPTY)
-        val e = ScheduleEdit.record(prev, base, week, ms(19, 10), sydney)
-        assertThat(e.before).isEqualTo(base)
+    fun appendDropsEditsOlderThanTheRetention() {
+        val history = listOf(edit(1 * dayMs), edit(10 * dayMs), edit(20 * dayMs))
+        val out = ScheduleEdit.append(history, edit(25 * dayMs), retentionDays = 14, max = 50)
+        // Oldest kept: 25 - 14 = day 11, so days 1 and 10 go.
+        assertThat(out.map { it.atMs }).containsExactly(20 * dayMs, 25 * dayMs).inOrder()
     }
 
     @Test
-    fun sameWeek_slotsEndedBeforePreviousSaveKeepThePreviousBitmap() {
-        val first = base.withSlots(DayOfWeek.MONDAY, 10..13, true) // 05:00-07:00 painted by save 1
-        val prev = ScheduleEdit(ms(19, 10), week, base)
-        // Save 2 at 12:00 follows `first`.
-        val e = ScheduleEdit.record(prev, first, week, ms(19, 12), sydney)
-        assertThat(e.atMs).isEqualTo(ms(19, 12))
-        assertThat(e.before.isActive(DayOfWeek.MONDAY, 10)).isFalse() // ended before save 1: still protected
-        assertThat(e.before.isActive(DayOfWeek.MONDAY, 22)).isTrue()
-        assertThat(e.before.isActive(DayOfWeek.MONDAY, 36)).isFalse()
+    fun appendKeepsAnEditExactlyAtTheRetentionBoundary() {
+        val out = ScheduleEdit.append(listOf(edit(11 * dayMs)), edit(25 * dayMs), retentionDays = 14, max = 50)
+        assertThat(out.map { it.atMs }).containsExactly(11 * dayMs, 25 * dayMs).inOrder()
     }
 
     @Test
-    fun sameWeek_slotEndingExactlyAtPreviousSaveIsProtected_slotStartingThereIsNot() {
-        val painted = Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 19..20, true) // 09:30-10:30
-        val prev = ScheduleEdit(ms(19, 10), week, Schedule.EMPTY)
-        val e = ScheduleEdit.record(prev, painted, week, ms(19, 12), sydney)
-        assertThat(e.before.isActive(DayOfWeek.MONDAY, 19)).isFalse() // ends 10:00 == prev.atMs
-        assertThat(e.before.isActive(DayOfWeek.MONDAY, 20)).isTrue() // starts at prev.atMs
+    fun appendCapsTheCountDroppingTheOldest() {
+        val history = (1..5).map { edit(it * 1000L) }
+        val out = ScheduleEdit.append(history, edit(6000L), retentionDays = 14, max = 3)
+        assertThat(out.map { it.atMs }).containsExactly(4000L, 5000L, 6000L).inOrder()
+    }
+
+    @Test
+    fun scheduleAtUndoesOnlyTheEditsAfterTheInstant() {
+        val t1 = base.withSlots(DayOfWeek.SATURDAY, 18..19, true)
+        val t2 = t1.withSlots(DayOfWeek.SUNDAY, 18..19, true)
+        val inputs = ScheduleInputs(t2, edits = listOf(ScheduleEdit(100, base), ScheduleEdit(200, t1)))
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(50))).isEqualTo(base)
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(100))).isEqualTo(t1) // an edit counts from its own instant
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(199))).isEqualTo(t1)
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(200))).isEqualTo(t2)
+    }
+
+    @Test
+    fun scheduleAtUsesTheOverrideBeforeOnlyForTheEditedWeek() {
+        val override = Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..20, true)
+        val other = Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 22..22, true)
+        val inputs = ScheduleInputs(
+            base,
+            weekOverrides = mapOf(otherWeek to other),
+            edits = listOf(ScheduleEdit(100, base, WeekBefore(week, override))),
+        )
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(50))).isEqualTo(override)
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(100))).isEqualTo(base) // cleared since: current has none
+        assertThat(inputs.scheduleAt(otherWeek, Instant.ofEpochMilli(50))).isEqualTo(other)
+    }
+
+    @Test
+    fun scheduleAtTreatsANullOverrideBeforeAsNoOverride() {
+        val current = Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 20..20, true)
+        val inputs = ScheduleInputs(
+            base,
+            weekOverrides = mapOf(week to current),
+            edits = listOf(ScheduleEdit(100, base, WeekBefore(week, null))),
+        )
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(50))).isEqualTo(base)
+        assertThat(inputs.scheduleAt(week, Instant.ofEpochMilli(100))).isEqualTo(current)
     }
 }

@@ -80,6 +80,9 @@ data class TrackingConfig(
     /** How far back and ahead the calculator builds windows when looking for the next transition. */
     val scheduleLookBackDays: Long = 1L,
     val scheduleLookAheadDays: Long = 9L,
+    /** The schedule edit history keeps saves this recent, and at most [scheduleEditMax] of them (oldest dropped first). */
+    val scheduleEditRetentionDays: Long = 14L,
+    val scheduleEditMax: Int = 50,
     /** Delay of the one-shot alarm that starts capture after boot or app start (ADR 0003: background FGS starts need an alarm). */
     val deferredStartDelayMs: Long = 5_000L,
     /** Upper bound for persisting a failed foreground start before the service stops itself (must stay well under the ANR limit). */
