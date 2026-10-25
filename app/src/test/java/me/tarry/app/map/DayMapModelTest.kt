@@ -89,4 +89,20 @@ class DayMapModelTest {
         val map = buildDayMap(emptyList(), emptyList(), emptyList(), listOf(ping(2, -33.9), ping(1, -33.9, acc = 500f), ping(0, -33.9)))
         assertThat(map.points.map { it.timestamp }).containsExactly(0L, 2L).inOrder()
     }
+    @Test
+    fun aNetworkFixInsideATripBreaksTheLineInsteadOfDrawingAPhantomPoint() {
+        // A 75 m Wi-Fi/cell fix that jumped offshore: left out, so the line breaks around it (one minute either side of
+        // it is under tripBreakMs, but the two GPS fixes are four minutes apart without it).
+        val offshore = RoutePoint(3 * min, -33.98, 151.25, 75f)
+        val map = buildDayMap(
+            visits = emptyList(),
+            trips = listOf(TimeSpan(0, 10 * min)),
+            gaps = emptyList(),
+            points = listOf(ping(1 * min, -33.91), ping(90_000, -33.912), offshore, ping(5 * min, -33.93), ping(6 * min, -33.94)),
+        )
+        val trip = map.routes.single()
+        assertThat(trip.points).doesNotContain(GeoPoint(offshore.lat, offshore.lng))
+        assertThat(trip.solid).hasSize(2)
+        assertThat(map.points.map { it.timestamp }).doesNotContain(3 * min)
+    }
 }

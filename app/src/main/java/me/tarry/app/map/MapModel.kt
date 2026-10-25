@@ -26,8 +26,11 @@ data class MapConfig(
      * out, not drawn as a straight guess (e.g. a ferry leg with no fixes).
      */
     val tripBreakMs: Long = 2 * 60_000L,
-    /** Pings less accurate than this are left out of the route line (network fixes at noisy sites). */
-    val routeMaxAccuracyM: Float = 100f,
+    /**
+     * Pings less accurate than this are left out of the route line. Network (Wi-Fi or cell) fixes run 50–100 m and jump
+     * hundreds of metres between neighbours, which drew stars and offshore points; GPS fixes are well inside this.
+     */
+    val routeMaxAccuracyM: Float = 50f,
     /** Douglas-Peucker tolerance for the drawn route. */
     val routeSimplifyToleranceM: Double = 5.0,
     /** While tracking, the open day map rebuilds from new pings at most this often. */

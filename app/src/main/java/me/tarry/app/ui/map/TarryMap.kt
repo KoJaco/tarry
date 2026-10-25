@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -106,6 +107,8 @@ private fun TarryMapView(
     val template = remember { context.styleTemplate() }
     val styleJson = remember(template, colors) { MapStyle.build(template, colors.mapPalette()) }
     val currentOnStyleLoaded by rememberUpdatedState(onStyleLoaded)
+    val compassTopPx = with(LocalDensity.current) { (MinTouch + TarryTheme.space.xs).roundToPx() }
+    val compassEndPx = with(LocalDensity.current) { TarryTheme.space.s.roundToPx() }
     val mapView = remember {
         MapLibreInit.ensure(context)
         val options = MapLibreMapOptions.createFromAttributes(context)
@@ -137,6 +140,8 @@ private fun TarryMapView(
     LaunchedEffect(mapView, styleJson) {
         mapView.getMapAsync { map ->
             map.uiSettings.setAllGesturesEnabled(interactive)
+            // The compass (shown once the map is rotated) shares the top-right corner with the attribution: sit below it.
+            map.uiSettings.setCompassMargins(0, compassTopPx, compassEndPx, 0)
             map.setStyle(Style.Builder().fromJson(styleJson)) { style -> currentOnStyleLoaded(map, style) }
         }
     }
