@@ -25,10 +25,11 @@ The manual-visit create form was never built, so it is built here first. Recon f
 
 ## Device-pass revisions (2026-10-25, owner)
 - **Routes come from trips only.** Each trip runs from the previous visit's place, through its pings, to the next visit's place. A visit is one circle at its place radius in the job colour. Drawing every ping turned stationary network jitter into tangles of lines.
-- **Unrecorded stretches are dashed.** A stretch inside a trip with no fixes for longer than `MapConfig.tripBreakMs`, or with a recorded gap, is a dashed straight line, so it doesn't look like a known path.
-- **Emphasis follows the scrubber.** The trip or visit under the scrubber is solid and full strength. Other trips are faded and dashed, and other visit areas are faded. During a visit the marker sits at the place's centre.
+- **Unrecorded stretches are left out** (revised 2026-10-25). A stretch inside a trip with no fixes for longer than `MapConfig.tripBreakMs`, or with a recorded gap, is a break in the line, with a small hollow dot at the fix either side. The real path is unknown and there is no routing service, so no straight line is drawn. Other trips are faded solid lines.
+- **Emphasis follows the scrubber.** The trip or visit under the scrubber is solid and full strength. Other trips and visit areas are faded. During a visit the marker sits at the place's centre.
+- **Attribution sits top right** of every map, clear of the scrubber.
 - **The scrubber is an overlay.** The map runs down to the bottom bar. The scrubber floats over it as a slim card: one line with coloured visit dots, smaller arrows (48 dp targets kept) and a smaller time pill.
-- **Follow-up, a capture bug outside phase 5:** two water crossings had about 12 minutes with no pings while moving, and no Gap was recorded. They were 23 Oct 09:36–09:48 and 24 Oct 11:16–11:28. That breaks AGENTS.md rule 6, so it needs `debug-triage` on the tracking side. The map now shows these stretches as dashed "not recorded" lines.
+- **Follow-up, a capture bug outside phase 5:** two water crossings had about 12 minutes with no pings while moving, and no Gap was recorded. They were 23 Oct 09:36–09:48 and 24 Oct 11:16–11:28. That breaks AGENTS.md rule 6, so it needs `debug-triage` on the tracking side. The map shows these stretches as breaks in the line.
 
 ## Design
 - **No schema change.** The DB stays v1. The only data addition is a `LocationPingDao.observeInRange` Flow query.
