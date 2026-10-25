@@ -23,6 +23,7 @@ import me.tarry.core.data.repository.ScheduleRepository
 import me.tarry.core.data.repository.TimelineRepository
 import me.tarry.core.data.repository.TrackingRepository
 import org.junit.After
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -31,6 +32,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
@@ -84,7 +86,7 @@ class TrackingControllerTest {
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
-            coordinator, launcher, store, trackingRepo, inputs, calculator, alarms, segmentation, health, clock, config,
+            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, segmentation, health, clock, config,
         )
     }
 
@@ -369,7 +371,7 @@ class TrackingControllerTest {
         val short = TrackingConfig(scheduleLookAheadDays = 3)
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, short, clock)
         val shortController = TrackingController(
-            coordinator, launcher, store, trackingRepo, inputs, EffectiveScheduleCalculator(short), alarms, segmentation,
+            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, EffectiveScheduleCalculator(short), alarms, segmentation,
             health, clock, short,
         )
         // Monday-only schedule: the next window is a week away, beyond the 3-day look-ahead.
@@ -422,7 +424,7 @@ class TrackingControllerTest {
         )
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val c = TrackingController(
-            failingCoordinator, launcher, store, trackingRepo, inputs, EffectiveScheduleCalculator(config), alarms,
+            failingCoordinator, launcher, store, trackingRepo, scheduleRepo, inputs, EffectiveScheduleCalculator(config), alarms,
             segmentation, health, clock, config,
         )
 
@@ -635,5 +637,126 @@ class TrackingControllerTest {
         val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
         assertThat(gap.start).isEqualTo(lastPing)
         assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    private val thisWeek = LocalDate.of(2026, 10, 19)
+
+    @Test
+    fun savingTheTemplateRearmsTheAlarmAtTheNewNextTransition() = runBlocking<Unit> {
+        controller.reconcile()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17))
+
+        // Monday now ends at 15:00.
+        controller.updateSchedule(
+            ScheduleChange.SaveTemplate(Schedule.MON_FRI_7_TO_17.withSlots(java.time.DayOfWeek.MONDAY, 30..33, false)),
+        )
+
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(15))
+        assertThat(store.current().scheduleEdit?.atMs).isEqualTo(clock.now)
+        assertThat(store.current().scheduleEdit?.before).isEqualTo(Schedule.MON_FRI_7_TO_17)
+    }
+
+    @Test
+    fun savingAnUnchangedScheduleRecordsNoEdit() = runBlocking<Unit> {
+        controller.reconcile()
+
+        controller.updateSchedule(ScheduleChange.SaveTemplate(Schedule.MON_FRI_7_TO_17))
+
+        assertThat(store.current().scheduleEdit).isNull()
+    }
+
+    @Test
+    fun paintingOutTheCurrentWindowFinishesUpThenEndsWithScheduleEnd() = runBlocking<Unit> {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        controller.updateSchedule(ScheduleChange.SaveTemplate(Schedule.EMPTY))
+
+        // Capture is MOVING: the normal window-end grace applies, nothing new.
+        assertThat(coordinator.isActive).isTrue()
+        assertThat(store.current().finishingUp).isTrue()
+        assertThat(alarms.armed.last()).isEqualTo(Instant.ofEpochMilli(clock.now + config.windowEndGraceMaxMs))
+
+        clock.now += config.windowEndGraceMaxMs
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+        assertThat(alarms.armed.last()).isNull()
+    }
+
+    @Test
+    fun paintingInAWindowThatAlreadyStartedStartsNowAndDoesNotCountTheEarlierPart() = runBlocking<Unit> {
+        scheduleRepo.saveTemplate(Schedule.EMPTY, 0)
+        clock.now = mondayAt(10, 15).toEpochMilli()
+        controller.reconcile()
+        assertThat(launcher.started).isEmpty()
+
+        controller.updateSchedule(ScheduleChange.SaveTemplate(Schedule.MON_FRI_7_TO_17))
+
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17))
+        val provider = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
+        val inputs = provider.inputs(mondayAt(0), mondayAt(12), sydney)
+        assertThat(EffectiveScheduleCalculator(config).activeIntervals(inputs, mondayAt(0), mondayAt(12), sydney))
+            .containsExactly(WindowBounds(mondayAt(10, 15), mondayAt(12)))
+    }
+
+    @Test
+    fun savingThisWeeksScheduleTakesEffectAndClearingItRevertsToTheTemplate() = runBlocking<Unit> {
+        controller.reconcile()
+        val week = Schedule.EMPTY.withSlots(java.time.DayOfWeek.MONDAY, 24..27, true) // 12:00-14:00
+
+        controller.updateSchedule(ScheduleChange.SaveWeek(thisWeek, week))
+
+        assertThat(scheduleRepo.override(thisWeek.toString())).isEqualTo(week)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(12))
+
+        launcher.started.clear()
+        controller.updateSchedule(ScheduleChange.ClearWeek(thisWeek))
+
+        assertThat(scheduleRepo.override(thisWeek.toString())).isNull()
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17))
+    }
+
+    @Test
+    fun aStopIsReboundWhenALaterWindowIsPaintedToday() = runBlocking<Unit> {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.stop()
+        assertThat(overrides().single().end).isEqualTo(mondayAt(7, day = 20).toEpochMilli())
+
+        controller.updateSchedule(
+            ScheduleChange.SaveTemplate(Schedule.MON_FRI_7_TO_17.withSlots(java.time.DayOfWeek.MONDAY, 38..39, true)), // 19:00-20:00
+        )
+
+        val stop = overrides().single()
+        assertThat(stop.endMode).isEqualTo(ManualOverrideEndMode.UNTIL_STOPPED)
+        assertThat(stop.end).isEqualTo(mondayAt(19).toEpochMilli())
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(19))
+
+        launcher.started.clear()
+        clock.now = mondayAt(19).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+    }
+
+    @Test
+    fun customPauseDurationEndsTheSessionAndResumesAfterThatLong() = runBlocking<Unit> {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.pause(PauseKind.PAUSE_30M)
+
+        controller.pause(45)
+
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.USER_PAUSE)
+        val active = trackingRepo.observeActiveOverrides().first().single()
+        assertThat(active.type).isEqualTo(ManualOverrideType.PAUSE)
+        assertThat(active.endMode).isEqualTo(ManualOverrideEndMode.DURATION)
+        assertThat(active.end).isEqualTo(mondayAt(10, 45).toEpochMilli())
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(10, 45))
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { controller.pause(0) } }
     }
 }

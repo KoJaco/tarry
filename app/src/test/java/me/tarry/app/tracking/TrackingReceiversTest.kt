@@ -78,7 +78,7 @@ class TrackingReceiversTest {
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
-            coordinator, launcher, store, trackingRepo, inputs, calculator, alarms, FakeSegmentationTrigger(), health, clock, config,
+            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, FakeSegmentationTrigger(), health, clock, config,
         )
     }
 

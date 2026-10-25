@@ -102,7 +102,7 @@ class HealthCheckWorkerTest {
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
-            coordinator, launcher, store, trackingRepo, inputs, calculator, alarms, FakeSegmentationTrigger(), health,
+            coordinator, launcher, store, trackingRepo, ScheduleRepository(db.scheduleDao()), inputs, calculator, alarms, FakeSegmentationTrigger(), health,
             clock, config,
         )
         val snapshots = TrackingSnapshotProvider(inputs, calculator, store, preconditions, coordinator, clock)
