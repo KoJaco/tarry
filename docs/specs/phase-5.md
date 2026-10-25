@@ -33,6 +33,16 @@ The manual-visit create form was never built, so it is built here first. Recon f
 - **The scrubber is an overlay.** The map runs down to the bottom bar. The scrubber floats over it as a slim card: one line with coloured visit dots, smaller arrows (48 dp targets kept) and a smaller time pill.
 - **Follow-up, a capture bug outside phase 5:** on 24 Oct, 11:17–11:28, tracking recorded no fixes while the owner drove about 2.8 km. Fixes before and after were GPS-grade (8–30 m), and no Gap was recorded. That breaks AGENTS.md rule 6, so it needs `debug-triage` on the tracking side. The 23 Oct hole (09:36–09:48) was a boat trip on a network-fix-only day, so it is put down to the old low-accuracy tracking; re-check on the next water trip. The map shows both as breaks in the line.
 
+## Device pass (2026-10-25)
+Pixel 10 for the map, pin taps and the drawer; emulator (Medium Phone API 35, with a local copy of the dogfood DB) for the rest.
+- **Light and dark:** day map, pins, visit areas, scrubber and the drawer mini map all render in both.
+- **Font scale 2:** the header wraps, the map gets shorter, and the day still fits between the credit and the scrubber card. The credit stops growing at 1.3x so it stays one line.
+- **TalkBack:** every control is labelled and at least 48 dp. The map now announces the day summary (it was announcing MapLibre's default description).
+- **Network:** while the map loaded, panned and opened a drawer, every TCP connection from the app's UID went to 172.67.74.56:443, an address of `tiles.openfreemap.org`. The release classpath has no analytics, crash or telemetry modules.
+- **Fixed during the pass:** the drawer mini map crash, straight lines over unrecorded stretches, network fixes drawn as trips, the lost whole-day fit, the credit at large font sizes, and the TalkBack description.
+- **Known:** the credit MapLibre prints into the mini map image is faint in dark mode.
+- **Not covered:** the scrubber drag while tracking on the Pixel (the S1 regression check).
+
 ## Design
 - **No schema change.** The DB stays v1. The only data addition is a `LocationPingDao.observeInRange` Flow query.
 - **Code layout:**
@@ -72,7 +82,7 @@ The manual-visit create form was never built, so it is built here first. Recon f
 | T5 | Map-pin placement: centre-pin picker, nearby places, `createManualAtNewPlace` with a single undo | M | claude + test-writer | Done (device pass pending) |
 | T6 | Drawer mini map (`MapSnapshotter`, cached) | S | implementer | Done (device pass pending) |
 | T7 | Radius sheet live map (circle follows the slider, visit dots) | S | implementer | Done (device pass pending) |
-| T8 | Review, security pass (network/telemetry), device pass | M | claude | |
+| T8 | Review, security pass (network/telemetry), device pass | M | claude | Device pass done 2026-10-25 (Pixel + emulator, see below); final review pending |
 
 ## Acceptance criteria
 - **Map view:**
