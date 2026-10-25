@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -48,6 +49,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -98,6 +101,7 @@ fun ScheduleGrid(
 ) {
     val locale = currentLocale()
     val shortNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.SHORT, locale) } }
+    val narrowNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.NARROW, locale) } }
     val fullNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.FULL, locale) } }
     val labelWidth = hourLabelWidth()
     Column(modifier) {
@@ -106,6 +110,7 @@ fun ScheduleGrid(
             DayOfWeek.entries.forEach { day ->
                 DayHeader(
                     shortName = shortNames[day.ordinal],
+                    narrowName = narrowNames[day.ordinal],
                     fullName = fullNames[day.ordinal],
                     highlighted = day == highlightDay,
                     onClick = { onDayHeaderClick(day) },
@@ -124,10 +129,13 @@ private fun hourLabelWidth(): Dp {
 }
 
 @Composable
-private fun DayHeader(shortName: String, fullName: String, highlighted: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun DayHeader(shortName: String, narrowName: String, fullName: String, highlighted: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = TarryTheme.colors
     val edit = stringResource(R.string.schedule_edit_day, fullName)
     val today = stringResource(R.string.schedule_today)
+    // Large font scales leave a column too narrow for the short name: fall back to the narrow one rather than clip.
+    val fontScale = LocalDensity.current.fontScale
+    var narrow by remember(shortName, fontScale) { mutableStateOf(false) }
     Box(
         modifier = modifier
             .heightIn(min = 48.dp)
@@ -139,12 +147,13 @@ private fun DayHeader(shortName: String, fullName: String, highlighted: Boolean,
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = shortName,
+            text = if (narrow) narrowName else shortName,
             style = MaterialTheme.typography.labelMedium,
             color = if (highlighted) c.onAccentSoft else c.ink,
             textAlign = TextAlign.Center,
             maxLines = 1,
             softWrap = false,
+            onTextLayout = { if (it.didOverflowWidth) narrow = true },
             modifier = Modifier
                 .clip(TarryTheme.shapes.pill)
                 .background(if (highlighted) c.accentSoft else Color.Transparent)
@@ -156,7 +165,7 @@ private fun DayHeader(shortName: String, fullName: String, highlighted: Boolean,
 /** Measurements the pointer handler needs; plain fields, read only when an event arrives. */
 private class GridMetrics {
     var width = 0
-    var height = 0
+    var height by mutableIntStateOf(0)
     var labelPx = 0f
 }
 
@@ -180,6 +189,7 @@ private fun GridBody(
     modifier: Modifier,
 ) {
     val density = LocalDensity.current
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val haptic = LocalHapticFeedback.current
     val currentSchedule by rememberUpdatedState(schedule)
     val currentOnStroke by rememberUpdatedState(onStroke)
@@ -188,20 +198,26 @@ private fun GridBody(
     val drag = remember { StrokeDrag() }
     val gridDescription = stringResource(R.string.schedule_grid_description)
 
-    /** The (day, slot) under a pointer position in the grid body, clamped to the grid. */
-    fun cellAt(x: Float, y: Float): Pair<DayOfWeek, Int>? {
+    /**
+     * The (day, slot) under a pointer position in the grid body. Rows clamp to the grid; columns clamp too while a
+     * stroke moves, but a press in the hour-label column ([clampColumns] false) is no cell at all.
+     */
+    fun cellAt(x: Float, y: Float, clampColumns: Boolean): Pair<DayOfWeek, Int>? {
         val clampedY = y.coerceIn(0f, (metrics.height - 1).coerceAtLeast(0).toFloat())
         val item = listState.layoutInfo.visibleItemsInfo
             .firstOrNull { clampedY >= it.offset && clampedY < it.offset + it.size } ?: return null
         val cellWidth = (metrics.width - metrics.labelPx) / DAYS
         if (cellWidth <= 0f) return null
-        val day = ((x - metrics.labelPx) / cellWidth).toInt().coerceIn(0, DAYS - 1)
+        // Right-to-left mirrors the row: the labels sit on the right and Monday is next to them.
+        val fromLabel = (if (rtl) metrics.width - x else x) - metrics.labelPx
+        if (!clampColumns && (fromLabel < 0f || fromLabel >= cellWidth * DAYS)) return null
+        val day = (fromLabel / cellWidth).toInt().coerceIn(0, DAYS - 1)
         return DayOfWeek.entries[day] to item.index
     }
 
     fun moveStroke() {
         val stroke = drag.stroke ?: return
-        val (day, slot) = cellAt(drag.x, drag.y) ?: return
+        val (day, slot) = cellAt(drag.x, drag.y, clampColumns = true) ?: return
         stroke.moveTo(day, slot)
         if (stroke.schedule != drag.lastReported) {
             drag.lastReported = stroke.schedule
@@ -248,7 +264,7 @@ private fun GridBody(
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val press = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
-                    val (startDay, startSlot) = cellAt(press.position.x, press.position.y) ?: return@awaitEachGesture
+                    val (startDay, startSlot) = cellAt(press.position.x, press.position.y, clampColumns = false) ?: return@awaitEachGesture
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     val stroke = PaintStroke.begin(currentSchedule, startDay, startSlot)
                     drag.stroke = stroke
@@ -256,20 +272,24 @@ private fun GridBody(
                     drag.x = press.position.x
                     drag.y = press.position.y
                     drag.active = true
-                    currentOnStroke(stroke.schedule)
-                    press.consume()
-                    // Initial pass: the list and the cells never see the rest of this gesture.
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        change.consume()
-                        if (!change.pressed) break
-                        drag.x = change.position.x
-                        drag.y = change.position.y
-                        moveStroke()
+                    try {
+                        currentOnStroke(stroke.schedule)
+                        press.consume()
+                        // Initial pass: the list and the cells never see the rest of this gesture.
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            change.consume()
+                            if (!change.pressed) break
+                            drag.x = change.position.x
+                            drag.y = change.position.y
+                            moveStroke()
+                        }
+                    } finally {
+                        // Also when the gesture coroutine is cancelled: the edge auto-scroll must not outlive the finger.
+                        drag.active = false
+                        drag.stroke = null
                     }
-                    drag.active = false
-                    drag.stroke = null
                 }
             },
     ) {
