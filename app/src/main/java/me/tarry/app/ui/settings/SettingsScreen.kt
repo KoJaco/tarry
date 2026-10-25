@@ -175,9 +175,9 @@ fun SettingsContent(
         val tagsTitle = stringResource(R.string.settings_tags)
         val placesTitle = stringResource(R.string.settings_places)
         SettingsGroup {
-            row(jobsTitle, onClick = onOpenJobs)
-            row(tagsTitle, onClick = onOpenTags)
-            row(placesTitle, onClick = onOpenPlaces)
+            row(jobsTitle, onClick = onOpenJobs, icon = R.drawable.ic_work)
+            row(tagsTitle, onClick = onOpenTags, icon = R.drawable.ic_label)
+            row(placesTitle, onClick = onOpenPlaces, icon = R.drawable.ic_location_pin)
         }
         if (settings != null) {
             SectionHeader(stringResource(R.string.settings_section_appearance), Modifier.padding(top = space.m))
@@ -257,7 +257,7 @@ private fun <T> PickerSheet(
                     modifier = Modifier
                         .padding(bottom = space.s)
                         .background(colors.alertSoft, TarryTheme.shapes.container)
-                        .padding(space.s),
+                        .padding(horizontal = space.m, vertical = space.m),
                 )
             }
             Column(Modifier.selectableGroup()) {
