@@ -22,6 +22,27 @@ class Schedule private constructor(private val bits: ByteArray) {
         return Schedule(copy)
     }
 
+    /** Sets every slot in [slots] on [day] to [active] (an empty range changes nothing). */
+    fun withSlots(day: DayOfWeek, slots: IntRange, active: Boolean): Schedule {
+        if (slots.isEmpty()) return this
+        index(day, slots.first)
+        index(day, slots.last)
+        return slots.fold(this) { s, slot -> s.set(day, slot, active) }
+    }
+
+    /** Copies [from]'s 48 slots onto each day in [to]. */
+    fun copyDay(from: DayOfWeek, to: Set<DayOfWeek>): Schedule {
+        val source = daySlots(from)
+        return to.fold(this) { s, day ->
+            source.foldIndexed(s) { slot, acc, on -> acc.set(day, slot, on) }
+        }
+    }
+
+    fun clearDay(day: DayOfWeek): Schedule = withSlots(day, 0 until SLOTS_PER_DAY, false)
+
+    /** The 48 slots of [day], index = slot of day. */
+    fun daySlots(day: DayOfWeek): List<Boolean> = List(SLOTS_PER_DAY) { isActive(day, it) }
+
     fun toBytes(): ByteArray = bits.copyOf()
 
     override fun equals(other: Any?): Boolean =
