@@ -12,6 +12,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import me.tarry.core.data.db.TarryDatabase
+import me.tarry.core.data.db.dao.ScheduleDao
+import me.tarry.core.data.db.entity.ScheduleOverride
+import me.tarry.core.data.db.entity.ScheduleTemplate
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.ManualOverrideEndMode
@@ -53,6 +56,8 @@ class TrackingControllerTest {
     private lateinit var timelineRepo: TimelineRepository
     private lateinit var health: HealthGapRecorder
     private lateinit var store: TrackingStatusStore
+    /** Per schedule write: its kind and how many edits the status store held when it happened. */
+    private val writeSnapshots = mutableListOf<String>()
     private val permissions = FakePermissions()
     private val launcher = FakeLauncher()
     private val alarms = FakeAlarmScheduler()
@@ -74,7 +79,23 @@ class TrackingControllerTest {
         trackingRepo = TrackingRepository(
             db.trackingSessionDao(), db.locationPingDao(), db.manualOverrideDao(), db.segmentationCheckpointDao(),
         )
-        scheduleRepo = ScheduleRepository(db.scheduleDao())
+        val realDao = db.scheduleDao()
+        scheduleRepo = ScheduleRepository(object : ScheduleDao by realDao {
+            override suspend fun upsertTemplate(template: ScheduleTemplate) {
+                writeSnapshots += "template:${store.current().scheduleEdits.size}"
+                realDao.upsertTemplate(template)
+            }
+
+            override suspend fun upsertOverride(override: ScheduleOverride) {
+                writeSnapshots += "override:${store.current().scheduleEdits.size}"
+                realDao.upsertOverride(override)
+            }
+
+            override suspend fun deleteOverride(weekStart: String) {
+                writeSnapshots += "delete:${store.current().scheduleEdits.size}"
+                realDao.deleteOverride(weekStart)
+            }
+        })
         store = TrackingStatusStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") })
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val calculator = EffectiveScheduleCalculator(config)
@@ -652,8 +673,10 @@ class TrackingControllerTest {
         )
 
         assertThat(alarms.armed.last()).isEqualTo(mondayAt(15))
-        assertThat(store.current().scheduleEdit?.atMs).isEqualTo(clock.now)
-        assertThat(store.current().scheduleEdit?.before).isEqualTo(Schedule.MON_FRI_7_TO_17)
+        val edit = store.current().scheduleEdits.single()
+        assertThat(edit.atMs).isEqualTo(clock.now)
+        assertThat(edit.templateBefore).isEqualTo(Schedule.MON_FRI_7_TO_17)
+        assertThat(edit.weekBefore).isNull()
     }
 
     @Test
@@ -662,7 +685,84 @@ class TrackingControllerTest {
 
         controller.updateSchedule(ScheduleChange.SaveTemplate(Schedule.MON_FRI_7_TO_17))
 
-        assertThat(store.current().scheduleEdit).isNull()
+        assertThat(store.current().scheduleEdits).isEmpty()
+    }
+
+    @Test
+    fun theEditIsAppendedBeforeTheScheduleIsWritten() = runBlocking<Unit> {
+        controller.reconcile()
+        writeSnapshots.clear()
+
+        controller.updateSchedule(ScheduleChange.SaveTemplate(Schedule.EMPTY))
+        controller.updateSchedule(ScheduleChange.SaveWeek(thisWeek, Schedule.MON_FRI_7_TO_17))
+        controller.updateSchedule(ScheduleChange.ClearWeek(thisWeek))
+
+        // Each write already sees its own edit (1, 2, 3 edits so far).
+        assertThat(writeSnapshots).containsExactly("template:1", "override:2", "delete:3").inOrder()
+    }
+
+    @Test
+    fun weekSavesRecordTheOverrideAsItWasAndTheTemplateToo() = runBlocking<Unit> {
+        controller.reconcile()
+        val first = Schedule.EMPTY.withSlots(java.time.DayOfWeek.MONDAY, 24..27, true)
+        val second = Schedule.EMPTY.withSlots(java.time.DayOfWeek.MONDAY, 28..29, true)
+
+        controller.updateSchedule(ScheduleChange.SaveWeek(thisWeek, first))
+        controller.updateSchedule(ScheduleChange.SaveWeek(thisWeek, second))
+        controller.updateSchedule(ScheduleChange.ClearWeek(thisWeek))
+
+        val edits = store.current().scheduleEdits
+        assertThat(edits.map { it.weekBefore }).containsExactly(
+            WeekBefore(thisWeek, null), WeekBefore(thisWeek, first), WeekBefore(thisWeek, second),
+        ).inOrder()
+        assertThat(edits.map { it.templateBefore }.distinct()).containsExactly(Schedule.MON_FRI_7_TO_17)
+    }
+
+    @Test
+    fun aWeekEditForAnotherWeekIsKeyedByThatWeek() = runBlocking<Unit> {
+        controller.reconcile()
+        val nextWeek = thisWeek.plusWeeks(1)
+
+        controller.updateSchedule(ScheduleChange.SaveWeek(nextWeek, Schedule.EMPTY))
+
+        assertThat(store.current().scheduleEdits.single().weekBefore).isEqualTo(WeekBefore(nextWeek, null))
+    }
+
+    @Test
+    fun noOpSavesAppendNothingAndWriteNothing() = runBlocking<Unit> {
+        controller.reconcile()
+        controller.updateSchedule(ScheduleChange.SaveWeek(thisWeek, Schedule.EMPTY))
+        val edits = store.current().scheduleEdits
+        writeSnapshots.clear()
+
+        controller.updateSchedule(ScheduleChange.SaveWeek(thisWeek, Schedule.EMPTY))
+        controller.updateSchedule(ScheduleChange.SaveTemplate(Schedule.MON_FRI_7_TO_17))
+        controller.updateSchedule(ScheduleChange.ClearWeek(thisWeek.plusWeeks(3)))
+
+        assertThat(store.current().scheduleEdits).isEqualTo(edits)
+        assertThat(writeSnapshots).isEmpty()
+    }
+
+    @Test
+    fun startAndPauseUntilUseTheExactInstant() = runBlocking<Unit> {
+        clock.now = mondayAt(18).toEpochMilli() + 40_000 // 18:00:40, outside the window
+        controller.reconcile()
+        val until = mondayAt(19).toEpochMilli()
+
+        controller.startUntil(until)
+
+        val start = trackingRepo.observeActiveOverrides().first().single()
+        assertThat(start.type).isEqualTo(ManualOverrideType.START)
+        assertThat(start.endMode).isEqualTo(ManualOverrideEndMode.DURATION)
+        assertThat(start.end).isEqualTo(until)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(19))
+
+        controller.pauseUntil(mondayAt(18, 30).toEpochMilli())
+
+        val pause = trackingRepo.observeActiveOverrides().first().single { it.type == ManualOverrideType.PAUSE }
+        assertThat(pause.end).isEqualTo(mondayAt(18, 30).toEpochMilli())
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { controller.startUntil(clock.now) } }
+        assertThrows(IllegalArgumentException::class.java) { runBlocking { controller.pauseUntil(clock.now - 1) } }
     }
 
     @Test

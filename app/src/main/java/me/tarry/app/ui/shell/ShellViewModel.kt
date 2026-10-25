@@ -14,6 +14,7 @@ import me.tarry.app.tracking.TrackingState
 import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.ui.permissions.PermissionChecker
 import me.tarry.core.data.model.ManualOverrideEndMode
+import java.time.Instant
 import javax.inject.Inject
 
 @HiltViewModel
@@ -48,6 +49,16 @@ class ShellViewModel @Inject constructor(
 
     fun pauseFor(durationMin: Int) {
         captureScope.launch { controller.pause(durationMin) }
+    }
+
+    /** Start tracking until the exact instant [until]. */
+    fun startUntil(until: Instant) {
+        captureScope.launch { controller.startUntil(until.toEpochMilli()) }
+    }
+
+    /** Pause until the exact instant [until]. */
+    fun pauseUntil(until: Instant) {
+        captureScope.launch { controller.pauseUntil(until.toEpochMilli()) }
     }
 
     fun resume() {

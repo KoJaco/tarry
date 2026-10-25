@@ -10,17 +10,13 @@ import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.core.data.model.ManualOverrideType
-import me.tarry.core.data.model.Schedule
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.repository.ScheduleRepository
 import me.tarry.core.data.repository.TrackingRepository
-import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
-import java.time.LocalDate
 import java.time.ZoneId
-import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -141,6 +137,24 @@ class TrackingController @Inject constructor(
         reconcileLocked(ReconcileSource.UI)
     }
 
+    /** Manual START that ends at the exact instant [untilMs] (must be after now). Replaces any active manual override. */
+    suspend fun startUntil(untilMs: Long) = mutex.withLock {
+        val now = clock.nowMs()
+        require(untilMs > now) { "untilMs must be in the future" }
+        deactivateActive(null, now)
+        trackingRepo.saveOverride(override(ManualOverrideType.START, ManualOverrideEndMode.DURATION, now, untilMs))
+        reconcileLocked(ReconcileSource.UI)
+    }
+
+    /** Manual PAUSE that ends at the exact instant [untilMs] (must be after now). Replaces any active pause. */
+    suspend fun pauseUntil(untilMs: Long) = mutex.withLock {
+        val now = clock.nowMs()
+        require(untilMs > now) { "untilMs must be in the future" }
+        deactivateActive(ManualOverrideType.PAUSE, now)
+        trackingRepo.saveOverride(override(ManualOverrideType.PAUSE, ManualOverrideEndMode.DURATION, now, untilMs))
+        reconcileLocked(ReconcileSource.UI)
+    }
+
     /**
      * Saves a schedule change and applies it at once: records that the edit counts from now (no Gap for the past),
      * re-bounds a Stop, then reconciles, which starts or stops capture and re-arms the single alarm. Painting out
@@ -150,23 +164,33 @@ class TrackingController @Inject constructor(
         val now = clock.nowMs()
         val zone = clock.zone()
         val nowInstant = Instant.ofEpochMilli(now)
-        val weekStart = nowInstant.atZone(zone).toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         inputsProvider.seedTemplateIfMissing()
-        val before = effectiveWeek(weekStart)
-        when (change) {
-            is ScheduleChange.SaveTemplate -> scheduleRepo.saveTemplate(change.schedule, now)
-            is ScheduleChange.SaveWeek -> scheduleRepo.saveOverride(change.weekStart.toString(), change.schedule, now)
-            is ScheduleChange.ClearWeek -> scheduleRepo.clearOverride(change.weekStart.toString())
+        val templateBefore = checkNotNull(scheduleRepo.template()) { "template was just seeded" }
+        val weekBefore = when (change) {
+            is ScheduleChange.SaveTemplate -> null
+            is ScheduleChange.SaveWeek -> WeekBefore(change.weekStart, scheduleRepo.override(change.weekStart.toString()))
+            is ScheduleChange.ClearWeek -> WeekBefore(change.weekStart, scheduleRepo.override(change.weekStart.toString()))
         }
-        if (effectiveWeek(weekStart) != before) {
-            statusStore.setScheduleEdit(ScheduleEdit.record(statusStore.current().scheduleEdit, before, weekStart, now, zone))
+        val changes = when (change) {
+            is ScheduleChange.SaveTemplate -> change.schedule != templateBefore
+            is ScheduleChange.SaveWeek -> change.schedule != weekBefore?.overrideBefore
+            is ScheduleChange.ClearWeek -> weekBefore?.overrideBefore != null
+        }
+        if (changes) {
+            // The edit goes first: a crash before the write below leaves an edit whose "before" is still current (harmless),
+            // while the other order would leave a schedule change that was never marked, and so counted retroactively.
+            statusStore.appendScheduleEdit(
+                ScheduleEdit(now, templateBefore, weekBefore), config.scheduleEditRetentionDays, config.scheduleEditMax,
+            )
+            when (change) {
+                is ScheduleChange.SaveTemplate -> scheduleRepo.saveTemplate(change.schedule, now)
+                is ScheduleChange.SaveWeek -> scheduleRepo.saveOverride(change.weekStart.toString(), change.schedule, now)
+                is ScheduleChange.ClearWeek -> scheduleRepo.clearOverride(change.weekStart.toString())
+            }
         }
         rebindStop(nowInstant, zone)
         reconcileLocked(ReconcileSource.UI)
     }
-
-    private suspend fun effectiveWeek(weekStart: LocalDate): Schedule =
-        scheduleRepo.override(weekStart.toString()) ?: checkNotNull(scheduleRepo.template()) { "template was just seeded" }
 
     /**
      * A Stop inside a window is a PAUSE (UNTIL_STOPPED) ending at the next window start; after a schedule change that

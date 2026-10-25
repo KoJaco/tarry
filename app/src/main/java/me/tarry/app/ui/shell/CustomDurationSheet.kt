@@ -39,29 +39,35 @@ import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.drawer.TimePickerDialog
 import me.tarry.app.ui.theme.TarryTheme
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalTime
 import java.time.ZonedDateTime
-import java.time.temporal.ChronoUnit
+import kotlin.math.ceil
 
 private const val MINUTES_PER_HOUR = 60
-private const val MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR
+private const val MS_PER_MINUTE = 60_000.0
 private const val DEFAULT_MINUTES = 60
 
-/** What the custom-duration sheet can ask for, in minutes from now. */
+/**
+ * What the custom-duration sheet can ask for: a length in minutes from now (stepper), or an exact end instant
+ * ("until a time"). When [onStartUntil] / [onPauseUntil] are not given, "until a time" falls back to whole minutes.
+ */
 data class CustomDurationActions(
     val onStart: (Int) -> Unit,
     val onPause: (Int) -> Unit,
+    val onStartUntil: ((Instant) -> Unit)? = null,
+    val onPauseUntil: ((Instant) -> Unit)? = null,
 )
 
 /**
- * Minutes from [now] to the next occurrence of the local [time], for "until a time". A time at or before [now]
- * (to the minute) means tomorrow. Real elapsed minutes, so a DST change in between counts; capped at 24 h.
+ * The exact instant of the next occurrence of the local [time] after [now], for "until a time". A time at or before
+ * [now] means tomorrow, resolved in [now]'s zone (a time in a skipped DST hour lands after the gap). Capped at 24 h of
+ * real time from [now], so a fall-back night cannot push it past a day.
  */
-fun minutesUntil(now: ZonedDateTime, time: LocalTime): Int {
-    val from = now.truncatedTo(ChronoUnit.MINUTES)
-    var target = from.toLocalDate().atTime(time).atZone(from.zone)
-    if (!target.isAfter(from)) target = from.toLocalDate().plusDays(1).atTime(time).atZone(from.zone)
-    return Duration.between(from, target).toMinutes().toInt().coerceAtMost(MINUTES_PER_DAY)
+fun untilTime(now: ZonedDateTime, time: LocalTime): Instant {
+    var target = now.toLocalDate().atTime(time).atZone(now.zone)
+    if (!target.isAfter(now)) target = now.toLocalDate().plusDays(1).atTime(time).atZone(now.zone)
+    return minOf(target.toInstant(), now.toInstant().plus(Duration.ofDays(1)))
 }
 
 /** Long-press sheet of the toggle: start or pause for a chosen length. Same chrome as [TrackingSheet]. */
@@ -153,11 +159,16 @@ fun CustomDurationSheetContent(
             is24Hour = DateFormat.is24HourFormat(LocalContext.current),
             onConfirm = { hour, minute ->
                 pickingTime = false
-                val picked = minutesUntil(nowProvider(), LocalTime.of(hour, minute))
-                if (picked > 0) {
-                    if (pausing) actions.onPause(picked) else actions.onStart(picked)
-                    onDone()
+                val current = nowProvider()
+                val until = untilTime(current, LocalTime.of(hour, minute))
+                val toUntil = if (pausing) actions.onPauseUntil else actions.onStartUntil
+                if (toUntil != null) {
+                    toUntil(until)
+                } else {
+                    val fallback = ceil(Duration.between(current.toInstant(), until).toMillis() / MS_PER_MINUTE).toInt()
+                    if (pausing) actions.onPause(fallback) else actions.onStart(fallback)
                 }
+                onDone()
             },
             onDismiss = { pickingTime = false },
         )

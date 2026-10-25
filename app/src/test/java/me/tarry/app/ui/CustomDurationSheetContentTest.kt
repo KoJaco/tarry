@@ -35,6 +35,8 @@ class CustomDurationSheetContentTest {
     private val actions = CustomDurationActions(
         onStart = { calls += "start:$it" },
         onPause = { calls += "pause:$it" },
+        onStartUntil = { calls += "startUntil:$it" },
+        onPauseUntil = { calls += "pauseUntil:$it" },
     )
 
     private fun show(
@@ -142,7 +144,7 @@ class CustomDurationSheetContentTest {
     }
 
     @Test
-    fun untilATimeConvertsThePickedTimeToMinutes() {
+    fun untilATimePassesTheExactEndInstant() {
         show(TrackingState.IDLE)
         // The picker opens on now plus the chosen length (11:15 here), so confirming it as is means 75 minutes.
         composeRule.onNodeWithContentDescription("Longer").performClick()
@@ -150,7 +152,7 @@ class CustomDurationSheetContentTest {
         assertThat(calls).isEmpty()
         composeRule.onNodeWithText("Until what time?").assertIsDisplayed()
         composeRule.onNodeWithText("OK").performClick()
-        assertThat(calls).containsExactly("start:75", "done").inOrder()
+        assertThat(calls).containsExactly("startUntil:2026-03-10T01:15:00Z", "done").inOrder()
     }
 
     @Test
@@ -158,7 +160,7 @@ class CustomDurationSheetContentTest {
         show(TrackingState.TRACKING)
         composeRule.onNodeWithText("Until a time…").performClick()
         composeRule.onNodeWithText("OK").performClick()
-        assertThat(calls).containsExactly("pause:60", "done").inOrder()
+        assertThat(calls).containsExactly("pauseUntil:2026-03-10T01:00:00Z", "done").inOrder()
     }
 
     @Test
