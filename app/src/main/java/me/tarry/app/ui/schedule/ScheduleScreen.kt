@@ -17,7 +17,6 @@ fun ScheduleScreen(onClose: () -> Unit, modifier: Modifier = Modifier, viewModel
             onShiftWeek = viewModel::shiftWeek,
             onToggleCell = viewModel::toggleCell,
             onStroke = viewModel::setDraft,
-            onWorkWeekPreset = viewModel::applyWorkWeekPreset,
             onClearAll = viewModel::clearAll,
             onSetDayHours = viewModel::setDayHours,
             onCopyDay = viewModel::copyDay,

@@ -39,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -73,6 +74,8 @@ const val ScheduleGridTag = "schedule_grid"
 /** The slot shown at the top when the grid first appears: 06:00. */
 const val ScheduleGridInitialSlot = 12
 
+/** Corner radius of a grid cell: small, so neighbouring cells stay distinct (no shape token this small). */
+private val CellRadius = 3.dp
 private val RowHeight = 48.dp
 private val EdgeZone = 48.dp
 private val AutoScrollSpeed = 480.dp
@@ -348,7 +351,7 @@ private fun SlotCell(day: DayOfWeek, slot: Int, active: Boolean, dayName: String
     val c = TarryTheme.colors
     val description = stringResource(R.string.schedule_cell_description, dayName, slotTime(slot), slotTime(slot + 1))
     val state = stringResource(if (active) R.string.schedule_cell_on else R.string.schedule_cell_off)
-    val shape = TarryTheme.shapes.small
+    val shape = RoundedCornerShape(CellRadius)
     Box(
         modifier = modifier
             .fillMaxHeight()

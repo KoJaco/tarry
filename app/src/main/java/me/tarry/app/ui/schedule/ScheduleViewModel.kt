@@ -131,8 +131,6 @@ class ScheduleViewModel @Inject constructor(
     /** A paint stroke in progress or finished; [schedule] is the whole draft. */
     fun setDraft(schedule: Schedule) = edit { schedule }
 
-    fun applyWorkWeekPreset() = edit { Schedule.MON_FRI_7_TO_17 }
-
     fun clearAll() = edit { Schedule.EMPTY }
 
     /** Makes [day] active from [startSlot] up to [endSlotExclusive] (48 = midnight) and everything else on it inactive. */

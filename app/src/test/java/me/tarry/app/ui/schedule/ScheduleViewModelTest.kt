@@ -192,14 +192,11 @@ class ScheduleViewModelTest {
     }
 
     @Test
-    fun presetsReplaceTheDraft() {
+    fun clearAllEmptiesTheDraft() {
         awaitState { it.loaded }
 
         viewModel.clearAll()
         assertThat(viewModel.state.value.draft).isEqualTo(Schedule.EMPTY)
-
-        viewModel.applyWorkWeekPreset()
-        assertThat(viewModel.state.value.draft).isEqualTo(Schedule.MON_FRI_7_TO_17)
     }
 
     @Test
@@ -283,7 +280,7 @@ class ScheduleViewModelTest {
         assertThat(s.dirty).isTrue()
         assertThat(s.draft).isEqualTo(Schedule.EMPTY)
 
-        viewModel.applyWorkWeekPreset()
+        viewModel.toggleCell(DayOfWeek.MONDAY, 14)
         assertThat(viewModel.state.value.saveFailed).isFalse()
     }
 

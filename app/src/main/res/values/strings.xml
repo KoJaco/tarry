@@ -238,8 +238,7 @@
     <string name="schedule_use_every_week_title">Use the every-week schedule?</string>
     <string name="schedule_use_every_week_body">This week\'s own schedule is deleted and the every-week schedule applies again.</string>
     <string name="schedule_template_note_override">This week has its own schedule, so changes here don\'t affect it.</string>
-    <string name="schedule_preset_work_week">Mon–Fri 07:00–17:00</string>
-    <string name="schedule_preset_clear">Clear</string>
+    <string name="schedule_clear">Clear schedule</string>
     <string name="schedule_save">Save</string>
     <string name="schedule_save_failed">Couldn\'t save the schedule. Your changes are kept; try again.</string>
     <string name="schedule_discard">Discard</string>

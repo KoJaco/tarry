@@ -11,8 +11,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -60,7 +58,6 @@ data class ScheduleEditorActions(
     val onShiftWeek: (Int) -> Unit,
     val onToggleCell: (DayOfWeek, Int) -> Unit,
     val onStroke: (Schedule) -> Unit,
-    val onWorkWeekPreset: () -> Unit,
     val onClearAll: () -> Unit,
     val onSetDayHours: (DayOfWeek, Int, Int) -> Unit,
     val onCopyDay: (DayOfWeek, Set<DayOfWeek>) -> Unit,
@@ -76,7 +73,6 @@ data class ScheduleEditorActions(
  * Stateless schedule editor: mode switch, week navigation, the own-schedule banner, presets, the grid, and a Save /
  * Discard bar while there are unsaved edits. [onClose] leaves the screen once back-with-edits has been confirmed.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ScheduleEditorContent(
     state: ScheduleUiState,
@@ -114,12 +110,21 @@ fun ScheduleEditorContent(
                     color = colors.ink,
                     modifier = Modifier.semantics { heading() },
                 )
-                SegmentedControl(
-                    options = listOf(stringResource(R.string.schedule_mode_every_week), stringResource(R.string.schedule_mode_this_week)),
-                    selectedIndex = if (weekMode) 1 else 0,
-                    onSelect = { actions.onModeChange(if (it == 1) ScheduleMode.WEEK else ScheduleMode.TEMPLATE) },
-                    enabled = !state.saving,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(space.s)) {
+                    SegmentedControl(
+                        options = listOf(stringResource(R.string.schedule_mode_every_week), stringResource(R.string.schedule_mode_this_week)),
+                        selectedIndex = if (weekMode) 1 else 0,
+                        onSelect = { actions.onModeChange(if (it == 1) ScheduleMode.WEEK else ScheduleMode.TEMPLATE) },
+                        enabled = !state.saving,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconCircleButton(
+                        icon = R.drawable.ic_delete,
+                        contentDescription = stringResource(R.string.schedule_clear),
+                        onClick = actions.onClearAll,
+                        enabled = !state.saving,
+                    )
+                }
                 if (weekMode) {
                     WeekNav(state, actions.onShiftWeek)
                     if (state.hasOverride) OverrideBanner(onUseEveryWeek = { confirmEveryWeek = true })
@@ -129,10 +134,6 @@ fun ScheduleEditorContent(
                         style = MaterialTheme.typography.bodyMedium,
                         color = colors.muted,
                     )
-                }
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
-                    SecondaryButton(stringResource(R.string.schedule_preset_work_week), onClick = actions.onWorkWeekPreset)
-                    SecondaryButton(stringResource(R.string.schedule_preset_clear), onClick = actions.onClearAll)
                 }
             }
             Box(

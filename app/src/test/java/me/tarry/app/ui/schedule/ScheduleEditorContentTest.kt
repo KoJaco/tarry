@@ -40,7 +40,6 @@ class ScheduleEditorContentTest {
         onShiftWeek = { calls += "week:$it" },
         onToggleCell = { day, slot -> calls += "toggle:$day:$slot" },
         onStroke = { calls += "stroke" },
-        onWorkWeekPreset = { calls += "preset" },
         onClearAll = { calls += "clear" },
         onSetDayHours = { day, s, e -> calls += "hours:$day:$s:$e" },
         onCopyDay = { day, to -> calls += "copy:$day:${to.sorted()}" },
@@ -147,13 +146,13 @@ class ScheduleEditorContentTest {
     }
 
     @Test
-    fun presetsCallBack() {
+    fun clearIsAnIconButtonAndThereIsNoPreset() {
         show(state())
 
-        composeRule.onNodeWithText("Mon–Fri 07:00–17:00").performClick()
-        composeRule.onNodeWithText("Clear").performClick()
+        composeRule.onAllNodesWithText("Mon–Fri 07:00–17:00").assertCountEquals(0)
+        composeRule.onNodeWithContentDescription("Clear schedule").assertHeightIsAtLeast(48.dp).performClick()
 
-        assertThat(calls).containsExactly("preset", "clear").inOrder()
+        assertThat(calls).containsExactly("clear")
     }
 
     @Test
