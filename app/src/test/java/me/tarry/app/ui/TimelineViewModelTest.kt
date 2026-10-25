@@ -318,10 +318,28 @@ class TimelineViewModelTest {
 
     @Test
     fun itemsAreNullWhileLoadingThenEmptyListForAnEmptyDay() = runBlocking {
-        val vm = viewModel()
-        assertThat(vm.items.value).isNull()
-        val loaded = withTimeout(10_000) { vm.items.first { it != null } }
-        assertThat(loaded).isEmpty()
+        // The init collector subscribes at once, so an ungated Room query can finish before the first read. Hold every
+        // query until the null has been seen.
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val gatedDb = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), TarryDatabase::class.java)
+            .setQueryExecutor { task -> pool.execute { gate.await(); task.run() } }
+            .build()
+        try {
+            val gatedTimeline = TimelineRepository(gatedDb.visitDao(), gatedDb.tripDao(), gatedDb.gapDao(), gatedDb.excludedRangeDao())
+            val vm = TimelineViewModel(gatedTimeline, places, jobs, tags, zone, { day }).managed()
+            assertThat(vm.items.value).isNull()
+            gate.countDown()
+            val loaded = withTimeout(10_000) { vm.items.first { it != null } }
+            assertThat(loaded).isEmpty()
+            registered.remove(vm)
+            store.clear()
+            withTimeout(10_000) { vm.viewModelScope.coroutineContext.job.join() }
+        } finally {
+            gate.countDown()
+            gatedDb.close()
+            pool.shutdown()
+        }
     }
 
     @Test
