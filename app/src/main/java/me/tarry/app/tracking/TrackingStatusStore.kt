@@ -14,7 +14,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.tarry.core.data.model.ActivityType
+import me.tarry.core.data.model.Schedule
 import java.io.File
+import java.time.LocalDate
+import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Qualifier
 
@@ -43,6 +46,8 @@ data class TrackingStatus(
     val finishingUp: Boolean = false,
     /** When that grace began (epoch ms); kept across a process death so the orphaned grace can be accounted for. */
     val finishingUpSinceMs: Long? = null,
+    /** The last schedule save; edits count from it (see [ScheduleEdit]). */
+    val scheduleEdit: ScheduleEdit? = null,
 )
 
 /** Activity Recognition transitions seen in one session: how many, how many were ignored (an equal or newer one was already applied), and the last one. */
@@ -99,6 +104,7 @@ class TrackingStatusStore @Inject constructor(
             segmentationError = p[SEG_ERROR_TIME]?.let { SegmentationError(it, p[SEG_ERROR_MESSAGE] ?: "") },
             finishingUp = p[FINISHING_UP] ?: false,
             finishingUpSinceMs = p[FINISHING_UP_SINCE],
+            scheduleEdit = decodeScheduleEdit(p[SCHEDULE_EDIT]),
         )
     }
 
@@ -136,6 +142,7 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
     suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
+    suspend fun setScheduleEdit(edit: ScheduleEdit?) = set(SCHEDULE_EDIT, edit?.let(::encodeScheduleEdit))
     suspend fun setFinishingUp(on: Boolean, sinceMs: Long? = null) {
         dataStore.edit {
             if (on) {
@@ -190,6 +197,7 @@ class TrackingStatusStore @Inject constructor(
         val SEG_ERROR_MESSAGE = stringPreferencesKey("segmentation_error_message")
         val FINISHING_UP = booleanPreferencesKey("finishing_up")
         val FINISHING_UP_SINCE = longPreferencesKey("finishing_up_since_ms")
+        val SCHEDULE_EDIT = stringPreferencesKey("schedule_edit")
         val AR_LOG = stringPreferencesKey("ar_log")
         const val AR_LOG_SESSIONS = 20
     }
@@ -197,3 +205,13 @@ class TrackingStatusStore @Inject constructor(
 
 private inline fun <reified E : Enum<E>> String?.toEnumOrNull(): E? =
     this?.let { name -> enumValues<E>().firstOrNull { it.name == name } }
+
+/** `atMs|weekStart|base64(bitmap)`; compact, local control state. */
+private fun encodeScheduleEdit(e: ScheduleEdit): String =
+    "${e.atMs}|${e.weekStart}|${Base64.getEncoder().encodeToString(e.before.toBytes())}"
+
+private fun decodeScheduleEdit(raw: String?): ScheduleEdit? = runCatching {
+    val c = raw?.split('|') ?: return null
+    if (c.size != 3) return null
+    ScheduleEdit(c[0].toLong(), LocalDate.parse(c[1]), Schedule.fromBytes(Base64.getDecoder().decode(c[2])))
+}.getOrNull()

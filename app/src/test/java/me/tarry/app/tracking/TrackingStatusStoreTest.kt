@@ -6,10 +6,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import me.tarry.core.data.model.Schedule
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.time.LocalDate
 
 class TrackingStatusStoreTest {
     @get:Rule
@@ -39,6 +41,18 @@ class TrackingStatusStoreTest {
         s.clearSessionState()
         s.setAttentionCause(null)
         assertThat(s.current()).isEqualTo(TrackingStatus(openHealthGapId = "gap-9", debugTestWindowStartMs = 555L))
+    }
+
+    @Test
+    fun scheduleEditRoundTripsAndClears() = runBlocking {
+        val s = store()
+        val edit = ScheduleEdit(1_700_000_000_000L, LocalDate.of(2026, 10, 19), Schedule.MON_FRI_7_TO_17)
+        s.setScheduleEdit(edit)
+        assertThat(s.current().scheduleEdit).isEqualTo(edit)
+        s.clearSessionState()
+        assertThat(s.current().scheduleEdit).isEqualTo(edit)
+        s.setScheduleEdit(null)
+        assertThat(s.current().scheduleEdit).isNull()
     }
 
     @Test
