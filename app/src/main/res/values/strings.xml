@@ -71,6 +71,19 @@
         <item quantity="one">For %1$d hour</item>
         <item quantity="other">For %1$d hours</item>
     </plurals>
+    <string name="tracking_toggle_long_click_label">Choose how long</string>
+    <string name="custom_duration_start_title">Start tracking for…</string>
+    <string name="custom_duration_pause_title">Pause for…</string>
+    <string name="custom_duration_replace_pause_title">Pause until…</string>
+    <string name="custom_duration_hours">%1$d h</string>
+    <string name="custom_duration_minutes">%1$d min</string>
+    <string name="custom_duration_hours_minutes">%1$d h %2$d min</string>
+    <string name="custom_duration_shorter">Shorter</string>
+    <string name="custom_duration_longer">Longer</string>
+    <string name="custom_duration_start_for">Start for %1$s</string>
+    <string name="custom_duration_pause_for">Pause for %1$s</string>
+    <string name="custom_duration_until_time">Until a time…</string>
+    <string name="custom_duration_time_picker_title">Until what time?</string>
     <string name="tracking_sheet_tracking_title">Tracking</string>
     <string name="tracking_sheet_pause_30m">Pause 30 min</string>
     <string name="tracking_sheet_pause_1h">Pause 1 h</string>

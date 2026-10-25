@@ -69,7 +69,7 @@ private const val PulseDurationMs = 1600
 
 /**
  * Tracking toggle pill in one of four states, each different in shape, glyph and label as well as
- * colour. Tapping or long-pressing (with haptics) calls [onClick].
+ * colour. Tapping calls [onClick]; long-pressing (with haptics) calls [onLongClick].
  *
  * Labels follow tokens.md. The spoken description would append the time left on a pause ("· 45 m"),
  * but [TrackingState] carries no pause end yet; add it once that is plumbed through.
@@ -78,12 +78,14 @@ private const val PulseDurationMs = 1600
 fun TrackingToggle(
     state: TrackingState,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = TarryTheme.colors
     val shape = TarryTheme.shapes.pill
     val stateLabel = stringResource(state.labelRes())
     val description = stringResource(state.descriptionRes())
+    val longClickLabel = stringResource(R.string.tracking_toggle_long_click_label)
     val haptics = LocalHapticFeedback.current
 
     val container: Color
@@ -122,9 +124,10 @@ fun TrackingToggle(
                 .combinedClickable(
                     role = Role.Button,
                     onClick = onClick,
+                    onLongClickLabel = longClickLabel,
                     onLongClick = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onClick()
+                        onLongClick()
                     },
                 )
                 .padding(horizontal = if (state == TrackingState.IDLE) TarryTheme.space.l else TarryTheme.space.s, vertical = TarryTheme.space.s),
@@ -248,6 +251,6 @@ private fun TrackingState.labelRes(): Int = when (this) {
 @Composable
 private fun TrackingTogglePreview() = PreviewSurface {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(16.dp)) {
-        TrackingState.entries.forEach { TrackingToggle(state = it, onClick = {}) }
+        TrackingState.entries.forEach { TrackingToggle(state = it, onClick = {}, onLongClick = {}) }
     }
 }

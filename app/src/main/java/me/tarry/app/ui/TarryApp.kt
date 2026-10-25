@@ -19,6 +19,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
+import me.tarry.app.ui.shell.CustomDurationActions
+import me.tarry.app.ui.shell.CustomDurationSheet
 import me.tarry.app.ui.shell.TrackingSheet
 import me.tarry.app.ui.shell.TrackingSheetActions
 import androidx.compose.ui.Modifier
@@ -31,6 +33,7 @@ import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
 import me.tarry.app.tracking.TrackingState
+import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.app.ui.catalog.JobsScreen
 import me.tarry.app.ui.catalog.TagsScreen
 import me.tarry.app.ui.navigation.JobsRoute
@@ -75,6 +78,7 @@ fun TarryApp(
     val onTimeline = backStack.lastOrNull() == TimelineRoute
     LaunchedEffect(onTimeline) { if (!onTimeline) timelineViewModel.clearSelection() }
     var sheetVisible by rememberSaveable { mutableStateOf(false) }
+    var customSheetVisible by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val openPermissions = { if (backStack.lastOrNull() != PermissionsRoute) backStack.add(PermissionsRoute) }
     var initialChecked by rememberSaveable { mutableStateOf(false) }
@@ -90,6 +94,8 @@ fun TarryApp(
         onNavigate = { backStack.navigateTopLevel(it) },
         onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
         onToggleClick = { sheetVisible = true },
+        // ATTENTION has nothing to time: its long-press opens the same sheet as a tap.
+        onToggleLongClick = { if (trackingState == TrackingState.ATTENTION) sheetVisible = true else customSheetVisible = true },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         selectionBar = if (selection.isNotEmpty() && onTimeline) {
             {
@@ -136,6 +142,19 @@ fun TarryApp(
             )
         },
     )
+    if (customSheetVisible && trackingState != TrackingState.ATTENTION) {
+        CustomDurationSheet(
+            state = trackingState,
+            details = trackingDetails,
+            stepMin = shellViewModel.customDurationStepMin,
+            maxMin = shellViewModel.customDurationMaxMin,
+            actions = CustomDurationActions(
+                onStart = { shellViewModel.start(ManualOverrideEndMode.DURATION, it) },
+                onPause = shellViewModel::pauseFor,
+            ),
+            onDismiss = { customSheetVisible = false },
+        )
+    }
     if (sheetVisible) {
         val openAppSettings = { context.startActivity(appSettingsIntent(context)) }
         TrackingSheet(
@@ -186,6 +205,7 @@ fun TarryAppContent(
     snackbarHost: @Composable () -> Unit = {},
     /** Replaces the bottom navigation while visits are selected for a bulk edit (null = the normal bar). */
     selectionBar: (@Composable () -> Unit)? = null,
+    onToggleLongClick: () -> Unit = {},
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute }
     Scaffold(
@@ -199,6 +219,7 @@ fun TarryAppContent(
                 onTimelineClick = { onNavigate(TimelineRoute) },
                 onSettingsClick = { onNavigate(SettingsRoute) },
                 onToggleClick = onToggleClick,
+                onToggleLongClick = onToggleLongClick,
             )
         },
     ) { innerPadding ->

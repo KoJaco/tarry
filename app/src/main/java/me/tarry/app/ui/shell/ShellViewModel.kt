@@ -31,6 +31,10 @@ class ShellViewModel @Inject constructor(
 
     val startDurationsMin: List<Int> = config.manualStartDurationsMin
 
+    val customDurationStepMin: Int = config.customDurationStepMin
+
+    val customDurationMaxMin: Int = config.customDurationMaxMin
+
     /** True when fine location is missing, so the permission flow should open on first launch. */
     fun needsInitialPermissions(): Boolean = !permissions.check().fineLocation
 
@@ -40,6 +44,10 @@ class ShellViewModel @Inject constructor(
 
     fun pause(kind: PauseKind) {
         captureScope.launch { controller.pause(kind) }
+    }
+
+    fun pauseFor(durationMin: Int) {
+        captureScope.launch { controller.pause(durationMin) }
     }
 
     fun resume() {
