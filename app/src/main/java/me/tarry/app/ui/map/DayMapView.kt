@@ -27,6 +27,7 @@ import me.tarry.app.map.DayMap
 import me.tarry.app.map.GeoBounds
 import me.tarry.app.map.GeoPoint
 import me.tarry.app.map.MapConfig
+import me.tarry.app.map.MarkerFollow
 import me.tarry.app.map.TripRoute
 import me.tarry.app.map.circlePolygon
 import org.maplibre.android.style.layers.FillLayer
@@ -89,7 +90,7 @@ fun DayMapView(
     val dark = TarryTheme.isDark
     var loaded by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
     var fittedFor by remember { mutableStateOf<LocalDate?>(null) }
-    var markerSeenFor by remember { mutableStateOf<LocalDate?>(null) }
+    val markerFollow = remember { MarkerFollow() }
     val openVisit by rememberUpdatedState(onOpenVisit)
     val touchPx = with(LocalDensity.current) { config.pinTouchDp.dp.toPx() }
     val fitPaddingPx = with(LocalDensity.current) { 56.dp.toPx() }.toInt()
@@ -141,9 +142,7 @@ fun DayMapView(
             val (map, style) = current ?: return@LaunchedEffect
             if (!style.isFullyLoaded) return@LaunchedEffect
             style.setMarker(marker, colors)
-            // The day's first marker position must not undo the day fit; follow it only once the user scrubs.
-            if (marker != null && markerSeenFor == date) map.moveCamera(CameraUpdateFactory.newLatLng(marker.toLatLng()))
-            markerSeenFor = date
+            if (marker != null && markerFollow.follow(date, marker)) map.moveCamera(CameraUpdateFactory.newLatLng(marker.toLatLng()))
         }
         val banner = when {
             dayMap == null -> null

@@ -2,6 +2,7 @@ package me.tarry.app.map
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import java.time.LocalDate
 
 class DayMapModelTest {
     private fun ping(t: Long, lat: Double, acc: Float = 5f) = RoutePoint(t, lat, 151.2, acc)
@@ -104,5 +105,17 @@ class DayMapModelTest {
         assertThat(trip.points).doesNotContain(GeoPoint(offshore.lat, offshore.lng))
         assertThat(trip.solid).hasSize(2)
         assertThat(map.points.map { it.timestamp }).doesNotContain(3 * min)
+    }
+    @Test
+    fun theDaysFirstMarkerKeepsTheDayFitEvenWhenTheDayLoadsLate() {
+        // Regression: a null marker while loading used up the skip, so the first real position recentred the map.
+        val day = LocalDate.of(2026, 10, 24)
+        val follow = MarkerFollow()
+        assertThat(follow.follow(day, null)).isFalse()
+        assertThat(follow.follow(day, home)).isFalse() // the starting point of the scrubber: keep the fit
+        assertThat(follow.follow(day, site)).isTrue() // a scrub
+        assertThat(follow.follow(day, null)).isFalse() // inside a break: stay put
+        assertThat(follow.follow(day, home)).isTrue()
+        assertThat(follow.follow(day.plusDays(1), site)).isFalse() // a new day fits again
     }
 }

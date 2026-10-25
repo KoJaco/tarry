@@ -1,5 +1,7 @@
 package me.tarry.app.map
 
+import java.time.LocalDate
+
 /**
  * Everything the day map draws. [routes] are the trips (recorded stretches only; unrecorded ones are left out); [pins] are
  * numbered visits at their place centroid, each drawn with its place radius, so a stay is one circle rather than its
@@ -49,4 +51,20 @@ fun buildDayMap(
         tripCount = trips.size,
         routeMissing = usable.isEmpty() && (visits.isNotEmpty() || trips.isNotEmpty()),
     )
+}
+
+/**
+ * Whether the day map's camera should follow a new scrubber marker. A day's first position is skipped so it doesn't undo
+ * the fit to the whole day; it is the scrubber's starting point, not a user scrub. A null marker (the day still loading,
+ * or the scrubber inside a break) neither moves the camera nor uses up that skip.
+ */
+class MarkerFollow {
+    private var seenFor: LocalDate? = null
+
+    fun follow(day: LocalDate, marker: GeoPoint?): Boolean {
+        if (marker == null) return false
+        val follow = seenFor == day
+        seenFor = day
+        return follow
+    }
 }
