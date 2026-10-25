@@ -97,6 +97,21 @@ class ScrubberModelTest {
     }
 
     @Test
+    fun insideATripTheMarkerBreaksWhereTheLineDoes() {
+        // Five minutes without fixes: past tripBreakMs, so the trip line is broken there and the marker must be too.
+        // Outside a trip the same stretch is under routeBreakMs and still interpolates.
+        val config = MapConfig()
+        val gap = 5 * 60_000L
+        assertThat(gap).isGreaterThan(config.tripBreakMs)
+        assertThat(gap).isLessThan(config.routeBreakMs)
+        val pings = listOf(ping(0, 1.0, 1.0), ping(gap, 2.0, 2.0))
+        val inTrip = ScrubberModel(listOf(ScrubItem("t", ScrubKind.TRIP, 0, gap)), 0, 1_000_000, pings)
+        assertThat(inTrip.positionAt(gap / 2)).isNull()
+        assertThat(inTrip.positionAt(0)).isEqualTo(GeoPoint(1.0, 1.0))
+        assertThat(ScrubberModel(emptyList(), 0, 1_000_000, pings).positionAt(gap / 2)).isNotNull()
+    }
+
+    @Test
     fun duringAPinnedVisitTheMarkerSitsAtThePlaceNotTheJitter() {
         val stay = ScrubItem("v", ScrubKind.VISIT, 0, 60_000)
         val centre = GeoPoint(-33.9, 151.2)

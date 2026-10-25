@@ -62,7 +62,7 @@ class ScrubberModel(
 
     /**
      * The visit's place centre while [t] is inside a pinned visit; otherwise the interpolated route position, or null with no pings, outside the ping span, or inside a break longer than
-     * `routeBreakMs` (no fake position).
+     * `routeBreakMs` (`tripBreakMs` inside a trip, matching the drawn line; no fake position).
      */
     fun positionAt(t: Long): GeoPoint? {
         itemAt(t)?.takeIf { it.kind == ScrubKind.VISIT }?.let { visit -> visitCentres[visit.id]?.let { return it } }
@@ -73,7 +73,9 @@ class ScrubberModel(
         val hi = -found - 1
         val b = pings[hi]
         val a = pings[hi - 1]
-        if (b.timestamp - a.timestamp > config.routeBreakMs) return null
+        // Inside a trip the line breaks after tripBreakMs (buildTripRoutes), so the marker does too.
+        val breakMs = if (itemAt(t)?.kind == ScrubKind.TRIP) config.tripBreakMs else config.routeBreakMs
+        if (b.timestamp - a.timestamp > breakMs) return null
         // A recorded gap between the two pings breaks the route line too (buildRoute), so no position there either.
         if (gaps.any { it.start < b.timestamp && it.end > a.timestamp }) return null
         val f = (t - a.timestamp).toDouble() / (b.timestamp - a.timestamp)
