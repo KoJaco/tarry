@@ -58,6 +58,14 @@ Let the owner paint the weekly schedule once and then forget about it ("set and 
 
 ## Carried-over follow-ups (not phase 6; list them, don't fix them unasked)
 - Phase 5 known items: the mini map credit is faint in dark mode; the manual-visit error stays until the next save; `instantNear` can put an edited time on the adjacent day; the pin picker falls back to a world view when there's no route.
+- Phase 5 review nits (PR #22):
+  - a trip with no fixes lasting 2 min or less is drawn as a straight line between its places (`RouteBuilder.kt` ~152);
+  - manual-visit Save has no in-flight guard, so a double tap can flash an Overlap error;
+  - a light/dark switch re-centres the day map on the marker;
+  - `TarryMap`'s remembered MapView isn't keyed on the `LifecycleOwner`;
+  - the KDoc on `TimelineViewModel.dayMap` claims more than the code does (it's two subscriptions);
+  - "New place here" can save at (20, 0) if the user never pans;
+  - optional: a host-allowlist interceptor in `MapLibreInit` for rule 2, and a direct test for `throttleLatest`.
 - Map matching and offline regions are post-MVP / deferred (`docs/specs/phase-5.md`).
 - Check a water trip on the new GPS build (the 23 Oct boat hole came from a network-fix-only day).
 - The owner's day-3 "tiny tweaks" were never reported. Ask once.
