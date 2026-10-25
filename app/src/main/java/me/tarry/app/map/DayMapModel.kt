@@ -54,6 +54,20 @@ fun buildDayMap(
 }
 
 /**
+ * Whether the day map's camera should fit the whole day: once per day, at the first non-empty bounds. An empty day (today
+ * before anything is recorded) doesn't use up the fit, so the first visit or trip still brings the camera in.
+ */
+class DayFit {
+    private var fittedFor: LocalDate? = null
+
+    fun fit(day: LocalDate, bounds: GeoBounds?): Boolean {
+        if (bounds == null || fittedFor == day) return false
+        fittedFor = day
+        return true
+    }
+}
+
+/**
  * Whether the day map's camera should follow a new scrubber marker. A day's first position is skipped so it doesn't undo
  * the fit to the whole day; it is the scrubber's starting point, not a user scrub. A null marker (the day still loading,
  * or the scrubber inside a break) neither moves the camera nor uses up that skip.

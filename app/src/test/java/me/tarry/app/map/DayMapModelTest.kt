@@ -118,4 +118,16 @@ class DayMapModelTest {
         assertThat(follow.follow(day, home)).isTrue()
         assertThat(follow.follow(day.plusDays(1), site)).isFalse() // a new day fits again
     }
+
+    @Test
+    fun anEmptyDayStillFitsOnceItsFirstVisitArrives() {
+        // Regression: opening today before anything was recorded used up the fit, so the camera stayed on the world.
+        val day = LocalDate.of(2026, 10, 26)
+        val bounds = GeoBounds(site.lat, home.lng, home.lat, home.lng)
+        val fit = DayFit()
+        assertThat(fit.fit(day, null)).isFalse()
+        assertThat(fit.fit(day, bounds)).isTrue()
+        assertThat(fit.fit(day, bounds)).isFalse() // new data later in the day keeps the user's camera
+        assertThat(fit.fit(day.plusDays(1), bounds)).isTrue()
+    }
 }

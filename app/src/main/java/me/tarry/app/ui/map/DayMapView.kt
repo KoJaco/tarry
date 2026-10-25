@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.map.DayFit
 import me.tarry.app.map.DayMap
 import me.tarry.app.map.GeoBounds
 import me.tarry.app.map.GeoPoint
@@ -91,7 +92,7 @@ fun DayMapView(
     val colors = TarryTheme.colors
     val dark = TarryTheme.isDark
     var loaded by remember { mutableStateOf<Pair<MapLibreMap, Style>?>(null) }
-    var fittedFor by remember { mutableStateOf<LocalDate?>(null) }
+    val dayFit = remember { DayFit() }
     val markerFollow = remember { MarkerFollow() }
     val openVisit by rememberUpdatedState(onOpenVisit)
     val touchPx = with(LocalDensity.current) { config.pinTouchDp.dp.toPx() }
@@ -132,10 +133,7 @@ fun DayMapView(
             style.setVisitAreas(dayMap.pins, activeVisit, colors, dark, config)
             style.setRoutes(dayMap.routes, activeTrip, colors)
             style.setPins(dayMap.pins, colors, dark)
-            if (fittedFor != date) {
-                dayMap.bounds?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomInsetPx) }
-                fittedFor = date
-            }
+            dayMap.bounds?.takeIf { dayFit.fit(date, it) }?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomInsetPx) }
         }
         LaunchedEffect(current, bottomInsetPx, topInsetPx) {
             val (map, _) = current ?: return@LaunchedEffect
