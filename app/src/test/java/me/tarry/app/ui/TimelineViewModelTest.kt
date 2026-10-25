@@ -20,7 +20,12 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import me.tarry.app.map.GeoPoint
 import me.tarry.app.ui.timeline.TimelineItem
+import me.tarry.core.data.db.dao.PingPosition
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
 import me.tarry.app.ui.timeline.TimelineViewModel
 import me.tarry.app.ui.timeline.dayBounds
 import me.tarry.core.data.db.TarryDatabase
@@ -126,6 +131,75 @@ class TimelineViewModelTest {
     private fun place(id: String, name: String? = null, address: String? = null) = Place(
         id = id, centroidLat = -33.865143, centroidLng = 151.2099, name = name, address = address, updatedAt = 0,
     )
+
+    @Test
+    fun dayMapPinsVisitsAtTheirPlaceAndDrawsTheDaysPings() = runBlocking {
+        places.save(place("p", name = "Office"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "p"))
+        timeline.saveVisit(visit("loose", at(day, 12), at(day, 13), null))
+        timeline.saveTrip(Trip(id = "t", start = at(day, 11), end = at(day, 12), zoneId = zone.id, distanceM = 900f, mode = TripMode.VEHICLE, updatedAt = 0))
+        val asked = mutableListOf<Pair<Long, Long>>()
+        val pings = listOf(
+            PingPosition(at(day, 11), -33.865, 151.209, 5f),
+            PingPosition(at(day, 11, 5), -33.870, 151.205, 5f),
+        )
+        val vm = TimelineViewModel(
+            timeline, places, jobs, tags, zone, { day },
+            pingPositions = { from, to -> asked += from to to; flowOf(pings) },
+        ).managed()
+
+        val map = runBlocking { withTimeout(10_000) { vm.dayMap.first { it != null && it.visitCount == 2 } } }!!
+
+        assertThat(asked).containsExactly(dayBounds(day, zone))
+        assertThat(map.pins.map { it.visitId to it.number }).containsExactly("v" to 1) // "loose" has no place
+        assertThat(map.pins.single().position).isEqualTo(GeoPoint(-33.865143, 151.2099))
+        // The trip leaves from "v"'s place and runs through the pings ("loose" has no place to arrive at).
+        assertThat(map.routes.single().solid.single().first()).isEqualTo(GeoPoint(-33.865143, 151.2099))
+        assertThat(map.routeMissing).isFalse()
+    }
+
+    @Test
+    fun dayMapNeverMixesTwoDaysWhenTheDateChanges() = runBlocking {
+        // Each day's place and pings share one latitude, so a mixed map has pins and route at different latitudes.
+        val yesterday = day.minusDays(1)
+        places.save(place("today").copy(centroidLat = -33.0))
+        places.save(place("yday").copy(centroidLat = -34.0))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "today"))
+        timeline.saveVisit(visit("y", at(yesterday, 9), at(yesterday, 11), "yday"))
+        for ((id, d) in listOf("tt" to day, "ty" to yesterday)) {
+            timeline.saveTrip(Trip(id = id, start = at(d, 1), end = at(d, 1, 5), zoneId = zone.id, distanceM = 900f, mode = TripMode.VEHICLE, updatedAt = 0))
+        }
+        val vm = TimelineViewModel(
+            timeline, places, jobs, tags, zone, { day },
+            pingPositions = { from, _ ->
+                val lat = if (from == dayBounds(day, zone).first) -33.0 else -34.0
+                flowOf(listOf(PingPosition(from + 3_600_000, lat, 151.2, 5f), PingPosition(from + 3_660_000, lat, 151.21, 5f)))
+            },
+        ).managed()
+        val seen = java.util.concurrent.CopyOnWriteArrayList<me.tarry.app.map.DayMap>()
+        val job = launch(Dispatchers.Default) { vm.dayMap.collect { m -> if (m != null) seen += m } }
+        withTimeout(10_000) { while (seen.none { m -> m.pins.any { it.visitId == "v" } }) delay(10) }
+        vm.previousDay()
+        withTimeout(10_000) { while (seen.none { m -> m.pins.any { it.visitId == "y" } }) delay(10) }
+        job.cancelAndJoin()
+
+        seen.forEach { m ->
+            val pinLats = m.pins.map { it.position.lat }.toSet()
+            val routeLats = m.routes.flatMap { it.points }.map { it.lat }.toSet()
+            assertThat(pinLats + routeLats).hasSize(1)
+        }
+    }
+
+    @Test
+    fun dayMapFlagsAMissingRouteWhenTheDayHasNoPings() = runBlocking {
+        places.save(place("p"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 11), "p"))
+
+        val map = runBlocking { withTimeout(10_000) { viewModel().dayMap.first { it != null && it.visitCount == 1 } } }!!
+
+        assertThat(map.routes).isEmpty()
+        assertThat(map.routeMissing).isTrue()
+    }
 
     @Test
     fun combinesAndSortsByStart() = runBlocking {

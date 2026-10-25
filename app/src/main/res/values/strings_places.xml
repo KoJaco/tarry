@@ -64,6 +64,11 @@
         <item quantity="one">%1$d metre</item>
         <item quantity="other">%1$d metres</item>
     </plurals>
+    <plurals name="place_radius_map_description">
+        <item quantity="one">Map preview: %1$d m radius, %2$d visit inside</item>
+        <item quantity="other">Map preview: %1$d m radius, %2$d visits inside</item>
+    </plurals>
+    <string name="place_radius_map_description_loading">Map preview: %1$d m radius</string>
     <string name="place_radius_loading">Counting visits…</string>
     <plurals name="place_radius_stay">
         <item quantity="one">%1$d detected visit stays here</item>

@@ -23,6 +23,7 @@ import me.tarry.app.ui.timeline.displayLabel
 import me.tarry.app.ui.timeline.labelIsCoordinates
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
+import me.tarry.app.map.GeoPoint
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.Trip
 import me.tarry.core.data.db.entity.Visit
@@ -108,7 +109,7 @@ class EditDrawerViewModel @Inject constructor(
             jobs = allJobs.map { JobOption(it.id, it.name, it.colorArgb) },
             tagGroups = groups.map { g -> TagGroupOption(g.id, g.name, tagsByGroup[g.id].orEmpty().map { TagOption(it.id, it.name) }) }
                 .filter { it.tags.isNotEmpty() },
-            places = allPlaces.filter { it.mergedIntoId == null }.map { PlaceOption(it.id, it.displayLabel(), it.address?.takeIf { a -> a.isNotBlank() }) },
+            places = allPlaces.filter { it.mergedIntoId == null }.map { PlaceOption(it.id, it.displayLabel(), it.address?.takeIf { a -> a.isNotBlank() }, GeoPoint(it.centroidLat, it.centroidLng), it.lastVisitAt, it.radiusM) },
             archivedJobIds = allJobs.filter { it.archived }.map { it.id }.toSet(),
             archivedTagIds = allTags.filter { it.archived }.map { it.id }.toSet(),
         )
@@ -213,6 +214,35 @@ class EditDrawerViewModel @Inject constructor(
 
     fun resetToDetected() = structural(R.string.edit_undo_reset) { v -> editor.resetToDetected(v.id) }
 
+    /**
+     * Saves the new-visit form: a frozen MANUAL visit at [placeId] over `[start, end)`. On success the drawer follows the
+     * new visit (so the user can label it), with an undo offer and a segmentation run; on a validation failure it stays
+     * open with the error inline.
+     */
+    fun createManual(placeId: String, start: Long, end: Long) = saveManual {
+        editor.createManual(placeId, start, end, ZoneId.systemDefault().id)
+    }
+
+    /**
+     * Like [createManual], but at a new place centred on a map pin. One undo removes the visit and the place. The
+     * address is geocoded after the segmentation run this requests, the same way as for detected places.
+     */
+    fun createManualAtNewPlace(lat: Double, lng: Double, start: Long, end: Long) = saveManual {
+        editor.createManualAtNewPlace(lat, lng, start, end, ZoneId.systemDefault().id)
+    }
+
+    private fun saveManual(op: suspend () -> EditResult) = viewModelScope.launch {
+        if (target.value !is EditTarget.NewVisit) return@launch
+        val result = op()
+        if (result is EditResult.Ok) {
+            result.undo?.let { undoEvents.offer(UndoEvent(R.string.edit_undo_visit_added, it)) }
+            scheduler.enqueueNow()
+        }
+        finish(result)
+        val newId = (result as? EditResult.Ok)?.id
+        if (newId != null) eventChannel.send(EditDrawerEvent.Retarget(EditTarget.Visit(newId)))
+    }
+
     private fun structural(
         @StringRes undoMessage: Int,
         onOk: suspend (EditResult.Ok) -> Unit = {},
@@ -282,6 +312,9 @@ class EditDrawerViewModel @Inject constructor(
                 placeLabel = place?.displayLabel(), placeLabelIsCoordinates = place?.labelIsCoordinates() ?: false,
                 placeName = place?.name?.takeIf { it.isNotBlank() },
                 hasPlace = place != null && !place.deleted, placeIgnored = place?.ignored ?: false,
+                placeId = place?.takeIf { !it.deleted }?.id,
+                placeCentre = place?.takeIf { !it.deleted }?.let { GeoPoint(it.centroidLat, it.centroidLng) },
+                placeRadiusM = place?.radiusM ?: 0f,
                 jobs = catalog.pickableJobs(setOf(v.jobId, place?.defaultJobId)), tagGroups = catalog.pickableTagGroups(data.effectiveTags),
                 places = catalog.places,
                 ownJob = job(v.jobId), placeJob = job(place?.defaultJobId),

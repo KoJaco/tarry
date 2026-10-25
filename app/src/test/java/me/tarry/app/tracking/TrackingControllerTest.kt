@@ -473,8 +473,12 @@ class TrackingControllerTest {
         coordinator.onActivity(ActivityType.STILL)
     }
 
-    private suspend fun awaitSessionEnd() = kotlinx.coroutines.withTimeout(5_000) {
-        while (coordinator.isActive) kotlinx.coroutines.delay(10)
+    /**
+     * The settle reconcile runs on the coordinator's scope, and capture stops before it enqueues segmentation and re-arms
+     * the alarm. So wait for that last step, not just for capture to stop (CI caught `windowEnds` still at 0).
+     */
+    private suspend fun awaitSessionEnd(nextAlarm: Instant) = kotlinx.coroutines.withTimeout(5_000) {
+        while (coordinator.isActive || alarms.armed.lastOrNull() != nextAlarm) kotlinx.coroutines.delay(10)
     }
 
     @Test
@@ -510,7 +514,7 @@ class TrackingControllerTest {
         // A fix once the stay is 11 minutes old confirms it: the session ends by itself, no timer involved.
         clock.now = mondayAt(17, 6).toEpochMilli()
         coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, clock.now)))
-        awaitSessionEnd()
+        awaitSessionEnd(nextAlarm = mondayAt(7, day = 20))
 
         assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
         assertThat(segmentation.windowEnds).isEqualTo(1)

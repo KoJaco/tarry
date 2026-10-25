@@ -1,5 +1,6 @@
 package me.tarry.app.ui.places
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -18,6 +19,7 @@ import me.tarry.app.segmentation.PreviewCentre
 import me.tarry.app.segmentation.PreviewVisit
 import me.tarry.app.segmentation.RadiusPreviewInput
 import me.tarry.app.ui.drawer.PlaceOption
+import me.tarry.app.ui.map.LocalMapsEnabled
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.repository.MergePreview
 import org.junit.Rule
@@ -50,17 +52,19 @@ class PlaceDetailScreenTest {
     private var input: RadiusPreviewInput? = RadiusPreviewInput("p", centre, emptyMap(), listOf(PreviewVisit("p", false, 0.0, 0.0)))
 
     private fun show() = composeRule.setContent {
-        TarryTheme {
-            PlaceDetailContent(
-                load = load,
-                onClose = { closed++ },
-                loadRadiusInput = { input },
-                loadMergePreview = { mergeGate?.await() ?: preview },
-                onRename = {}, onSetJob = {}, onSetBillable = {}, onSetTags = {}, onSetIgnored = {},
-                onSaveRadius = { saved += it },
-                onMerge = { merged += it },
-                onDelete = { deleted++ },
-            )
+        CompositionLocalProvider(LocalMapsEnabled provides false) {
+            TarryTheme {
+                PlaceDetailContent(
+                    load = load,
+                    onClose = { closed++ },
+                    loadRadiusInput = { input },
+                    loadMergePreview = { mergeGate?.await() ?: preview },
+                    onRename = {}, onSetJob = {}, onSetBillable = {}, onSetTags = {}, onSetIgnored = {},
+                    onSaveRadius = { saved += it },
+                    onMerge = { merged += it },
+                    onDelete = { deleted++ },
+                )
+            }
         }
     }
 

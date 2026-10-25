@@ -120,7 +120,11 @@ class JobsViewModelTest {
         viewModel.rename("j", "New")
         viewModel.setColour("j", JobPalette.slots[3].key)
 
-        val row = awaitState { it.active.singleOrNull()?.name == "New" }.active.single()
+        // Two separate transactions: the rename can land (and emit) before the recolour, so wait for both. Each edit
+        // re-reads the row, so neither overwrites the other.
+        val row = awaitState { s -> s.active.singleOrNull()?.let { it.name == "New" && it.colorArgb == JobPalette.slots[3].key } == true }
+            .active.single()
+        assertThat(row.name).isEqualTo("New")
         assertThat(row.colorArgb).isEqualTo(JobPalette.slots[3].key)
     }
 

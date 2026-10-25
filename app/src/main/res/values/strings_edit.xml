@@ -80,4 +80,25 @@
     <string name="edit_undo_place_changed">Place changed</string>
     <string name="edit_undo_deleted">Visit deleted</string>
     <string name="edit_undo_reset">Visit reset</string>
+    <string name="edit_undo_visit_added">Visit added</string>
+
+    <!-- New (manual) visit form (phase 5). -->
+    <string name="edit_new_section_when">When</string>
+    <string name="edit_new_section_place">Place</string>
+    <string name="edit_new_start">Start</string>
+    <string name="edit_new_end">End</string>
+    <string name="edit_new_choose_place">Choose place</string>
+    <string name="edit_new_choose_place_required">Choose a place to save this visit.</string>
+    <string name="edit_new_save">Save visit</string>
+    <string name="edit_new_picker_title">Choose a place</string>
+    <string name="edit_new_pick_on_map">Pick on map</string>
+    <string name="edit_new_place_at">New place at %1$s</string>
+    <string name="edit_pin_title">Pick on map</string>
+    <string name="edit_pin_close">Close map</string>
+    <string name="edit_pin_map_description">Map. Pan the map to put the pin where the visit happened. You can also choose from the list below.</string>
+    <string name="edit_pin_marker_description">Pin at the centre of the map</string>
+    <string name="edit_pin_new_here">New place here</string>
+    <string name="edit_pin_nearby_header">Nearby places</string>
+    <string name="edit_pin_nearby_distance">%1$s away</string>
+    <string name="edit_pin_nearby_none">No known place within %1$s of the pin.</string>
 </resources>

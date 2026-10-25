@@ -1,6 +1,7 @@
 package me.tarry.app.ui.drawer
 
 import androidx.compose.runtime.Immutable
+import me.tarry.app.map.GeoPoint
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.EditResult
@@ -31,7 +32,15 @@ data class TagOption(val id: String, val name: String)
 data class TagGroupOption(val id: String, val name: String, val tags: List<TagOption>)
 
 @Immutable
-data class PlaceOption(val id: String, val label: String, val detail: String?)
+data class PlaceOption(
+    val id: String,
+    val label: String,
+    val detail: String?,
+    /** Where the place is and when it was last visited, for the map pin picker; null when not known (tests, previews). */
+    val centre: GeoPoint? = null,
+    val lastVisitAt: Long? = null,
+    val radiusM: Float = 75f,
+)
 
 /**
  * Everything the drawer draws. Times are UTC epoch ms; [zoneId] is the zone the record was captured in.
@@ -52,6 +61,10 @@ data class EditDrawerState(
     /** The visit has a live place; false for a deleted one (label and inherited job still show), which hides Rename and "Set as place default". */
     val hasPlace: Boolean = false,
     val placeIgnored: Boolean = false,
+    /** The live place's id, centre and radius for the header mini map; null when there is no live place. */
+    val placeId: String? = null,
+    val placeCentre: GeoPoint? = null,
+    val placeRadiusM: Float = 0f,
     val tripMode: TripMode = TripMode.UNKNOWN,
     val distanceM: Float = 0f,
     val jobs: List<JobOption> = emptyList(),
@@ -101,4 +114,8 @@ class EditDrawerActions(
     val onDelete: () -> Unit = {},
     val onReset: () -> Unit = {},
     val onAddStop: () -> Unit = {},
+    /** New-visit form: (placeId, start, end). */
+    val onCreateManual: (String, Long, Long) -> Unit = { _, _, _ -> },
+    /** New-visit form, place picked as a new place at a map pin: (lat, lng, start, end). */
+    val onCreateManualAtNewPlace: (Double, Double, Long, Long) -> Unit = { _, _, _, _ -> },
 )

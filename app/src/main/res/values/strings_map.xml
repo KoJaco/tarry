@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Not "Timeline": the bottom bar already has a Timeline tab, and two same-named tabs confuse TalkBack. -->
+    <string name="timeline_view_day">Day</string>
+    <string name="timeline_view_map">Map</string>
+    <string name="map_day_description">Map of %1$s</string>
+    <string name="map_attribution_short">© OpenFreeMap · OpenMapTiles · OpenStreetMap</string>
+    <string name="map_attribution_action">Map data credits</string>
+    <string name="map_attribution_title">Map data</string>
+    <string name="map_attribution_openfreemap">OpenFreeMap</string>
+    <string name="map_attribution_openmaptiles">© OpenMapTiles</string>
+    <string name="map_attribution_osm">Data from OpenStreetMap contributors</string>
+    <string name="map_attribution_close">Close</string>
+    <string name="map_route_missing">No route for this day: its location history is not available. Visits are shown at their places.</string>
+    <string name="map_nothing_recorded">Nothing recorded on this day.</string>
+    <string name="map_scrub_description">Time on the map</string>
+    <string name="map_scrub_previous_visit">Previous visit</string>
+    <string name="map_scrub_next_visit">Next visit</string>
+    <string name="map_scrub_jump">Jump to a date and time</string>
+    <string name="map_scrub_jump_time">Jump to time</string>
+    <plurals name="map_day_summary">
+        <item quantity="one">%1$s: %2$d visit, %3$s</item>
+        <item quantity="other">%1$s: %2$d visits, %3$s</item>
+    </plurals>
+    <plurals name="map_trip_count">
+        <item quantity="one">%d trip</item>
+        <item quantity="other">%d trips</item>
+    </plurals>
+    <string name="map_place_mini_description">Map of %1$s, %2$s radius</string>
+</resources>

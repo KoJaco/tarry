@@ -31,6 +31,9 @@ data class TarryColors(
     val alertDot: Color,
     val success: Color,
     val pulse: Color,
+    /** Map-only fills (water bodies and waterways; parks and woods), used by the map style template. */
+    val mapWater: Color,
+    val mapGreen: Color,
 )
 
 private val Apricot = Color(0xFFF2B064)
@@ -57,6 +60,8 @@ val LightTarryColors = TarryColors(
     alertDot = Color(0xFFFF6B5E),
     success = Color(0xFF1F5E36),
     pulse = Apricot.copy(alpha = 0.35f),
+    mapWater = Color(0xFFCAD7DD),
+    mapGreen = Color(0xFFE2E5D4),
 )
 
 val DarkTarryColors = TarryColors(
@@ -81,6 +86,8 @@ val DarkTarryColors = TarryColors(
     alertDot = Color(0xFFFF6B5E),
     success = Color(0xFFB4E0C2),
     pulse = Apricot.copy(alpha = 0.25f),
+    mapWater = Color(0xFF1B2830),
+    mapGreen = Color(0xFF1C211A),
 )
 
 /** Defaults to light so previews and tests without [TarryTheme] still work. */

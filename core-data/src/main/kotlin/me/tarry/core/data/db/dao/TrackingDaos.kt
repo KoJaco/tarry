@@ -12,6 +12,9 @@ import me.tarry.core.data.db.entity.TrackingSession
 /** Row of [LocationPingDao.observePingCounts]. */
 data class SessionPingCount(val sessionId: Long, val count: Int)
 
+/** Row of [LocationPingDao.observePositions]: just what the map draws, so a full day stays cheap to re-query. */
+data class PingPosition(val timestamp: Long, val lat: Double, val lng: Double, val accuracyM: Float)
+
 @Dao
 interface TrackingSessionDao {
     /** Returns the new row id on insert, or -1 when the upsert fell back to an update. */
@@ -47,6 +50,10 @@ interface LocationPingDao {
 
     @Query("SELECT * FROM location_ping WHERE timestamp >= :from AND timestamp < :to ORDER BY timestamp")
     suspend fun getInRange(from: Long, to: Long): List<LocationPing>
+
+    /** Positions in `[from, to)` in time order, re-emitted as pings arrive (the map's route). */
+    @Query("SELECT timestamp, lat, lng, accuracyM FROM location_ping WHERE timestamp >= :from AND timestamp < :to ORDER BY timestamp")
+    fun observePositions(from: Long, to: Long): Flow<List<PingPosition>>
 
     @Query("SELECT * FROM location_ping WHERE sessionId = :sessionId ORDER BY timestamp")
     suspend fun getBySession(sessionId: Long): List<LocationPing>

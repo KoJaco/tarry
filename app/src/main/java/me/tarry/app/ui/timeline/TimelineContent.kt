@@ -6,6 +6,9 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -40,9 +43,15 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.rememberReducedMotion
+import androidx.compose.ui.res.pluralStringResource
+import me.tarry.app.map.DayMap
+import me.tarry.app.map.ScrubberModel
+import me.tarry.app.ui.map.DayMapView
 import me.tarry.app.ui.theme.TarryTheme
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 private const val DaySlideMillis = 200
 private const val DaySlideDp = 24
@@ -76,6 +85,11 @@ fun TimelineContent(
     onStartSelection: (String) -> Unit = {},
     onToggleSelected: (String) -> Unit = {},
     onClearSelection: () -> Unit = {},
+    /** Timeline | Map: true shows the day on the map instead of the canvas. */
+    showMap: Boolean = false,
+    onShowMapChange: (Boolean) -> Unit = {},
+    /** The Map tab's data; null while loading (or when the map isn't shown). */
+    dayMap: DayMap? = null,
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -95,14 +109,16 @@ fun TimelineContent(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(scroll)
+            // The map pans itself, so it takes the remaining height instead of scrolling with the page.
+            .then(if (showMap) Modifier else Modifier.verticalScroll(scroll))
             // A tap nothing else consumed (blocks, buttons and handles consume theirs) deselects.
-            .pointerInput(Unit) { detectTapGestures(onTap = { selectedVisit = null }) }
-            .padding(horizontal = TarryTheme.space.gutter),
+            .pointerInput(Unit) { detectTapGestures(onTap = { selectedVisit = null }) },
         verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xl),
     ) {
-        DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate)
-        WeekStrip(date, today, onSelectDate)
+        // The gutter is per child so the map can run edge to edge.
+        val gutter = Modifier.padding(horizontal = TarryTheme.space.gutter)
+        DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate, gutter)
+        WeekStrip(date, today, onSelectDate, gutter)
         ReviewRow(
             reviewOnly = reviewOnly,
             showToggle = !items.isNullOrEmpty(),
@@ -111,9 +127,66 @@ fun TimelineContent(
                 val (start, end) = firstFreeSlot(date, zone, items.orEmpty().filterIsInstance<TimelineItem.Visit>())
                 onEdit(EditTarget.NewVisit(start, end))
             },
+            showMap = showMap,
+            onShowMapChange = onShowMapChange,
+            modifier = gutter,
         )
+        if (showMap) {
+            // Full width, down to the bottom bar (the shell's inner padding).
+            val dateText = date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG))
+            val description = if (dayMap == null) {
+                stringResource(R.string.map_day_description, dateText)
+            } else {
+                val trips = pluralStringResource(R.plurals.map_trip_count, dayMap.tripCount, dayMap.tripCount)
+                pluralStringResource(R.plurals.map_day_summary, dayMap.visitCount, dateText, dayMap.visitCount, trips)
+            }
+            val (dayStart, dayEnd) = dayBounds(date, zone)
+            val rows = items.orEmpty()
+            val points = dayMap?.points.orEmpty()
+            val scrub = remember(rows, points, dayMap?.visitCentres, dayStart, dayEnd) { ScrubberModel(rows.toScrubItems(), dayStart, dayEnd, points, visitCentres = dayMap?.visitCentres.orEmpty()) }
+            // Kept across day changes only for a date-time jump; otherwise the day starts at its first item.
+            var scrubTime by rememberSaveable { mutableStateOf<Long?>(null) }
+            val range = scrub.range
+            val time = scrubTime?.takeIf { range != null && it in range.start..range.end } ?: range?.start
+            // The map runs down to the bottom bar; the scrubber floats over its bottom edge.
+            var overlayPx by remember { mutableIntStateOf(0) }
+            Box(Modifier.fillMaxWidth().weight(1f)) {
+                DayMapView(
+                    dayMap = dayMap,
+                    date = date,
+                    contentDescription = description,
+                    onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                    marker = time?.let(scrub::positionAt),
+                    bottomInsetPx = if (time != null) overlayPx else 0,
+                    activeTime = time,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (time != null) {
+                    DayScrubber(
+                        model = scrub,
+                        visits = rows.filterIsInstance<TimelineItem.Visit>(),
+                        time = time,
+                        onTimeChange = { scrubTime = it },
+                        onOpenVisit = { onEdit(EditTarget.Visit(it)) },
+                        date = date,
+                        today = today,
+                        zone = zone,
+                        onJump = { day, ms ->
+                            scrubTime = ms
+                            onSelectDate(day)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .onSizeChanged { overlayPx = it.height }
+                            .padding(horizontal = TarryTheme.space.m)
+                            .padding(bottom = TarryTheme.space.m),
+                    )
+                }
+            }
+            return@Column
+        }
         Column(
-            modifier = Modifier.fillMaxWidth().daySlide(date),
+            modifier = Modifier.fillMaxWidth().then(gutter).daySlide(date),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
         ) {
             when {

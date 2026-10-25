@@ -21,6 +21,9 @@ serializationJson = "1.9.0"
 playServicesLocation = "21.4.0"
 robolectric = "4.17"
 truth = "1.4.5"
+maplibre = "13.7.1"
+# Pinned to what MapLibre 13.7.1 depends on; used directly only to set the tile User-Agent and request cap.
+okhttp = "4.12.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -60,6 +63,9 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 play-services-location = { group = "com.google.android.gms", name = "play-services-location", version.ref = "playServicesLocation" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
+# OpenGL ES renderer: the default android-sdk artifact is Vulkan-only and declares vulkan as a required feature.
+maplibre-android-sdk = { group = "org.maplibre.gl", name = "android-sdk-opengl", version.ref = "maplibre" }
+okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

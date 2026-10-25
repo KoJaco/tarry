@@ -1,6 +1,10 @@
 package me.tarry.app.ui.drawer
 
 import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.Configuration
@@ -17,6 +21,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -86,11 +91,23 @@ class EditDrawerViewModelTest {
             db.segmentationCheckpointDao(), EditClock { base + 1_000 * minute },
         )
         undoEvents = UndoEvents(editor, scheduler)
-        viewModel = EditDrawerViewModel(timeline, places, jobs, tags, editor, undoEvents, scheduler)
+        val created = EditDrawerViewModel(timeline, places, jobs, tags, editor, undoEvents, scheduler)
+        // Held in a store so tearDown can clear it (cancelling viewModelScope) before the database closes.
+        viewModel = ViewModelProvider.create(store, object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T = created as T
+        })["vm", EditDrawerViewModel::class.java]
     }
+
+    private val store = ViewModelStore()
 
     @After
     fun tearDown() {
+        // Cancel the view model's scope and wait for it: its state collector would otherwise keep observing Room after
+        // db.close() and leak an exception into the next test (see TimelineViewModelTest).
+        val scope = viewModel.viewModelScope.coroutineContext.job
+        store.clear()
+        runBlocking { withTimeout(10_000) { scope.join() } }
         // Cancel and wait so no WorkManager future outlives the Robolectric work database and leaks into later Compose tests.
         workManager.cancelAllWork().result.get()
         db.close()
@@ -476,14 +493,110 @@ class EditDrawerViewModelTest {
         assertThat(state.tagIds).containsExactly("applied")
     }
     @Test
-    fun newVisitTargetHasATitleOnlyState() = runBlocking<Unit> {
+    fun newVisitTargetIsPrefilledAndListsThePlaces() = runBlocking<Unit> {
+        places.save(place())
         viewModel.load(EditTarget.NewVisit(base, base + 30 * minute, contextTripId = "t"))
 
-        val state = awaitState()
+        val state = awaitState { it.places.isNotEmpty() }
 
         assertThat(state.kind).isEqualTo(EditKind.NEW_VISIT)
         assertThat(state.start).isEqualTo(base)
         assertThat(state.end).isEqualTo(base + 30 * minute)
+        assertThat(state.places.map { it.id }).containsExactly("p")
+    }
+
+    @Test
+    fun createManualMakesAFrozenManualVisitOffersUndoAndFollowsIt() = runBlocking<Unit> {
+        places.save(place())
+        viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
+        awaitState()
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.createManual("p", base + 5 * minute, base + 25 * minute)
+
+        val event = withTimeout(10_000) { offered.await() }
+        assertThat(event.message).isEqualTo(R.string.edit_undo_visit_added)
+        val created = timeline.visitsInRange(base - minute, base + 100 * minute).single()
+        assertThat(created.placeId).isEqualTo("p")
+        assertThat(created.start).isEqualTo(base + 5 * minute)
+        assertThat(created.end).isEqualTo(base + 25 * minute)
+        assertThat(created.origin).isEqualTo(VisitOrigin.MANUAL)
+        assertThat(created.frozen).isTrue()
+        assertThat(withTimeout(10_000) { viewModel.events.first() })
+            .isEqualTo(EditDrawerEvent.Retarget(EditTarget.Visit(created.id)))
+        assertThat(workManager.getWorkInfosForUniqueWork(SegmentationScheduler.NOW).get()).hasSize(1)
+
+        undoEvents.undo(event)
+
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).isEmpty()
+    }
+
+    @Test
+    fun createManualAtNewPlaceMakesTheVisitAndPlaceFollowsItAndOneUndoRemovesBoth() = runBlocking<Unit> {
+        viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
+        awaitState()
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.createManualAtNewPlace(-33.9, 151.2, base + 5 * minute, base + 25 * minute)
+
+        val event = withTimeout(10_000) { offered.await() }
+        assertThat(event.message).isEqualTo(R.string.edit_undo_visit_added)
+        val created = timeline.visitsInRange(base - minute, base + 100 * minute).single()
+        assertThat(created.origin).isEqualTo(VisitOrigin.MANUAL)
+        assertThat(created.frozen).isTrue()
+        val place = places.place(created.placeId!!)!!
+        assertThat(place.centroidLat).isEqualTo(-33.9)
+        assertThat(place.centroidLng).isEqualTo(151.2)
+        assertThat(place.deleted).isFalse()
+        assertThat(withTimeout(10_000) { viewModel.events.first() })
+            .isEqualTo(EditDrawerEvent.Retarget(EditTarget.Visit(created.id)))
+        assertThat(workManager.getWorkInfosForUniqueWork(SegmentationScheduler.NOW).get()).hasSize(1)
+
+        undoEvents.undo(event)
+
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).isEmpty()
+        assertThat(places.place(place.id)!!.deleted).isTrue()
+    }
+
+    @Test
+    fun createManualAtNewPlaceOverAnotherVisitShowsOverlapAndCreatesNothing() = runBlocking<Unit> {
+        seed(visit("v", 0, 60))
+        viewModel.load(EditTarget.NewVisit(base + 30 * minute, base + 90 * minute))
+        awaitState()
+        val placesBefore = places.observeAll().first().map { it.id }
+
+        viewModel.createManualAtNewPlace(-33.9, 151.2, base + 30 * minute, base + 90 * minute)
+
+        assertThat(awaitState { it.error != null }.error).isEqualTo(EditError.OVERLAP)
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute).map { it.id }).containsExactly("v")
+        assertThat(places.observeAll().first().map { it.id }).containsExactlyElementsIn(placesBefore)
+    }
+
+    @Test
+    fun createManualOverAnotherVisitShowsOverlapAndCreatesNothing() = runBlocking<Unit> {
+        seed(visit("v", 0, 60))
+        viewModel.load(EditTarget.NewVisit(base + 30 * minute, base + 90 * minute))
+        awaitState()
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.createManual("p", base + 30 * minute, base + 90 * minute)
+
+        assertThat(awaitState { it.error != null }.error).isEqualTo(EditError.OVERLAP)
+        assertThat(offered.isCompleted).isFalse()
+        offered.cancel()
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute).map { it.id }).containsExactly("v")
+    }
+
+    @Test
+    fun createManualWithEndBeforeStartShowsEmptyRangeAndCreatesNothing() = runBlocking<Unit> {
+        places.save(place())
+        viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
+        awaitState()
+
+        viewModel.createManual("p", base + 20 * minute, base + 10 * minute)
+
+        assertThat(awaitState { it.error != null }.error).isEqualTo(EditError.EMPTY_RANGE)
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).isEmpty()
     }
 }
 
