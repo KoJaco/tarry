@@ -160,6 +160,9 @@ private fun TarryMapView(
             modifier = Modifier
                 .testTag("map")
                 .semantics { this.contentDescription = contentDescription },
+            // The MapView carries MapLibre's own description ("Showing a Map created with MapLibre…"), and TalkBack reads
+            // the view's, not the wrapper's: replace it with ours.
+            update = { it.contentDescription = contentDescription },
         )
         // Top right, clear of the overlays callers put on the bottom edge (the day scrubber).
         MapAttribution(Modifier.align(Alignment.TopEnd))
