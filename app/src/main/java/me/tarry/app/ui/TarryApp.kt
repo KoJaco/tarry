@@ -36,6 +36,8 @@ import me.tarry.app.ui.catalog.TagsScreen
 import me.tarry.app.ui.navigation.JobsRoute
 import me.tarry.app.ui.navigation.PlaceDetailRoute
 import me.tarry.app.ui.navigation.PlacesRoute
+import me.tarry.app.ui.navigation.ScheduleRoute
+import me.tarry.app.ui.schedule.ScheduleScreen
 import me.tarry.app.ui.places.PlaceDetailScreen
 import me.tarry.app.ui.places.PlacesScreen
 import me.tarry.app.ui.navigation.TagsRoute
@@ -111,6 +113,7 @@ fun TarryApp(
             SettingsScreen(
                 onOpenPermissions = { openPermissions() },
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
+                onOpenSchedule = { if (backStack.lastOrNull() != ScheduleRoute) backStack.add(ScheduleRoute) },
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
                 onOpenTags = { if (backStack.lastOrNull() != TagsRoute) backStack.add(TagsRoute) },
                 onOpenPlaces = { if (backStack.lastOrNull() != PlacesRoute) backStack.add(PlacesRoute) },
@@ -120,6 +123,9 @@ fun TarryApp(
             PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
         },
         sessionsContent = { SessionsScreen() },
+        scheduleContent = {
+            ScheduleScreen(onClose = { if (backStack.lastOrNull() == ScheduleRoute) backStack.removeAt(backStack.lastIndex) })
+        },
         jobsContent = { JobsScreen() },
         tagsContent = { TagsScreen() },
         placesContent = { PlacesScreen(onOpenPlace = { if (backStack.lastOrNull() != PlaceDetailRoute(it)) backStack.add(PlaceDetailRoute(it)) }) },
@@ -171,6 +177,7 @@ fun TarryAppContent(
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
+    scheduleContent: @Composable () -> Unit = {},
     jobsContent: @Composable () -> Unit = {},
     tagsContent: @Composable () -> Unit = {},
     placesContent: @Composable () -> Unit = {},
@@ -208,6 +215,7 @@ fun TarryAppContent(
                 entry<SettingsRoute> { settingsContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }
+                entry<ScheduleRoute> { scheduleContent() }
                 entry<JobsRoute> { jobsContent() }
                 entry<TagsRoute> { tagsContent() }
                 entry<PlacesRoute> { placesContent() }

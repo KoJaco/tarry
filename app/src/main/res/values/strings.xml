@@ -209,4 +209,43 @@
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
+
+    <string name="settings_schedule">Schedule</string>
+    <string name="settings_schedule_this_week_own">This week: %1$s (own schedule)</string>
+    <string name="schedule_summary_off">Off</string>
+    <string name="schedule_summary_custom">Custom</string>
+    <string name="schedule_title">Schedule</string>
+    <string name="schedule_mode_every_week">Every week</string>
+    <string name="schedule_mode_this_week">This week only</string>
+    <string name="schedule_previous_week">Previous week</string>
+    <string name="schedule_next_week">Next week</string>
+    <string name="schedule_week_range">%1$s – %2$s</string>
+    <string name="schedule_override_banner">This week uses its own schedule</string>
+    <string name="schedule_use_every_week">Use every-week schedule</string>
+    <string name="schedule_use_every_week_title">Use the every-week schedule?</string>
+    <string name="schedule_use_every_week_body">This week\'s own schedule is deleted and the every-week schedule applies again.</string>
+    <string name="schedule_template_note_override">This week has its own schedule, so changes here don\'t affect it.</string>
+    <string name="schedule_preset_work_week">Mon–Fri 07:00–17:00</string>
+    <string name="schedule_preset_clear">Clear</string>
+    <string name="schedule_save">Save</string>
+    <string name="schedule_discard">Discard</string>
+    <string name="schedule_discard_title">Discard changes?</string>
+    <string name="schedule_discard_body">Your unsaved schedule changes will be lost.</string>
+    <string name="schedule_grid_description">Schedule grid, half-hour cells</string>
+    <string name="schedule_cell_description">%1$s %2$s to %3$s</string>
+    <string name="schedule_cell_on">On</string>
+    <string name="schedule_cell_off">Off</string>
+    <string name="schedule_edit_day">Edit %1$s</string>
+    <string name="schedule_today">Today</string>
+    <string name="schedule_set_hours">Set hours</string>
+    <string name="schedule_hours_start">Start</string>
+    <string name="schedule_hours_end">End</string>
+    <string name="schedule_start_earlier">Start earlier</string>
+    <string name="schedule_start_later">Start later</string>
+    <string name="schedule_end_earlier">End earlier</string>
+    <string name="schedule_end_later">End later</string>
+    <string name="schedule_copy_to">Copy to…</string>
+    <string name="schedule_copy_weekdays">Weekdays</string>
+    <string name="schedule_copy_apply">Copy</string>
+    <string name="schedule_clear_day">Clear day</string>
 </resources>
