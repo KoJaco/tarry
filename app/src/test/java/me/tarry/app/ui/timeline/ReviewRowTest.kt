@@ -62,10 +62,10 @@ class ReviewRowTest {
     @Test
     fun toggleSwitchesToTheMapAndHidesTheReviewFilter() {
         show(560.dp)
-        composeRule.onNodeWithText("Day").assertIsSelected()
-        composeRule.onNodeWithText("Map").assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithContentDescription("Day").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Map").assertHeightIsAtLeast(48.dp).performClick()
         assertThat(showMap).isTrue()
-        composeRule.onNodeWithText("Map").assertIsSelected()
+        composeRule.onNodeWithContentDescription("Map").assertIsSelected()
         composeRule.onNodeWithTag("timeline_filter_review").assertDoesNotExist()
     }
 }
