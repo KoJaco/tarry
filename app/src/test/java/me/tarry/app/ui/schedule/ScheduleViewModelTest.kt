@@ -66,9 +66,11 @@ class ScheduleViewModelTest {
 
     private class CountingStateRepository : TrackingStateRepository {
         var refreshes = 0
+        var failWith: RuntimeException? = null
         override val state: StateFlow<TrackingState> = MutableStateFlow(TrackingState.IDLE)
         override val details: StateFlow<TrackingDetails> = MutableStateFlow(TrackingDetails())
         override fun refresh() {
+            failWith?.let { throw it }
             refreshes++
         }
     }
@@ -131,6 +133,10 @@ class ScheduleViewModelTest {
         withTimeout(10_000) { viewModel.state.first(predicate) }
     }
 
+    /** Waits until the stored schedule for [mode] / [week] has been applied, which proves a reload finished. */
+    private fun awaitLoaded(mode: ScheduleMode, week: LocalDate): ScheduleUiState =
+        awaitState { it.loadedFor == LoadedFor(mode, week) && !it.saving }
+
     @Test
     fun loadsTheTemplateAndStartsClean() {
         val s = awaitState { it.loaded }
@@ -149,7 +155,7 @@ class ScheduleViewModelTest {
         awaitState { it.loaded }
 
         viewModel.setMode(ScheduleMode.WEEK)
-        val s = awaitState { it.mode == ScheduleMode.WEEK && it.loaded }
+        val s = awaitLoaded(ScheduleMode.WEEK, thisWeek)
 
         assertThat(s.draft).isEqualTo(Schedule.MON_FRI_7_TO_17)
         assertThat(s.hasOverride).isFalse()
@@ -214,6 +220,7 @@ class ScheduleViewModelTest {
     fun savingInWeekModeWritesThatWeeksOverrideOnly() = runBlocking {
         awaitState { it.loaded }
         viewModel.setMode(ScheduleMode.WEEK)
+        awaitLoaded(ScheduleMode.WEEK, thisWeek)
         viewModel.clearAll()
 
         viewModel.save()
@@ -231,7 +238,7 @@ class ScheduleViewModelTest {
         awaitState { it.loaded }
         viewModel.setMode(ScheduleMode.WEEK)
         viewModel.shiftWeek(1)
-        awaitState { it.viewedWeek == nextWeek && it.loaded }
+        awaitLoaded(ScheduleMode.WEEK, nextWeek)
         viewModel.setDayHours(DayOfWeek.SATURDAY, 20, 24)
 
         viewModel.save()
@@ -244,12 +251,51 @@ class ScheduleViewModelTest {
     }
 
     @Test
+    fun switchingToEveryWeekAfterASaveShowsTheTemplate() = runBlocking {
+        awaitState { it.loaded }
+        viewModel.setMode(ScheduleMode.WEEK)
+        awaitLoaded(ScheduleMode.WEEK, thisWeek)
+        viewModel.clearAll()
+        viewModel.save()
+        // Navigation is ignored while the save is in flight, so the reload cannot be clobbered or clobber it.
+        viewModel.setMode(ScheduleMode.TEMPLATE)
+        awaitState { !it.saving && it.hasOverride }
+
+        viewModel.setMode(ScheduleMode.TEMPLATE)
+        val s = awaitLoaded(ScheduleMode.TEMPLATE, thisWeek)
+
+        assertThat(s.mode).isEqualTo(ScheduleMode.TEMPLATE)
+        assertThat(s.saved).isEqualTo(Schedule.MON_FRI_7_TO_17)
+        assertThat(s.draft).isEqualTo(Schedule.MON_FRI_7_TO_17)
+        assertThat(s.dirty).isFalse()
+    }
+
+    @Test
+    fun aFailedSaveKeepsTheDraftAndReportsTheError() = runBlocking {
+        awaitState { it.loaded }
+        viewModel.clearAll()
+        stateRepo.failWith = IllegalStateException("disk full")
+
+        viewModel.save()
+        val s = awaitState { it.saveFailed }
+
+        assertThat(s.saving).isFalse()
+        assertThat(s.dirty).isTrue()
+        assertThat(s.draft).isEqualTo(Schedule.EMPTY)
+
+        viewModel.applyWorkWeekPreset()
+        assertThat(viewModel.state.value.saveFailed).isFalse()
+    }
+
+    @Test
     fun useEveryWeekScheduleClearsTheOverride() = runBlocking {
         scheduleRepo.saveOverride(thisWeek.toString(), Schedule.EMPTY, 0)
         viewModel = ScheduleViewModel(scheduleRepo, controller, stateRepo, clock, captureScope)
         awaitState { it.loaded }
         viewModel.setMode(ScheduleMode.WEEK)
-        awaitState { it.mode == ScheduleMode.WEEK && it.hasOverride && it.draft == Schedule.EMPTY }
+        awaitLoaded(ScheduleMode.WEEK, thisWeek)
+        assertThat(viewModel.state.value.hasOverride).isTrue()
+        assertThat(viewModel.state.value.draft).isEqualTo(Schedule.EMPTY)
 
         viewModel.useEveryWeekSchedule()
         val s = awaitState { !it.hasOverride && !it.saving }
@@ -269,11 +315,11 @@ class ScheduleViewModelTest {
         assertThat(viewModel.state.value.viewedWeek).isEqualTo(thisWeek)
 
         viewModel.shiftWeek(1)
-        val next = awaitState { it.viewedWeek == nextWeek && it.loaded }
+        val next = awaitLoaded(ScheduleMode.TEMPLATE, nextWeek)
         assertThat(next.canGoPrevious).isTrue()
 
         viewModel.shiftWeek(-1)
-        assertThat(awaitState { it.viewedWeek == thisWeek }.canGoPrevious).isFalse()
+        assertThat(awaitLoaded(ScheduleMode.TEMPLATE, thisWeek).canGoPrevious).isFalse()
     }
 
     @Test
@@ -291,7 +337,7 @@ class ScheduleViewModelTest {
 
         viewModel.setMode(ScheduleMode.WEEK)
         viewModel.confirmPending()
-        val s = awaitState { it.mode == ScheduleMode.WEEK && !it.dirty }
+        val s = awaitLoaded(ScheduleMode.WEEK, thisWeek)
 
         assertThat(s.pending).isNull()
         assertThat(s.draft).isEqualTo(Schedule.MON_FRI_7_TO_17)
@@ -301,6 +347,7 @@ class ScheduleViewModelTest {
     fun changingWeekWithUnsavedEditsAsksFirst() {
         awaitState { it.loaded }
         viewModel.setMode(ScheduleMode.WEEK)
+        awaitLoaded(ScheduleMode.WEEK, thisWeek)
         viewModel.clearAll()
 
         viewModel.shiftWeek(1)
@@ -308,7 +355,7 @@ class ScheduleViewModelTest {
         assertThat(viewModel.state.value.viewedWeek).isEqualTo(thisWeek)
 
         viewModel.confirmPending()
-        val s = awaitState { it.viewedWeek == nextWeek && !it.dirty }
+        val s = awaitLoaded(ScheduleMode.WEEK, nextWeek)
         assertThat(s.draft).isEqualTo(Schedule.MON_FRI_7_TO_17)
     }
 

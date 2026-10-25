@@ -4,6 +4,7 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,10 +51,17 @@ data class ScheduleUiState(
     val currentWeekHasOverride: Boolean,
     val pending: PendingNavigation? = null,
     val saving: Boolean = false,
+    /** The last save failed; the draft is kept so nothing is lost. Cleared by the next edit or save. */
+    val saveFailed: Boolean = false,
+    /** The mode and week whose stored schedule [saved] holds; lets callers tell when a reload has landed. */
+    val loadedFor: LoadedFor? = null,
 ) {
     val dirty: Boolean get() = draft != saved
     val canGoPrevious: Boolean get() = viewedWeek.isAfter(currentWeek)
 }
+
+/** The mode and Monday a load result belongs to. */
+data class LoadedFor(val mode: ScheduleMode, val week: LocalDate)
 
 /** Monday of the ISO week containing [date]. */
 internal fun mondayOf(date: LocalDate): LocalDate = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
@@ -91,25 +99,30 @@ class ScheduleViewModel @Inject constructor(
     /** Reads the stored schedules for the current mode and viewed week; the draft restarts from them. */
     private fun load() {
         loadJob?.cancel()
-        loadJob = viewModelScope.launch { reload() }
+        val (mode, week) = _state.value.let { it.mode to it.viewedWeek }
+        loadJob = viewModelScope.launch { reload(mode, week) }
     }
 
-    private suspend fun reload() {
+    /** Loads [mode] / [week] and applies the result only if the view is still on them, so navigation is never clobbered. */
+    private suspend fun reload(mode: ScheduleMode, week: LocalDate) {
         val today = clock.today()
         val currentWeek = mondayOf(today)
         // A week change since the screen opened must not leave the view in the past.
-        val current = _state.value
-        val viewed = if (current.viewedWeek.isBefore(currentWeek)) currentWeek else current.viewedWeek
+        val viewed = if (week.isBefore(currentWeek)) currentWeek else week
         val template = schedules.template() ?: Schedule.MON_FRI_7_TO_17
         val viewedOverride = schedules.override(viewed.toString())
         val currentOverride = if (viewed == currentWeek) viewedOverride else schedules.override(currentWeek.toString())
-        val shown = if (current.mode == ScheduleMode.TEMPLATE) template else viewedOverride ?: template
+        val shown = if (mode == ScheduleMode.TEMPLATE) template else viewedOverride ?: template
         _state.update {
-            it.copy(
-                loaded = true, viewedWeek = viewed, currentWeek = currentWeek, today = today, saved = shown, draft = shown,
-                hasOverride = viewedOverride != null, currentWeekHasOverride = currentOverride != null, pending = null,
-                saving = false,
-            )
+            if (it.mode != mode || it.viewedWeek != week) {
+                it
+            } else {
+                it.copy(
+                    loaded = true, viewedWeek = viewed, currentWeek = currentWeek, today = today, saved = shown, draft = shown,
+                    hasOverride = viewedOverride != null, currentWeekHasOverride = currentOverride != null, pending = null,
+                    saving = false, saveFailed = false, loadedFor = LoadedFor(mode, viewed),
+                )
+            }
         }
     }
 
@@ -132,11 +145,11 @@ class ScheduleViewModel @Inject constructor(
     fun clearDay(day: DayOfWeek) = edit { it.clearDay(day) }
 
     private fun edit(change: (Schedule) -> Schedule) {
-        _state.update { if (it.saving) it else it.copy(draft = change(it.draft)) }
+        _state.update { if (it.saving) it else it.copy(draft = change(it.draft), saveFailed = false) }
     }
 
     fun discard() {
-        _state.update { it.copy(draft = it.saved) }
+        _state.update { if (it.saving) it else it.copy(draft = it.saved, saveFailed = false) }
     }
 
     fun save() {
@@ -157,33 +170,39 @@ class ScheduleViewModel @Inject constructor(
     }
 
     private fun apply(change: ScheduleChange) {
-        _state.update { it.copy(saving = true) }
+        _state.update { it.copy(saving = true, saveFailed = false) }
         captureScope.launch {
             try {
                 controller.updateSchedule(change)
                 trackingState.refresh()
-            } finally {
-                reload()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Keep the draft (still dirty) and say so; the user can retry.
+                _state.update { it.copy(saving = false, saveFailed = true) }
+                return@launch
             }
+            load()
         }
     }
 
     fun setMode(mode: ScheduleMode) {
         val s = _state.value
-        if (mode == s.mode) return
+        if (mode == s.mode || s.saving) return
         if (s.dirty) _state.update { it.copy(pending = PendingNavigation.ToMode(mode)) } else goTo(PendingNavigation.ToMode(mode))
     }
 
     fun shiftWeek(weeks: Int) {
         val s = _state.value
-        if (weeks < 0 && !s.canGoPrevious) return
+        if (s.saving || (weeks < 0 && !s.canGoPrevious)) return
         if (s.dirty) _state.update { it.copy(pending = PendingNavigation.ShiftWeek(weeks)) } else goTo(PendingNavigation.ShiftWeek(weeks))
     }
 
     /** The user agreed to drop unsaved edits for the held-back change. */
     fun confirmPending() {
-        val pending = _state.value.pending ?: return
-        goTo(pending)
+        val s = _state.value
+        if (s.saving) return
+        goTo(s.pending ?: return)
     }
 
     fun cancelPending() {
