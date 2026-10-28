@@ -528,4 +528,49 @@ class TimelineViewModelTest {
 
         assertThat(v.needsReview).isFalse()
     }
+
+    @Test
+    fun jobBlocksFollowTheSelectedDaysBoundsAndCarryJobAndLane() = runBlocking {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
+        jobs.save(Job(id = "k", name = "Beta", colorArgb = 0xFF445566.toInt(), updatedAt = 0))
+        val asked = java.util.concurrent.CopyOnWriteArrayList<Pair<Long, Long>>()
+        val dayBlocks = listOf(
+            block("b1", "j", at(day, 9), at(day, 12)),
+            block("b2", "k", at(day, 11), at(day, 14)),
+            block("gone", "deleted-job", at(day, 15), at(day, 16)),
+        )
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day },
+            blocksOverlapping = { from, to -> asked += from to to; flowOf(dayBlocks) },
+        ).managed()
+
+        val blocks = withTimeout(10_000) { vm.jobBlocks.first { it.isNotEmpty() } }
+
+        assertThat(asked.first()).isEqualTo(dayBounds(day, zone))
+        assertThat(blocks.map { it.id to it.jobName }).containsExactly("b1" to "Acme", "b2" to "Beta").inOrder() // unknown job left out
+        assertThat(blocks.map { it.lane.index to it.lane.count }).containsExactly(0 to 2, 1 to 2).inOrder()
+        assertThat(blocks.first().jobColorArgb).isEqualTo(0xFF112233.toInt())
+
+        vm.previousDay()
+        withTimeout(10_000) { while (asked.none { it == dayBounds(day.minusDays(1), zone) }) delay(10) }
+    }
+
+    @Test
+    fun suggestionsOfferTheDetectedVisitsPlaceDefaultJobUntilABlockCoversIt() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
+        places.save(place("p", name = "Yard").copy(defaultJobId = "j"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
+        timeline.saveVisit(visit("manual", at(day, 11), at(day, 12), "p").copy(origin = VisitOrigin.MANUAL))
+        val blocks = MutableStateFlow<List<JobBlock>>(emptyList())
+        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, blocksOverlapping = { _, _ -> blocks }).managed()
+
+        val offered = withTimeout(10_000) { vm.jobSuggestions.first { it.isNotEmpty() } }
+
+        assertThat(offered.map { it.suggestion.visitId }).containsExactly("v")
+        assertThat(offered.single().jobName).isEqualTo("Acme")
+        assertThat(offered.single().suggestion.start).isEqualTo(at(day, 9))
+
+        blocks.value = listOf(block("b", "j", at(day, 9), at(day, 10)))
+        withTimeout(10_000) { vm.jobSuggestions.first { it.isEmpty() } }
+    }
 }

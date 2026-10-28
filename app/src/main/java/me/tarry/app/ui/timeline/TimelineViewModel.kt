@@ -103,6 +103,22 @@ sealed interface TimelineItem {
     ) : TimelineItem
 }
 
+/** A job block on the day with its job's name and colour and its side-by-side [lane]. */
+data class JobBlockItem(
+    val id: String,
+    val jobId: String,
+    val jobName: String,
+    val jobColorArgb: Int,
+    val start: Long,
+    val end: Long,
+    val billable: Boolean,
+    val notes: String?,
+    val lane: Lane,
+)
+
+/** A [JobSuggestion] with the suggested job's name and colour. */
+data class JobSuggestionItem(val suggestion: JobSuggestion, val jobName: String, val jobColorArgb: Int)
+
 /** `[date 00:00, date+1 00:00)` in [zone], as epoch ms. A DST day is 23 or 25 hours long. */
 fun dayBounds(date: LocalDate, zone: ZoneId): Pair<Long, Long> =
     date.atStartOfDay(zone).toInstant().toEpochMilli() to
@@ -238,6 +254,38 @@ class TimelineViewModel internal constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 
+    /** The selected day's job blocks with their job and lane (see [jobLanes]); empty while loading. Blocks of unknown or deleted jobs are left out. */
+    val jobBlocks: StateFlow<List<JobBlockItem>> = _selectedDate
+        .flatMapLatest { date ->
+            val (from, to) = dayBounds(date, zone)
+            combine(blocksOverlapping(from, to), jobs.observeAll()) { blocks, allJobs ->
+                val jobsById = allJobs.associateBy { it.id }
+                val lanes = jobLanes(blocks)
+                blocks.mapNotNull { b ->
+                    val job = jobsById[b.jobId] ?: return@mapNotNull null
+                    JobBlockItem(
+                        b.id, b.jobId, job.name, job.colorArgb, b.start, b.end, b.billable, b.notes,
+                        lanes.getValue(b.id),
+                    )
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
+    /** The selected day's suggested blocks (see [suggestions]), computed on read and never stored. */
+    val jobSuggestions: StateFlow<List<JobSuggestionItem>> = _selectedDate
+        .flatMapLatest { date ->
+            val (from, to) = dayBounds(date, zone)
+            combine(
+                timeline.observeVisits(from, to), places.observeLabels(), blocksOverlapping(from, to), jobs.observeAll(),
+            ) { visits, allPlaces, blocks, allJobs ->
+                val jobsById = allJobs.associateBy { it.id }
+                suggestions(visits, allPlaces.associateBy { it.id }, blocks).mapNotNull { s ->
+                    jobsById[s.jobId]?.let { JobSuggestionItem(s, it.name, it.colorArgb) }
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 
     /**
      * The selected day for the Map tab: route from that day's pings, pins at place centroids. Null while loading.
