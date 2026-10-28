@@ -18,13 +18,29 @@ import javax.inject.Inject
  * @property weekOverrides week overrides keyed by the ISO date of their Monday. A week override replaces the template.
  * @property manualOverrides rows from `manual_override`. Rows that are inactive and have no `end` are ignored.
  * @property testWindowStartMs debug-only test window start; its length is [TrackingConfig.debugTestWindowLengthMs].
+ * @property edits the schedule save history, ascending by time; see [scheduleAt].
  */
 data class ScheduleInputs(
     val template: Schedule,
     val weekOverrides: Map<LocalDate, Schedule> = emptyMap(),
     val manualOverrides: List<ManualOverride> = emptyList(),
     val testWindowStartMs: Long? = null,
-)
+    val edits: List<ScheduleEdit> = emptyList(),
+) {
+    /**
+     * The schedule that was in force at [t] for the week starting [weekStart]: an edit counts from the moment it was
+     * saved, so the edits after [t] are undone. Template: the earliest edit after [t] gives its `templateBefore`, else
+     * the current template. Override: the earliest edit after [t] that touched this week gives its `overrideBefore`
+     * (null = none), else the current override. A week override replaces the template.
+     */
+    fun scheduleAt(weekStart: LocalDate, t: Instant): Schedule {
+        val ms = t.toEpochMilli()
+        val templateAt = edits.firstOrNull { it.atMs > ms }?.templateBefore ?: template
+        val touched = edits.firstOrNull { it.atMs > ms && it.weekBefore?.weekStart == weekStart }
+        val overrideAt = if (touched != null) touched.weekBefore?.overrideBefore else weekOverrides[weekStart]
+        return overrideAt ?: templateAt
+    }
+}
 
 /** A scheduled window, [start] inclusive and [end] exclusive. */
 data class WindowBounds(val start: Instant, val end: Instant)
@@ -140,13 +156,22 @@ class EffectiveScheduleCalculator @Inject constructor(private val config: Tracki
             val last = hi.atZone(zone).toLocalDate()
             while (!date.isAfter(last)) {
                 val weekStart = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-                val schedule = inputs.weekOverrides[weekStart] ?: inputs.template
                 for (slot in 0 until Schedule.SLOTS_PER_DAY) {
-                    if (!schedule.isActive(date.dayOfWeek, slot)) continue
                     val start = slotStart(date, slot)
                     val end = slotStart(date, slot + 1)
                     // Wall-clock slots can collapse or overlap around a DST change; the merge below absorbs that.
-                    if (start < end) raw += WindowBounds(start, end)
+                    if (start >= end) continue
+                    // An edit counts from its save: each piece of the slot follows the schedule in force at its start.
+                    val cuts = inputs.edits.map { it.atMs }
+                        .filter { it > start.toEpochMilli() && it < end.toEpochMilli() }
+                        .distinct().sorted().map(Instant::ofEpochMilli)
+                    var pieceStart = start
+                    for (pieceEnd in cuts + end) {
+                        if (inputs.scheduleAt(weekStart, pieceStart).isActive(date.dayOfWeek, slot)) {
+                            raw += WindowBounds(pieceStart, pieceEnd)
+                        }
+                        pieceStart = pieceEnd
+                    }
                 }
                 date = date.plusDays(1)
             }
@@ -167,12 +192,7 @@ class EffectiveScheduleCalculator @Inject constructor(private val config: Tracki
             return merged
         }
 
-        private fun slotStart(date: LocalDate, slot: Int): Instant =
-            if (slot >= Schedule.SLOTS_PER_DAY) {
-                date.plusDays(1).atStartOfDay(zone).toInstant()
-            } else {
-                date.atTime(slot / SLOTS_PER_HOUR, (slot % SLOTS_PER_HOUR) * MINUTES_PER_SLOT).atZone(zone).toInstant()
-            }
+        private fun slotStart(date: LocalDate, slot: Int): Instant = slotInstant(date, slot, zone)
 
         fun windowAt(t: Instant): WindowBounds? = windows.firstOrNull { t >= it.start && t < it.end }
 
@@ -214,10 +234,5 @@ class EffectiveScheduleCalculator @Inject constructor(private val config: Tracki
             }
             return all.distinct().sorted()
         }
-    }
-
-    private companion object {
-        const val SLOTS_PER_HOUR = 2
-        const val MINUTES_PER_SLOT = 30
     }
 }

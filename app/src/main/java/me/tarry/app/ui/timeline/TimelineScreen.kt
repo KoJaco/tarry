@@ -45,6 +45,7 @@ fun TimelineScreen(
         onShowMapChange = { showMap = it },
         // Collected only while the Map tab shows, so the route isn't built otherwise.
         dayMap = if (showMap) viewModel.dayMap.collectAsStateWithLifecycle().value else null,
+        trackingMarkers = viewModel.trackingMarkers.collectAsStateWithLifecycle().value,
         modifier = modifier,
     )
     editTarget?.let { target ->

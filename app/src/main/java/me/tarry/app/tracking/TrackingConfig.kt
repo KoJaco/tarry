@@ -80,6 +80,9 @@ data class TrackingConfig(
     /** How far back and ahead the calculator builds windows when looking for the next transition. */
     val scheduleLookBackDays: Long = 1L,
     val scheduleLookAheadDays: Long = 9L,
+    /** The schedule edit history keeps saves this recent, and at most [scheduleEditMax] of them (oldest dropped first). */
+    val scheduleEditRetentionDays: Long = 14L,
+    val scheduleEditMax: Int = 50,
     /** Delay of the one-shot alarm that starts capture after boot or app start (ADR 0003: background FGS starts need an alarm). */
     val deferredStartDelayMs: Long = 5_000L,
     /** Upper bound for persisting a failed foreground start before the service stops itself (must stay well under the ANR limit). */
@@ -87,6 +90,9 @@ data class TrackingConfig(
     // Manual controls.
     val pauseShortMin: Long = 30L,
     val pauseLongMin: Long = 60L,
+    // Custom manual duration (long-press sheet): chosen in steps of [customDurationStepMin] up to [customDurationMaxMin].
+    val customDurationStepMin: Int = 15,
+    val customDurationMaxMin: Int = 720,
     val manualStartDurationsMin: List<Int> = listOf(60, 120, 240),
     // Debug-only test window: starts [debugTestWindowDelayMs] after the request and lasts [debugTestWindowLengthMs].
     val debugTestWindowDelayMs: Long = 2 * 60_000L,

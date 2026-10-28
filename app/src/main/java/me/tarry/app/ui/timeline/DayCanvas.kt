@@ -82,6 +82,7 @@ import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.TripMode
 import java.time.ZoneId
+import me.tarry.core.data.model.SessionEndReason
 import kotlin.math.abs
 import kotlin.math.floor
 
@@ -161,6 +162,14 @@ private object DayCanvasDefaults {
     const val ChipMinDp = 92f
     const val HatchStepDp = 8f
     const val HatchAlpha = 0.25f
+    /** Tracking-mark rule: dash lengths, and its alpha relative to `muted`. */
+    val MarkerDashOn = 3.dp
+    val MarkerDashOff = 4.dp
+    const val MarkerRuleAlpha = 0.6f
+
+    /** Height of one `labelSmall` line (per unit of font scale), to keep neighbouring labels apart. */
+    const val MarkerLabelLineDp = 16f
+    val MarkerLabelGap = 2.dp
     val DashOn = 8.dp
     val DashOff = 5.dp
 }
@@ -198,6 +207,8 @@ fun DayCanvas(
     onOpenTrip: (String) -> Unit = {},
     /** The tapped gap block: the gap itself, and for an outage cluster the real gaps it stands for (else empty). */
     onOpenGap: (TimelineItem.Gap, List<TimelineItem.Gap>) -> Unit = { _, _ -> },
+    /** Tracking starts and stops inside the day: a muted dashed rule behind the blocks and a small label. */
+    trackingMarkers: List<TrackingMarker> = emptyList(),
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -223,6 +234,18 @@ fun DayCanvas(
     val dpPerMs = layout.scale / MsPerHour
     val visitItems = remember(layout) { layout.blocks.mapNotNull { it.item as? TimelineItem.Visit }.sortedBy { it.start } }
     val handleStart = timeColumn + DayCanvasDefaults.BlockInset
+    val placedMarkers = remember(trackingMarkers, layout, fontScale) {
+        placeTrackingMarkers(
+            trackingMarkers, layout.canvasStart, layout.canvasEnd, layout.scale, layout.heightDp,
+            DayCanvasDefaults.MarkerLabelLineDp * fontScale, DayCanvasDefaults.MarkerLabelGap.value,
+        )
+    }
+    val markerYs = placedMarkers.flatMap { it.ruleDps }
+    // A label that would sit over a block or trip goes behind it (composed first) so it never covers their text.
+    val labelHeightDp = DayCanvasDefaults.MarkerLabelLineDp * fontScale
+    val markersBehind = placedMarkers.filter { pm ->
+        ordered.any { it.topDp < pm.labelTopDp + labelHeightDp && it.topDp + it.heightDp > pm.labelTopDp }
+    }
 
     TarryCard(modifier = modifier, contentPadding = PaddingValues(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.l)) {
         Box(
@@ -242,6 +265,12 @@ fun DayCanvas(
                     // :15 / :30 / :45 ticks on the rail: drawn only, so they are neither focusable nor spoken.
                     val tick = DayCanvasDefaults.QuarterTickHalf.toPx()
                     val tickColor = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
+                    val markerDash = PathEffect.dashPathEffect(floatArrayOf(DayCanvasDefaults.MarkerDashOn.toPx(), DayCanvasDefaults.MarkerDashOff.toPx()))
+                    val markerColor = c.muted.copy(alpha = c.muted.alpha * DayCanvasDefaults.MarkerRuleAlpha)
+                    markerYs.forEach { dp ->
+                        val y = dp.dp.toPx()
+                        drawLine(markerColor, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke, pathEffect = markerDash)
+                    }
                     layout.quarterMarks.forEach { dp ->
                         val y = dp.dp.toPx()
                         drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
@@ -268,6 +297,7 @@ fun DayCanvas(
                         },
                 )
             }
+            markersBehind.forEach { TrackingMarkerLabel(it, ordered, timeColumn, zone) }
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
             // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.
             ordered.withIndex().sortedBy { it.value is PlacedTrip }.forEach { (index, placed) ->
@@ -329,6 +359,7 @@ fun DayCanvas(
                     ) { onOpenTrip(placed.trip.id) }
                 }
             }
+            placedMarkers.filter { it !in markersBehind }.forEach { TrackingMarkerLabel(it, ordered, timeColumn, zone) }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
             val selectedBlock = selectedVisitId?.takeUnless { selecting }?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
             val selectedVisit = selectedBlock?.item as? TimelineItem.Visit
@@ -819,4 +850,44 @@ private fun Modifier.innerGapDots(innerGaps: List<InnerGap>): Modifier {
             drawCircle(color, radius = rect.width.dp.toPx() / 2, center = Offset(rect.center.x.dp.toPx(), rect.center.y.dp.toPx()))
         }
     }
+}
+
+/**
+ * The label of a tracking start/stop mark ("Tracking started 07:02"): `labelSmall`, muted, right-aligned in the canvas
+ * column at the marker's rule. It has no pointer input, so taps fall through to the blocks below. Spoken as plain text
+ * in time order, between the blocks it falls between.
+ */
+@Composable
+private fun TrackingMarkerLabel(placed: PlacedMarker, ordered: List<Placed>, timeColumn: Dp, zone: ZoneId) {
+    val formats = rememberTimeFormats()
+    val m = placed.marker
+    val stopped = m.stoppedMs?.let { formats.time(it, zone) }
+    val started = m.startedMs?.let { formats.time(it, zone) }
+    val text = when {
+        stopped != null && started != null -> stringResource(R.string.timeline_tracking_restarted, stopped, started)
+        stopped != null -> stringResource(
+            when (m.reason) {
+                SessionEndReason.USER_PAUSE -> R.string.timeline_tracking_paused
+                SessionEndReason.SCHEDULE_END -> R.string.timeline_tracking_ended
+                SessionEndReason.KILLED -> R.string.timeline_tracking_interrupted
+                SessionEndReason.PERMISSION_LOST -> R.string.timeline_tracking_no_permission
+                else -> R.string.timeline_tracking_stopped
+            },
+            stopped,
+        )
+        else -> stringResource(R.string.timeline_tracking_started, started.orEmpty())
+    }
+    val traversal = ordered.count { (if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start) < m.timeMs } - 0.5f
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = TarryTheme.colors.muted,
+        textAlign = TextAlign.End,
+        modifier = Modifier
+            .offset(y = placed.labelTopDp.dp)
+            .padding(start = timeColumn + DayCanvasDefaults.BlockInset, end = DayCanvasDefaults.BlockInset)
+            .fillMaxWidth()
+            .semantics { traversalIndex = traversal }
+            .testTag("timeline_tracking_marker"),
+    )
 }

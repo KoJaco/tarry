@@ -14,7 +14,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import me.tarry.core.data.model.ActivityType
+import me.tarry.core.data.model.Schedule
 import java.io.File
+import java.time.LocalDate
+import java.util.Base64
 import javax.inject.Inject
 import javax.inject.Qualifier
 
@@ -43,6 +46,8 @@ data class TrackingStatus(
     val finishingUp: Boolean = false,
     /** When that grace began (epoch ms); kept across a process death so the orphaned grace can be accounted for. */
     val finishingUpSinceMs: Long? = null,
+    /** Recent schedule saves, ascending; edits count from the moment they were saved (see [ScheduleEdit]). */
+    val scheduleEdits: List<ScheduleEdit> = emptyList(),
 )
 
 /** Activity Recognition transitions seen in one session: how many, how many were ignored (an equal or newer one was already applied), and the last one. */
@@ -99,6 +104,7 @@ class TrackingStatusStore @Inject constructor(
             segmentationError = p[SEG_ERROR_TIME]?.let { SegmentationError(it, p[SEG_ERROR_MESSAGE] ?: "") },
             finishingUp = p[FINISHING_UP] ?: false,
             finishingUpSinceMs = p[FINISHING_UP_SINCE],
+            scheduleEdits = decodeScheduleEdits(p[SCHEDULE_EDITS]),
         )
     }
 
@@ -136,6 +142,15 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
     suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
+
+    /** Appends [edit] to the history, pruning edits older than [retentionDays] and keeping at most [max] (see [ScheduleEdit.append]). */
+    suspend fun appendScheduleEdit(edit: ScheduleEdit, retentionDays: Long, max: Int) {
+        dataStore.edit { p ->
+            val kept = ScheduleEdit.append(decodeScheduleEdits(p[SCHEDULE_EDITS]), edit, retentionDays, max)
+            p[SCHEDULE_EDITS] = encodeScheduleEdits(kept)
+        }
+    }
+
     suspend fun setFinishingUp(on: Boolean, sinceMs: Long? = null) {
         dataStore.edit {
             if (on) {
@@ -190,6 +205,7 @@ class TrackingStatusStore @Inject constructor(
         val SEG_ERROR_MESSAGE = stringPreferencesKey("segmentation_error_message")
         val FINISHING_UP = booleanPreferencesKey("finishing_up")
         val FINISHING_UP_SINCE = longPreferencesKey("finishing_up_since_ms")
+        val SCHEDULE_EDITS = stringPreferencesKey("schedule_edits")
         val AR_LOG = stringPreferencesKey("ar_log")
         const val AR_LOG_SESSIONS = 20
     }
@@ -197,3 +213,31 @@ class TrackingStatusStore @Inject constructor(
 
 private inline fun <reified E : Enum<E>> String?.toEnumOrNull(): E? =
     this?.let { name -> enumValues<E>().firstOrNull { it.name == name } }
+
+/**
+ * Edits joined by `;`, each `atMs|base64(templateBefore)|weekStart|base64(overrideBefore)`; the last two are empty
+ * when the save touched no week override, and the last one alone when that week had no override. Compact, local
+ * control state. Anything malformed reads as an empty history.
+ */
+private fun encodeScheduleEdits(edits: List<ScheduleEdit>): String = edits.joinToString(";") { e ->
+    val enc = Base64.getEncoder()
+    val week = e.weekBefore
+    "${e.atMs}|${enc.encodeToString(e.templateBefore.toBytes())}|${week?.weekStart ?: ""}|" +
+        (week?.overrideBefore?.let { enc.encodeToString(it.toBytes()) }.orEmpty())
+}
+
+private fun decodeScheduleEdits(raw: String?): List<ScheduleEdit> = runCatching {
+    if (raw.isNullOrEmpty()) return emptyList()
+    val dec = Base64.getDecoder()
+    raw.split(';').map { entry ->
+        val c = entry.split('|')
+        require(c.size == 4)
+        val week = if (c[2].isEmpty()) {
+            require(c[3].isEmpty())
+            null
+        } else {
+            WeekBefore(LocalDate.parse(c[2]), c[3].takeIf { it.isNotEmpty() }?.let { Schedule.fromBytes(dec.decode(it)) })
+        }
+        ScheduleEdit(c[0].toLong(), Schedule.fromBytes(dec.decode(c[1])), week)
+    }
+}.getOrElse { emptyList() }

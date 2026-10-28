@@ -37,6 +37,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.R
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
+import me.tarry.app.ui.schedule.WeekScheduleSummary
+import me.tarry.app.ui.schedule.scheduleSummaryText
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
@@ -46,6 +48,7 @@ import me.tarry.core.data.settings.ThemeMode
 fun SettingsScreen(
     onOpenPermissions: () -> Unit,
     onOpenSessions: () -> Unit,
+    onOpenSchedule: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenTags: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
@@ -53,8 +56,11 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val schedule by viewModel.schedule.collectAsStateWithLifecycle()
     SettingsContent(
         settings = settings,
+        schedule = schedule,
+        onOpenSchedule = onOpenSchedule,
         onOpenPermissions = onOpenPermissions,
         onOpenSessions = onOpenSessions,
         onOpenJobs = onOpenJobs,
@@ -72,6 +78,8 @@ private enum class Picker { RADIUS, THEME }
 @Composable
 fun SettingsContent(
     settings: Settings?,
+    schedule: WeekScheduleSummary? = null,
+    onOpenSchedule: () -> Unit = {},
     onOpenPermissions: () -> Unit = {},
     onOpenSessions: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
@@ -150,9 +158,12 @@ fun SettingsContent(
         SectionHeader(stringResource(R.string.settings_section_tracking), Modifier.padding(top = space.m))
         val stayRadiusTitle = stringResource(R.string.settings_stay_radius)
         val stayRadiusValue = settings?.let { stringResource(R.string.settings_stay_radius_value, it.stayGeofenceRadiusM) }
+        val scheduleTitle = stringResource(R.string.settings_schedule)
+        val scheduleSubtitle = schedule?.let { scheduleRowSubtitle(it) }
         val permissionsTitle = stringResource(R.string.settings_permissions)
         val sessionsTitle = stringResource(R.string.settings_sessions)
         SettingsGroup {
+            row(scheduleTitle, onClick = onOpenSchedule, icon = R.drawable.ic_calendar, subtitle = scheduleSubtitle)
             if (stayRadiusValue != null) {
                 row(stayRadiusTitle, onClick = { picker = Picker.RADIUS }, icon = R.drawable.ic_radius, subtitle = stayRadiusValue)
             }
@@ -164,9 +175,9 @@ fun SettingsContent(
         val tagsTitle = stringResource(R.string.settings_tags)
         val placesTitle = stringResource(R.string.settings_places)
         SettingsGroup {
-            row(jobsTitle, onClick = onOpenJobs)
-            row(tagsTitle, onClick = onOpenTags)
-            row(placesTitle, onClick = onOpenPlaces)
+            row(jobsTitle, onClick = onOpenJobs, icon = R.drawable.ic_work)
+            row(tagsTitle, onClick = onOpenTags, icon = R.drawable.ic_label)
+            row(placesTitle, onClick = onOpenPlaces, icon = R.drawable.ic_location_pin)
         }
         if (settings != null) {
             SectionHeader(stringResource(R.string.settings_section_appearance), Modifier.padding(top = space.m))
@@ -246,7 +257,7 @@ private fun <T> PickerSheet(
                     modifier = Modifier
                         .padding(bottom = space.s)
                         .background(colors.alertSoft, TarryTheme.shapes.container)
-                        .padding(space.s),
+                        .padding(horizontal = space.m, vertical = space.m),
                 )
             }
             Column(Modifier.selectableGroup()) {
@@ -275,4 +286,11 @@ private fun <T> PickerSheet(
             }
         }
     }
+}
+
+/** "Mon–Fri 07:00–17:00", or "This week: Mon–Fri 07:00–17:00 (own schedule)" when this week has its own. */
+@Composable
+private fun scheduleRowSubtitle(week: WeekScheduleSummary): String {
+    val text = scheduleSummaryText(week.summary)
+    return if (week.hasOverride) stringResource(R.string.settings_schedule_this_week_own, text) else text
 }

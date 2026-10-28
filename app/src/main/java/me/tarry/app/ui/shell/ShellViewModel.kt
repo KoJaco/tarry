@@ -14,6 +14,7 @@ import me.tarry.app.tracking.TrackingState
 import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.ui.permissions.PermissionChecker
 import me.tarry.core.data.model.ManualOverrideEndMode
+import java.time.Instant
 import javax.inject.Inject
 
 @HiltViewModel
@@ -31,6 +32,10 @@ class ShellViewModel @Inject constructor(
 
     val startDurationsMin: List<Int> = config.manualStartDurationsMin
 
+    val customDurationStepMin: Int = config.customDurationStepMin
+
+    val customDurationMaxMin: Int = config.customDurationMaxMin
+
     /** True when fine location is missing, so the permission flow should open on first launch. */
     fun needsInitialPermissions(): Boolean = !permissions.check().fineLocation
 
@@ -40,6 +45,20 @@ class ShellViewModel @Inject constructor(
 
     fun pause(kind: PauseKind) {
         captureScope.launch { controller.pause(kind) }
+    }
+
+    fun pauseFor(durationMin: Int) {
+        captureScope.launch { controller.pause(durationMin) }
+    }
+
+    /** Start tracking until the exact instant [until]. */
+    fun startUntil(until: Instant) {
+        captureScope.launch { controller.startUntil(until.toEpochMilli()) }
+    }
+
+    /** Pause until the exact instant [until]. */
+    fun pauseUntil(until: Instant) {
+        captureScope.launch { controller.pauseUntil(until.toEpochMilli()) }
     }
 
     fun resume() {

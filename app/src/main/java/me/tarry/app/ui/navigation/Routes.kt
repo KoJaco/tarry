@@ -36,6 +36,10 @@ data object JobsRoute : NavKey
 @Serializable
 data object TagsRoute : NavKey
 
+/** Weekly schedule grid (phase 6). Pushed on top of [SettingsRoute]. */
+@Serializable
+data object ScheduleRoute : NavKey
+
 /** Places list (phase 4b). Pushed on top of [SettingsRoute]. */
 @Serializable
 data object PlacesRoute : NavKey

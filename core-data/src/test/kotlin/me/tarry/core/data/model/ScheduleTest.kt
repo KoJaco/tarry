@@ -105,6 +105,50 @@ class ScheduleTest {
     }
 
     @Test
+    fun withSlots_setsAndClearsOnlyTheRangeOnThatDay() {
+        val on = Schedule.EMPTY.withSlots(DayOfWeek.TUESDAY, 4..6, true)
+        assertThat(on.daySlots(DayOfWeek.TUESDAY).withIndex().filter { it.value }.map { it.index }).containsExactly(4, 5, 6)
+        assertThat(on.daySlots(DayOfWeek.MONDAY)).doesNotContain(true)
+        val off = on.withSlots(DayOfWeek.TUESDAY, 5..5, false)
+        assertThat(off.isActive(DayOfWeek.TUESDAY, 5)).isFalse()
+        assertThat(off.isActive(DayOfWeek.TUESDAY, 4)).isTrue()
+        assertThat(on.isActive(DayOfWeek.TUESDAY, 5)).isTrue()
+    }
+
+    @Test
+    fun withSlots_emptyRange_isNoOp_andOutOfRangeIsRejected() {
+        assertThat(Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 5..4, true)).isEqualTo(Schedule.EMPTY)
+        assertThrows(IllegalArgumentException::class.java) { Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 40..48, true) }
+    }
+
+    @Test
+    fun copyDay_overwritesTargets_andLeavesOthers() {
+        val src = Schedule.EMPTY.withSlots(DayOfWeek.MONDAY, 14..33, true)
+            .withSlots(DayOfWeek.TUESDAY, 0..2, true)
+        val copied = src.copyDay(DayOfWeek.MONDAY, setOf(DayOfWeek.TUESDAY, DayOfWeek.SUNDAY))
+        assertThat(copied.daySlots(DayOfWeek.TUESDAY)).isEqualTo(src.daySlots(DayOfWeek.MONDAY))
+        assertThat(copied.daySlots(DayOfWeek.SUNDAY)).isEqualTo(src.daySlots(DayOfWeek.MONDAY))
+        assertThat(copied.daySlots(DayOfWeek.WEDNESDAY)).doesNotContain(true)
+        assertThat(copied.daySlots(DayOfWeek.MONDAY)).isEqualTo(src.daySlots(DayOfWeek.MONDAY))
+    }
+
+    @Test
+    fun clearDay_clearsOnlyThatDay() {
+        val cleared = Schedule.MON_FRI_7_TO_17.clearDay(DayOfWeek.WEDNESDAY)
+        assertThat(cleared.daySlots(DayOfWeek.WEDNESDAY)).doesNotContain(true)
+        assertThat(cleared.daySlots(DayOfWeek.THURSDAY)).isEqualTo(Schedule.MON_FRI_7_TO_17.daySlots(DayOfWeek.THURSDAY))
+    }
+
+    @Test
+    fun daySlots_has48EntriesMatchingIsActive() {
+        val slots = Schedule.MON_FRI_7_TO_17.daySlots(DayOfWeek.MONDAY)
+        assertThat(slots).hasSize(48)
+        assertThat(slots.count { it }).isEqualTo(20)
+        assertThat(slots[14]).isTrue()
+        assertThat(slots[34]).isFalse()
+    }
+
+    @Test
     fun preset_hasExpectedActiveSlotCount() {
         val count = DayOfWeek.entries.sumOf { d -> (0 until 48).count { Schedule.MON_FRI_7_TO_17.isActive(d, it) } }
         assertThat(count).isEqualTo(5 * 20)

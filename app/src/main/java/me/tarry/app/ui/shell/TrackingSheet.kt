@@ -146,7 +146,7 @@ fun TrackingSheetContent(
 }
 
 @Composable
-private fun SheetTitle(titleRes: Int) {
+internal fun SheetTitle(titleRes: Int) {
     Text(
         text = stringResource(titleRes),
         style = MaterialTheme.typography.titleLarge,
@@ -155,7 +155,7 @@ private fun SheetTitle(titleRes: Int) {
 }
 
 @Composable
-private fun SheetRow(label: String, onDone: () -> Unit, @DrawableRes icon: Int, onClick: () -> Unit) {
+internal fun SheetRow(label: String, onDone: () -> Unit, @DrawableRes icon: Int, onClick: () -> Unit) {
     val colors = TarryTheme.colors
     val space = TarryTheme.space
     Row(
@@ -194,7 +194,7 @@ private fun durationLabel(minutes: Int): String =
     }
 
 @Composable
-private fun pausedText(until: Instant?): String =
+internal fun pausedText(until: Instant?): String =
     if (until == null) {
         stringResource(R.string.tracking_sheet_paused_open_ended)
     } else {

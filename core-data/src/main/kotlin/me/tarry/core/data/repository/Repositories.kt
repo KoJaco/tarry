@@ -48,6 +48,8 @@ class TrackingRepository @Inject constructor(
     suspend fun sessionsInRange(from: Long, to: Long) = sessions.getInRange(from, to)
     suspend fun openSession(): TrackingSession? = sessions.getOpenSession()
     fun observeSessions(): Flow<List<TrackingSession>> = sessions.observeAll()
+    /** Sessions overlapping `[from, to)`, live; for the day timeline's start/stop markers. */
+    fun observeSessionsOverlapping(from: Long, to: Long): Flow<List<TrackingSession>> = sessions.observeOverlapping(from, to)
 
     suspend fun savePing(ping: LocationPing): Long =
         pings.upsert(ping).let { if (it == -1L) ping.id else it }
@@ -153,6 +155,9 @@ class ScheduleRepository @Inject constructor(private val schedules: ScheduleDao)
     /** [weekStart] is the ISO date of the Monday. */
     suspend fun override(weekStart: String): Schedule? =
         schedules.getOverride(weekStart)?.let { Schedule.fromBytes(it.slots) }
+
+    fun observeOverride(weekStart: String): Flow<Schedule?> =
+        schedules.observeOverride(weekStart).map { row -> row?.let { Schedule.fromBytes(it.slots) } }
 
     suspend fun saveOverride(weekStart: String, schedule: Schedule, updatedAt: Long) =
         schedules.upsertOverride(ScheduleOverride(weekStart, schedule.toBytes(), updatedAt))

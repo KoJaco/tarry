@@ -159,6 +159,26 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun trackingMarkersFollowTheSelectedDaysSessions() = runBlocking {
+        val asked = mutableListOf<Pair<Long, Long>>()
+        val sessions = listOf(
+            me.tarry.core.data.db.entity.TrackingSession(
+                start = at(day, 7, 2), end = at(day, 17, 4), zoneId = zone.id,
+                trigger = me.tarry.core.data.model.SessionTrigger.SCHEDULE, endReason = me.tarry.core.data.model.SessionEndReason.SCHEDULE_END,
+            ),
+        )
+        val vm = TimelineViewModel(
+            timeline, places, jobs, tags, zone, { day },
+            trackingSessions = { from, to -> asked += from to to; flowOf(sessions) },
+        ).managed()
+
+        val markers = withTimeout(10_000) { vm.trackingMarkers.first { it.isNotEmpty() } }
+
+        assertThat(asked.first()).isEqualTo(dayBounds(day, zone))
+        assertThat(markers.map { it.startedMs to it.stoppedMs }).containsExactly(at(day, 7, 2) to null, null to at(day, 17, 4)).inOrder()
+    }
+
+    @Test
     fun dayMapNeverMixesTwoDaysWhenTheDateChanges() = runBlocking {
         // Each day's place and pings share one latitude, so a mixed map has pins and route at different latitudes.
         val yesterday = day.minusDays(1)
@@ -298,10 +318,28 @@ class TimelineViewModelTest {
 
     @Test
     fun itemsAreNullWhileLoadingThenEmptyListForAnEmptyDay() = runBlocking {
-        val vm = viewModel()
-        assertThat(vm.items.value).isNull()
-        val loaded = withTimeout(10_000) { vm.items.first { it != null } }
-        assertThat(loaded).isEmpty()
+        // The init collector subscribes at once, so an ungated Room query can finish before the first read. Hold every
+        // query until the null has been seen.
+        val gate = java.util.concurrent.CountDownLatch(1)
+        val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val gatedDb = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext<Context>(), TarryDatabase::class.java)
+            .setQueryExecutor { task -> pool.execute { gate.await(); task.run() } }
+            .build()
+        try {
+            val gatedTimeline = TimelineRepository(gatedDb.visitDao(), gatedDb.tripDao(), gatedDb.gapDao(), gatedDb.excludedRangeDao())
+            val vm = TimelineViewModel(gatedTimeline, places, jobs, tags, zone, { day }).managed()
+            assertThat(vm.items.value).isNull()
+            gate.countDown()
+            val loaded = withTimeout(10_000) { vm.items.first { it != null } }
+            assertThat(loaded).isEmpty()
+            registered.remove(vm)
+            store.clear()
+            withTimeout(10_000) { vm.viewModelScope.coroutineContext.job.join() }
+        } finally {
+            gate.countDown()
+            gatedDb.close()
+            pool.shutdown()
+        }
     }
 
     @Test

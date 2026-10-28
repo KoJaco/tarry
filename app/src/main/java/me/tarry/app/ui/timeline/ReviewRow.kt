@@ -106,7 +106,9 @@ private fun ViewToggle(showMap: Boolean, onChange: (Boolean) -> Unit, modifier: 
             .background(c.card)
             .selectableGroup(),
     ) {
-        listOf(false to R.string.timeline_view_day, true to R.string.timeline_view_map).forEach { (map, label) ->
+        listOf(false to (R.string.timeline_view_day to R.drawable.ic_calendar), true to (R.string.timeline_view_map to R.drawable.ic_map)).forEach { (map, labelAndIcon) ->
+            val (label, icon) = labelAndIcon
+            val description = stringResource(label)
             val selected = map == showMap
             Box(
                 modifier = Modifier
@@ -114,14 +116,16 @@ private fun ViewToggle(showMap: Boolean, onChange: (Boolean) -> Unit, modifier: 
                     .widthIn(min = MinTouch)
                     .clip(TarryTheme.shapes.pill)
                     .background(if (selected) c.ink else c.card)
+                    .semantics { contentDescription = description }
                     .selectable(selected = selected, role = Role.Tab, onClick = { onChange(map) })
                     .padding(horizontal = TarryTheme.space.m),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = stringResource(label),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (selected) c.onInk else c.ink,
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    tint = if (selected) c.onInk else c.ink,
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }

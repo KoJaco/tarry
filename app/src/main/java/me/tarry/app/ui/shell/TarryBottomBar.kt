@@ -90,6 +90,7 @@ fun TarryBottomBar(
     onSettingsClick: () -> Unit,
     onToggleClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onToggleLongClick: () -> Unit = {},
 ) {
     val colors = TarryTheme.colors
     var containerOrigin by remember { mutableStateOf<Offset?>(null) }
@@ -138,7 +139,7 @@ fun TarryBottomBar(
                 )
             }
             Slot(BottomBarTags.ToggleSlot) {
-                TrackingToggle(state = trackingState, onClick = onToggleClick)
+                TrackingToggle(state = trackingState, onClick = onToggleClick, onLongClick = onToggleLongClick)
             }
             Slot(BottomBarTags.SettingsSlot) {
                 NavItem(

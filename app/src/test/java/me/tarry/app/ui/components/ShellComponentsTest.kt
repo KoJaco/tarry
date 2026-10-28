@@ -47,7 +47,7 @@ class ShellComponentsTest {
             .fetchSemanticsNode().config[PulseRingScale].invoke()
 
     private fun assertToggle(state: TrackingState, text: String, description: String) {
-        composeRule.setContent { TrackingToggle(state = state, onClick = {}) }
+        composeRule.setContent { TrackingToggle(state = state, onClick = {}, onLongClick = {}) }
         composeRule.onNodeWithContentDescription(description).assertIsDisplayed()
             .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
         composeRule.onNodeWithText(text).assertIsDisplayed()
@@ -67,18 +67,24 @@ class ShellComponentsTest {
 
 
     @Test
-    fun toggle_tapAndLongPress_bothInvokeOnClick() {
+    fun toggle_tapInvokesOnClick_longPressInvokesOnLongClick() {
         var clicks = 0
-        composeRule.setContent { TrackingToggle(state = TrackingState.IDLE, onClick = { clicks++ }) }
+        var longClicks = 0
+        composeRule.setContent {
+            TrackingToggle(state = TrackingState.IDLE, onClick = { clicks++ }, onLongClick = { longClicks++ })
+        }
         composeRule.onNodeWithContentDescription("Tracking: off").performClick()
         assertThat(clicks).isEqualTo(1)
+        assertThat(longClicks).isEqualTo(0)
         composeRule.onNodeWithContentDescription("Tracking: off").performTouchInput { longClick() }
-        assertThat(clicks).isEqualTo(2)
+        assertThat(clicks).isEqualTo(1)
+        assertThat(longClicks).isEqualTo(1)
     }
+
     @Test
     fun toggle_pulseRing_onlyWhileTracking() {
         composeRule.mainClock.autoAdvance = false
-        composeRule.setContent { TrackingToggle(state = TrackingState.IDLE, onClick = {}) }
+        composeRule.setContent { TrackingToggle(state = TrackingState.IDLE, onClick = {}, onLongClick = {}) }
         composeRule.onNodeWithTag(PulseRingTag, useUnmergedTree = true).assertDoesNotExist()
     }
 
@@ -87,7 +93,7 @@ class ShellComponentsTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             CompositionLocalProvider(LocalMotionPreferences provides MotionPreferences { false }) {
-                TrackingToggle(state = TrackingState.TRACKING, onClick = {})
+                TrackingToggle(state = TrackingState.TRACKING, onClick = {}, onLongClick = {})
             }
         }
         composeRule.mainClock.advanceTimeBy(100)
@@ -104,7 +110,7 @@ class ShellComponentsTest {
         composeRule.mainClock.autoAdvance = false
         composeRule.setContent {
             CompositionLocalProvider(LocalMotionPreferences provides MotionPreferences { true }) {
-                TrackingToggle(state = TrackingState.TRACKING, onClick = {})
+                TrackingToggle(state = TrackingState.TRACKING, onClick = {}, onLongClick = {})
             }
         }
         assertThat(ringScale()).isEqualTo(1.15f)

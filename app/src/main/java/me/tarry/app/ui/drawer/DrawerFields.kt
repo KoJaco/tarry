@@ -22,7 +22,7 @@ private val FocusRingWidth = 2.dp
 private val FieldMinHeight = 56.dp
 
 /**
- * Tarry text input: `inset` fill, pill when single-line and `card` radius when multi-line, no underline, and a 2 dp
+ * Tarry text input: `inset` fill, `block` radius, no underline, and a 2 dp
  * `ink` ring on focus. [label] is always shown (it doubles as the accessibility label).
  */
 @Composable
@@ -37,7 +37,7 @@ internal fun InsetTextField(
     val c = TarryTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val shape = if (singleLine) TarryTheme.shapes.pill else TarryTheme.shapes.card
+    val shape = TarryTheme.shapes.block
     TextField(
         value = value,
         onValueChange = onValueChange,

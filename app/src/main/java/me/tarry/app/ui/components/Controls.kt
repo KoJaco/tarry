@@ -74,6 +74,7 @@ fun SegmentedControl(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
     val c = TarryTheme.colors
     Row(
@@ -93,7 +94,7 @@ fun SegmentedControl(
                     .heightIn(min = MinTouch)
                     .clip(TarryTheme.shapes.pill)
                     .background(if (selected) c.ink else c.card)
-                    .selectable(selected = selected, role = Role.Tab, onClick = { onSelect(index) })
+                    .selectable(selected = selected, enabled = enabled, role = Role.Tab, onClick = { onSelect(index) })
                     .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.s),
                 contentAlignment = Alignment.Center,
             ) {

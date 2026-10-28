@@ -71,6 +71,19 @@
         <item quantity="one">For %1$d hour</item>
         <item quantity="other">For %1$d hours</item>
     </plurals>
+    <string name="tracking_toggle_long_click_label">Choose how long</string>
+    <string name="custom_duration_start_title">Start tracking for…</string>
+    <string name="custom_duration_pause_title">Pause for…</string>
+    <string name="custom_duration_replace_pause_title">Pause until…</string>
+    <string name="custom_duration_hours">%1$d h</string>
+    <string name="custom_duration_minutes">%1$d min</string>
+    <string name="custom_duration_hours_minutes">%1$d h %2$d min</string>
+    <string name="custom_duration_shorter">Shorter</string>
+    <string name="custom_duration_longer">Longer</string>
+    <string name="custom_duration_start_for">Start for %1$s</string>
+    <string name="custom_duration_pause_for">Pause for %1$s</string>
+    <string name="custom_duration_until_time">Until a time…</string>
+    <string name="custom_duration_time_picker_title">Until what time?</string>
     <string name="tracking_sheet_tracking_title">Tracking</string>
     <string name="tracking_sheet_pause_30m">Pause 30 min</string>
     <string name="tracking_sheet_pause_1h">Pause 1 h</string>
@@ -209,4 +222,39 @@
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
     </plurals>
+
+    <string name="settings_schedule">Schedule</string>
+    <string name="settings_schedule_this_week_own">This week: %1$s (own schedule)</string>
+    <string name="schedule_summary_off">Off</string>
+    <string name="schedule_summary_custom">Custom</string>
+    <string name="schedule_title">Schedule</string>
+    <string name="schedule_mode_every_week">Every week</string>
+    <string name="schedule_mode_this_week">This week only</string>
+    <string name="schedule_previous_week">Previous week</string>
+    <string name="schedule_next_week">Next week</string>
+    <string name="schedule_week_range">%1$s – %2$s</string>
+    <string name="schedule_override_banner">This week uses its own schedule</string>
+    <string name="schedule_use_every_week">Use every-week schedule</string>
+    <string name="schedule_use_every_week_title">Use the every-week schedule?</string>
+    <string name="schedule_use_every_week_body">This week\'s own schedule is deleted and the every-week schedule applies again.</string>
+    <string name="schedule_template_note_override">This week has its own schedule, so changes here don\'t affect it.</string>
+    <string name="schedule_clear">Clear schedule</string>
+    <string name="schedule_save">Save</string>
+    <string name="schedule_save_failed">Couldn\'t save the schedule. Your changes are kept; try again.</string>
+    <string name="schedule_discard">Discard</string>
+    <string name="schedule_discard_title">Discard changes?</string>
+    <string name="schedule_discard_body">Your unsaved schedule changes will be lost.</string>
+    <string name="schedule_grid_description">Schedule grid, half-hour cells</string>
+    <string name="schedule_cell_description">%1$s %2$s to %3$s</string>
+    <string name="schedule_cell_on">On</string>
+    <string name="schedule_cell_off">Off</string>
+    <string name="schedule_edit_day">Edit %1$s</string>
+    <string name="schedule_today">Today</string>
+    <string name="schedule_set_hours">Set hours</string>
+    <string name="schedule_hours_start">Start</string>
+    <string name="schedule_hours_end">End</string>
+    <string name="schedule_copy_to">Copy to…</string>
+    <string name="schedule_copy_weekdays">Weekdays</string>
+    <string name="schedule_copy_apply">Copy</string>
+    <string name="schedule_clear_day">Clear day</string>
 </resources>

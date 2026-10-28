@@ -181,21 +181,21 @@ class TarryAppShellTest {
         assertToggleDescription(TrackingState.ATTENTION, "Tracking: needs attention")
 
     private fun assertToggleDescription(state: TrackingState, label: String) {
-        composeRule.setContent { TrackingToggle(state = state, onClick = {}) }
+        composeRule.setContent { TrackingToggle(state = state, onClick = {}, onLongClick = {}) }
         composeRule.onNode(hasContentDescription(label)).assertIsDisplayed()
     }
 
     @Test
     fun toggle_trackingState_hasDescription_withInfinitePulse() {
         composeRule.mainClock.autoAdvance = false
-        composeRule.setContent { TrackingToggle(state = TrackingState.TRACKING, onClick = {}) }
+        composeRule.setContent { TrackingToggle(state = TrackingState.TRACKING, onClick = {}, onLongClick = {}) }
         composeRule.mainClock.advanceTimeBy(500)
         composeRule.onNode(hasContentDescription("Tracking: on")).assertIsDisplayed()
     }
 
     @Test
     fun toggle_touchTarget_isAtLeast48dp() {
-        composeRule.setContent { TrackingToggle(state = TrackingState.IDLE, onClick = {}) }
+        composeRule.setContent { TrackingToggle(state = TrackingState.IDLE, onClick = {}, onLongClick = {}) }
         composeRule.onNodeWithContentDescription("Tracking: off")
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)

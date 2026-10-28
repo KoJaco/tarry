@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,28 +33,45 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.theme.TarryTheme
 
+private val EmptyStateMinHeight = 240.dp
 private const val PlaceholderAlpha = 0.6f
 private const val PlaceholderPulseLow = 0.35f
 
-/** A short Nunito line plus one muted sentence on what will fill the screen. No illustration. */
+/**
+ * A short Nunito line plus one muted sentence on what will fill the screen, centred in a `card` surface.
+ * No illustration.
+ */
 @Composable
 fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.fillMaxWidth().padding(TarryTheme.space.xxl),
-        verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = EmptyStateMinHeight)
+            .clip(TarryTheme.shapes.card)
+            .background(TarryTheme.colors.card)
+            .padding(TarryTheme.space.xxl),
+        contentAlignment = Alignment.Center,
     ) {
-        Text(
-            title,
-            style = MaterialTheme.typography.headlineMedium,
-            color = TarryTheme.colors.ink,
-            modifier = Modifier.semantics { heading() },
-        )
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.headlineMedium,
+                color = TarryTheme.colors.ink,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().semantics { heading() },
+            )
+            Text(body, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+        }
     }
 }
 

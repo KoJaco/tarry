@@ -90,6 +90,8 @@ fun TimelineContent(
     onShowMapChange: (Boolean) -> Unit = {},
     /** The Map tab's data; null while loading (or when the map isn't shown). */
     dayMap: DayMap? = null,
+    /** Tracking start/stop marks of the day, drawn on the canvas. */
+    trackingMarkers: List<TrackingMarker> = emptyList(),
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -200,13 +202,14 @@ fun TimelineContent(
                     val bounds = dayBounds(date, zone)
                     val fontScale = LocalDensity.current.fontScale
                     val minute = if (isToday) now / MillisPerMinute else 0L
-                    val layout = remember(items, date, zone, minute, isToday, fontScale) {
-                        layoutDay(items, bounds, zone, if (isToday) now else -1L, fontScale)
+                    val layout = remember(items, date, zone, minute, isToday, fontScale, trackingMarkers) {
+                        layoutDay(items, bounds, zone, if (isToday) now else -1L, fontScale, extraInstants = trackingMarkers.flatMap { it.ruleTimes })
                     }
                     SummaryCard(summarize(items, bounds), isToday)
                     DayCanvas(
                         layout, bounds.first, bounds.second, zone, now,
                         dimNonReview = reviewOnly,
+                        trackingMarkers = trackingMarkers,
                         onOpenVisit = { onEdit(EditTarget.Visit(it)) },
                         selectedVisitId = selectedVisit,
                         onSelectVisit = { selectedVisit = it },

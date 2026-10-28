@@ -36,11 +36,13 @@ class ScheduleInputsProvider @Inject constructor(
             schedules.override(week.toString())?.let { overrides[week] = it }
             week = week.plusWeeks(1)
         }
+        val status = statusStore.current()
         return ScheduleInputs(
             template = checkNotNull(schedules.template()) { "template was just seeded" },
             weekOverrides = overrides,
             manualOverrides = trackingRepo.overridesInRange(lo.toEpochMilli(), hi.toEpochMilli()),
-            testWindowStartMs = statusStore.current().debugTestWindowStartMs,
+            testWindowStartMs = status.debugTestWindowStartMs,
+            edits = status.scheduleEdits,
         )
     }
 
