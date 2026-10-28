@@ -12,7 +12,7 @@ import java.util.UUID
 
 @Entity(
     tableName = "visit",
-    indices = [Index("start"), Index("placeId"), Index("jobId")],
+    indices = [Index("start"), Index("placeId")],
 )
 data class Visit(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
@@ -20,9 +20,7 @@ data class Visit(
     val start: Long,
     val end: Long,
     val zoneId: String,
-    val jobId: String? = null,
     @ColumnInfo(defaultValue = "") val freeNotes: String = "",
-    val billable: Boolean? = null,
     @ColumnInfo(defaultValue = "0") val frozen: Boolean = false,
     val origin: VisitOrigin,
     val confidence: Float,
@@ -40,35 +38,32 @@ data class Trip(
     val toVisitId: String? = null,
     val distanceM: Float,
     val mode: TripMode,
-    val billable: Boolean? = null,
-    val attributedJobId: String? = null,
     @ColumnInfo(defaultValue = "") val freeNotes: String = "",
     @ColumnInfo(defaultValue = "0") val frozen: Boolean = false,
     val updatedAt: Long,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )
 
+/**
+ * A span of time worked on a job, independent of the visits and trips it covers. [start]/[end] are UTC epoch ms,
+ * [zoneId] the capture time zone. Soft-deleted via [deleted]; the cascade only matters if a job row is ever hard-deleted.
+ */
 @Entity(
-    tableName = "visit_tag",
-    primaryKeys = ["visitId", "tagId"],
-    foreignKeys = [
-        ForeignKey(Visit::class, ["id"], ["visitId"], onDelete = ForeignKey.CASCADE),
-        ForeignKey(Tag::class, ["id"], ["tagId"], onDelete = ForeignKey.CASCADE),
-    ],
-    indices = [Index("tagId")],
+    tableName = "job_block",
+    foreignKeys = [ForeignKey(Job::class, ["id"], ["jobId"], onDelete = ForeignKey.CASCADE)],
+    indices = [Index("start"), Index("jobId")],
 )
-data class VisitTag(val visitId: String, val tagId: String)
-
-@Entity(
-    tableName = "trip_tag",
-    primaryKeys = ["tripId", "tagId"],
-    foreignKeys = [
-        ForeignKey(Trip::class, ["id"], ["tripId"], onDelete = ForeignKey.CASCADE),
-        ForeignKey(Tag::class, ["id"], ["tagId"], onDelete = ForeignKey.CASCADE),
-    ],
-    indices = [Index("tagId")],
+data class JobBlock(
+    @PrimaryKey val id: String = UUID.randomUUID().toString(),
+    val jobId: String,
+    val start: Long,
+    val end: Long,
+    val zoneId: String,
+    val billable: Boolean,
+    val notes: String? = null,
+    val updatedAt: Long,
+    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )
-data class TripTag(val tripId: String, val tagId: String)
 
 @Entity(tableName = "excluded_range", indices = [Index("start")])
 data class ExcludedRange(

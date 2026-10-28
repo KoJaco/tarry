@@ -6,20 +6,14 @@ import me.tarry.core.data.db.dao.ExcludedRangeDao
 import me.tarry.core.data.db.dao.JobDao
 import me.tarry.core.data.db.dao.PlaceDao
 import me.tarry.core.data.db.dao.SegmentationCheckpointDao
-import me.tarry.core.data.db.dao.TagDao
 import me.tarry.core.data.db.dao.TripDao
 import me.tarry.core.data.db.dao.VisitDao
 import me.tarry.core.data.db.entity.ExcludedRange
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.Job
-import me.tarry.core.data.db.entity.PlaceDefaultTag
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.Trip
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.segmentation.geo.haversineMeters
 import java.time.ZoneId
@@ -54,44 +48,28 @@ enum class MergeDirection { PREVIOUS, NEXT }
 
 /** An annotation change that can be applied to one item or, via [TimelineEditor.bulk], to many in one transaction. */
 sealed interface AnnotationOp {
-    data class SetJob(val jobId: String?) : AnnotationOp
-    data class SetBillable(val billable: Boolean?) : AnnotationOp
     data class SetNotes(val notes: String) : AnnotationOp
 
-    /** Replaces the item's tags. */
-    data class SetTags(val tagIds: Set<String>) : AnnotationOp
 
-    /** Adds to the item's tags, keeping the existing ones. */
-    data class AddTags(val tagIds: Set<String>) : AnnotationOp
-
-    /** Trips only (visits are skipped): the job the trip is attributed to, or null for unattributed. */
-    data class SetAttribution(val jobId: String?) : AnnotationOp
 
     /** Sets `Place.ignored` on the place of each visit (trips are skipped). Does not freeze the visit. */
     data class IgnorePlace(val ignored: Boolean = true) : AnnotationOp
 }
 
 /**
- * In-memory undo token: the rows (and their tags) as they were before an edit. Never persisted. [range] is the
+ * In-memory undo token: the rows as they were before an edit. Never persisted. [range] is the
  * affected span for structural edits (null for bulk annotations, which restore by id only).
  */
 data class Snapshot(
     val range: LongRange?,
     val visits: List<Visit>,
-    val visitTags: List<VisitTag>,
     val trips: List<Trip>,
-    val tripTags: List<TripTag>,
     val exclusions: List<ExcludedRange>,
     val places: List<Place> = emptyList(),
     /** Ids a [CatalogEditor] archive hid; restore only clears `archived` (and bumps `updatedAt`) on the ones still live, never resurrecting a deleted row or reverting a rename. */
     val archivedJobIds: List<String> = emptyList(),
-    val archivedTagIds: List<String> = emptyList(),
-    /** The default-tag links a tag archive removed; restore re-inserts just these, and only while both the place and the tag are live. */
-    val placeDefaultTags: List<PlaceDefaultTag> = emptyList(),
     /** placeId to the default job a job archive cleared; restore sets only that column, and only while the place is live, still has no default and the job is live. */
     val placeDefaultJobs: Map<String, String> = emptyMap(),
-    /** placeId to its exact default-tag set before a place merge; restore replaces the place's links with these (live tags only). */
-    val replaceDefaultTags: Map<String, List<PlaceDefaultTag>> = emptyMap(),
     /** Places the edit created (a manual visit at a new map pin); restore soft-deletes each one that no live visit uses any more. */
     val createdPlaceIds: List<String> = emptyList(),
 )
@@ -108,7 +86,7 @@ data class MergePreview(val radiusM: Float, val capped: Boolean)
 
 sealed interface EditResult {
     /**
-     * [undo] is set for structural edits and bulk; [id] is the created row for split (second half), createManual, createJob, createTag.
+     * [undo] is set for structural edits and bulk; [id] is the created row for split (second half), createManual, createJob.
      * [capped] is set by mergePlaces when the target's circle could not grow to cover the source (radius clipped at the max).
      */
     data class Ok(val undo: Snapshot? = null, val id: String? = null, val capped: Boolean = false) : EditResult
@@ -119,13 +97,13 @@ sealed interface EditResult {
     /** Zero or negative duration, or a split point outside the visit. */
     data object EmptyRange : EditResult
 
-    /** A referenced visit, trip, place, job, tag, group or neighbour does not exist (or is deleted). */
+    /** A referenced visit, trip, place, job or neighbour does not exist (or is deleted). */
     data object NotFound : EditResult
 
     /** A name that is blank after trimming. */
     data object BlankName : EditResult
 
-    /** A catalog row cannot be deleted because [count] live visits, trips, places or tags still use it. */
+    /** A catalog row cannot be deleted because [count] live job blocks or places still use it. */
     data class InUse(val count: Int) : EditResult
 }
 
@@ -143,26 +121,13 @@ class TimelineEditor @Inject constructor(
     private val excluded: ExcludedRangeDao,
     private val places: PlaceDao,
     private val jobs: JobDao,
-    private val tags: TagDao,
     private val checkpoints: SegmentationCheckpointDao,
     private val clock: EditClock,
     private val rewindFloor: RewindFloor = RewindFloor { 0L },
 ) {
     // region annotations
 
-    suspend fun setJob(ref: ItemRef, jobId: String?): EditResult = annotate(listOf(ref), AnnotationOp.SetJob(jobId), snapshot = false)
-
-    suspend fun setBillable(ref: ItemRef, billable: Boolean?): EditResult =
-        annotate(listOf(ref), AnnotationOp.SetBillable(billable), snapshot = false)
-
     suspend fun setNotes(ref: ItemRef, notes: String): EditResult = annotate(listOf(ref), AnnotationOp.SetNotes(notes), snapshot = false)
-
-    suspend fun setTags(ref: ItemRef, tagIds: Set<String>): EditResult =
-        annotate(listOf(ref), AnnotationOp.SetTags(tagIds), snapshot = false)
-
-    /** Trips only. [jobId] null means unattributed. */
-    suspend fun setAttribution(tripId: String, jobId: String?): EditResult =
-        annotate(listOf(ItemRef.trip(tripId)), AnnotationOp.SetAttribution(jobId), snapshot = false)
 
     /** One transaction, one undo [Snapshot], for any [AnnotationOp] over many items. Nothing is written if any item is missing. */
     suspend fun bulk(items: List<ItemRef>, op: AnnotationOp): EditResult = annotate(items, op, snapshot = true)
@@ -177,56 +142,16 @@ class TimelineEditor @Inject constructor(
             emptyList()
         }
         val undo = if (snapshot) {
-            Snapshot(
-                range = null,
-                visits = visitRows, visitTags = visitRows.flatMap { visits.getTags(it.id) },
-                trips = tripRows, tripTags = tripRows.flatMap { trips.getTags(it.id) },
-                exclusions = emptyList(), places = placeRows,
-            )
+            Snapshot(range = null, visits = visitRows, trips = tripRows, exclusions = emptyList(), places = placeRows)
         } else {
             null
         }
         val now = clock.nowMs()
         when (op) {
             is AnnotationOp.IgnorePlace -> placeRows.forEach { places.upsert(it.copy(ignored = op.ignored, updatedAt = now)) }
-            is AnnotationOp.SetAttribution -> tripRows.forEach { trips.upsert(it.copy(attributedJobId = op.jobId, frozen = true, updatedAt = now)) }
-            else -> {
-                visitRows.forEach { v ->
-                    visits.upsert(
-                        when (op) {
-                            is AnnotationOp.SetJob -> v.copy(jobId = op.jobId)
-                            is AnnotationOp.SetBillable -> v.copy(billable = op.billable)
-                            is AnnotationOp.SetNotes -> v.copy(freeNotes = op.notes)
-                            else -> v
-                        }.copy(frozen = true, updatedAt = now),
-                    )
-                    when (op) {
-                        is AnnotationOp.SetTags -> {
-                            visits.deleteAllTags(v.id)
-                            op.tagIds.forEach { visits.upsertTag(VisitTag(v.id, it)) }
-                        }
-                        is AnnotationOp.AddTags -> op.tagIds.forEach { visits.upsertTag(VisitTag(v.id, it)) }
-                        else -> Unit
-                    }
-                }
-                tripRows.forEach { t ->
-                    trips.upsert(
-                        when (op) {
-                            is AnnotationOp.SetJob -> t.copy(attributedJobId = op.jobId)
-                            is AnnotationOp.SetBillable -> t.copy(billable = op.billable)
-                            is AnnotationOp.SetNotes -> t.copy(freeNotes = op.notes)
-                            else -> t
-                        }.copy(frozen = true, updatedAt = now),
-                    )
-                    when (op) {
-                        is AnnotationOp.SetTags -> {
-                            trips.deleteAllTags(t.id)
-                            op.tagIds.forEach { trips.upsertTag(TripTag(t.id, it)) }
-                        }
-                        is AnnotationOp.AddTags -> op.tagIds.forEach { trips.upsertTag(TripTag(t.id, it)) }
-                        else -> Unit
-                    }
-                }
+            is AnnotationOp.SetNotes -> {
+                visitRows.forEach { visits.upsert(it.copy(freeNotes = op.notes, frozen = true, updatedAt = now)) }
+                tripRows.forEach { trips.upsert(it.copy(freeNotes = op.notes, frozen = true, updatedAt = now)) }
             }
         }
         EditResult.Ok(undo)
@@ -240,17 +165,15 @@ class TimelineEditor @Inject constructor(
     suspend fun setPlaceIgnored(placeId: String, ignored: Boolean): EditResult = db.withTransaction {
         val place = livePlace(placeId) ?: return@withTransaction EditResult.NotFound
         if (place.ignored == ignored) return@withTransaction EditResult.Ok()
-        val undo = Snapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList(), places = listOf(place))
+        val undo = Snapshot(null, emptyList(), emptyList(), emptyList(), places = listOf(place))
         places.upsert(place.copy(ignored = ignored, updatedAt = clock.nowMs()))
         EditResult.Ok(undo)
     }
 
-    /** Writes the place's defaults (replacing the previous ones). Applies to future visits only. */
-    suspend fun setPlaceDefault(placeId: String, jobId: String?, billable: Boolean?, tagIds: Set<String>): EditResult = db.withTransaction {
+    /** Writes the place's default job (null clears it). Applies to future suggestions only. */
+    suspend fun setPlaceDefault(placeId: String, jobId: String?): EditResult = db.withTransaction {
         val place = places.getById(placeId)?.takeUnless { it.deleted } ?: return@withTransaction EditResult.NotFound
-        places.upsert(place.copy(defaultJobId = jobId, defaultBillable = billable, updatedAt = clock.nowMs()))
-        places.getDefaultTags(placeId).forEach { places.deleteDefaultTag(placeId, it.tagId) }
-        tagIds.forEach { places.upsertDefaultTag(PlaceDefaultTag(placeId, it)) }
+        places.upsert(place.copy(defaultJobId = jobId, updatedAt = clock.nowMs()))
         EditResult.Ok()
     }
 
@@ -273,21 +196,6 @@ class TimelineEditor @Inject constructor(
         val job = Job(name = trimmed, colorArgb = color, updatedAt = clock.nowMs())
         jobs.upsert(job)
         EditResult.Ok(id = job.id)
-    }
-
-    /** Creates a tag at the end of [groupId], or of the first group (creating a "Tags" group if there are none) when null. */
-    suspend fun createTag(name: String, groupId: String? = null): EditResult = db.withTransaction {
-        val trimmed = name.trim()
-        if (trimmed.isEmpty()) return@withTransaction EditResult.BlankName
-        val now = clock.nowMs()
-        val group = if (groupId != null) {
-            tags.getGroupById(groupId)?.takeUnless { it.deleted } ?: return@withTransaction EditResult.NotFound
-        } else {
-            tags.getGroups().firstOrNull() ?: TagGroup(name = "Tags", colorArgb = 0, sortOrder = 0, updatedAt = now).also { tags.upsertGroup(it) }
-        }
-        val tag = Tag(groupId = group.id, name = trimmed, sortOrder = tags.getByGroup(group.id).size, updatedAt = now)
-        tags.upsert(tag)
-        EditResult.Ok(id = tag.id)
     }
 
     // endregion
@@ -353,7 +261,6 @@ class TimelineEditor @Inject constructor(
         val second = v.copy(id = UUID.randomUUID().toString(), start = at)
         visits.upsert(v.copy(end = at, frozen = true, origin = VisitOrigin.SPLIT, updatedAt = now))
         visits.upsert(second.copy(frozen = true, origin = VisitOrigin.SPLIT, updatedAt = now))
-        visits.getTags(v.id).forEach { visits.upsertTag(VisitTag(second.id, it.tagId)) }
         unfreezeTripsOver(v.start, v.end)
         rewindCheckpoint(v.start)
         EditResult.Ok(undo, id = second.id)
@@ -361,8 +268,8 @@ class TimelineEditor @Inject constructor(
 
     /**
      * Merges the visit with its neighbouring live visit into one frozen [VisitOrigin.MERGED] visit spanning both (and
-     * the time between). The earlier visit's row is kept: its job (else the later one's), billable and notes (joined),
-     * the union of tags, and the place of the longer visit. [EditResult.NotFound] when there is no neighbour.
+     * the time between). The earlier visit's row is kept: its notes (joined)
+     * and the place of the longer visit. [EditResult.NotFound] when there is no neighbour.
      */
     suspend fun merge(visitId: String, direction: MergeDirection): EditResult = db.withTransaction {
         val v = liveVisit(visitId) ?: return@withTransaction EditResult.NotFound
@@ -374,17 +281,14 @@ class TimelineEditor @Inject constructor(
         val undo = snapshotRange(a.start, b.end)
         val now = clock.nowMs()
         val longer = if (b.end - b.start > a.end - a.start) b else a
-        val tagIds = (visits.getTags(a.id) + visits.getTags(b.id)).map { it.tagId }.toSet()
         visits.upsert(
             a.copy(
-                end = b.end, placeId = longer.placeId, jobId = a.jobId ?: b.jobId, billable = a.billable ?: b.billable,
+                end = b.end, placeId = longer.placeId,
                 freeNotes = listOf(a.freeNotes, b.freeNotes).filter { it.isNotBlank() }.joinToString("\n"),
                 frozen = true, origin = VisitOrigin.MERGED, confidence = maxOf(a.confidence, b.confidence), updatedAt = now,
             ),
         )
         visits.upsert(b.copy(deleted = true, updatedAt = now))
-        visits.deleteAllTags(a.id)
-        tagIds.forEach { visits.upsertTag(VisitTag(a.id, it)) }
         unfreezeTripsOver(a.start, b.end)
         rewindCheckpoint(a.start)
         EditResult.Ok(undo, id = a.id)
@@ -446,15 +350,14 @@ class TimelineEditor @Inject constructor(
     }
 
     /**
-     * Clears job, billable, notes and tags, unfreezes, and soft-deletes the exclusions inside the visit's span, so the
+     * Clears notes, unfreezes, and soft-deletes the exclusions inside the visit's span, so the
      * next segmentation run owns it again.
      */
     suspend fun resetToDetected(visitId: String): EditResult = db.withTransaction {
         val v = liveVisit(visitId) ?: return@withTransaction EditResult.NotFound
         val undo = snapshotRange(v.start, v.end)
         val now = clock.nowMs()
-        visits.upsert(v.copy(jobId = null, billable = null, freeNotes = "", frozen = false, updatedAt = now))
-        visits.deleteAllTags(v.id)
+        visits.upsert(v.copy(freeNotes = "", frozen = false, updatedAt = now))
         excluded.getInRange(v.start, v.end).filter { it.start >= v.start && it.end <= v.end }
             .forEach { excluded.upsert(it.copy(deleted = true, updatedAt = now)) }
         rewindCheckpoint(v.start)
@@ -466,7 +369,7 @@ class TimelineEditor @Inject constructor(
     // region undo
 
     /**
-     * Puts back the rows in [snapshot] exactly as they were (tags included). For a structural edit it also soft-deletes
+     * Puts back the rows in [snapshot] exactly as they were. For a structural edit it also soft-deletes
      * live visits, trips and exclusions in the affected range that are not in the snapshot (rows the edit or a later
      * segmentation run created), and rewinds the checkpoint so segmentation re-checks the range.
      */
@@ -483,31 +386,13 @@ class TimelineEditor @Inject constructor(
             excluded.getInRange(from, to).filter { it.id !in keepExclusions }.forEach { excluded.upsert(it.copy(deleted = true, updatedAt = now)) }
         }
         snapshot.places.forEach { places.upsert(it) }
-        snapshot.replaceDefaultTags.forEach { (placeId, links) ->
-            places.deleteAllDefaultTags(placeId)
-            links.forEach { if (tags.getById(it.tagId)?.deleted == false) places.upsertDefaultTag(it) }
-        }
         // Catalog undo is targeted: it reverses only what the archive did, so edits made since (renames, new defaults) survive.
         snapshot.archivedJobIds.forEach { jobs.unarchive(it, now) }
         snapshot.placeDefaultJobs.forEach { (placeId, jobId) ->
             if (jobs.getById(jobId)?.deleted == false) places.restoreDefaultJob(placeId, jobId, now)
         }
-        snapshot.archivedTagIds.forEach { tags.unarchive(it, now) }
-        snapshot.placeDefaultTags.forEach { link ->
-            val placeLive = places.getById(link.placeId)?.deleted == false
-            val tagLive = tags.getById(link.tagId)?.deleted == false
-            if (placeLive && tagLive) places.upsertDefaultTag(link)
-        }
-        snapshot.visits.forEach { v ->
-            visits.upsert(v)
-            visits.deleteAllTags(v.id)
-            snapshot.visitTags.filter { it.visitId == v.id }.forEach { visits.upsertTag(it) }
-        }
-        snapshot.trips.forEach { t ->
-            trips.upsert(t)
-            trips.deleteAllTags(t.id)
-            snapshot.tripTags.filter { it.tripId == t.id }.forEach { trips.upsertTag(it) }
-        }
+        snapshot.visits.forEach { visits.upsert(it) }
+        snapshot.trips.forEach { trips.upsert(it) }
         snapshot.exclusions.forEach { excluded.upsert(it) }
         snapshot.createdPlaceIds.forEach { id ->
             val created = livePlace(id)
@@ -533,8 +418,8 @@ class TimelineEditor @Inject constructor(
         val ts = trips.getInRange(from - PAD_MS, to + PAD_MS)
         return Snapshot(
             range = from..to,
-            visits = vs, visitTags = vs.flatMap { visits.getTags(it.id) },
-            trips = ts, tripTags = ts.flatMap { trips.getTags(it.id) },
+            visits = vs,
+            trips = ts,
             exclusions = excluded.getInRange(from - PAD_MS, to + PAD_MS),
         )
     }
@@ -591,7 +476,7 @@ class TimelineEditor @Inject constructor(
     /**
      * Merges [sourceId] into [targetId]. The target's centroid becomes the duration-weighted mean and its circle grows to cover
      * both (never below its own radius, capped at [PlaceLimits.RADIUS_MAX_M]; [EditResult.Ok.capped] says the cap clipped it).
-     * Empty target fields are filled from the source (default tags too, as a set); `ignored` stays the target's. Every
+     * Empty target fields are filled from the source ; `ignored` stays the target's. Every
      * visit at the source, frozen included, moves to the target (only placeId and updatedAt change). The source becomes a deleted
      * tombstone with `mergedIntoId` set, and places merged into it point at the target.
      */
@@ -601,24 +486,18 @@ class TimelineEditor @Inject constructor(
         val now = clock.nowMs()
         val chain = places.getMergedInto(source.id)
         val sourceVisits = visits.getLiveByPlace(source.id)
-        val targetTags = places.getDefaultTags(target.id)
         val from = visits.earliestUnfrozenStart(listOf(source.id, target.id))
-        val undo = placeSnapshot(
-            from, now, listOf(source, target) + chain, extraVisits = sourceVisits,
-            replaceDefaultTags = mapOf(target.id to targetTags),
-        )
+        val undo = placeSnapshot(from, now, listOf(source, target) + chain, extraVisits = sourceVisits)
         places.upsert(
             target.copy(
                 centroidLat = calc.lat, centroidLng = calc.lng, radiusM = calc.radiusM,
                 name = target.name?.takeIf { it.isNotBlank() } ?: source.name?.takeIf { it.isNotBlank() },
                 address = target.address?.takeIf { it.isNotBlank() } ?: source.address?.takeIf { it.isNotBlank() } ?: target.address,
                 defaultJobId = target.defaultJobId ?: source.defaultJobId,
-                defaultBillable = target.defaultBillable ?: source.defaultBillable,
                 lastVisitAt = listOfNotNull(target.lastVisitAt, source.lastVisitAt).maxOrNull(),
                 updatedAt = now,
             ),
         )
-        if (targetTags.isEmpty()) places.getDefaultTags(source.id).forEach { places.upsertDefaultTag(PlaceDefaultTag(target.id, it.tagId)) }
         visits.repointPlace(source.id, target.id, now)
         places.repointMerged(source.id, target.id, now)
         places.upsert(source.copy(deleted = true, mergedIntoId = target.id, updatedAt = now))
@@ -681,18 +560,17 @@ class TimelineEditor @Inject constructor(
         now: Long,
         placeRows: List<Place>,
         extraVisits: List<Visit> = emptyList(),
-        replaceDefaultTags: Map<String, List<PlaceDefaultTag>> = emptyMap(),
     ): Snapshot {
         val base = if (from != null) {
             snapshotRange(from, maxOf(now, from))
         } else {
-            Snapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), emptyList())
+            Snapshot(null, emptyList(), emptyList(), emptyList())
         }
         val known = base.visits.map { it.id }.toSet()
         val extra = extraVisits.filter { it.id !in known }
         return base.copy(
-            visits = base.visits + extra, visitTags = base.visitTags + extra.flatMap { visits.getTags(it.id) },
-            places = placeRows, replaceDefaultTags = replaceDefaultTags,
+            visits = base.visits + extra,
+            places = placeRows,
         )
     }
 

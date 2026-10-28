@@ -4,13 +4,13 @@ import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import me.tarry.core.data.db.entity.Gap
+import me.tarry.core.data.db.entity.Job
+import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.dao.PingPosition
 import me.tarry.core.data.db.entity.LocationPing
-import me.tarry.core.data.db.entity.Tag
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Trip
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.PingSource
 import me.tarry.core.data.model.SessionTrigger
@@ -148,18 +148,17 @@ class RangeQueryAndCascadeTest : DbTestBase() {
         ).inOrder()
     }
 
+
     @Test
-    fun hardDeletingVisit_cascadesToVisitTags_butKeepsTag() = runTest {
-        db.visitDao().upsert(visit("v1", 1, 2))
-        db.visitDao().upsert(visit("v2", 1, 2))
-        db.tagDao().upsert(Tag(id = "t1", groupId = "g", name = "x", sortOrder = 0, updatedAt = 0))
-        db.visitDao().upsertTag(VisitTag("v1", "t1"))
-        db.visitDao().upsertTag(VisitTag("v2", "t1"))
+    fun hardDeletingJob_cascadesToItsBlocks_butKeepsOthers() = runTest {
+        db.jobDao().upsert(Job(id = "j1", name = "A", colorArgb = 1, updatedAt = 0))
+        db.jobDao().upsert(Job(id = "j2", name = "B", colorArgb = 2, updatedAt = 0))
+        db.jobBlockDao().upsert(JobBlock(id = "b1", jobId = "j1", start = 1, end = 2, zoneId = "UTC", billable = true, updatedAt = 0))
+        db.jobBlockDao().upsert(JobBlock(id = "b2", jobId = "j2", start = 1, end = 2, zoneId = "UTC", billable = true, updatedAt = 0))
 
-        db.openHelper.writableDatabase.execSQL("DELETE FROM visit WHERE id = 'v1'")
+        db.openHelper.writableDatabase.execSQL("DELETE FROM job WHERE id = 'j1'")
 
-        assertThat(db.visitDao().getTags("v1")).isEmpty()
-        assertThat(db.visitDao().getTags("v2")).hasSize(1)
-        assertThat(db.tagDao().getById("t1")).isNotNull()
+        assertThat(db.jobBlockDao().getById("b1")).isNull()
+        assertThat(db.jobBlockDao().getById("b2")).isNotNull()
     }
 }

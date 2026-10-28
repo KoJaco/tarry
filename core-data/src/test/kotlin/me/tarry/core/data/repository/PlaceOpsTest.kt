@@ -6,10 +6,7 @@ import kotlinx.coroutines.test.runTest
 import me.tarry.core.data.db.DbTestBase
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.PlaceDefaultTag
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.VisitOrigin
 import org.junit.Before
@@ -36,7 +33,7 @@ class PlaceOpsTest : DbTestBase() {
     @Before
     fun setUp() {
         editor = TimelineEditor(
-            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
             db.segmentationCheckpointDao(), EditClock { now },
         )
     }
@@ -44,8 +41,8 @@ class PlaceOpsTest : DbTestBase() {
     private fun place(id: String, northM: Double = 0.0, radius: Float = 75f, name: String? = null, lastVisitAt: Long? = null) =
         Place(id = id, centroidLat = lat(northM), centroidLng = baseLng, radiusM = radius, name = name, lastVisitAt = lastVisitAt, updatedAt = 1)
 
-    private fun visit(id: String, startMin: Int, endMin: Int, placeId: String?, frozen: Boolean = false, jobId: String? = null) = Visit(
-        id = id, placeId = placeId, start = t0 + startMin * min, end = t0 + endMin * min, zoneId = "UTC", jobId = jobId,
+    private fun visit(id: String, startMin: Int, endMin: Int, placeId: String?, frozen: Boolean = false) = Visit(
+        id = id, placeId = placeId, start = t0 + startMin * min, end = t0 + endMin * min, zoneId = "UTC",
         frozen = frozen, origin = VisitOrigin.DETECTED, confidence = 0.8f, updatedAt = 1,
     )
 
@@ -56,14 +53,11 @@ class PlaceOpsTest : DbTestBase() {
     private suspend fun visitById(id: String) = db.visitDao().getById(id)!!
     private suspend fun placeById(id: String) = db.placeDao().getById(id)!!
 
-    private data class State(val places: List<Place>, val visits: List<Visit>, val tags: Map<String, Set<String>>)
+    private data class State(val places: List<Place>, val visits: List<Visit>)
 
     private suspend fun state(): State {
         val ps = db.placeDao().observeLabels().first().sortedBy { it.id }
-        return State(
-            ps, db.visitDao().getInRange(0, Long.MAX_VALUE),
-            ps.associate { it.id to db.placeDao().getDefaultTags(it.id).map { l -> l.tagId }.toSet() },
-        )
+        return State(ps, db.visitDao().getInRange(0, Long.MAX_VALUE))
     }
 
     private suspend fun undoOf(result: EditResult): Snapshot = (result as EditResult.Ok).undo!!
@@ -105,7 +99,7 @@ class PlaceOpsTest : DbTestBase() {
 
     @Test
     fun radiusNeverChangesAFrozenVisitAndRewindsToTheEarliestUnfrozenOne() = runTest {
-        save(place("p"), visit("frozen", 0, 60, "p", frozen = true, jobId = null), visit("live", 100, 160, "p"))
+        save(place("p"), visit("frozen", 0, 60, "p", frozen = true), visit("live", 100, 160, "p"))
         setCheckpoint(t0 + 500 * min)
         val frozenBefore = visitById("frozen")
 
@@ -161,7 +155,7 @@ class PlaceOpsTest : DbTestBase() {
             place("s", northM = 0.0, lastVisitAt = t0 + 500 * min), place("t", northM = 50.0, lastVisitAt = t0 + 100 * min),
             place("old", northM = 10.0).copy(deleted = true, mergedIntoId = "s"),
         )
-        save(visit("sf", 0, 30, "s", frozen = true, jobId = "j"), visit("su", 40, 80, "s"), visit("tv", 100, 160, "t"))
+        save(visit("sf", 0, 30, "s", frozen = true), visit("su", 40, 80, "s"), visit("tv", 100, 160, "t"))
         val frozenBefore = visitById("sf")
         setCheckpoint(t0 + 900 * min)
 
@@ -181,44 +175,25 @@ class PlaceOpsTest : DbTestBase() {
     @Test
     fun mergeFillsTheTargetsGapsFromTheSourceAndKeepsItsOwnValues() = runTest {
         db.jobDao().upsert(Job(id = "j", name = "J", colorArgb = 1, updatedAt = 1))
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 1))
-        db.tagDao().upsert(Tag(id = "t1", groupId = "g", name = "t1", sortOrder = 0, updatedAt = 1))
         save(
-            place("s", name = "Source").copy(address = "1 Main St", defaultJobId = "j", defaultBillable = true, ignored = true),
+            place("s", name = "Source").copy(address = "1 Main St", defaultJobId = "j", ignored = true),
             place("t", northM = 10.0, name = " ").copy(address = "", ignored = false),
-            place("t2", northM = 10.0, name = "Mine").copy(address = "Mine St", defaultBillable = false, ignored = false),
+            place("t2", northM = 10.0, name = "Mine").copy(address = "Mine St", ignored = false),
         )
-        db.placeDao().upsertDefaultTag(PlaceDefaultTag("s", "t1"))
 
         editor.mergePlaces("s", "t")
         val t = placeById("t")
         assertThat(t.name).isEqualTo("Source")
         assertThat(t.address).isEqualTo("1 Main St")
         assertThat(t.defaultJobId).isEqualTo("j")
-        assertThat(t.defaultBillable).isTrue()
         assertThat(t.ignored).isFalse() // the target's, not the source's
-        assertThat(db.placeDao().getDefaultTags("t").map { it.tagId }).containsExactly("t1")
 
-        save(place("s2", name = "Other").copy(defaultBillable = true, defaultJobId = "j"))
+        save(place("s2", name = "Other").copy(defaultJobId = "j"))
         editor.mergePlaces("s2", "t2")
         val t2 = placeById("t2")
         assertThat(t2.name).isEqualTo("Mine")
         assertThat(t2.address).isEqualTo("Mine St")
-        assertThat(t2.defaultBillable).isFalse()
         assertThat(t2.defaultJobId).isEqualTo("j")
-    }
-
-    @Test
-    fun mergeKeepsTheTargetsDefaultTagsWhenItHasAny() = runTest {
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 1))
-        for (id in listOf("a", "b")) db.tagDao().upsert(Tag(id = id, groupId = "g", name = id, sortOrder = 0, updatedAt = 1))
-        save(place("s"), place("t"))
-        db.placeDao().upsertDefaultTag(PlaceDefaultTag("s", "a"))
-        db.placeDao().upsertDefaultTag(PlaceDefaultTag("t", "b"))
-
-        editor.mergePlaces("s", "t")
-
-        assertThat(db.placeDao().getDefaultTags("t").map { it.tagId }).containsExactly("b")
     }
 
     @Test
@@ -280,13 +255,10 @@ class PlaceOpsTest : DbTestBase() {
 
     @Test
     fun mergeUndoIsExactEvenAfterARerunAndWithFrozenVisitsBeforeTheRewindRange() = runTest {
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 1))
-        db.tagDao().upsert(Tag(id = "t1", groupId = "g", name = "t1", sortOrder = 0, updatedAt = 1))
         save(
             place("s", name = "S"), place("t", northM = 100.0), place("old", northM = 5.0).copy(deleted = true, mergedIntoId = "s"),
             place("other", northM = 30_000.0),
         )
-        db.placeDao().upsertDefaultTag(PlaceDefaultTag("s", "t1"))
         // The frozen source visit is long before the earliest unfrozen one, outside the rewind range.
         save(visit("sf", 0, 20, "s", frozen = true), visit("su", 200, 260, "s"), visit("tv", 300, 360, "t"))
         setCheckpoint(t0 + 900 * min)
@@ -384,7 +356,7 @@ class PlaceOpsTest : DbTestBase() {
     fun rewindNeverGoesEarlierThanTheRetentionFloor() = runTest {
         val floor = t0 + 60 * min
         val clamped = TimelineEditor(
-            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
             db.segmentationCheckpointDao(), EditClock { now }, RewindFloor { floor },
         )
         save(place("p"), visit("old", 0, 30, "p"), visit("recent", 100, 160, "p"))

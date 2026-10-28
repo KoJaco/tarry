@@ -6,9 +6,6 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.PlaceDefaultTag
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 
 @Dao
 interface JobDao {
@@ -26,14 +23,6 @@ interface JobDao {
 
     @Query("SELECT * FROM job WHERE deleted = 0")
     suspend fun getAllActive(): List<Job>
-
-    /** Live visits that use the job. */
-    @Query("SELECT COUNT(*) FROM visit WHERE jobId = :jobId AND deleted = 0")
-    suspend fun countVisits(jobId: String): Int
-
-    /** Live trips attributed to the job. */
-    @Query("SELECT COUNT(*) FROM trip WHERE attributedJobId = :jobId AND deleted = 0")
-    suspend fun countTrips(jobId: String): Int
 }
 
 @Dao
@@ -64,13 +53,6 @@ interface PlaceDao {
     @Query("UPDATE place SET address = :address, updatedAt = :updatedAt WHERE id = :id AND address IS NULL")
     suspend fun setAddressIfMissing(id: String, address: String, updatedAt: Long): Int
 
-    @Upsert suspend fun upsertDefaultTag(link: PlaceDefaultTag)
-
-    @Query("DELETE FROM place_default_tag WHERE placeId = :placeId AND tagId = :tagId")
-    suspend fun deleteDefaultTag(placeId: String, tagId: String)
-
-    @Query("SELECT * FROM place_default_tag WHERE placeId = :placeId")
-    suspend fun getDefaultTags(placeId: String): List<PlaceDefaultTag>
 
     /** Live places whose default job is [jobId]. */
     @Query("SELECT * FROM place WHERE deleted = 0 AND defaultJobId = :jobId")
@@ -84,12 +66,6 @@ interface PlaceDao {
     @Query("UPDATE place SET defaultJobId = :jobId, updatedAt = :updatedAt WHERE id = :id AND deleted = 0 AND defaultJobId IS NULL")
     suspend fun restoreDefaultJob(id: String, jobId: String, updatedAt: Long)
 
-    /** Default-tag links of live places that carry [tagId]. */
-    @Query("SELECT pdt.* FROM place_default_tag pdt JOIN place p ON p.id = pdt.placeId WHERE pdt.tagId = :tagId AND p.deleted = 0")
-    suspend fun getDefaultTagLinksByTag(tagId: String): List<PlaceDefaultTag>
-
-    @Query("SELECT * FROM place_default_tag WHERE placeId IN (:placeIds)")
-    suspend fun getDefaultTagsFor(placeIds: List<String>): List<PlaceDefaultTag>
 
     /**
      * Every place, deleted ones included, for labelling visits: frozen visits at a deleted place keep their label and
@@ -116,50 +92,9 @@ interface PlaceDao {
      */
     @Query(
         "UPDATE place SET deleted = 1, updatedAt = :now WHERE deleted = 0 AND mergedIntoId IS NULL AND name IS NULL " +
-            "AND defaultJobId IS NULL AND defaultBillable IS NULL AND ignored = 0 AND radiusM = :defaultRadiusM " +
+            "AND defaultJobId IS NULL AND ignored = 0 AND radiusM = :defaultRadiusM " +
             "AND updatedAt < :cutoff " +
-            "AND NOT EXISTS (SELECT 1 FROM place_default_tag t WHERE t.placeId = place.id) " +
             "AND NOT EXISTS (SELECT 1 FROM visit v WHERE v.placeId = place.id AND (v.deleted = 0 OR v.updatedAt >= :cutoff))",
     )
     suspend fun pruneOrphans(now: Long, cutoff: Long, defaultRadiusM: Float): Int
-
-    @Query("DELETE FROM place_default_tag WHERE placeId = :placeId")
-    suspend fun deleteAllDefaultTags(placeId: String)
-}
-
-@Dao
-interface TagDao {
-    @Upsert suspend fun upsertGroup(group: TagGroup)
-
-    @Upsert suspend fun upsert(tag: Tag)
-
-    /** Un-archives a live tag without touching its other columns (a rename since the archive survives). */
-    @Query("UPDATE tag SET archived = 0, updatedAt = :updatedAt WHERE id = :id AND deleted = 0")
-    suspend fun unarchive(id: String, updatedAt: Long)
-
-    @Query("SELECT * FROM tag_group WHERE id = :id")
-    suspend fun getGroupById(id: String): TagGroup?
-
-    @Query("SELECT * FROM tag WHERE id = :id")
-    suspend fun getById(id: String): Tag?
-
-    @Query("SELECT * FROM tag_group WHERE deleted = 0 ORDER BY sortOrder")
-    fun observeGroups(): Flow<List<TagGroup>>
-
-    @Query("SELECT * FROM tag WHERE deleted = 0 ORDER BY groupId, sortOrder")
-    fun observeTags(): Flow<List<Tag>>
-
-    @Query("SELECT * FROM tag WHERE groupId = :groupId AND deleted = 0 ORDER BY sortOrder")
-    suspend fun getByGroup(groupId: String): List<Tag>
-
-    @Query("SELECT * FROM tag_group WHERE deleted = 0 ORDER BY sortOrder")
-    suspend fun getGroups(): List<TagGroup>
-
-    /** Live visits carrying the tag. */
-    @Query("SELECT COUNT(*) FROM visit_tag vt JOIN visit v ON v.id = vt.visitId WHERE vt.tagId = :tagId AND v.deleted = 0")
-    suspend fun countVisitUses(tagId: String): Int
-
-    /** Live trips carrying the tag. */
-    @Query("SELECT COUNT(*) FROM trip_tag tt JOIN trip t ON t.id = tt.tripId WHERE tt.tagId = :tagId AND t.deleted = 0")
-    suspend fun countTripUses(tagId: String): Int
 }

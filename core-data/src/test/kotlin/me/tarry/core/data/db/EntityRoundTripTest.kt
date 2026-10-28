@@ -5,20 +5,16 @@ import kotlinx.coroutines.test.runTest
 import me.tarry.core.data.db.entity.ExcludedRange
 import me.tarry.core.data.db.entity.Gap
 import me.tarry.core.data.db.entity.Job
+import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.ManualOverride
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.PlaceDefaultTag
 import me.tarry.core.data.db.entity.ScheduleOverride
 import me.tarry.core.data.db.entity.ScheduleTemplate
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Trip
-import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.ManualOverrideEndMode
@@ -85,9 +81,28 @@ class EntityRoundTripTest : DbTestBase() {
 
     @Test
     fun job() = runTest {
-        val job = Job(id = "j1", name = "Acme", colorArgb = 0xFF112233.toInt(), archived = true, updatedAt = 5, deleted = true)
+        val job = Job(id = "j1", name = "Acme", colorArgb = 0xFF112233.toInt(), archived = true, defaultBillable = false, updatedAt = 5, deleted = true)
         db.jobDao().upsert(job)
         assertThat(db.jobDao().getById("j1")).isEqualTo(job)
+    }
+
+    @Test
+    fun jobBlock_fullAndDefaults() = runTest {
+        val dao = db.jobBlockDao()
+        db.jobDao().upsert(Job(id = "j1", name = "Acme", colorArgb = 1, updatedAt = 1))
+        val full = JobBlock(
+            id = "b1", jobId = "j1", start = 10, end = 20, zoneId = "Europe/London", billable = true,
+            notes = "site visit", updatedAt = 5, deleted = true,
+        )
+        val minimal = JobBlock(id = "b2", jobId = "j1", start = 1, end = 2, zoneId = "UTC", billable = false, updatedAt = 3)
+        dao.upsert(full)
+        dao.upsert(minimal)
+
+        assertThat(dao.getById("b1")).isEqualTo(full)
+        val read = dao.getById("b2")!!
+        assertThat(read).isEqualTo(minimal)
+        assertThat(read.notes).isNull()
+        assertThat(read.deleted).isFalse()
     }
 
     @Test
@@ -95,7 +110,7 @@ class EntityRoundTripTest : DbTestBase() {
         val dao = db.placeDao()
         val full = Place(
             id = "p1", centroidLat = -33.0, centroidLng = 151.0, radiusM = 120f, address = "1 Main St",
-            name = "Office", defaultJobId = "j1", defaultBillable = true, ignored = true,
+            name = "Office", defaultJobId = "j1", ignored = true,
             mergedIntoId = "p2", lastVisitAt = 99, updatedAt = 100, deleted = true,
         )
         val minimal = Place(id = "p2", centroidLat = 1.0, centroidLng = 2.0, updatedAt = 1)
@@ -107,42 +122,15 @@ class EntityRoundTripTest : DbTestBase() {
         assertThat(read).isEqualTo(minimal)
         assertThat(read.radiusM).isEqualTo(75f)
         assertThat(read.address).isNull()
-        assertThat(read.defaultBillable).isNull()
         assertThat(read.ignored).isFalse()
-    }
-
-    @Test
-    fun tagGroup() = runTest {
-        val g = TagGroup(id = "g1", name = "Client", colorArgb = -1, sortOrder = 3, updatedAt = 7, deleted = true)
-        db.tagDao().upsertGroup(g)
-        assertThat(db.tagDao().getGroupById("g1")).isEqualTo(g)
-    }
-
-    @Test
-    fun tag() = runTest {
-        val t = Tag(id = "t1", groupId = "g1", name = "Urgent", sortOrder = 2, archived = true, updatedAt = 8, deleted = true)
-        db.tagDao().upsert(t)
-        assertThat(db.tagDao().getById("t1")).isEqualTo(t)
-    }
-
-    @Test
-    fun placeDefaultTag() = runTest {
-        db.placeDao().upsert(Place(id = "p1", centroidLat = 0.0, centroidLng = 0.0, updatedAt = 1))
-        db.tagDao().upsert(Tag(id = "t1", groupId = "g", name = "x", sortOrder = 0, updatedAt = 1))
-        val link = PlaceDefaultTag("p1", "t1")
-        db.placeDao().upsertDefaultTag(link)
-        assertThat(db.placeDao().getDefaultTags("p1")).containsExactly(link)
-
-        db.placeDao().deleteDefaultTag("p1", "t1")
-        assertThat(db.placeDao().getDefaultTags("p1")).isEmpty()
     }
 
     @Test
     fun visit_fullAndDefaults() = runTest {
         val dao = db.visitDao()
         val full = Visit(
-            id = "v1", placeId = "p1", start = 100, end = 200, zoneId = "Europe/London", jobId = "j1",
-            freeNotes = "notes", billable = false, frozen = true, origin = VisitOrigin.MERGED,
+            id = "v1", placeId = "p1", start = 100, end = 200, zoneId = "Europe/London",
+            freeNotes = "notes", frozen = true, origin = VisitOrigin.MERGED,
             confidence = 0.75f, updatedAt = 300, deleted = true,
         )
         val minimal = Visit(id = "v2", start = 1, end = 2, zoneId = "UTC", origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 3)
@@ -153,7 +141,6 @@ class EntityRoundTripTest : DbTestBase() {
         val read = dao.getById("v2")!!
         assertThat(read).isEqualTo(minimal)
         assertThat(read.placeId).isNull()
-        assertThat(read.billable).isNull()
         assertThat(read.freeNotes).isEmpty()
         assertThat(read.frozen).isFalse()
     }
@@ -163,7 +150,7 @@ class EntityRoundTripTest : DbTestBase() {
         val dao = db.tripDao()
         val full = Trip(
             id = "tr1", start = 1, end = 2, zoneId = "UTC", fromVisitId = "v1", toVisitId = "v2",
-            distanceM = 1234.5f, mode = TripMode.WALK, billable = true, attributedJobId = "j1",
+            distanceM = 1234.5f, mode = TripMode.WALK,
             freeNotes = "n", frozen = true, updatedAt = 9, deleted = true,
         )
         val minimal = Trip(id = "tr2", start = 1, end = 2, zoneId = "UTC", distanceM = 0f, mode = TripMode.UNKNOWN, updatedAt = 1)
@@ -174,31 +161,6 @@ class EntityRoundTripTest : DbTestBase() {
         val read = dao.getById("tr2")!!
         assertThat(read).isEqualTo(minimal)
         assertThat(read.fromVisitId).isNull()
-        assertThat(read.attributedJobId).isNull()
-    }
-
-    @Test
-    fun visitTag() = runTest {
-        db.visitDao().upsert(Visit(id = "v1", start = 1, end = 2, zoneId = "UTC", origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 1))
-        db.tagDao().upsert(Tag(id = "t1", groupId = "g", name = "x", sortOrder = 0, updatedAt = 1))
-        val link = VisitTag("v1", "t1")
-        db.visitDao().upsertTag(link)
-        assertThat(db.visitDao().getTags("v1")).containsExactly(link)
-
-        db.visitDao().deleteTag("v1", "t1")
-        assertThat(db.visitDao().getTags("v1")).isEmpty()
-    }
-
-    @Test
-    fun tripTag() = runTest {
-        db.tripDao().upsert(Trip(id = "tr1", start = 1, end = 2, zoneId = "UTC", distanceM = 1f, mode = TripMode.VEHICLE, updatedAt = 1))
-        db.tagDao().upsert(Tag(id = "t1", groupId = "g", name = "x", sortOrder = 0, updatedAt = 1))
-        val link = TripTag("tr1", "t1")
-        db.tripDao().upsertTag(link)
-        assertThat(db.tripDao().getTags("tr1")).containsExactly(link)
-
-        db.tripDao().deleteTag("tr1", "t1")
-        assertThat(db.tripDao().getTags("tr1")).isEmpty()
     }
 
     @Test

@@ -7,12 +7,8 @@ import me.tarry.core.data.db.entity.ExcludedRange
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.Trip
-import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
 import org.junit.Before
@@ -33,17 +29,17 @@ class TimelineEditorTest : DbTestBase() {
     @Before
     fun setUp() {
         editor = TimelineEditor(
-            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
             db.segmentationCheckpointDao(), EditClock { now },
         )
     }
 
     private fun visit(
-        id: String, startMin: Int, endMin: Int, placeId: String? = "p1", jobId: String? = null, frozen: Boolean = false,
-        notes: String = "", billable: Boolean? = null, origin: VisitOrigin = VisitOrigin.DETECTED,
+        id: String, startMin: Int, endMin: Int, placeId: String? = "p1", frozen: Boolean = false,
+        notes: String = "", origin: VisitOrigin = VisitOrigin.DETECTED,
     ) = Visit(
-        id = id, placeId = placeId, start = t0 + startMin * min, end = t0 + endMin * min, zoneId = "UTC", jobId = jobId,
-        freeNotes = notes, billable = billable, frozen = frozen, origin = origin, confidence = 0.8f, updatedAt = 1,
+        id = id, placeId = placeId, start = t0 + startMin * min, end = t0 + endMin * min, zoneId = "UTC",
+        freeNotes = notes, frozen = frozen, origin = origin, confidence = 0.8f, updatedAt = 1,
     )
 
     private fun trip(id: String, startMin: Int, endMin: Int, frozen: Boolean = false) = Trip(
@@ -56,33 +52,21 @@ class TimelineEditorTest : DbTestBase() {
         db.placeDao().upsert(Place(id = "p2", centroidLat = 2.0, centroidLng = 2.0, updatedAt = 1))
         db.jobDao().upsert(Job(id = "j1", name = "Job 1", colorArgb = 1, updatedAt = 1))
         db.jobDao().upsert(Job(id = "j2", name = "Job 2", colorArgb = 2, updatedAt = 1))
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 1))
-        for (t in listOf("t1", "t2", "t3")) db.tagDao().upsert(Tag(id = t, groupId = "g", name = t, sortOrder = 0, updatedAt = 1))
     }
 
     /** A at 0..60, trip 60..70, B at 70..130, C at 140..200. */
     private suspend fun seedDay() {
         seed()
-        db.visitDao().upsertAll(
-            listOf(visit("A", 0, 60, jobId = "j1"), visit("B", 70, 130, placeId = "p2"), visit("C", 140, 200)),
-        )
+        db.visitDao().upsertAll(listOf(visit("A", 0, 60), visit("B", 70, 130, placeId = "p2"), visit("C", 140, 200)))
         db.tripDao().upsert(trip("T1", 60, 70))
-        db.visitDao().upsertTag(VisitTag("A", "t1"))
-        db.visitDao().upsertTag(VisitTag("B", "t2"))
-        db.tripDao().upsertTag(TripTag("T1", "t3"))
     }
 
-    private data class State(
-        val visits: List<Visit>, val trips: List<Trip>, val exclusions: List<ExcludedRange>, val tags: Map<String, Set<String>>,
+    private data class State(val visits: List<Visit>, val trips: List<Trip>, val exclusions: List<ExcludedRange>)
+
+    private suspend fun state(): State = State(
+        db.visitDao().getInRange(0, Long.MAX_VALUE), db.tripDao().getInRange(0, Long.MAX_VALUE),
+        db.excludedRangeDao().getInRange(0, Long.MAX_VALUE),
     )
-
-    private suspend fun state(): State {
-        val vs = db.visitDao().getInRange(0, Long.MAX_VALUE)
-        val ts = db.tripDao().getInRange(0, Long.MAX_VALUE)
-        val tags = vs.associate { it.id to db.visitDao().getTags(it.id).map { l -> l.tagId }.toSet() } +
-            ts.associate { it.id to db.tripDao().getTags(it.id).map { l -> l.tagId }.toSet() }
-        return State(vs, ts, db.excludedRangeDao().getInRange(0, Long.MAX_VALUE), tags)
-    }
 
     private suspend fun checkpoint() = db.segmentationCheckpointDao().getById()?.processedUntil
 
@@ -98,41 +82,25 @@ class TimelineEditorTest : DbTestBase() {
         db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = t0 + 500 * min))
         val ref = ItemRef.visit("B")
 
-        assertThat(editor.setJob(ref, "j2")).isEqualTo(EditResult.Ok())
-        assertThat(visitById("B").jobId).isEqualTo("j2")
-        assertThat(editor.setBillable(ref, true)).isEqualTo(EditResult.Ok())
         assertThat(editor.setNotes(ref, "hello")).isEqualTo(EditResult.Ok())
-        assertThat(editor.setTags(ref, setOf("t1", "t3"))).isEqualTo(EditResult.Ok())
 
         val b = visitById("B")
-        assertThat(b.billable).isTrue()
         assertThat(b.freeNotes).isEqualTo("hello")
         assertThat(b.frozen).isTrue()
         assertThat(b.updatedAt).isEqualTo(now)
-        assertThat(db.visitDao().getTags("B").map { it.tagId }).containsExactly("t1", "t3")
         assertThat(checkpoint()).isEqualTo(t0 + 500 * min)
     }
 
     @Test
-    fun tripAnnotationsAndAttribution() = runTest {
+    fun tripNotesFreezeAndBumpUpdatedAt() = runTest {
         seedDay()
-        val ref = ItemRef.trip("T1")
 
-        editor.setBillable(ref, false)
-        editor.setNotes(ref, "toll")
-        editor.setTags(ref, setOf("t1"))
-        editor.setAttribution("T1", "j2")
+        editor.setNotes(ItemRef.trip("T1"), "toll")
 
         val t = db.tripDao().getById("T1")!!
-        assertThat(t.billable).isFalse()
         assertThat(t.freeNotes).isEqualTo("toll")
-        assertThat(t.attributedJobId).isEqualTo("j2")
         assertThat(t.frozen).isTrue()
         assertThat(t.updatedAt).isEqualTo(now)
-        assertThat(db.tripDao().getTags("T1").map { it.tagId }).containsExactly("t1")
-
-        editor.setAttribution("T1", null)
-        assertThat(db.tripDao().getById("T1")!!.attributedJobId).isNull()
     }
 
     @Test
@@ -140,23 +108,23 @@ class TimelineEditorTest : DbTestBase() {
         seedDay()
         db.visitDao().upsert(visitById("C").copy(deleted = true))
 
-        assertThat(editor.setJob(ItemRef.visit("nope"), "j1")).isEqualTo(EditResult.NotFound)
-        assertThat(editor.setJob(ItemRef.visit("C"), "j1")).isEqualTo(EditResult.NotFound)
-        assertThat(editor.setAttribution("nope", null)).isEqualTo(EditResult.NotFound)
+        assertThat(editor.setNotes(ItemRef.visit("nope"), "x")).isEqualTo(EditResult.NotFound)
+        assertThat(editor.setNotes(ItemRef.visit("C"), "x")).isEqualTo(EditResult.NotFound)
+        assertThat(editor.setNotes(ItemRef.trip("nope"), "x")).isEqualTo(EditResult.NotFound)
     }
 
     @Test
-    fun placeDefaultReplacesJobBillableAndTags() = runTest {
+    fun placeDefaultReplacesTheDefaultJob() = runTest {
         seedDay()
-        editor.setPlaceDefault("p1", "j1", true, setOf("t1", "t2"))
-        editor.setPlaceDefault("p1", "j2", null, setOf("t3"))
+        editor.setPlaceDefault("p1", "j1")
+        editor.setPlaceDefault("p1", "j2")
 
         val p = db.placeDao().getById("p1")!!
         assertThat(p.defaultJobId).isEqualTo("j2")
-        assertThat(p.defaultBillable).isNull()
         assertThat(p.updatedAt).isEqualTo(now)
-        assertThat(db.placeDao().getDefaultTags("p1").map { it.tagId }).containsExactly("t3")
-        assertThat(editor.setPlaceDefault("nope", null, null, emptySet())).isEqualTo(EditResult.NotFound)
+        editor.setPlaceDefault("p1", null)
+        assertThat(db.placeDao().getById("p1")!!.defaultJobId).isNull()
+        assertThat(editor.setPlaceDefault("nope", null)).isEqualTo(EditResult.NotFound)
     }
 
     @Test
@@ -202,17 +170,6 @@ class TimelineEditorTest : DbTestBase() {
         assertThat(db.jobDao().getById(id)!!.colorArgb).isEqualTo(10)
     }
 
-    @Test
-    fun createTagAppendsToTheGroupAndCreatesADefaultGroupWhenNeeded() = runTest {
-        val id = (editor.createTag("first") as EditResult.Ok).id!!
-        val group = db.tagDao().getGroups().single()
-        assertThat(db.tagDao().getById(id)!!.groupId).isEqualTo(group.id)
-
-        val second = (editor.createTag("second", group.id) as EditResult.Ok).id!!
-        assertThat(db.tagDao().getById(second)!!.sortOrder).isEqualTo(1)
-        assertThat(editor.createTag("x", "nope")).isEqualTo(EditResult.NotFound)
-        assertThat(editor.createTag(" ")).isEqualTo(EditResult.BlankName)
-    }
 
     // endregion
 
@@ -325,7 +282,6 @@ class TimelineEditorTest : DbTestBase() {
         assertThat(a.end).isEqualTo(t0 + 50 * min)
         assertThat(a.frozen).isTrue()
         assertThat(a.freeNotes).isEqualTo("keep")
-        assertThat(a.jobId).isEqualTo("j1")
         assertThat(a.updatedAt).isEqualTo(now)
     }
 
@@ -376,9 +332,8 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
-    fun splitMakesTwoFrozenSplitVisitsWithAnnotationsAndTagsCopied() = runTest {
+    fun splitMakesTwoFrozenSplitVisitsWithNotesCopied() = runTest {
         seedDay()
-        editor.setBillable(ItemRef.visit("A"), true)
         editor.setNotes(ItemRef.visit("A"), "n")
         db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = t0 + 500 * min))
         now += 10
@@ -394,11 +349,8 @@ class TimelineEditorTest : DbTestBase() {
             assertThat(v.origin).isEqualTo(VisitOrigin.SPLIT)
             assertThat(v.frozen).isTrue()
             assertThat(v.updatedAt).isEqualTo(now)
-            assertThat(v.jobId).isEqualTo("j1")
-            assertThat(v.billable).isTrue()
             assertThat(v.freeNotes).isEqualTo("n")
             assertThat(v.placeId).isEqualTo("p1")
-            assertThat(db.visitDao().getTags(v.id).map { it.tagId }).containsExactly("t1")
         }
         assertThat(second.id).isNotEqualTo(first.id)
         assertThat(checkpoint()).isEqualTo(t0)
@@ -427,31 +379,26 @@ class TimelineEditorTest : DbTestBase() {
         assertThat(merged.origin).isEqualTo(VisitOrigin.MERGED)
         assertThat(merged.frozen).isTrue()
         assertThat(merged.updatedAt).isEqualTo(now)
-        // The earlier visit's job wins; notes are joined; both place-less defaults fall back to the longer visit's place.
-        assertThat(merged.jobId).isEqualTo("j1")
+        // Notes are joined; the place is the longer visit's.
         assertThat(merged.freeNotes).isEqualTo("b note")
         assertThat(merged.placeId).isEqualTo("p1")
-        assertThat(db.visitDao().getTags("A").map { it.tagId }).containsExactly("t1", "t2")
         assertThat(visitById("B").deleted).isTrue()
         assertThat(checkpoint()).isEqualTo(t0)
     }
 
-    private fun notes() = visit("B", 70, 130, placeId = "p2", notes = "b note", jobId = "j2")
+    private fun notes() = visit("B", 70, 130, placeId = "p2", notes = "b note")
 
     @Test
-    fun mergeWithPreviousUsesTheEarlierVisitsJobUnlessNull() = runTest {
+    fun mergeWithPreviousJoinsNotesOfBothVisits() = runTest {
         seedDay()
-        db.visitDao().upsert(visitById("A").copy(jobId = null))
+        db.visitDao().upsert(visitById("A").copy(freeNotes = "a note"))
+        db.visitDao().upsert(visitById("B").copy(freeNotes = "b note"))
 
         editor.merge("B", MergeDirection.PREVIOUS)
 
         val merged = visitById("A")
-        assertThat(merged.jobId).isNull()
+        assertThat(merged.freeNotes).isEqualTo("a note\nb note")
         assertThat(merged.end).isEqualTo(t0 + 130 * min)
-
-        db.visitDao().upsert(visitById("C").copy(jobId = "j2"))
-        editor.merge("C", MergeDirection.PREVIOUS)
-        assertThat(visitById("A").jobId).isEqualTo("j2")
     }
 
     @Test
@@ -592,10 +539,9 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
-    fun resetToDetectedClearsAnnotationsUnfreezesAndRemovesExclusionsInsideTheSpan() = runTest {
+    fun resetToDetectedClearsNotesUnfreezesAndRemovesExclusionsInsideTheSpan() = runTest {
         seedDay()
         editor.setNotes(ItemRef.visit("A"), "mine")
-        editor.setBillable(ItemRef.visit("A"), true)
         db.excludedRangeDao().upsert(ExcludedRange(id = "inside", start = t0 + 10 * min, end = t0 + 20 * min, zoneId = "UTC", updatedAt = 1))
         db.excludedRangeDao().upsert(ExcludedRange(id = "outside", start = t0 + 50 * min, end = t0 + 65 * min, zoneId = "UTC", updatedAt = 1))
         db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = t0 + 500 * min))
@@ -604,12 +550,9 @@ class TimelineEditorTest : DbTestBase() {
         editor.resetToDetected("A")
 
         val a = visitById("A")
-        assertThat(a.jobId).isNull()
-        assertThat(a.billable).isNull()
         assertThat(a.freeNotes).isEmpty()
         assertThat(a.frozen).isFalse()
         assertThat(a.updatedAt).isEqualTo(now)
-        assertThat(db.visitDao().getTags("A")).isEmpty()
         assertThat(db.excludedRangeDao().getInRange(0, Long.MAX_VALUE).map { it.id }).containsExactly("outside")
         assertThat(db.excludedRangeDao().getById("inside")!!.deleted).isTrue()
         assertThat(checkpoint()).isEqualTo(t0)
@@ -683,40 +626,13 @@ class TimelineEditorTest : DbTestBase() {
         val before = state()
         val items = listOf(ItemRef.visit("A"), ItemRef.visit("B"), ItemRef.trip("T1"))
 
-        val r = editor.bulk(items, AnnotationOp.SetJob("j2"))
+        val r = editor.bulk(items, AnnotationOp.SetNotes("shared"))
 
-        assertThat(visitById("A").jobId).isEqualTo("j2")
-        assertThat(visitById("B").jobId).isEqualTo("j2")
-        assertThat(db.tripDao().getById("T1")!!.attributedJobId).isEqualTo("j2")
+        assertThat(visitById("A").freeNotes).isEqualTo("shared")
+        assertThat(visitById("B").freeNotes).isEqualTo("shared")
+        assertThat(db.tripDao().getById("T1")!!.freeNotes).isEqualTo("shared")
         assertThat(listOf(visitById("A"), visitById("B")).all { it.frozen && it.updatedAt == now }).isTrue()
 
-        editor.restore(r.undo())
-        assertThat(state()).isEqualTo(before)
-    }
-
-    @Test
-    fun bulkAddTagsKeepsExistingTagsAndUndoRestoresThem() = runTest {
-        seedDay()
-        val before = state()
-
-        val r = editor.bulk(listOf(ItemRef.visit("A"), ItemRef.visit("C")), AnnotationOp.AddTags(setOf("t2", "t3")))
-
-        assertThat(db.visitDao().getTags("A").map { it.tagId }).containsExactly("t1", "t2", "t3")
-        assertThat(db.visitDao().getTags("C").map { it.tagId }).containsExactly("t2", "t3")
-        editor.restore(r.undo())
-        assertThat(state()).isEqualTo(before)
-    }
-
-    @Test
-    fun bulkSetBillableFreezesAllItemsAndUndoRestoresThem() = runTest {
-        seedDay()
-        val before = state()
-
-        val r = editor.bulk(listOf(ItemRef.visit("A"), ItemRef.visit("C")), AnnotationOp.SetBillable(false))
-
-        assertThat(visitById("A").billable).isFalse()
-        assertThat(visitById("C").billable).isFalse()
-        assertThat(visitById("A").frozen).isTrue()
         editor.restore(r.undo())
         assertThat(state()).isEqualTo(before)
     }
@@ -745,7 +661,7 @@ class TimelineEditorTest : DbTestBase() {
         seedDay()
         val before = state()
 
-        val r = editor.bulk(listOf(ItemRef.visit("A"), ItemRef.visit("nope")), AnnotationOp.SetBillable(true))
+        val r = editor.bulk(listOf(ItemRef.visit("A"), ItemRef.visit("nope")), AnnotationOp.SetNotes("x"))
 
         assertThat(r).isEqualTo(EditResult.NotFound)
         assertThat(state()).isEqualTo(before)
@@ -757,7 +673,6 @@ class TimelineEditorTest : DbTestBase() {
 
     private suspend fun frozenAnnotatedTrip() {
         editor.setNotes(ItemRef.trip("T1"), "toll")
-        editor.setAttribution("T1", "j2")
         now += 10
     }
 
@@ -772,7 +687,6 @@ class TimelineEditorTest : DbTestBase() {
         assertThat(t.frozen).isFalse()
         assertThat(t.updatedAt).isEqualTo(now)
         assertThat(t.freeNotes).isEqualTo("toll")
-        assertThat(t.attributedJobId).isEqualTo("j2")
         assertThat(t.deleted).isFalse()
 
         editor.restore(r.undo())
