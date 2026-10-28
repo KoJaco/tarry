@@ -32,5 +32,7 @@
         <item quantity="other">Cannot delete: used by %1$d visits, trips or places. Archive it instead.</item>
     </plurals>
     <string name="jobs_undo_archived">Job archived</string>
+    <string name="jobs_billable_default">Billable by default</string>
+    <string name="jobs_billable_default_hint">New job blocks of this job start billable. Existing blocks keep their own setting.</string>
 
 </resources>

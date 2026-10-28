@@ -23,7 +23,14 @@ import javax.inject.Inject
 
 /** One job on the Jobs screen. [placeDefaults] is how many places use it as their default job. */
 @Immutable
-data class JobRow(val id: String, val name: String, val colorArgb: Int, val archived: Boolean, val placeDefaults: Int)
+data class JobRow(
+    val id: String,
+    val name: String,
+    val colorArgb: Int,
+    val archived: Boolean,
+    val placeDefaults: Int,
+    val defaultBillable: Boolean = true,
+)
 
 @Immutable
 data class JobsUiState(val active: List<JobRow>, val archived: List<JobRow>) {
@@ -42,7 +49,7 @@ class JobsViewModel @Inject constructor(
     /** Null until the first read finishes. */
     val state: StateFlow<JobsUiState?> = combine(jobs.observeAll(), places.observeAll()) { allJobs, allPlaces ->
         val defaults = allPlaces.mapNotNull { it.defaultJobId }.groupingBy { it }.eachCount()
-        val rows = allJobs.map { JobRow(it.id, it.name, it.colorArgb, it.archived, defaults[it.id] ?: 0) }
+        val rows = allJobs.map { JobRow(it.id, it.name, it.colorArgb, it.archived, defaults[it.id] ?: 0, it.defaultBillable) }
         JobsUiState(active = rows.filterNot { it.archived }, archived = rows.filter { it.archived })
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
 
@@ -54,6 +61,9 @@ class JobsViewModel @Inject constructor(
     fun rename(jobId: String, name: String) = viewModelScope.launch { report(catalog.renameJob(jobId, name)) }
 
     fun setColour(jobId: String, colorArgb: Int) = viewModelScope.launch { report(catalog.setJobColour(jobId, colorArgb)) }
+
+    /** New job blocks of this job start billable (or not); existing blocks keep their own flag. */
+    fun setDefaultBillable(jobId: String, billable: Boolean) = viewModelScope.launch { report(catalog.setJobDefaultBillable(jobId, billable)) }
 
     fun archive(jobId: String) = viewModelScope.launch {
         val result = catalog.archiveJob(jobId)

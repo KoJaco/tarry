@@ -127,6 +127,18 @@ class JobsViewModelTest {
         assertThat(row.colorArgb).isEqualTo(JobPalette.slots[3].key)
     }
 
+
+    @Test
+    fun defaultBillableIsShownAndWrittenWithoutTouchingTheRestOfTheJob() = runBlocking<Unit> {
+        db.jobDao().upsert(job("j", "Acme"))
+        assertThat(awaitState { it.active.isNotEmpty() }.active.single().defaultBillable).isTrue()
+
+        viewModel.setDefaultBillable("j", false)
+
+        val row = awaitState { s -> s.active.singleOrNull()?.defaultBillable == false }.active.single()
+        assertThat(row.name).isEqualTo("Acme")
+        assertThat(db.jobDao().getById("j")!!.defaultBillable).isFalse()
+    }
     @Test
     fun archiveMovesTheJobToArchivedOffersUndoAndUndoRestoresPlaceDefaults() = runBlocking<Unit> {
         db.jobDao().upsert(job("j"))

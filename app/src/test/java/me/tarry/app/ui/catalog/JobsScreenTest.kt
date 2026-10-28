@@ -2,6 +2,12 @@ package me.tarry.app.ui.catalog
 
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsAtLeast
@@ -40,6 +46,7 @@ class JobsScreenTest {
     private val archived = mutableListOf<String>()
     private val unarchived = mutableListOf<String>()
     private val deleted = mutableListOf<String>()
+    private val billableChanges = mutableListOf<Pair<String, Boolean>>()
 
     private fun show(state: JobsUiState?, uses: Int = 0) = composeRule.setContent {
         TarryTheme {
@@ -52,6 +59,7 @@ class JobsScreenTest {
                 onArchive = { archived += it },
                 onUnarchive = { unarchived += it },
                 onDelete = { deleted += it },
+                onDefaultBillable = { id, billable -> billableChanges += id to billable },
             )
         }
     }
@@ -186,5 +194,29 @@ class JobsScreenTest {
         composeRule.onNodeWithText("Save").performClick()
 
         assertThat(renamed).containsExactly("a" to "Acme Ltd")
+    }
+
+    @Test
+    fun billableByDefaultIsASwitchRowInTheJobsSheetThatWritesTheNewValue() {
+        show(state(acme))
+        composeRule.onNodeWithText("Acme").performClick()
+
+        composeRule.onNodeWithText("Billable by default")
+            .assertIsOn()
+            .assertHeightIsAtLeast(48.dp)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Switch))
+            .performClick()
+
+        assertThat(billableChanges).containsExactly("a" to false)
+    }
+
+    @Test
+    fun billableByDefaultShowsOffForAJobThatIsNotBillable() {
+        show(state(acme.copy(defaultBillable = false)))
+        composeRule.onNodeWithText("Acme").performClick()
+
+        composeRule.onNodeWithText("Billable by default").assertIsOff().performClick()
+
+        assertThat(billableChanges).containsExactly("a" to true)
     }
 }

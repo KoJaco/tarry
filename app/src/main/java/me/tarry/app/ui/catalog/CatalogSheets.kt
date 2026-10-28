@@ -60,8 +60,15 @@ private fun sheetShape() = TarryTheme.shapes.container.copy(bottomStart = Corner
 
 /** A bottom sheet titled [title] with a card of full-width action rows (the "menu" of a job, tag or group). */
 @Composable
-internal fun ActionsSheet(title: String, actions: List<SheetAction>, onDismiss: () -> Unit) {
+internal fun ActionsSheet(
+    title: String,
+    actions: List<SheetAction>,
+    onDismiss: () -> Unit,
+    /** Optional content above the actions (the Jobs screen puts "Billable by default" here). */
+    header: (@Composable () -> Unit)? = null,
+) {
     SheetFrame(title, onDismiss) {
+        header?.invoke()
         TarryCard(contentPadding = PaddingValues(0.dp)) {
             actions.forEachIndexed { index, action ->
                 if (index > 0) HorizontalDivider(thickness = 1.dp, color = TarryTheme.colors.divider)

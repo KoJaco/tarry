@@ -34,6 +34,7 @@ import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SectionHeader
+import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.drawer.ConfirmDialog
 import me.tarry.app.ui.drawer.JobOption
@@ -54,6 +55,7 @@ fun JobsScreen(modifier: Modifier = Modifier, viewModel: JobsViewModel = hiltVie
         onCreate = { viewModel.create(it) },
         onRename = { id, name -> viewModel.rename(id, name) },
         onColour = { id, argb -> viewModel.setColour(id, argb) },
+        onDefaultBillable = { id, billable -> viewModel.setDefaultBillable(id, billable) },
         onArchive = { viewModel.archive(it) },
         onUnarchive = { viewModel.unarchive(it) },
         onDelete = { viewModel.delete(it) },
@@ -71,6 +73,7 @@ fun JobsContent(
     onCreate: (String) -> Unit,
     onRename: (String, String) -> Unit,
     onColour: (String, Int) -> Unit,
+    onDefaultBillable: (String, Boolean) -> Unit = { _, _ -> },
     onArchive: (String) -> Unit,
     onUnarchive: (String) -> Unit,
     onDelete: (String) -> Unit,
@@ -133,6 +136,18 @@ fun JobsContent(
             val uses by produceState<Int?>(null, selected.id) { value = loadUses(selected.id) }
             val blocked = uses?.takeIf { it > 0 }
             ActionsSheet(
+                header = {
+                    val billableTitle = stringResource(R.string.jobs_billable_default)
+                    val billableHint = stringResource(R.string.jobs_billable_default_hint)
+                    SettingsGroup {
+                        switchRow(
+                            title = billableTitle,
+                            checked = selected.defaultBillable,
+                            onCheckedChange = { onDefaultBillable(selected.id, it) },
+                            subtitle = billableHint,
+                        )
+                    }
+                },
                 title = name,
                 actions = listOf(
                     SheetAction(stringResource(R.string.catalog_action_rename), { dialog = JobDialog.RENAME }),
