@@ -645,4 +645,54 @@ class DayLayoutTest {
     }
 
     private fun visitMs(s: Long, e: Long) = e - s
+
+    private fun job(id: String, s: Long, e: Long) = JobBlockItem(id, "j", "Job $id", 0, s, e, true, null, Lane(0, 1))
+    private fun suggestion(visitId: String, s: Long, e: Long) = JobSuggestionItem(JobSuggestion(visitId, "j", s, e), "Job", 0)
+
+    @Test
+    fun jobBlockSitsAtItsTrueTimeInOneLane() {
+        val l = layoutDay(
+            listOf(visit("v", at(8), at(10))), bounds, zone, pastNow, 1f,
+            jobBlocks = listOf(job("a", at(8, 30), at(9, 30))),
+        )
+        val p = l.jobs.single()
+        assertThat(p.topDp).isWithin(eps).of(72f)
+        assertThat(p.heightDp).isWithin(eps).of(144f)
+        assertThat(p.lane).isEqualTo(0)
+        assertThat(p.laneCount).isEqualTo(1)
+    }
+
+    @Test
+    fun overlappingBlocksShareLanesAndASuggestionTakesAFreeLane() {
+        val l = layoutDay(
+            listOf(visit("v", at(8), at(12))), bounds, zone, pastNow, 1f,
+            jobBlocks = listOf(job("a", at(8), at(10)), job("b", at(9), at(11))),
+            jobSuggestions = listOf(suggestion("v", at(10), at(12))),
+        )
+        assertThat(l.jobs.map { it.item.id to it.lane }).containsExactly("a" to 0, "b" to 1).inOrder()
+        assertThat(l.jobs.map { it.laneCount }).containsExactly(2, 2)
+        val s = l.suggestions.single()
+        assertThat(s.lane).isEqualTo(0)
+        assertThat(s.laneCount).isEqualTo(2)
+    }
+
+    @Test
+    fun jobBlockOutsideTheVisitsExtendsTheCanvas() {
+        val l = layoutDay(
+            listOf(visit("v", at(9), at(10))), bounds, zone, pastNow, 1f,
+            jobBlocks = listOf(job("a", at(6, 30), at(7, 30)), job("b", at(15), at(16, 10))),
+        )
+        assertThat(l.canvasStart).isEqualTo(at(6))
+        assertThat(l.canvasEnd).isEqualTo(at(17))
+        assertThat(l.jobs.first().topDp).isWithin(eps).of(72f)
+    }
+
+    @Test
+    fun aShortJobBlockIsDrawnAtLeastTheMinimumHeight() {
+        val l = layoutDay(
+            listOf(visit("v", at(8), at(10))), bounds, zone, pastNow, 1f,
+            jobBlocks = listOf(job("a", at(9), at(9, 5))),
+        )
+        assertThat(l.jobs.single().heightDp).isWithin(eps).of(28f)
+    }
 }

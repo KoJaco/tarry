@@ -70,14 +70,6 @@ class DayCanvasTest {
         composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[BlockColorKey]
 
     @Test
-    fun jobColourIsAppliedToTheBlock() {
-        show(listOf(TimelineItem.Visit("v", at(9), at(11), "Marina", jobName = "Antifoul", jobColorArgb = sky.key)))
-        assertThat(blockColor("timeline_row_v")).isEqualTo(sky.light.container)
-        composeRule.onNodeWithTag("timeline_row_v")
-            .assert(SemanticsMatcher("not dashed") { it.config[BlockDashedKey] == false })
-    }
-
-    @Test
     fun blocksAreWide_andAdjacentBlocksNeverTouch() {
         show(
             listOf(
@@ -93,17 +85,8 @@ class DayCanvasTest {
     }
 
     @Test
-    fun jobColourFollowsTheDarkTheme() {
-        show(
-            listOf(TimelineItem.Visit("v", at(9), at(11), "Marina", jobName = "Antifoul", jobColorArgb = sky.key)),
-            dark = true,
-        )
-        assertThat(blockColor("timeline_row_v")).isEqualTo(sky.dark.container)
-    }
-
-    @Test
-    fun visitWithoutJobIsACardWithADashedOutlineAndNeedsReviewChip() {
-        show(listOf(TimelineItem.Visit("v", at(9), at(11), "Marina")))
+    fun visitNeedingReviewIsACardWithADashedOutlineAndNeedsReviewChip() {
+        show(listOf(TimelineItem.Visit("v", at(9), at(11), "Marina", needsReview = true)))
         assertThat(blockColor("timeline_row_v")).isEqualTo(LightTarryColors.card)
         composeRule.onNodeWithTag("timeline_row_v")
             .assert(SemanticsMatcher("dashed") { it.config[BlockDashedKey] })
@@ -115,20 +98,9 @@ class DayCanvasTest {
     }
 
     @Test
-    fun noJobBlockUsesTheDarkCardColour() {
+    fun visitUsesTheDarkCardColour() {
         show(listOf(TimelineItem.Visit("v", at(9), at(11), "Marina")), dark = true)
         assertThat(blockColor("timeline_row_v")).isEqualTo(DarkTarryColors.card)
-    }
-
-    @Test
-    fun jobBlockShowsTheJobNextToTheRangeAndNoReviewChip() {
-        show(listOf(TimelineItem.Visit("v", at(9), at(11), "Marina", jobName = "Antifoul", jobColorArgb = sky.key)))
-        composeRule.onNodeWithTag("timeline_row_v").assert(
-            SemanticsMatcher("job line") { node ->
-                node.config[SemanticsProperties.Text].any { it.text.endsWith("· Antifoul") } &&
-                    node.config[SemanticsProperties.Text].none { it.text == "Needs review" }
-            },
-        )
     }
 
     @Test
@@ -442,38 +414,6 @@ class DayCanvasTest {
         composeRule.onNodeWithText("Kiosk · 12 min").assertExists()
     }
 
-    private fun colourOf(id: String, jobId: String?, jobName: String = "Same name") {
-        composeRule.setContent {
-            TarryTheme {
-                TimelineContent(
-                    date, listOf(TimelineItem.Visit(id, at(9), at(11), "P", jobName = jobName, jobColorArgb = 0x12345678, jobId = jobId)),
-                    {}, {}, today = date, zone = zone, nowMs = at(20),
-                )
-            }
-        }
-    }
-
-    @Test
-    fun fallbackColourIsKeyedOnTheJobIdNotTheName() {
-        // "a" and "b" hash to different slots, so two jobs with the same name get their own colours.
-        colourOf("v", jobId = "a")
-        val first = blockColor("timeline_row_v")
-        assertThat(first).isEqualTo(JobPalette.fallbackFor("a").light.container)
-        assertThat(JobPalette.fallbackFor("a")).isNotEqualTo(JobPalette.fallbackFor("b"))
-    }
-
-    @Test
-    fun fallbackColourForOtherIdIsThatIdsSlot() {
-        colourOf("v", jobId = "b")
-        assertThat(blockColor("timeline_row_v")).isEqualTo(JobPalette.fallbackFor("b").light.container)
-    }
-
-    @Test
-    fun fallbackColourIsStableForTheSameId() {
-        colourOf("v", jobId = "a", jobName = "Renamed")
-        assertThat(blockColor("timeline_row_v")).isEqualTo(JobPalette.fallbackFor("a").light.container)
-    }
-
     @Test
     fun innerGapDotSitsOnTheLeftBorderAndNeverUnderTheTitle() {
         show(
@@ -522,7 +462,7 @@ class DayCanvasTest {
         // A gap 10 minutes into a short-ish visit lies under the title and time line.
         show(
             listOf(
-                TimelineItem.Visit("v", at(9), at(11), "Marina"),
+                TimelineItem.Visit("v", at(9), at(11), "Marina", needsReview = true),
                 TimelineItem.Gap("g", at(9, 5), at(9, 40), GapCause.SERVICE_KILLED),
             ),
         )

@@ -25,6 +25,8 @@ fun TimelineScreen(
     val today by viewModel.today.collectAsStateWithLifecycle()
     val items by viewModel.items.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val jobBlocks by viewModel.jobBlocks.collectAsStateWithLifecycle()
+    val jobSuggestions by viewModel.jobSuggestions.collectAsStateWithLifecycle()
     var editTarget by rememberSaveable(stateSaver = EditTargetSaver) { mutableStateOf<EditTarget?>(null) }
     var showMap by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -50,6 +52,11 @@ fun TimelineScreen(
         // Collected only while the Map tab shows, so the route isn't built otherwise.
         dayMap = if (showMap) viewModel.dayMap.collectAsStateWithLifecycle().value else null,
         trackingMarkers = viewModel.trackingMarkers.collectAsStateWithLifecycle().value,
+        jobBlocks = jobBlocks,
+        jobSuggestions = jobSuggestions,
+        onOpenJob = { editTarget = EditTarget.Job(it) },
+        onConfirmSuggestion = viewModel::confirmSuggestion,
+        onCreateJob = { start, end -> editTarget = EditTarget.NewJob(start, end) },
         modifier = modifier,
     )
     editTarget?.let { target ->

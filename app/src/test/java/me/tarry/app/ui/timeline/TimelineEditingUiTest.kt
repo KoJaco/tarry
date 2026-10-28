@@ -70,7 +70,7 @@ class TimelineEditingUiTest {
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
     private val review = TimelineItem.Visit("review", at(9), at(10), "Marina", needsReview = true)
-    private val labelled = TimelineItem.Visit("labelled", at(11), at(12), "Yard", jobName = "Antifoul", jobColorArgb = null, jobId = "j")
+    private val labelled = TimelineItem.Visit("labelled", at(11), at(12), "Yard")
     private val trip = TimelineItem.Trip("trip", at(10), at(11), 4000f, TripMode.VEHICLE)
     private val gap = TimelineItem.Gap("gap", at(12, 15), at(13), GapCause.NO_FIX)
 

@@ -32,10 +32,8 @@
     <string name="timeline_summary_separator">" · "</string>
 
     <string name="timeline_needs_review">Needs review</string>
-    <string name="timeline_visit_job_description">Visit at %1$s, %2$s, %3$s, job %4$s</string>
     <string name="timeline_folded_trip">Also: %1$s</string>
     <string name="timeline_compact_line">%1$s · %2$s</string>
-    <string name="timeline_range_with_job">%1$s · %2$s</string>
     <string name="timeline_trip_row">%1$s · %2$s · %3$s</string>
     <string name="timeline_trip_compact">%1$s · %2$s</string>
     <string name="timeline_trip_row_drive">Vehicle</string>
@@ -50,6 +48,14 @@
     <string name="timeline_edit_trip">Edit trip</string>
     <string name="timeline_show_details">Show details</string>
     <string name="timeline_add_job">Add job</string>
+    <!-- Job column on the day canvas. -->
+    <string name="timeline_job_description">Job %1$s, %2$s, %3$s</string>
+    <string name="timeline_job_billable">Billable</string>
+    <string name="timeline_job_not_billable">Not billable</string>
+    <string name="timeline_open_job">Open job</string>
+    <string name="timeline_job_suggestion">Suggested: %1$s</string>
+    <string name="timeline_job_suggestion_description">Suggested job %1$s, %2$s</string>
+    <string name="timeline_confirm_suggestion">Confirm suggested job</string>
     <string name="timeline_undo_visit_times">Visit times changed</string>
     <string name="timeline_filter_needs_review">Needs review</string>
 

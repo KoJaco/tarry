@@ -73,14 +73,6 @@ sealed interface TimelineItem {
         val placeLabel: String?,
         /** True when [placeLabel] is only the raw coordinates, so it should be spoken as an unknown place. */
         val labelIsCoordinates: Boolean = false,
-        /**
-         * Name and colour of a job on the visit. Visits no longer carry a job (job blocks do), so the day list leaves
-         * these null; the canvas and map still read them until the job column replaces them.
-         */
-        val jobName: String? = null,
-        val jobColorArgb: Int? = null,
-        /** Id of that job; seeds the fallback colour when [jobColorArgb] names no palette slot. Null with [jobName]. */
-        val jobId: String? = null,
         val placeId: String? = null,
         /** The user has edited or annotated this visit; segmentation never touches it. */
         val frozen: Boolean = false,
@@ -315,13 +307,16 @@ class TimelineViewModel internal constructor(
                         rowsIn(from, to),
                         pingPositions(from, to).throttleLatest(mapConfig.liveRefreshMs),
                         places.observeLabels(),
-                    ) { rows, pings, allPlaces ->
+                        jobBlocks,
+                    ) { rows, pings, allPlaces, dayBlocks ->
                         val byId = allPlaces.associateBy { it.id }
                         buildDayMap(
                             visits = rows.filterIsInstance<TimelineItem.Visit>().map { v ->
                                 val place = v.placeId?.let(byId::get)
+                                // Pins wear the colour of the first job block that covers the visit; none = neutral.
+                                val job = coveringJob(v.start, v.end, dayBlocks)
                                 PinInput(
-                                    v.id, v.start, place?.let { GeoPoint(it.centroidLat, it.centroidLng) }, v.jobColorArgb, v.jobId,
+                                    v.id, v.start, place?.let { GeoPoint(it.centroidLat, it.centroidLng) }, job?.jobColorArgb, job?.jobId,
                                     end = v.end, radiusM = place?.radiusM,
                                 )
                             },

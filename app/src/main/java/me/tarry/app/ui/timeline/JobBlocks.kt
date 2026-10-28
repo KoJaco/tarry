@@ -7,6 +7,7 @@ import me.tarry.core.data.model.VisitOrigin
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.abs
 
 /*
  * Pure job block logic for the day timeline (phase 6b): lanes, coverage, suggestions and range helpers.
@@ -26,6 +27,8 @@ data class JobBlockConfig(
     val fallbackStartHour: Int = 9,
     /** Today's "Add job" starts at the current time rounded down to this many minutes. */
     val roundingMinutes: Int = 15,
+    /** Drag-to-create on the canvas snaps both ends to this many minutes; it is also the shortest range a drag makes. */
+    val snapMinutes: Int = 15,
 )
 
 /** A visit or trip as the logic sees it. */
@@ -40,7 +43,13 @@ private fun overlaps(aStart: Long, aEnd: Long, bStart: Long, bEnd: Long): Boolea
  * Greedy interval-graph lane assignment by start time. A cluster of transitively overlapping blocks shares one
  * `count` (the lanes the cluster needs); a block that overlaps nothing gets `Lane(0, 1)`.
  */
-fun jobLanes(blocks: List<JobBlock>): Map<String, Lane> {
+fun jobLanes(blocks: List<JobBlock>): Map<String, Lane> = assignLanes(blocks.map { LaneSpan(it.id, it.start, it.end) })
+
+/** Anything that takes a lane: a block, or a suggestion drawn beside the blocks. */
+data class LaneSpan(val id: String, val start: Long, val end: Long)
+
+/** The lane algorithm of [jobLanes] over plain spans, so suggestions can share lanes with blocks. */
+fun assignLanes(blocks: List<LaneSpan>): Map<String, Lane> {
     val result = HashMap<String, Lane>(blocks.size)
     var cluster = ArrayList<Pair<String, Int>>()
     val laneEnds = ArrayList<Long>()
@@ -81,15 +90,40 @@ data class JobSuggestion(val visitId: String, val jobId: String, val start: Long
 
 /**
  * One suggestion per live DETECTED visit whose place has a default job and which no block of that job overlaps.
- * Manual and edited-by-hand visits (origin MANUAL) never get one.
+ * Manual and edited-by-hand visits (origin MANUAL) and visits at ignored places never get one.
  */
 fun suggestions(visits: List<Visit>, placesById: Map<String, Place>, blocks: List<JobBlock>): List<JobSuggestion> =
     visits.mapNotNull { v ->
         if (v.deleted || v.origin != VisitOrigin.DETECTED) return@mapNotNull null
-        val jobId = v.placeId?.let(placesById::get)?.defaultJobId ?: return@mapNotNull null
+        val place = v.placeId?.let(placesById::get) ?: return@mapNotNull null
+        // You don't bill an ignored place, so it is never offered a job.
+        if (place.ignored) return@mapNotNull null
+        val jobId = place.defaultJobId ?: return@mapNotNull null
         val covered = blocks.any { it.jobId == jobId && overlaps(v.start, v.end, it.start, it.end) }
         if (covered) null else JobSuggestion(v.id, jobId, v.start, v.end)
     }
+
+/**
+ * The range a long-press-and-drag on the job column makes, from the time pressed ([anchorMs]) to the time under the
+ * finger now ([currentMs]). Both are snapped to [JobBlockConfig.snapMinutes] from [dayStart]; the earlier is the start.
+ * A press without a drag (both snap to the same time) gives [JobBlockConfig.defaultLengthMs] from there. The range
+ * stays inside `[dayStart, dayEnd]`.
+ */
+internal fun dragJobRange(
+    anchorMs: Long,
+    currentMs: Long,
+    dayStart: Long,
+    dayEnd: Long,
+    config: JobBlockConfig = JobBlockConfig(),
+): Span {
+    val step = config.snapMinutes * 60_000L
+    fun snap(ms: Long) = (dayStart + Math.floorDiv(ms - dayStart + step / 2, step) * step).coerceIn(dayStart, dayEnd)
+    val a = snap(anchorMs)
+    val b = snap(currentMs)
+    val start = minOf(minOf(a, b), dayEnd - step)
+    val length = if (a == b) config.defaultLengthMs else abs(a - b)
+    return Span(start, minOf(start + length, dayEnd))
+}
 
 /** Earliest start to latest end of [segments]; null for an empty selection. */
 internal fun assignRange(segments: List<Segment>): Span? =
@@ -149,3 +183,7 @@ internal fun defaultJobRange(
     }
     return spanFrom(hourStart(config.fallbackStartHour))
 }
+
+/** The first block (by start) that overlaps a visit, or null: the job a map pin or scrubber segment is coloured by. */
+internal fun coveringJob(start: Long, end: Long, blocks: List<JobBlockItem>): JobBlockItem? =
+    blocks.filter { overlaps(start, end, it.start, it.end) }.minWithOrNull(compareBy({ it.start }, { it.id }))

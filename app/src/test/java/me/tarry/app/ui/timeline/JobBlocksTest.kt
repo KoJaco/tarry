@@ -21,8 +21,8 @@ class JobBlocksTest {
             confidence = 1f, updatedAt = 0, deleted = deleted,
         )
 
-    private fun place(id: String = "p", defaultJobId: String? = "j") =
-        Place(id = id, centroidLat = 0.0, centroidLng = 0.0, defaultJobId = defaultJobId, updatedAt = 0)
+    private fun place(id: String = "p", defaultJobId: String? = "j", ignored: Boolean = false) =
+        Place(id = id, centroidLat = 0.0, centroidLng = 0.0, defaultJobId = defaultJobId, ignored = ignored, updatedAt = 0)
 
     // region lanes
 
@@ -127,6 +127,13 @@ class JobBlocksTest {
     }
 
     @Test
+    fun aVisitAtAnIgnoredPlaceIsNotSuggested() {
+        val s = suggestions(listOf(visit("v", 10, 40)), mapOf("p" to place(ignored = true)), emptyList())
+
+        assertThat(s).isEmpty()
+    }
+
+    @Test
     fun noSuggestionWithoutADefaultJobOrAPlace() {
         val s = suggestions(
             listOf(visit("noDefault", 0, 30), visit("noPlace", 40, 70, placeId = null), visit("unknown", 80, 90, placeId = "missing")),
@@ -149,6 +156,50 @@ class JobBlocksTest {
         val blocks = listOf(block("other", 0, 60, jobId = "k"), block("touch", 40, 60))
 
         assertThat(suggestions(listOf(v), mapOf("p" to place()), blocks).map { it.visitId }).containsExactly("v")
+    }
+
+    // endregion
+
+    // region covering job
+
+    private fun item(id: String, start: Long, end: Long) = JobBlockItem(id, "j", "J", 0, start * min, end * min, true, null, Lane(0, 1))
+
+    @Test
+    fun theCoveringJobIsTheFirstOverlappingBlockByStart() {
+        val blocks = listOf(item("late", 30, 90), item("early", 10, 50), item("after", 60, 90))
+
+        assertThat(coveringJob(20 * min, 40 * min, blocks)?.id).isEqualTo("early")
+        assertThat(coveringJob(50 * min, 60 * min, blocks)?.id).isEqualTo("late")
+        assertThat(coveringJob(0, 10 * min, blocks)).isNull()
+    }
+
+    // endregion
+
+    // region drag range
+
+    private val dayEnd = 24 * 60 * min
+    private fun drag(anchor: Long, current: Long) = dragJobRange(anchor * min, current * min, 0L, dayEnd)
+    private fun range(start: Long, end: Long) = Span(start * min, end * min)
+
+    @Test
+    fun dragSnapsBothEndsToTheNearestQuarterHour() {
+        assertThat(drag(9 * 60 + 6, 10 * 60 + 40)).isEqualTo(range(9 * 60, 10 * 60 + 45))
+    }
+
+    @Test
+    fun draggingUpwardsSwapsTheEnds() {
+        assertThat(drag(11 * 60, 10 * 60)).isEqualTo(range(10 * 60, 11 * 60))
+    }
+
+    @Test
+    fun aPressWithoutADragIsOneHourFromTheSnappedTime() {
+        assertThat(drag(9 * 60 + 5, 9 * 60 + 6)).isEqualTo(range(9 * 60, 10 * 60))
+    }
+
+    @Test
+    fun aRangeIsNeverPastTheEndOfTheDay() {
+        assertThat(drag(23 * 60 + 50, 23 * 60 + 50)).isEqualTo(range(23 * 60 + 45, 24 * 60))
+        assertThat(drag(23 * 60, 25 * 60)).isEqualTo(range(23 * 60, 24 * 60))
     }
 
     // endregion
