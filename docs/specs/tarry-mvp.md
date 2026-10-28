@@ -55,6 +55,8 @@ Native Kotlin with Jetpack Compose, single activity, local Room database. Captur
 **Play Services dependency.** Fused location and activity recognition need Google Play Services. An F-Droid build without them (raw LocationManager, no activity recognition) is a later option, not MVP.
 
 ## Data model
+> **Superseded in part (phase 6b, 2026-10-28):** jobs are time-range job blocks, and tags, per-visit job/billable and travel attribution are gone. See `docs/specs/build-plan.md` § Spec deltas and `docs/specs/phase-6b.md`. Sections below that mention tags, job labels on visits, billable on visits/trips or travel attribution are historical.
+
 Raw pings are the source of truth; visits and trips are derived from them and can be regenerated, except visits a user has annotated or edited, which are frozen. Defaults live on the place, overrides on the visit. All timestamps are stored as UTC epoch millis plus the device time-zone ID at capture. Pings use Long keys; places, visits, trips, tags and tag groups use UUID keys plus updatedAt and a soft-delete flag, so sync can be added later without a schema rewrite (the Long ids in the tables below apply to pings only).
 
 ### LocationPing (raw, append-only)

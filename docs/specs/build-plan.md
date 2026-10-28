@@ -26,6 +26,8 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 - **Place default tags:** `PlaceDefaultTag` join table instead of a list column.
 - **New tables:** `ExcludedRange` (deleted visits), `Gap` (health-monitor outages and segmentation), `SegmentationCheckpoint`.
 - **CSV columns:** spec columns plus `segment_id` and `job_id`.
+- **Job blocks (phase 6b, Room v2):** a job is placed on the timeline as a `JobBlock` (job, start, end, billable, notes), drawn in a second column. Billed time is the block's range; blocks may overlap and each bills its full range. Blocks replace `Visit.jobId`, per-visit/trip billable, `Trip.attributedJobId` and the travel attribution rule. `Job.defaultBillable` seeds new blocks; `Place.defaultJobId` only *suggests* a block for detected visits there. "Needs review" = a non-ignored visit covered by no block. Spec: `docs/specs/phase-6b.md`.
+- **No tags (phase 6b):** Tag, TagGroup and their join tables are removed (existing tags were folded into notes by the migration). Notes stay on visits and trips; blocks have their own notes. The CSV drops `tags` (phase 7 decides block columns).
 - **Schedule alarms:** exact alarm (`SCHEDULE_EXACT_ALARM`, user-granted) for window starts, since only exact alarms exempt background foreground-service starts on Android 12+. Validated in the phase 2a spike; fallback is the tap-to-start notification.
 
 ## Phases
