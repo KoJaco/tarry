@@ -26,7 +26,6 @@ import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.navigation.JobsRoute
 import me.tarry.app.ui.navigation.PlaceDetailRoute
 import me.tarry.app.ui.navigation.PlacesRoute
-import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.settings.SettingsContent
@@ -95,7 +94,7 @@ class TarryAppShellTest {
     }
 
     @Test
-    fun settingsRows_pushJobsAndTagsOverSettings_andTheSettingsTabReturns() {
+    fun settingsRows_pushJobsOverSettings_andTheSettingsTabReturns() {
         val backStack = mutableStateListOf<NavKey>(TimelineRoute)
         composeRule.setContent {
             TarryAppContent(
@@ -108,12 +107,10 @@ class TarryAppShellTest {
                     SettingsContent(
                         Settings(),
                         onOpenJobs = { backStack.add(JobsRoute) },
-                        onOpenTags = { backStack.add(TagsRoute) },
                     )
                 },
                 timelineContent = { Text("Timeline screen") },
                 jobsContent = { Text("Jobs screen") },
-                tagsContent = { Text("Tags screen") },
             )
         }
         settingsTab.performClick()
@@ -124,10 +121,6 @@ class TarryAppShellTest {
         settingsTab.assertIsSelected()
         settingsTab.performClick()
         composeRule.onNodeWithText("Stop radius").assertIsDisplayed()
-
-        composeRule.onNodeWithText("Tags").performScrollTo().performClick()
-        composeRule.mainClock.advanceTimeBy(1_000)
-        composeRule.onNodeWithText("Tags screen").assertIsDisplayed()
     }
 
     @Test

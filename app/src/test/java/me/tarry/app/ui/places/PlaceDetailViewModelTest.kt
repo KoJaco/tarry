@@ -30,9 +30,6 @@ import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.PlaceDefaultTag
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.PingSource
@@ -41,7 +38,6 @@ import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.EditClock
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.PlaceRepository
-import me.tarry.core.data.repository.TagRepository
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.core.data.repository.TimelineRepository
 import org.junit.After
@@ -71,7 +67,7 @@ class PlaceDetailViewModelTest {
         workManager = WorkManager.getInstance(context)
         scheduler = SegmentationScheduler(context, TrackingConfig())
         timeline = TimelineEditor(
-            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
             db.segmentationCheckpointDao(), EditClock { NOW },
         )
         undoEvents = UndoEvents(timeline, scheduler)
@@ -82,7 +78,6 @@ class PlaceDetailViewModelTest {
         PlaceRepository(db.placeDao()),
         TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao()),
         JobRepository(db.jobDao()),
-        TagRepository(db.tagDao()),
         timeline,
         PlaceRadiusPreviewLoader(db.placeDao(), db.visitDao(), db.locationPingDao()),
         undoEvents,
@@ -116,17 +111,12 @@ class PlaceDetailViewModelTest {
     private fun enqueued() = workManager.getWorkInfosForUniqueWork(SegmentationScheduler.NOW).get().size
 
     @Test
-    fun showsTheDetailsAndHidesArchivedJobsAndTagsUnlessCurrent() = runBlocking<Unit> {
+    fun showsTheDetailsAndHidesArchivedJobsUnlessCurrent() = runBlocking<Unit> {
         db.jobDao().upsert(Job(id = "live", name = "Live", colorArgb = 1, updatedAt = 0))
         db.jobDao().upsert(Job(id = "old", name = "Old", colorArgb = 1, archived = true, updatedAt = 0))
         db.jobDao().upsert(Job(id = "gone", name = "Gone", colorArgb = 1, archived = true, updatedAt = 0))
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 0))
-        db.tagDao().upsert(Tag(id = "t1", groupId = "g", name = "Applied", sortOrder = 0, archived = true, updatedAt = 0))
-        db.tagDao().upsert(Tag(id = "t2", groupId = "g", name = "Hidden", sortOrder = 1, archived = true, updatedAt = 0))
-        db.tagDao().upsert(Tag(id = "t3", groupId = "g", name = "Open", sortOrder = 2, updatedAt = 0))
-        db.placeDao().upsert(place("p", name = "Shop").copy(defaultJobId = "old", defaultBillable = true))
+        db.placeDao().upsert(place("p", name = "Shop").copy(defaultJobId = "old"))
         db.placeDao().upsert(place("q", name = "Other"))
-        db.placeDao().upsertDefaultTag(PlaceDefaultTag("p", "t1"))
 
         viewModel.load("p")
         val ui = ready()
@@ -134,9 +124,6 @@ class PlaceDetailViewModelTest {
         assertThat(ui.label).isEqualTo("Shop")
         assertThat(ui.defaultJob?.id).isEqualTo("old")
         assertThat(ui.pickableJobs.map { it.id }).containsExactly("live", "old")
-        assertThat(ui.defaultBillable).isTrue()
-        assertThat(ui.tagIds).containsExactly("t1")
-        assertThat(ui.pickableTagGroups.single().tags.map { it.id }).containsExactly("t1", "t3")
         assertThat(ui.otherPlaces.map { it.id }).containsExactly("q")
     }
 
@@ -152,23 +139,15 @@ class PlaceDetailViewModelTest {
     }
 
     @Test
-    fun eachDefaultChangeKeepsTheOtherDefaults() = runBlocking<Unit> {
+    fun settingAndClearingTheDefaultJobWritesThePlace() = runBlocking<Unit> {
         db.jobDao().upsert(Job(id = "j", name = "J", colorArgb = 1, updatedAt = 0))
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 0))
-        db.tagDao().upsert(Tag(id = "t", groupId = "g", name = "T", sortOrder = 0, updatedAt = 0))
         db.placeDao().upsert(place("p"))
         viewModel.load("p")
 
         viewModel.setDefaultJob("j")
-        viewModel.setDefaultBillable(false)
-        viewModel.setDefaultTags(setOf("t"))
-
-        val ui = ready { it.tagIds.isNotEmpty() && it.defaultBillable == false && it.defaultJob != null }
-        assertThat(ui.defaultJob?.id).isEqualTo("j")
-        viewModel.setDefaultBillable(null)
+        assertThat(ready { it.defaultJob != null }.defaultJob?.id).isEqualTo("j")
         viewModel.setDefaultJob(null)
-        val cleared = ready { it.defaultBillable == null && it.defaultJob == null }
-        assertThat(cleared.tagIds).containsExactly("t")
+        assertThat(ready { it.defaultJob == null }.defaultJob).isNull()
     }
 
     @Test

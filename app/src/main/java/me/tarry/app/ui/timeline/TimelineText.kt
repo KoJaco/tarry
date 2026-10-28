@@ -97,12 +97,7 @@ internal fun spokenDescription(
             } else {
                 item.placeLabel ?: stringResource(R.string.timeline_unknown_place)
             }
-            val job = item.jobName
-            if (job != null) {
-                stringResource(R.string.timeline_visit_job_description, place, t.spokenRange, spokenDuration(t.durationMs), job)
-            } else {
-                stringResource(R.string.timeline_visit_description, place, t.spokenRange, spokenDuration(t.durationMs))
-            }
+            stringResource(R.string.timeline_visit_description, place, t.spokenRange, spokenDuration(t.durationMs))
         }
         is TimelineItem.Trip -> stringResource(
             R.string.timeline_trip_description,

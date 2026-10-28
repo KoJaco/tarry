@@ -41,7 +41,6 @@ class SettingsRepositoryTest {
         assertThat(s.roundingMode).isEqualTo(RoundingMode.NEAREST)
         assertThat(s.minBillableMinutes).isEqualTo(0)
         assertThat(s.roundDailyTotalPerJob).isFalse()
-        assertThat(s.travelAttribution).isEqualTo(TravelAttribution.DESTINATION)
         assertThat(s.rawPingRetentionDays).isEqualTo(90)
         assertThat(s.reviewReminderEnabled).isFalse()
         assertThat(s.reviewReminderMinuteOfDay).isEqualTo(1050)
@@ -88,15 +87,6 @@ class SettingsRepositoryTest {
         assertThat(r.settings.first().roundDailyTotalPerJob).isTrue()
         r.setRoundDailyTotalPerJob(false)
         assertThat(r.settings.first().roundDailyTotalPerJob).isFalse()
-    }
-
-    @Test
-    fun travelAttribution_updates() = runTest {
-        val r = repo()
-        for (a in TravelAttribution.entries) {
-            r.setTravelAttribution(a)
-            assertThat(r.settings.first().travelAttribution).isEqualTo(a)
-        }
     }
 
     @Test
@@ -199,7 +189,6 @@ class SettingsRepositoryTest {
         r1.setRoundingMode(RoundingMode.UP)
         r1.setMinBillableMinutes(20)
         r1.setRoundDailyTotalPerJob(true)
-        r1.setTravelAttribution(TravelAttribution.entries.last())
         r1.setRawPingRetentionDays(null)
         r1.setReviewReminderEnabled(true)
         r1.setReviewReminderMinuteOfDay(600)

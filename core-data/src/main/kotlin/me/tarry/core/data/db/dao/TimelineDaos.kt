@@ -2,16 +2,16 @@ package me.tarry.core.data.db.dao
 
 import androidx.room.Dao
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import me.tarry.core.data.db.entity.ExcludedRange
 import me.tarry.core.data.db.entity.Gap
+import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.ScheduleOverride
 import me.tarry.core.data.db.entity.ScheduleTemplate
 import me.tarry.core.data.db.entity.Trip
-import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 
 /** Row of [VisitDao.durationByPlaceOutside]. */
 data class PlaceDuration(val placeId: String, val durationMs: Long)
@@ -74,16 +74,6 @@ interface VisitDao {
     @Query("UPDATE visit SET deleted = 1, updatedAt = :updatedAt WHERE deleted = 0 AND frozen = 0 AND placeId = :placeId")
     suspend fun softDeleteUnfrozenAt(placeId: String, updatedAt: Long)
 
-    @Upsert suspend fun upsertTag(link: VisitTag)
-
-    @Query("DELETE FROM visit_tag WHERE visitId = :visitId AND tagId = :tagId")
-    suspend fun deleteTag(visitId: String, tagId: String)
-
-    @Query("SELECT * FROM visit_tag WHERE visitId = :visitId")
-    suspend fun getTags(visitId: String): List<VisitTag>
-
-    @Query("DELETE FROM visit_tag WHERE visitId = :visitId")
-    suspend fun deleteAllTags(visitId: String)
 
     /** The non-deleted visit that ends last at or before [time] (the previous neighbour of a visit starting at [time]). */
     @Query("SELECT * FROM visit WHERE deleted = 0 AND `end` <= :time ORDER BY `end` DESC LIMIT 1")
@@ -117,16 +107,6 @@ interface TripDao {
     @Query("SELECT * FROM trip WHERE deleted = 0 AND frozen = 1 AND start < :to AND `end` > :from ORDER BY start")
     suspend fun getFrozenInRange(from: Long, to: Long): List<Trip>
 
-    @Upsert suspend fun upsertTag(link: TripTag)
-
-    @Query("DELETE FROM trip_tag WHERE tripId = :tripId AND tagId = :tagId")
-    suspend fun deleteTag(tripId: String, tagId: String)
-
-    @Query("SELECT * FROM trip_tag WHERE tripId = :tripId")
-    suspend fun getTags(tripId: String): List<TripTag>
-
-    @Query("DELETE FROM trip_tag WHERE tripId = :tripId")
-    suspend fun deleteAllTags(tripId: String)
 }
 
 @Dao
@@ -182,4 +162,34 @@ interface ScheduleDao {
 
     @Query("DELETE FROM schedule_override WHERE weekStart = :weekStart")
     suspend fun deleteOverride(weekStart: String)
+}
+
+@Dao
+interface JobBlockDao {
+    @Upsert suspend fun upsert(block: JobBlock)
+
+    @Query("SELECT * FROM job_block WHERE id = :id")
+    suspend fun getById(id: String): JobBlock?
+
+    /** Non-deleted blocks overlapping [from, to), live. */
+    @Query("SELECT * FROM job_block WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
+    fun observeOverlapping(from: Long, to: Long): Flow<List<JobBlock>>
+
+    /** One-shot [observeOverlapping]. */
+    @Query("SELECT * FROM job_block WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
+    suspend fun getOverlapping(from: Long, to: Long): List<JobBlock>
+
+    @Query("UPDATE job_block SET deleted = 1, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun softDelete(ids: List<String>, now: Long)
+
+    /** Saves [block] and soft-deletes [deleteIds] in one transaction, so a merge is never half applied. */
+    @Transaction
+    suspend fun replace(block: JobBlock, deleteIds: List<String>, now: Long) {
+        upsert(block.copy(updatedAt = now))
+        if (deleteIds.isNotEmpty()) softDelete(deleteIds, now)
+    }
+
+    /** Live blocks of the job (what blocks deleting it). */
+    @Query("SELECT COUNT(*) FROM job_block WHERE jobId = :jobId AND deleted = 0")
+    suspend fun countLive(jobId: String): Int
 }

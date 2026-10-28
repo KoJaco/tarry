@@ -13,11 +13,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import me.tarry.app.R
 import me.tarry.app.segmentation.PlaceRadiusPreviewLoader
@@ -25,26 +24,21 @@ import me.tarry.app.segmentation.RadiusPreviewInput
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.ui.drawer.JobOption
 import me.tarry.app.ui.drawer.PlaceOption
-import me.tarry.app.ui.drawer.TagGroupOption
-import me.tarry.app.ui.drawer.TagOption
 import me.tarry.app.ui.timeline.displayLabel
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.app.ui.undo.noticeRes
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.repository.EditResult
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.MergePreview
 import me.tarry.core.data.repository.PlaceRepository
-import me.tarry.core.data.repository.TagRepository
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.core.data.repository.TimelineRepository
 import javax.inject.Inject
 
-/** Everything the detail screen shows. Pickers already hide archived jobs and tags unless they are the current value. */
+/** Everything the detail screen shows. Pickers already hide archived jobs unless they are the current value. */
 @Immutable
 data class PlaceDetailUi(
     val id: String,
@@ -54,10 +48,6 @@ data class PlaceDetailUi(
     val visitCount: Int,
     val defaultJob: JobOption?,
     val pickableJobs: List<JobOption>,
-    val defaultBillable: Boolean?,
-    val tagIds: Set<String>,
-    val tagNames: List<String>,
-    val pickableTagGroups: List<TagGroupOption>,
     val ignored: Boolean,
     val radiusM: Float,
     /** Every other live place, for "Merge into...". */
@@ -72,7 +62,7 @@ sealed interface PlaceDetailLoad {
     data class Ready(val ui: PlaceDetailUi) : PlaceDetailLoad
 }
 
-private class Catalog(val jobs: List<Job>, val groups: List<TagGroup>, val tags: List<Tag>)
+private class Catalog(val jobs: List<Job>)
 
 private class Inputs(val id: String?, val all: List<Place>, val catalog: Catalog, val counts: Map<String, Int>)
 
@@ -86,16 +76,14 @@ class PlaceDetailViewModel @Inject constructor(
     private val places: PlaceRepository,
     private val timeline: TimelineRepository,
     jobs: JobRepository,
-    tags: TagRepository,
     private val editor: TimelineEditor,
     private val preview: PlaceRadiusPreviewLoader,
     private val undoEvents: UndoEvents,
     private val scheduler: SegmentationScheduler,
 ) : ViewModel() {
     private val placeId = MutableStateFlow<String?>(null)
-    private val defaultsLock = Mutex()
 
-    private val catalog = combine(jobs.observeAll(), tags.observeGroups(), tags.observeTags(), ::Catalog)
+    private val catalog = jobs.observeAll().map(::Catalog)
 
     val state: StateFlow<PlaceDetailLoad> =
         combine(placeId, places.observeAll(), catalog, timeline.observePlaceVisitCounts(), ::Inputs)
@@ -109,21 +97,13 @@ class PlaceDetailViewModel @Inject constructor(
     private suspend fun build(i: Inputs): PlaceDetailLoad {
         val id = i.id ?: return PlaceDetailLoad.Loading
         val place = i.all.firstOrNull { it.id == id && it.mergedIntoId == null } ?: return PlaceDetailLoad.Missing
-        val tagIds = places.defaultTags(id).map { it.tagId }.toSet()
-        val archivedTags = i.catalog.tags.filter { it.archived }.map { it.id }.toSet()
-        val tagsByGroup = i.catalog.tags.groupBy { it.groupId }
         val jobOptions = i.catalog.jobs.filter { !it.archived || it.id == place.defaultJobId }.map { JobOption(it.id, it.name, it.colorArgb) }
-        val groups = i.catalog.groups.map { g ->
-            TagGroupOption(g.id, g.name, tagsByGroup[g.id].orEmpty().filter { it.id !in archivedTags || it.id in tagIds }.map { TagOption(it.id, it.name) })
-        }.filter { it.tags.isNotEmpty() }
         return PlaceDetailLoad.Ready(
             PlaceDetailUi(
                 id = id, label = place.displayLabel(), name = place.name?.takeIf { it.isNotBlank() },
                 address = place.address?.takeIf { it.isNotBlank() }, visitCount = i.counts[id] ?: 0,
                 defaultJob = jobOptions.firstOrNull { it.id == place.defaultJobId }, pickableJobs = jobOptions,
-                defaultBillable = place.defaultBillable, tagIds = tagIds,
-                tagNames = i.catalog.tags.filter { it.id in tagIds }.map { it.name },
-                pickableTagGroups = groups, ignored = place.ignored, radiusM = place.radiusM,
+                ignored = place.ignored, radiusM = place.radiusM,
                 otherPlaces = i.all.filter { it.id != id && it.mergedIntoId == null }
                     .map { PlaceOption(it.id, it.displayLabel(), it.address?.takeIf { a -> a.isNotBlank() }) },
             ),
@@ -136,22 +116,9 @@ class PlaceDetailViewModel @Inject constructor(
         report(editor.renamePlace(id, name))
     }
 
-    fun setDefaultJob(jobId: String?) = writeDefaults { _, billable, tagIds -> Defaults(jobId, billable, tagIds) }
-
-    fun setDefaultBillable(billable: Boolean?) = writeDefaults { job, _, tagIds -> Defaults(job, billable, tagIds) }
-
-    fun setDefaultTags(tagIds: Set<String>) = writeDefaults { job, billable, _ -> Defaults(job, billable, tagIds) }
-
-    private data class Defaults(val jobId: String?, val billable: Boolean?, val tagIds: Set<String>)
-
-    /** Re-reads the place's defaults, so a stale screen never overwrites a field it did not touch. */
-    private fun writeDefaults(change: (String?, Boolean?, Set<String>) -> Defaults) = viewModelScope.launch {
-        defaultsLock.withLock {
-            val id = placeId.value ?: return@launch
-            val place = places.place(id)?.takeUnless { it.deleted } ?: return@launch
-            val next = change(place.defaultJobId, place.defaultBillable, places.defaultTags(id).map { it.tagId }.toSet())
-            report(editor.setPlaceDefault(id, next.jobId, next.billable, next.tagIds))
-        }
+    fun setDefaultJob(jobId: String?) = viewModelScope.launch {
+        val id = placeId.value ?: return@launch
+        report(editor.setPlaceDefault(id, jobId))
     }
 
     /** Sets `Place.ignored` directly, so it works for a place with no live visits too. */

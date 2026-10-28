@@ -32,10 +32,6 @@ fun MutableList<NavKey>.navigateTopLevel(route: NavKey) {
 @Serializable
 data object JobsRoute : NavKey
 
-/** Tags and tag groups management (phase 4a). Pushed on top of [SettingsRoute]. */
-@Serializable
-data object TagsRoute : NavKey
-
 /** Weekly schedule grid (phase 6). Pushed on top of [SettingsRoute]. */
 @Serializable
 data object ScheduleRoute : NavKey

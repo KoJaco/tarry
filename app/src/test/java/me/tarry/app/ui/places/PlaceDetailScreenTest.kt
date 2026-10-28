@@ -36,8 +36,8 @@ class PlaceDetailScreenTest {
 
     private val ui = PlaceDetailUi(
         id = "p", label = "Shop", name = "Shop", address = "1 Main St", visitCount = 3,
-        defaultJob = null, pickableJobs = emptyList(), defaultBillable = null, tagIds = emptySet(), tagNames = emptyList(),
-        pickableTagGroups = emptyList(), ignored = false, radiusM = 75f,
+        defaultJob = null, pickableJobs = emptyList(),
+        ignored = false, radiusM = 75f,
         otherPlaces = listOf(PlaceOption("q", "Depot", "2 Side St")),
     )
 
@@ -59,7 +59,7 @@ class PlaceDetailScreenTest {
                     onClose = { closed++ },
                     loadRadiusInput = { input },
                     loadMergePreview = { mergeGate?.await() ?: preview },
-                    onRename = {}, onSetJob = {}, onSetBillable = {}, onSetTags = {}, onSetIgnored = {},
+                    onRename = {}, onSetJob = {}, onSetIgnored = {},
                     onSaveRadius = { saved += it },
                     onMerge = { merged += it },
                     onDelete = { deleted++ },
@@ -73,8 +73,6 @@ class PlaceDetailScreenTest {
         show()
 
         composeRule.onNodeWithText("Default job").assertExists()
-        composeRule.onNodeWithText("Default billable").assertExists()
-        composeRule.onNodeWithText("Default tags").assertExists()
         composeRule.onNodeWithText("Ignore this place").assertExists()
         composeRule.onNodeWithText("75 m").assertExists()
         composeRule.onNodeWithText("Merge into…").performScrollTo().assertIsEnabled()
@@ -133,7 +131,7 @@ class PlaceDetailScreenTest {
 
         composeRule.onNodeWithText("Merge into Depot?").assertExists()
         composeRule.onNodeWithText("combined circle will be 120 m", substring = true).assertExists()
-        composeRule.onNodeWithText("may pick up this place's defaults", substring = true).assertExists()
+        composeRule.onNodeWithText("keeps its default job", substring = true).assertExists()
         composeRule.onNodeWithText("limited to", substring = true).assertDoesNotExist()
         composeRule.onNode(hasText("Merge") and hasClickAction()).performClick()
 

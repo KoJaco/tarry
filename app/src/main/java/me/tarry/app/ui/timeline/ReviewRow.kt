@@ -43,7 +43,7 @@ private val RingWidth = 2.dp
 
 /**
  * The row under the week strip: the compact Day | Map toggle first, then the "Needs review" switch (only when
- * [showToggle], and not on the map) and "New visit". "New visit" drops its label to a `+` icon when the labelled row
+ * [showToggle], and not on the map) and "Add job". "Add job" drops its label to a `+` icon when the labelled row
  * would not fit on one line; past that (large font scales) the row wraps instead of shrinking or truncating.
  */
 @Composable
@@ -51,7 +51,7 @@ internal fun ReviewRow(
     reviewOnly: Boolean,
     showToggle: Boolean,
     onReviewOnlyChange: (Boolean) -> Unit,
-    onNewVisit: () -> Unit,
+    onAddJob: () -> Unit,
     modifier: Modifier = Modifier,
     showMap: Boolean = false,
     onShowMapChange: (Boolean) -> Unit = {},
@@ -63,7 +63,7 @@ internal fun ReviewRow(
         }.first().measure(Constraints()).width
         val row = subcompose("row") {
             ReviewRowItems(
-                reviewOnly, showToggle, onReviewOnlyChange, onNewVisit, showMap, onShowMapChange,
+                reviewOnly, showToggle, onReviewOnlyChange, onAddJob, showMap, onShowMapChange,
                 compact = labelledWidth > constraints.maxWidth,
             )
         }.first().measure(constraints.copy(minWidth = 0))
@@ -77,7 +77,7 @@ private fun ReviewRowItems(
     reviewOnly: Boolean,
     showToggle: Boolean,
     onReviewOnlyChange: (Boolean) -> Unit,
-    onNewVisit: () -> Unit,
+    onAddJob: () -> Unit,
     showMap: Boolean,
     onShowMapChange: (Boolean) -> Unit,
     compact: Boolean,
@@ -92,7 +92,7 @@ private fun ReviewRowItems(
         ViewToggle(showMap, onShowMapChange, Modifier.testTag("timeline_view_toggle"))
         // The filter dims canvas blocks, so it means nothing on the map.
         if (showToggle && !showMap) NeedsReviewToggle(reviewOnly, onReviewOnlyChange, Modifier.testTag("timeline_filter_review"))
-        NewVisitButton(onNewVisit, compact, Modifier.testTag("timeline_new_visit"))
+        AddJobButton(onAddJob, compact, Modifier.testTag("timeline_add_job"))
     }
 }
 
@@ -156,11 +156,11 @@ private fun NeedsReviewToggle(on: Boolean, onChange: (Boolean) -> Unit, modifier
     }
 }
 
-/** `+` icon and "New visit" on a `card` pill. [compact] is a 48 dp `+` circle that keeps the label as its description. */
+/** `+` icon and "Add job" on a `card` pill. [compact] is a 48 dp `+` circle that keeps the label as its description. */
 @Composable
-private fun NewVisitButton(onClick: () -> Unit, compact: Boolean, modifier: Modifier = Modifier) {
+private fun AddJobButton(onClick: () -> Unit, compact: Boolean, modifier: Modifier = Modifier) {
     val c = TarryTheme.colors
-    val label = stringResource(R.string.timeline_new_visit)
+    val label = stringResource(R.string.timeline_add_job)
     Row(
         modifier = modifier
             .heightIn(min = MinTouch)

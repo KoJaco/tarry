@@ -4,33 +4,29 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import me.tarry.core.data.db.dao.ExcludedRangeDao
 import me.tarry.core.data.db.dao.GapDao
+import me.tarry.core.data.db.dao.JobBlockDao
 import me.tarry.core.data.db.dao.JobDao
 import me.tarry.core.data.db.dao.LocationPingDao
 import me.tarry.core.data.db.dao.ManualOverrideDao
 import me.tarry.core.data.db.dao.PlaceDao
 import me.tarry.core.data.db.dao.ScheduleDao
 import me.tarry.core.data.db.dao.SegmentationCheckpointDao
-import me.tarry.core.data.db.dao.TagDao
 import me.tarry.core.data.db.dao.TrackingSessionDao
 import me.tarry.core.data.db.dao.TripDao
 import me.tarry.core.data.db.dao.VisitDao
 import me.tarry.core.data.db.entity.ExcludedRange
 import me.tarry.core.data.db.entity.Gap
 import me.tarry.core.data.db.entity.Job
+import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.ManualOverride
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.PlaceDefaultTag
 import me.tarry.core.data.db.entity.ScheduleOverride
 import me.tarry.core.data.db.entity.ScheduleTemplate
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Trip
-import me.tarry.core.data.db.entity.TripTag
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.Schedule
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -87,17 +83,11 @@ class TimelineRepository @Inject constructor(
     fun observePlaceVisitCounts(): Flow<Map<String, Int>> =
         visits.observePlaceVisitCounts().map { rows -> rows.associate { it.placeId to it.count } }
     suspend fun liveVisitsAt(placeId: String) = visits.getLiveByPlace(placeId)
-    suspend fun tagVisit(link: VisitTag) = visits.upsertTag(link)
-    suspend fun untagVisit(visitId: String, tagId: String) = visits.deleteTag(visitId, tagId)
-    suspend fun visitTags(visitId: String) = visits.getTags(visitId)
 
     suspend fun saveTrip(trip: Trip) = trips.upsert(trip)
     suspend fun trip(id: String): Trip? = trips.getById(id)
     suspend fun tripsInRange(from: Long, to: Long) = trips.getInRange(from, to)
     fun observeTrips(from: Long, to: Long): Flow<List<Trip>> = trips.observeInRange(from, to)
-    suspend fun tagTrip(link: TripTag) = trips.upsertTag(link)
-    suspend fun untagTrip(tripId: String, tagId: String) = trips.deleteTag(tripId, tagId)
-    suspend fun tripTags(tripId: String) = trips.getTags(tripId)
 
     suspend fun saveGap(gap: Gap) = gaps.upsert(gap)
     suspend fun gap(id: String): Gap? = gaps.getById(id)
@@ -119,9 +109,6 @@ class PlaceRepository @Inject constructor(private val places: PlaceDao) {
 
     /** Every place including deleted ones, only for labelling existing visits. Pickers use [observeAll]. */
     fun observeLabels(): Flow<List<Place>> = places.observeLabels()
-    suspend fun addDefaultTag(link: PlaceDefaultTag) = places.upsertDefaultTag(link)
-    suspend fun removeDefaultTag(placeId: String, tagId: String) = places.deleteDefaultTag(placeId, tagId)
-    suspend fun defaultTags(placeId: String) = places.getDefaultTags(placeId)
 }
 
 @Singleton
@@ -132,14 +119,32 @@ class JobRepository @Inject constructor(private val jobs: JobDao) {
 }
 
 @Singleton
-class TagRepository @Inject constructor(private val tags: TagDao) {
-    suspend fun saveGroup(group: TagGroup) = tags.upsertGroup(group)
-    suspend fun save(tag: Tag) = tags.upsert(tag)
-    suspend fun group(id: String): TagGroup? = tags.getGroupById(id)
-    suspend fun tag(id: String): Tag? = tags.getById(id)
-    suspend fun tagsInGroup(groupId: String) = tags.getByGroup(groupId)
-    fun observeGroups(): Flow<List<TagGroup>> = tags.observeGroups()
-    fun observeTags(): Flow<List<Tag>> = tags.observeTags()
+class JobBlockRepository @Inject constructor(private val blocks: JobBlockDao) {
+    /** Live blocks overlapping `[from, to)` ordered by start, re-emitting when a block changes. */
+    fun observeOverlapping(from: Long, to: Long): Flow<List<JobBlock>> = blocks.observeOverlapping(from, to)
+
+    /** Insert or update; always stamps [JobBlock.updatedAt]. */
+    suspend fun save(block: JobBlock, now: Long = System.currentTimeMillis()) = blocks.upsert(block.copy(updatedAt = now))
+
+    /** One-shot live blocks overlapping `[from, to)` ordered by start. */
+    suspend fun overlapping(from: Long, to: Long): List<JobBlock> = blocks.getOverlapping(from, to)
+
+    /** Saves [save] and soft-deletes [deleteIds] atomically (a same-job merge); stamps [JobBlock.updatedAt] on all of them. */
+    suspend fun replace(save: JobBlock, deleteIds: List<String>, now: Long = System.currentTimeMillis()) =
+        blocks.replace(save, deleteIds, now)
+
+    /** Soft delete. No-op when the block does not exist. */
+    suspend fun delete(id: String, now: Long = System.currentTimeMillis()) {
+        blocks.getById(id)?.let { blocks.upsert(it.copy(deleted = true, updatedAt = now)) }
+    }
+
+    /** Undo of [delete]. */
+    suspend fun restore(id: String, now: Long = System.currentTimeMillis()) {
+        blocks.getById(id)?.let { blocks.upsert(it.copy(deleted = false, updatedAt = now)) }
+    }
+
+    /** The block by id, deleted ones included. */
+    suspend fun byId(id: String): JobBlock? = blocks.getById(id)
 }
 
 @Singleton

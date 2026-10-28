@@ -85,6 +85,8 @@ fun TimelineContent(
     onStartSelection: (String) -> Unit = {},
     onToggleSelected: (String) -> Unit = {},
     onClearSelection: () -> Unit = {},
+    /** "Add job" in the review row; the host opens the new-job drawer prefilled (see `TimelineViewModel.addJobTarget`). */
+    onAddJob: () -> Unit = {},
     /** Timeline | Map: true shows the day on the map instead of the canvas. */
     showMap: Boolean = false,
     onShowMapChange: (Boolean) -> Unit = {},
@@ -92,6 +94,16 @@ fun TimelineContent(
     dayMap: DayMap? = null,
     /** Tracking start/stop marks of the day, drawn on the canvas. */
     trackingMarkers: List<TrackingMarker> = emptyList(),
+    /** The day's job blocks (with job name, colour and lane) and the suggested blocks: drawn in the job column. */
+    jobBlocks: List<JobBlockItem> = emptyList(),
+    jobSuggestions: List<JobSuggestionItem> = emptyList(),
+    /** A job block was tapped; the host opens its drawer (`EditTarget.Job`). */
+    onOpenJob: (String) -> Unit = {},
+    onConfirmSuggestion: (JobSuggestion) -> Unit = {},
+    /** A range was drawn on the job column; the host opens `EditTarget.NewJob(start, end)`. */
+    onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
+    /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
+    onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -125,10 +137,7 @@ fun TimelineContent(
             reviewOnly = reviewOnly,
             showToggle = !items.isNullOrEmpty(),
             onReviewOnlyChange = { reviewOnly = it },
-            onNewVisit = {
-                val (start, end) = firstFreeSlot(date, zone, items.orEmpty().filterIsInstance<TimelineItem.Visit>())
-                onEdit(EditTarget.NewVisit(start, end))
-            },
+            onAddJob = onAddJob,
             showMap = showMap,
             onShowMapChange = onShowMapChange,
             modifier = gutter,
@@ -146,6 +155,9 @@ fun TimelineContent(
             val rows = items.orEmpty()
             val points = dayMap?.points.orEmpty()
             val scrub = remember(rows, points, dayMap?.visitCentres, dayStart, dayEnd) { ScrubberModel(rows.toScrubItems(), dayStart, dayEnd, points, visitCentres = dayMap?.visitCentres.orEmpty()) }
+            val visitJobs = remember(rows, jobBlocks) {
+                rows.filterIsInstance<TimelineItem.Visit>().mapNotNull { v -> coveringJob(v.start, v.end, jobBlocks)?.let { v.id to it } }.toMap()
+            }
             // Kept across day changes only for a date-time jump; otherwise the day starts at its first item.
             var scrubTime by rememberSaveable { mutableStateOf<Long?>(null) }
             val range = scrub.range
@@ -166,7 +178,7 @@ fun TimelineContent(
                 if (time != null) {
                     DayScrubber(
                         model = scrub,
-                        visits = rows.filterIsInstance<TimelineItem.Visit>(),
+                        visitJobs = visitJobs,
                         time = time,
                         onTimeChange = { scrubTime = it },
                         onOpenVisit = { onEdit(EditTarget.Visit(it)) },
@@ -193,7 +205,7 @@ fun TimelineContent(
         ) {
             when {
                 items == null -> LoadingBlocks(Modifier.testTag("timeline_loading"))
-                items.isEmpty() -> EmptyState(
+                items.isEmpty() && jobBlocks.isEmpty() -> EmptyState(
                     title = stringResource(if (isToday) R.string.timeline_empty_title_today else R.string.timeline_empty_title_past),
                     body = stringResource(if (isToday) R.string.timeline_empty_body_today else R.string.timeline_empty_body_past),
                     modifier = Modifier.testTag("timeline_empty"),
@@ -202,8 +214,12 @@ fun TimelineContent(
                     val bounds = dayBounds(date, zone)
                     val fontScale = LocalDensity.current.fontScale
                     val minute = if (isToday) now / MillisPerMinute else 0L
-                    val layout = remember(items, date, zone, minute, isToday, fontScale, trackingMarkers) {
-                        layoutDay(items, bounds, zone, if (isToday) now else -1L, fontScale, extraInstants = trackingMarkers.flatMap { it.ruleTimes })
+                    val layout = remember(items, date, zone, minute, isToday, fontScale, trackingMarkers, jobBlocks, jobSuggestions) {
+                        layoutDay(
+                            items, bounds, zone, if (isToday) now else -1L, fontScale,
+                            extraInstants = trackingMarkers.flatMap { it.ruleTimes },
+                            jobBlocks = jobBlocks, jobSuggestions = jobSuggestions,
+                        )
                     }
                     SummaryCard(summarize(items, bounds), isToday)
                     DayCanvas(
@@ -221,6 +237,10 @@ fun TimelineContent(
                         minStayMs = minStayMs,
                         onOpenTrip = { onEdit(EditTarget.Trip(it)) },
                         onOpenGap = { gap, _ -> gapSheetId = gap.id },
+                        onOpenJob = onOpenJob,
+                        onConfirmSuggestion = onConfirmSuggestion,
+                        onCreateJob = onCreateJob,
+                        onJobRangeChange = onJobRangeChange,
                     )
                     val sheetBlock = gapSheetId?.let { id ->
                         layout.blocks.firstOrNull { it.item.id == id && it.item is TimelineItem.Gap }

@@ -59,7 +59,7 @@ class DayScrubberTest {
         composeRule.setContent {
             TarryTheme {
                 DayScrubber(
-                    model, items.filterIsInstance<TimelineItem.Visit>(), time, { time = it }, { opened += it },
+                    model, emptyMap(), time, { time = it }, { opened += it },
                     date = day, today = day, zone = zone, onJump = { _, _ -> },
                 )
             }
@@ -115,7 +115,7 @@ class DayScrubberTest {
         composeRule.setContent {
             TarryTheme {
                 DayScrubber(
-                    model, items.filterIsInstance<TimelineItem.Visit>(), time, { time = it }, { opened += it },
+                    model, emptyMap(), time, { time = it }, { opened += it },
                     date = day, today = day, zone = zone, onJump = { _, _ -> },
                 )
             }

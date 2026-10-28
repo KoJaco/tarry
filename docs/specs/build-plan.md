@@ -26,10 +26,14 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 - **Place default tags:** `PlaceDefaultTag` join table instead of a list column.
 - **New tables:** `ExcludedRange` (deleted visits), `Gap` (health-monitor outages and segmentation), `SegmentationCheckpoint`.
 - **CSV columns:** spec columns plus `segment_id` and `job_id`.
+- **Job blocks (phase 6b, Room v2):** a job is placed on the timeline as a `JobBlock` (job, start, end, billable, notes), drawn in a second column. Billed time is the block's range; blocks may overlap and each bills its full range. Blocks replace `Visit.jobId`, per-visit/trip billable, `Trip.attributedJobId` and the travel attribution rule. `Job.defaultBillable` seeds new blocks; `Place.defaultJobId` only *suggests* a block for detected visits there. "Needs review" = a non-ignored visit covered by no block. Spec: `docs/specs/phase-6b.md`.
+- **No tags (phase 6b):** Tag, TagGroup and their join tables are removed (existing tags were folded into notes by the migration). Notes stay on visits and trips; blocks have their own notes. The CSV drops `tags` (phase 7 decides block columns).
 - **Schedule alarms:** exact alarm (`SCHEDULE_EXACT_ALARM`, user-granted) for window starts, since only exact alarms exempt background foreground-service starts on Android 12+. Validated in the phase 2a spike; fallback is the tap-to-start notification.
 
 ## Phases
 Each phase: own branch, short spec in `docs/specs/phase-N.md`, implementer → test-writer → reviewer, PR with green CI, device check.
+
+**Status (2026-10-28):** phase 6 (schedule grid, PR #23) is merged. Next: **phase 6b, jobs on the timeline** (spec `docs/specs/phase-6b.md`): job blocks (start→end ranges in a second timeline column) replace per-visit/trip job, billable and travel attribution; tags are removed (folded into notes). First Room change (v1→v2). Then phase 7.
 
 **Status (2026-10-25):** phase 5 (Map) is done (spec `docs/specs/phase-5.md`); offline regions and map matching are deferred. Next: **phase 6, schedule grid + manual controls UI**. Handoff: `docs/handoffs/phase-6-schedule.md`.
 

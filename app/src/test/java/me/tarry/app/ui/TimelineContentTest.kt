@@ -195,15 +195,6 @@ class TimelineContentTest {
     }
 
     @Test
-    fun visitDescriptionIncludesTheJobWhenThereIsOne() {
-        show(listOf(TimelineItem.Visit("v", at(7, 2), at(9, 40), "Rose Bay Marina", jobName = "Antifoul", jobColorArgb = 0xFFE3EDFB.toInt())))
-        description(
-            "timeline_row_v",
-            "Visit at Rose Bay Marina, from ${t(7, 2)} to ${t(9, 40)}, 2 hours 38 minutes, job Antifoul",
-        )
-    }
-
-    @Test
     fun spokenDurationUsesSingularForms() {
         show(listOf(TimelineItem.Visit("v", at(9, 0), at(10, 1), "A")))
         description("timeline_row_v", "Visit at A, from ${t(9, 0)} to ${t(10, 1)}, 1 hour 1 minute")
@@ -284,8 +275,8 @@ class TimelineContentTest {
     fun summaryShowsTotalCaptionAndNeedsReviewCount() {
         show(
             listOf(
-                TimelineItem.Visit("v1", at(9, 0), at(10, 30), "A"),
-                TimelineItem.Visit("v2", at(11, 0), at(12, 0), "B", jobName = "Job", jobColorArgb = 0xFFE3EDFB.toInt()),
+                TimelineItem.Visit("v1", at(9, 0), at(10, 30), "A", needsReview = true),
+                TimelineItem.Visit("v2", at(11, 0), at(12, 0), "B"),
                 TimelineItem.Trip("t", at(10, 30), at(11, 0), 5000f, TripMode.VEHICLE),
                 TimelineItem.Gap("g", at(13, 0), at(13, 30), GapCause.NO_FIX),
             ),
@@ -298,7 +289,7 @@ class TimelineContentTest {
 
     @Test
     fun summaryHasNoReviewChipWhenEveryVisitHasAJob() {
-        show(listOf(TimelineItem.Visit("v", at(9, 0), at(10, 0), "A", jobName = "Job", jobColorArgb = 0xFFE3EDFB.toInt())))
+        show(listOf(TimelineItem.Visit("v", at(9, 0), at(10, 0), "A")))
         composeRule.onNodeWithTag("timeline_summary_review").assertDoesNotExist()
     }
 
@@ -348,7 +339,7 @@ class TimelineContentTest {
     @Test
     fun fontScaleTwoKeepsHeaderSummaryAndEmptyStateUntruncated() {
         show(
-            listOf(TimelineItem.Visit("v", at(9, 0), at(11, 0), "Rose Bay Marina", jobName = "Antifoul", jobColorArgb = 0xFFE3EDFB.toInt())),
+            listOf(TimelineItem.Visit("v", at(9, 0), at(11, 0), "Rose Bay Marina")),
             fontScale = 2f,
         )
         composeRule.onNodeWithTag("timeline_date").assertIsDisplayed().assertNotTruncated()
@@ -413,13 +404,12 @@ class TimelineContentTest {
     @Test
     fun fontScaleTwoKeepsTheNowPillHourLabelsAndVisitTextUntruncated() {
         show(
-            listOf(TimelineItem.Visit("v", at(9, 0), at(11, 0), "Rose Bay Marina", jobName = "Antifoul", jobColorArgb = 0xFFE3EDFB.toInt())),
+            listOf(TimelineItem.Visit("v", at(9, 0), at(11, 0), "Rose Bay Marina")),
             fontScale = 2f,
             nowMs = at(10, 30),
         )
         composeRule.onNodeWithTag("timeline_now_line").assertNotTruncated()
         composeRule.onNodeWithText("Rose Bay Marina", useUnmergedTree = true).assertNotTruncated()
-        composeRule.onNode(hasText("Antifoul", substring = true), useUnmergedTree = true).assertNotTruncated()
         val labels = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true)
         assertThat(labels.fetchSemanticsNodes()).isNotEmpty()
         // The pill sits in the time column, left of the blocks, and the labels never overflow it.

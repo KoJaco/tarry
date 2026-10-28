@@ -32,10 +32,8 @@
     <string name="timeline_summary_separator">" · "</string>
 
     <string name="timeline_needs_review">Needs review</string>
-    <string name="timeline_visit_job_description">Visit at %1$s, %2$s, %3$s, job %4$s</string>
     <string name="timeline_folded_trip">Also: %1$s</string>
     <string name="timeline_compact_line">%1$s · %2$s</string>
-    <string name="timeline_range_with_job">%1$s · %2$s</string>
     <string name="timeline_trip_row">%1$s · %2$s · %3$s</string>
     <string name="timeline_trip_compact">%1$s · %2$s</string>
     <string name="timeline_trip_row_drive">Vehicle</string>
@@ -49,7 +47,28 @@
     <string name="timeline_edit_visit">Edit visit</string>
     <string name="timeline_edit_trip">Edit trip</string>
     <string name="timeline_show_details">Show details</string>
-    <string name="timeline_new_visit">New visit</string>
+    <string name="timeline_add_job">Add job</string>
+    <!-- Job column on the day canvas. -->
+    <string name="timeline_job_description">Job %1$s, %2$s, %3$s</string>
+    <string name="timeline_job_billable">Billable</string>
+    <string name="timeline_job_not_billable">Not billable</string>
+    <string name="timeline_open_job">Open job</string>
+    <string name="timeline_job_suggestion">Suggested: %1$s</string>
+    <string name="timeline_job_suggestion_description">Suggested job %1$s, %2$s</string>
+    <string name="timeline_confirm_suggestion">Confirm suggested job</string>
+    <string name="timeline_job_overflow_label">+%1$d</string>
+    <plurals name="timeline_job_overflow_description">
+        <item quantity="one">%1$d more job</item>
+        <item quantity="other">%1$d more jobs</item>
+    </plurals>
+    <string name="timeline_show_jobs">Show jobs</string>
+    <string name="timeline_undo_job_times">Job times changed</string>
+    <!-- Non-drag alternatives (WCAG 2.5.7) to moving and resizing a job block by dragging. -->
+    <string name="timeline_job_move_earlier">Move %1$d minutes earlier</string>
+    <string name="timeline_job_move_later">Move %1$d minutes later</string>
+    <string name="timeline_job_extend">Extend %1$d minutes</string>
+    <string name="timeline_job_shorten">Shorten %1$d minutes</string>
+    <string name="timeline_job_overflow_title">Jobs at this time</string>
     <string name="timeline_undo_visit_times">Visit times changed</string>
     <string name="timeline_filter_needs_review">Needs review</string>
 
@@ -77,15 +96,10 @@
     <string name="timeline_select_for_bulk">Select for bulk edit</string>
     <string name="timeline_toggle_selection">Toggle selection</string>
     <string name="selection_count">%1$d selected</string>
-    <string name="selection_set_job">Set job</string>
-    <string name="selection_add_tags">Add tags</string>
-    <string name="selection_billable">Billable</string>
-    <string name="selection_not_billable">Not billable</string>
     <string name="selection_ignore_place">Ignore place</string>
+    <string name="selection_assign_job">Assign job</string>
+    <string name="selection_assign_job_title">Assign job to selected visits</string>
     <string name="selection_cancel">Cancel</string>
-    <string name="selection_job_picker_title">Set job for selected visits</string>
-    <string name="selection_tags_title">Add tags to selected visits</string>
-    <string name="selection_tags_apply">Apply</string>
     <plurals name="selection_undo_updated">
         <item quantity="one">%1$d visit updated</item>
         <item quantity="other">%1$d visits updated</item>

@@ -13,9 +13,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import me.tarry.app.map.DayMap
+import me.tarry.app.ui.drawer.EditTarget
+import me.tarry.app.ui.drawer.JobOption
+import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.map.GeoPoint
 import me.tarry.app.map.MapConfig
 import me.tarry.app.map.PinInput
@@ -35,21 +39,18 @@ import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.app.ui.undo.noticeRes
-import me.tarry.app.ui.drawer.JobOption
-import me.tarry.app.ui.drawer.TagGroupOption
-import me.tarry.app.ui.drawer.TagOption
-import me.tarry.app.ui.theme.JobPalette
 import me.tarry.core.data.repository.AnnotationOp
 import me.tarry.core.data.repository.EditResult
 import me.tarry.core.data.repository.ItemRef
-import me.tarry.core.data.repository.TagRepository
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.segmentation.SegmentationParams
+import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
+import me.tarry.core.data.repository.JobBlockRepository
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.PlaceRepository
 import me.tarry.core.data.repository.TimelineRepository
@@ -72,27 +73,15 @@ sealed interface TimelineItem {
         val placeLabel: String?,
         /** True when [placeLabel] is only the raw coordinates, so it should be spoken as an unknown place. */
         val labelIsCoordinates: Boolean = false,
-        /**
-         * Name and colour of the visit's resolved job (its own job, else its place's default job); both null when
-         * neither resolves or the job is unknown or deleted (deleted jobs are deliberately not shown).
-         */
-        val jobName: String? = null,
-        val jobColorArgb: Int? = null,
-        /** Id of that job; seeds the fallback colour when [jobColorArgb] names no palette slot. Null with [jobName]. */
-        val jobId: String? = null,
         val placeId: String? = null,
         /** The user has edited or annotated this visit; segmentation never touches it. */
         val frozen: Boolean = false,
-        val billable: Boolean? = null,
         val origin: VisitOrigin = VisitOrigin.DETECTED,
-        /** True when the resolved job came from the place's default, not from the visit itself. */
-        val jobInherited: Boolean = false,
         /** The visit's place is ignored, so the visit never asks for review. */
         val placeIgnored: Boolean = false,
-    ) : TimelineItem {
-        /** A visit with no resolved job, at a place that is not ignored. */
-        val needsReview: Boolean get() = jobName == null && !placeIgnored
-    }
+        /** No job block overlaps the visit, and its place is not ignored (see [coverage]). */
+        val needsReview: Boolean = false,
+    ) : TimelineItem
 
     data class Trip(
         override val id: String,
@@ -109,6 +98,21 @@ sealed interface TimelineItem {
         val cause: GapCause,
     ) : TimelineItem
 }
+
+/** A job block on the day with its job's name and colour. Side-by-side lanes are worked out by the layout. */
+data class JobBlockItem(
+    val id: String,
+    val jobId: String,
+    val jobName: String,
+    val jobColorArgb: Int,
+    val start: Long,
+    val end: Long,
+    val billable: Boolean,
+    val notes: String?,
+)
+
+/** A [JobSuggestion] with the suggested job's name and colour. */
+data class JobSuggestionItem(val suggestion: JobSuggestion, val jobName: String, val jobColorArgb: Int)
 
 /** `[date 00:00, date+1 00:00)` in [zone], as epoch ms. A DST day is 23 or 25 hours long. */
 fun dayBounds(date: LocalDate, zone: ZoneId): Pair<Long, Long> =
@@ -149,15 +153,13 @@ private fun <T> Flow<T>.throttleLatest(periodMs: Long): Flow<T> = conflate().tra
 class TimelineViewModel internal constructor(
     timeline: TimelineRepository,
     places: PlaceRepository,
-    jobs: JobRepository,
-    tags: TagRepository,
-    zone: ZoneId,
+    private val jobs: JobRepository,
+    private val zone: ZoneId,
     private val todayProvider: () -> LocalDate,
     private val resize: suspend (id: String, start: Long, end: Long) -> EditResult = { _, _, _ -> EditResult.NotFound },
     private val offerUndo: (UndoEvent) -> Unit = {},
     private val onEdited: () -> Unit = {},
     private val bulk: suspend (List<ItemRef>, AnnotationOp) -> EditResult = { _, _ -> EditResult.NotFound },
-    private val createJob: suspend (String) -> EditResult = { EditResult.NotFound },
     /** Shortest a visit may be resized to; `SegmentationParams.minStayDurationMs`. */
     val minStayMs: Long = DEFAULT_MIN_STAY_MS,
     /** Live ping positions in `[from, to)`, for the Map tab only. */
@@ -165,28 +167,45 @@ class TimelineViewModel internal constructor(
     private val mapConfig: MapConfig = MapConfig(),
     /** Tracking sessions overlapping `[from, to)`, live, for the start/stop marks on the day canvas. */
     private val trackingSessions: (from: Long, to: Long) -> Flow<List<TrackingSession>> = { _, _ -> flowOf(emptyList()) },
+    /** Live job blocks overlapping `[from, to)`. */
+    private val blocksOverlapping: (from: Long, to: Long) -> Flow<List<JobBlock>> = { _, _ -> flowOf(emptyList()) },
+    /** Saves a job block and soft-deletes the same-job blocks it swallowed ([mergeSameJob]) in one transaction. */
+    private val saveBlock: suspend (JobBlock, deleteIds: List<String>) -> Unit = { _, _ -> },
+    /** Undo of a block move or resize: saves the original block back and un-deletes the blocks the merge swallowed. */
+    private val restoreBlocks: suspend (original: JobBlock, restoreIds: List<String>) -> Unit = { _, _ -> },
+    /** Creates a job with the given name; the result carries the new id. */
+    private val createJob: suspend (String) -> EditResult = { EditResult.NotFound },
+    /** The wall clock, for "Add job" on today. */
+    private val nowMs: () -> Long = System::currentTimeMillis,
+    private val blockConfig: JobBlockConfig = JobBlockConfig(),
 ) : ViewModel() {
     @Inject
     constructor(
         timeline: TimelineRepository,
         places: PlaceRepository,
         jobs: JobRepository,
-        tags: TagRepository,
         editor: TimelineEditor,
         undoEvents: UndoEvents,
         scheduler: SegmentationScheduler,
         params: SegmentationParams,
         tracking: TrackingRepository,
+        jobBlocks: JobBlockRepository,
     ) :
         this(
-            timeline, places, jobs, tags, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
+            timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
             { id, start, end -> editor.resize(id, start, end, params.minStayDurationMs) },
             undoEvents::offer, scheduler::enqueueNow,
             bulk = editor::bulk,
-            createJob = { name -> editor.createJob(name, JobPalette.slots.map { it.key }) },
             minStayMs = params.minStayDurationMs,
             pingPositions = tracking::observePingPositions,
             trackingSessions = tracking::observeSessionsOverlapping,
+            blocksOverlapping = jobBlocks::observeOverlapping,
+            saveBlock = { block, deleteIds -> jobBlocks.replace(block, deleteIds) },
+            restoreBlocks = { original, ids ->
+                jobBlocks.replace(original, emptyList())
+                ids.forEach { jobBlocks.restore(it) }
+            },
+            createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -203,21 +222,20 @@ class TimelineViewModel internal constructor(
             timeline.observeVisits(from, to),
             timeline.observeTrips(from, to),
             timeline.observeGaps(from, to),
-            places.observeLabels(), // includes deleted places: frozen visits there keep their label and inherited job
-            jobs.observeAll(), // excludes deleted jobs
-        ) { visits, trips, gaps, allPlaces, allJobs ->
+            places.observeLabels(), // includes deleted places: frozen visits there keep their label
+            blocksOverlapping(from, to),
+        ) { visits, trips, gaps, allPlaces, blocks ->
             val byId = allPlaces.associateBy { it.id }
-            val jobsById = allJobs.associateBy { it.id }
+            val covered = coverage(
+                visits.map { Segment(it.id, it.start, it.end) }, trips.map { Segment(it.id, it.start, it.end) }, blocks,
+            )
             val rows: List<TimelineItem> = visits.map {
                 val place = it.placeId?.let(byId::get)
-                val own = it.jobId?.let(jobsById::get)
-                val job = own ?: place?.defaultJobId?.let(jobsById::get)
+                val ignored = place?.ignored ?: false
                 TimelineItem.Visit(
                     it.id, it.start, it.end, place?.displayLabel(), place?.labelIsCoordinates() ?: false,
-                    job?.name, job?.colorArgb, job?.id,
-                    placeId = it.placeId, frozen = it.frozen, billable = it.billable, origin = it.origin,
-                    jobInherited = own == null && job != null,
-                    placeIgnored = place?.ignored ?: false,
+                    placeId = it.placeId, frozen = it.frozen, origin = it.origin,
+                    placeIgnored = ignored, needsReview = covered.needsReview(it.id, ignored),
                 )
             } +
                 trips.map { TimelineItem.Trip(it.id, it.start, it.end, it.distanceM, it.mode) } +
@@ -246,6 +264,36 @@ class TimelineViewModel internal constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 
+    /** The selected day's job blocks with their job; empty while loading. Blocks of unknown or deleted jobs are left out. */
+    val jobBlocks: StateFlow<List<JobBlockItem>> = _selectedDate
+        .flatMapLatest { date ->
+            val (from, to) = dayBounds(date, zone)
+            combine(blocksOverlapping(from, to), jobs.observeAll()) { blocks, allJobs ->
+                val jobsById = allJobs.associateBy { it.id }
+                blocks.mapNotNull { b ->
+                    val job = jobsById[b.jobId] ?: return@mapNotNull null
+                    JobBlockItem(
+                        b.id, b.jobId, job.name, job.colorArgb, b.start, b.end, b.billable, b.notes,
+                    )
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
+    /** The selected day's suggested blocks (see [suggestions]), computed on read and never stored. */
+    val jobSuggestions: StateFlow<List<JobSuggestionItem>> = _selectedDate
+        .flatMapLatest { date ->
+            val (from, to) = dayBounds(date, zone)
+            combine(
+                timeline.observeVisits(from, to), places.observeLabels(), blocksOverlapping(from, to), jobs.observeAll(),
+            ) { visits, allPlaces, blocks, allJobs ->
+                val jobsById = allJobs.associateBy { it.id }
+                suggestions(visits, allPlaces.associateBy { it.id }, blocks).mapNotNull { s ->
+                    jobsById[s.jobId]?.let { JobSuggestionItem(s, it.name, it.colorArgb) }
+                }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 
     /**
      * The selected day for the Map tab: route from that day's pings, pins at place centroids. Null while loading.
@@ -262,13 +310,16 @@ class TimelineViewModel internal constructor(
                         rowsIn(from, to),
                         pingPositions(from, to).throttleLatest(mapConfig.liveRefreshMs),
                         places.observeLabels(),
-                    ) { rows, pings, allPlaces ->
+                        jobBlocks,
+                    ) { rows, pings, allPlaces, dayBlocks ->
                         val byId = allPlaces.associateBy { it.id }
                         buildDayMap(
                             visits = rows.filterIsInstance<TimelineItem.Visit>().map { v ->
                                 val place = v.placeId?.let(byId::get)
+                                // Pins wear the colour of the first job block that covers the visit; none = neutral.
+                                val job = coveringJob(v.start, v.end, dayBlocks)
                                 PinInput(
-                                    v.id, v.start, place?.let { GeoPoint(it.centroidLat, it.centroidLng) }, v.jobColorArgb, v.jobId,
+                                    v.id, v.start, place?.let { GeoPoint(it.centroidLat, it.centroidLng) }, job?.jobColorArgb, job?.jobId,
                                     end = v.end, radiusM = place?.radiusM,
                                 )
                             },
@@ -350,37 +401,121 @@ class TimelineViewModel internal constructor(
         _selection.value = emptySet()
     }
 
-    /** Jobs the pickers offer: archived ones are hidden (nothing is "current" for a bulk edit). */
-    val pickerJobs: StateFlow<List<JobOption>> = jobs.observeAll()
-        .map { all -> all.filter { !it.archived }.map { JobOption(it.id, it.name, it.colorArgb) } }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
-
-    /** Tags the bulk "Add tags" sheet offers, grouped; archived tags are hidden and groups left empty drop out. */
-    val pickerTagGroups: StateFlow<List<TagGroupOption>> = combine(tags.observeGroups(), tags.observeTags()) { groups, all ->
-        val live = all.filter { !it.archived }.groupBy { it.groupId }
-        groups.map { g -> TagGroupOption(g.id, g.name, live[g.id].orEmpty().map { TagOption(it.id, it.name) }) }
-            .filter { it.tags.isNotEmpty() }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
-
-    fun bulkSetJob(jobId: String?) = applyBulk(AnnotationOp.SetJob(jobId))
-
-    fun bulkAddTags(tagIds: Set<String>) {
-        if (tagIds.isNotEmpty()) applyBulk(AnnotationOp.AddTags(tagIds)) else clearSelection()
-    }
-
-    fun bulkSetBillable(billable: Boolean) = applyBulk(AnnotationOp.SetBillable(billable))
-
     fun bulkIgnorePlace() = applyBulk(AnnotationOp.IgnorePlace())
 
-    /** "New job…" from the bulk picker: creates the job, then sets it on every selected visit. */
-    fun bulkSetNewJob(name: String) {
-        val ids = takeSelection() ?: return
+    // region job blocks (phase 6b)
+
+    /** Jobs the "Assign job" picker offers: every live, unarchived job, by name. */
+    val jobOptions: StateFlow<List<JobOption>> = jobs.observeAll()
+        .map { all -> all.filterNot { it.archived }.map { JobOption(it.id, it.name, it.colorArgb, it.defaultBillable) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
+    /**
+     * The "Add job" target for the selected day, prefilled by [defaultJobRange]: on today the current quarter hour for an
+     * hour, on another day the first free whole hour from 08:00.
+     */
+    suspend fun addJobTarget(): EditTarget.NewJob {
+        val date = _selectedDate.value
+        val (from, to) = dayBounds(date, zone)
+        val range = defaultJobRange(date, date == _today.value, nowMs(), zone, blocksOverlapping(from, to).first(), blockConfig)
+        return EditTarget.NewJob(range.start, range.end)
+    }
+
+    /**
+     * Bar action "Assign job": one block from the earliest start to the latest end of the selected visits, billable per
+     * the job's default (merged with any block of that job it overlaps), then back to normal mode.
+     */
+    fun assignJob(jobId: String) {
+        if (!inFlight.add(ASSIGN_KEY)) return
+        val ids = takeSelection()?.toSet()
+        if (ids == null) {
+            inFlight.remove(ASSIGN_KEY)
+            return
+        }
         viewModelScope.launch {
-            val created = createJob(name)
-            val newId = (created as? EditResult.Ok)?.id
-            if (newId != null) runBulk(ids, AnnotationOp.SetJob(newId)) else notifyRefused(created)
+            try {
+                val (from, to) = dayBounds(_selectedDate.value, zone)
+                val visits = rowsIn(from, to).first().filterIsInstance<TimelineItem.Visit>().filter { it.id in ids }
+                val range = assignRange(visits.map { Segment(it.id, it.start, it.end) }) ?: return@launch
+                saveNewBlock(jobId, range.start, range.end)
+            } finally {
+                inFlight.remove(ASSIGN_KEY)
+            }
         }
     }
+
+    /** Creates a job from the picker's "New job" and assigns the selection to it. A refused name shows a notice. */
+    fun createJobAndAssign(name: String) {
+        if (!inFlight.add(CREATE_ASSIGN_KEY)) return
+        viewModelScope.launch {
+            try {
+                val created = createJob(name)
+                val id = (created as? EditResult.Ok)?.id
+                if (id != null) assignJob(id) else notifyRefused(created)
+            } finally {
+                inFlight.remove(CREATE_ASSIGN_KEY)
+            }
+        }
+    }
+
+    /**
+     * One tap on a suggested block: saves it for the suggestion's range and job, billable per the job's default. A second
+     * tap while the first is still saving is ignored.
+     */
+    fun confirmSuggestion(suggestion: JobSuggestion) {
+        val key = "suggestion:${suggestion.visitId}:${suggestion.jobId}"
+        if (!inFlight.add(key)) return
+        viewModelScope.launch {
+            try {
+                saveNewBlock(suggestion.jobId, suggestion.start, suggestion.end)
+            } finally {
+                inFlight.remove(key)
+            }
+        }
+    }
+
+    /**
+     * A job block was moved or resized on the canvas (or by an accessibility action): saves [id] with `[start, end)`,
+     * merged with any same-job block it now overlaps (the same path as the drawer's time edit), and offers Undo, which puts
+     * the block and every block the merge swallowed back. A second call for the block while the first is saving is ignored.
+     */
+    fun moveOrResizeBlock(id: String, start: Long, end: Long) {
+        val key = "block:$id"
+        if (end <= start || !inFlight.add(key)) return
+        viewModelScope.launch {
+            try {
+                val (from, to) = dayBounds(_selectedDate.value, zone)
+                val original = blocksOverlapping(from, to).first().firstOrNull { it.id == id } ?: return@launch
+                if (original.start == start && original.end == end) return@launch
+                val window = blockConfig.joinWindowMs
+                val merged = mergeSameJob(
+                    original.copy(start = start, end = end),
+                    blocksOverlapping(start - window, end + window).first(),
+                )
+                saveBlock(merged.block, merged.deleteIds)
+                offerUndo(
+                    UndoEvent(R.string.timeline_undo_job_times, null, onUndo = { restoreBlocks(original, merged.deleteIds) }),
+                )
+            } finally {
+                inFlight.remove(key)
+            }
+        }
+    }
+
+    /** Keys of saves still running, so a double tap saves once. Touched on the main thread only. */
+    private val inFlight = HashSet<String>()
+
+    private suspend fun saveNewBlock(jobId: String, start: Long, end: Long) {
+        val job = jobs.job(jobId)?.takeUnless { it.deleted } ?: return
+        val candidate = JobBlock(
+            jobId = job.id, start = start, end = end, zoneId = zone.id, billable = job.defaultBillable, updatedAt = 0L,
+        )
+        val window = blockConfig.joinWindowMs
+        val merged = mergeSameJob(candidate, blocksOverlapping(start - window, end + window).first())
+        saveBlock(merged.block, merged.deleteIds)
+    }
+
+    // endregion
 
     /** One editor call over every selected id, one undo event, then back to normal mode. Annotations do not re-segment. */
     private fun applyBulk(op: AnnotationOp) {
@@ -430,5 +565,7 @@ class TimelineViewModel internal constructor(
 
     private companion object {
         const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
+        const val ASSIGN_KEY = "assign"
+        const val CREATE_ASSIGN_KEY = "create-assign"
     }
 }

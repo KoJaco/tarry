@@ -2,7 +2,6 @@ package me.tarry.core.data.db.entity
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
-import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import java.util.UUID
@@ -13,6 +12,8 @@ data class Job(
     val name: String,
     val colorArgb: Int,
     @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
+    /** Initial billable flag for new [JobBlock]s of this job. */
+    @ColumnInfo(defaultValue = "1") val defaultBillable: Boolean = true,
     val updatedAt: Long,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )
@@ -26,42 +27,9 @@ data class Place(
     val address: String? = null,
     val name: String? = null,
     val defaultJobId: String? = null,
-    val defaultBillable: Boolean? = null,
     @ColumnInfo(defaultValue = "0") val ignored: Boolean = false,
     val mergedIntoId: String? = null,
     val lastVisitAt: Long? = null,
     val updatedAt: Long,
     @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
 )
-
-@Entity(tableName = "tag_group")
-data class TagGroup(
-    @PrimaryKey val id: String = UUID.randomUUID().toString(),
-    val name: String,
-    val colorArgb: Int,
-    val sortOrder: Int,
-    val updatedAt: Long,
-    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
-)
-
-@Entity(tableName = "tag", indices = [Index("groupId")])
-data class Tag(
-    @PrimaryKey val id: String = UUID.randomUUID().toString(),
-    val groupId: String,
-    val name: String,
-    val sortOrder: Int,
-    @ColumnInfo(defaultValue = "0") val archived: Boolean = false,
-    val updatedAt: Long,
-    @ColumnInfo(defaultValue = "0") val deleted: Boolean = false,
-)
-
-@Entity(
-    tableName = "place_default_tag",
-    primaryKeys = ["placeId", "tagId"],
-    foreignKeys = [
-        ForeignKey(Place::class, ["id"], ["placeId"], onDelete = ForeignKey.CASCADE),
-        ForeignKey(Tag::class, ["id"], ["tagId"], onDelete = ForeignKey.CASCADE),
-    ],
-    indices = [Index("tagId")],
-)
-data class PlaceDefaultTag(val placeId: String, val tagId: String)

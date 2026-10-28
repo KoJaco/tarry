@@ -11,4 +11,10 @@ sealed interface EditTarget {
 
     /** Create mode: a manual visit over `[start, end)`, prefilled from a gap, a trip ([contextTripId]) or a free slot. */
     data class NewVisit(val start: Long, val end: Long, val contextTripId: String? = null) : EditTarget
+
+    /** A job block: edit mode. */
+    data class Job(val id: String) : EditTarget
+
+    /** Create mode: a job block over `[start, end)`, optionally with [jobId] preselected. */
+    data class NewJob(val start: Long, val end: Long, val jobId: String? = null) : EditTarget
 }

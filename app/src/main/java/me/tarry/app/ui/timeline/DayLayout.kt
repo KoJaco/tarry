@@ -66,6 +66,24 @@ data class PlacedTrip(
     val iconOnly: Boolean = false,
 ) : Placed
 
+/** A job block in the job column: [lane] of [laneCount] side by side. Lanes are computed over blocks and suggestions together. */
+data class PlacedJob(
+    val item: JobBlockItem,
+    val topDp: Float,
+    val heightDp: Float,
+    val lane: Int,
+    val laneCount: Int,
+)
+
+/** A suggested job (dashed, never stored) in the job column; shares lanes with the blocks. */
+data class PlacedSuggestion(
+    val item: JobSuggestionItem,
+    val topDp: Float,
+    val heightDp: Float,
+    val lane: Int,
+    val laneCount: Int,
+)
+
 data class DayLayout(
     val canvasStart: Long,
     val canvasEnd: Long,
@@ -78,12 +96,17 @@ data class DayLayout(
     val nowDp: Float?,
     /** Offsets (dp from the canvas top) of the :15, :30 and :45 ticks on the rail; the hour marks are in [hourMarks]. */
     val quarterMarks: List<Float> = emptyList(),
+    val jobs: List<PlacedJob> = emptyList(),
+    val suggestions: List<PlacedSuggestion> = emptyList(),
 ) {
     /** Blocks and trips in reading order, by real start. */
     fun ordered(): List<Placed> = (blocks + trips).sortedWith(
         compareBy<Placed> { if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start }.thenBy { it.topDp },
     )
 }
+
+/** Prefix of a suggestion's id in the lane pass, so it cannot collide with a block id. */
+private const val SuggestionLaneId = "suggest:"
 
 private const val MS_PER_HOUR = 3_600_000.0
 private const val MS_PER_MINUTE = 60_000L
@@ -126,6 +149,9 @@ fun layoutDay(
     window: Pair<Long, Long>? = null,
     /** Instants (clamped to the day) the canvas must reach, e.g. tracking start/stop marks outside the visits. */
     extraInstants: List<Long> = emptyList(),
+    /** The day's job blocks and suggestions: placed in the job column, and their ends extend the canvas like [extraInstants]. */
+    jobBlocks: List<JobBlockItem> = emptyList(),
+    jobSuggestions: List<JobSuggestionItem> = emptyList(),
 ): DayLayout {
     val (dayStart, dayEnd) = dayBounds
     val fs = maxOf(1f, fontScale)
@@ -207,12 +233,19 @@ fun layoutDay(
     }
     val stackedClusters: Map<TimelineItem, Band> = bands.filter { it.visits.isEmpty() }.associateBy { it.synthetic }
 
+    // Job blocks and suggestions clamped to the day (empties dropped); they reach the canvas range like the visits do.
+    class JobSpan(val id: String, val start: Long, val end: Long)
+    fun jobSpan(id: String, start: Long, end: Long) = JobSpan(id, start.coerceIn(dayStart, dayEnd), end.coerceIn(dayStart, dayEnd))
+    val jobBlockSpans = jobBlocks.map { jobSpan(it.id, it.start, it.end) }.filter { it.end > it.start }
+    val suggestionSpans = jobSuggestions.map { jobSpan(SuggestionLaneId + it.suggestion.visitId, it.suggestion.start, it.suggestion.end) }.filter { it.end > it.start }
+    val jobSpans = jobBlockSpans + suggestionSpans
+
     val isToday = now >= dayStart && now < dayEnd
     val win = window?.let { it.first.coerceIn(dayStart, dayEnd) to it.second.coerceIn(dayStart, dayEnd) }
 
     var rawStart: Long
     var rawEnd: Long
-    if (clamped.isEmpty() && win == null) {
+    if (clamped.isEmpty() && win == null && extraInstants.isEmpty() && jobSpans.isEmpty()) {
         val date = ZonedDateTime.ofInstant(Instant.ofEpochMilli(dayStart), zone).toLocalDate()
         rawStart = date.atTime(params.emptyDayStartHour, 0).atZone(zone).toInstant().toEpochMilli()
         rawEnd = date.atTime(params.emptyDayEndHour, 0).atZone(zone).toInstant().toEpochMilli()
@@ -224,6 +257,10 @@ fun layoutDay(
             rawEnd = clamped.maxOf { it.end }
         }
         bands.forEach {
+            rawStart = minOf(rawStart, it.start)
+            rawEnd = maxOf(rawEnd, it.end)
+        }
+        jobSpans.forEach {
             rawStart = minOf(rawStart, it.start)
             rawEnd = maxOf(rawEnd, it.end)
         }
@@ -383,9 +420,26 @@ fun layoutDay(
         blocks.add(0, PlacedBlock(b.synthetic, top, height, compact = false, foldedTrips = emptyList(), cluster = b.gaps))
     }
 
+    // Job column: one lane pass over blocks and suggestions together, so a suggestion never sits on top of a block.
+    val lanes = assignLanes(jobSpans.map { LaneSpan(it.id, it.start, it.end) })
+    fun jobTop(s: JobSpan) = dp(canvasStart, s.start)
+    fun jobHeight(s: JobSpan) = maxOf(dp(s.start, s.end), minBlock)
+    val placedJobs = jobBlocks.mapNotNull { b ->
+        val s = jobBlockSpans.firstOrNull { it.id == b.id } ?: return@mapNotNull null
+        val lane = lanes.getValue(s.id)
+        PlacedJob(b, jobTop(s), jobHeight(s), lane.index, lane.count)
+    }
+    val placedSuggestions = jobSuggestions.mapNotNull { sg ->
+        val s = suggestionSpans.firstOrNull { it.id == SuggestionLaneId + sg.suggestion.visitId } ?: return@mapNotNull null
+        val lane = lanes.getValue(s.id)
+        PlacedSuggestion(sg, jobTop(s), jobHeight(s), lane.index, lane.count)
+    }
+
     val lastBottom = maxOf(
         blocks.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
         trips.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
+        placedJobs.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
+        placedSuggestions.maxOfOrNull { it.topDp + it.heightDp } ?: 0f,
     )
     val nowDp: Float? = if (isToday && now >= canvasStart && now <= canvasEnd) dp(canvasStart, now) else null
 
@@ -399,5 +453,7 @@ fun layoutDay(
         trips = trips,
         nowDp = nowDp,
         quarterMarks = quarters,
+        jobs = placedJobs,
+        suggestions = placedSuggestions,
     )
 }

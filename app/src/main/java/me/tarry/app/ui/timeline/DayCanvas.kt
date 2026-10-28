@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -77,8 +78,6 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.rememberReducedMotion
-import me.tarry.app.ui.theme.JobColors
-import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.TripMode
 import java.time.ZoneId
@@ -209,6 +208,14 @@ fun DayCanvas(
     onOpenGap: (TimelineItem.Gap, List<TimelineItem.Gap>) -> Unit = { _, _ -> },
     /** Tracking starts and stops inside the day: a muted dashed rule behind the blocks and a small label. */
     trackingMarkers: List<TrackingMarker> = emptyList(),
+    /** A job block (or TalkBack activation of it) was tapped: opens its drawer. The blocks themselves are in [layout]. */
+    onOpenJob: (String) -> Unit = {},
+    /** A suggestion was tapped: the host stores it as a real block. */
+    onConfirmSuggestion: (JobSuggestion) -> Unit = {},
+    /** A long press and drag on empty job column space was released: the snapped range (UTC epoch ms) for a new job. */
+    onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
+    /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
+    onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -248,7 +255,7 @@ fun DayCanvas(
     }
 
     TarryCard(modifier = modifier, contentPadding = PaddingValues(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.l)) {
-        Box(
+        BoxWithConstraints(
             Modifier
                 .fillMaxWidth()
                 .height(layout.heightDp.dp)
@@ -278,6 +285,9 @@ fun DayCanvas(
                 }
                 .semantics { isTraversalGroup = true },
         ) {
+            // Time column | visits and trips | job column. The visit column ends [visitEnd] short of the right edge.
+            val jobWidth = maxOf((maxWidth - timeColumn) * DayColumns.jobFraction(fontScale), DayColumns.MinJobWidth)
+            val visitEnd = jobWidth + DayColumns.Gap
             layout.hourMarks.forEachIndexed { i, mark ->
                 if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed
                 Text(
@@ -297,7 +307,12 @@ fun DayCanvas(
                         },
                 )
             }
-            markersBehind.forEach { TrackingMarkerLabel(it, ordered, timeColumn, zone) }
+            JobColumn(
+                layout, dayStart, dayEnd, zone, jobWidth, fontScale, ordered, enabled = !selecting,
+                onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onCreateJob = onCreateJob,
+                onJobRangeChange = onJobRangeChange,
+            )
+            markersBehind.forEach { TrackingMarkerLabel(it, ordered, timeColumn, visitEnd, zone) }
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
             // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.
             ordered.withIndex().sortedBy { it.value is PlacedTrip }.forEach { (index, placed) ->
@@ -314,7 +329,7 @@ fun DayCanvas(
                 }
                 val position = Modifier
                     .offset(y = shown.topDp.dp)
-                    .padding(start = timeColumn + DayCanvasDefaults.BlockInset)
+                    .padding(start = timeColumn + DayCanvasDefaults.BlockInset, end = visitEnd)
                     .fillMaxWidth()
                     .height(shown.heightDp.dp)
                     .then(if (dimmed) Modifier.alpha(DimmedAlpha) else Modifier)
@@ -359,7 +374,7 @@ fun DayCanvas(
                     ) { onOpenTrip(placed.trip.id) }
                 }
             }
-            placedMarkers.filter { it !in markersBehind }.forEach { TrackingMarkerLabel(it, ordered, timeColumn, zone) }
+            placedMarkers.filter { it !in markersBehind }.forEach { TrackingMarkerLabel(it, ordered, timeColumn, visitEnd, zone) }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
             val selectedBlock = selectedVisitId?.takeUnless { selecting }?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
             val selectedVisit = selectedBlock?.item as? TimelineItem.Visit
@@ -434,11 +449,8 @@ private fun VisitBlock(
     onToggle: () -> Unit,
 ) {
     val c = TarryTheme.colors
-    val job: JobColors? = visit.jobName?.let { JobPalette.lookup(visit.jobColorArgb, visit.jobId ?: it).colors(TarryTheme.isDark) }
     val shape = if (placed.compact) TarryTheme.shapes.small else TarryTheme.shapes.block
-    val container = job?.container ?: c.card
-    val titleColor = job?.text ?: c.ink
-    val detailColor = job?.text ?: c.muted
+    val container = c.card
     val unknown = stringResource(R.string.timeline_unknown_place)
     val openLabel = stringResource(R.string.timeline_edit_visit)
     val currentSelect by rememberUpdatedState(onSelect)
@@ -449,7 +461,7 @@ private fun VisitBlock(
     val bulkLabel = stringResource(R.string.timeline_select_for_bulk)
     val title = visit.placeLabel ?: unknown
     val oneLine = placed.compact || placed.heightDp < DayCanvasDefaults.OneLineBelowDp * fontScale
-    val showChip = !oneLine && job == null && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
+    val showChip = !oneLine && visit.needsReview && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
     val (titleLines, detailLines) = textLines(placed.heightDp, fontScale, showChip)
 
     // Outage dots sit on top of the left border, outside the block clip.
@@ -460,10 +472,11 @@ private fun VisitBlock(
         (if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f) + d.SummaryLineDp * fontScale
     val showSummary = notTracked != null && !oneLine && placed.heightDp >= summaryRoom
     var focused by remember { mutableStateOf(false) }
-    val look = if (job != null) {
-        Modifier.clip(shape).background(container).border(DayCanvasDefaults.BorderWidth, job.border, shape)
-    } else {
+    // A visit no job block covers keeps the dashed "needs review" outline; a covered one is a plain card.
+    val look = if (visit.needsReview) {
         Modifier.clip(shape).background(container).dashedBorder(c.outline, shape)
+    } else {
+        Modifier.clip(shape).background(container).border(DayCanvasDefaults.BorderWidth, c.outline, shape)
     }
     Box(
         modifier = modifier
@@ -508,7 +521,7 @@ private fun VisitBlock(
                 traversalIndex = index.toFloat()
                 blockDimmed = dimmed
                 blockColor = container
-                blockDashed = job == null
+                blockDashed = visit.needsReview
                 if (placed.innerGaps.isNotEmpty()) {
                     innerGapHatch = placed.innerGaps.size
                     innerGapRects = innerGapDotRects(placed.innerGaps)
@@ -531,7 +544,7 @@ private fun VisitBlock(
             Text(
                 text = stringResource(R.string.timeline_compact_line, title, formatDuration(times.durationMs)),
                 style = MaterialTheme.typography.bodyMedium,
-                color = titleColor,
+                color = c.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -539,14 +552,14 @@ private fun VisitBlock(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                color = titleColor,
+                color = c.ink,
                 maxLines = titleLines,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = visit.jobName?.let { stringResource(R.string.timeline_range_with_job, times.range, it) } ?: times.range,
+                text = times.range,
                 style = MaterialTheme.typography.bodyMedium,
-                color = detailColor,
+                color = c.muted,
                 maxLines = detailLines,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -801,7 +814,7 @@ private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, tim
     }
 }
 
-private fun Modifier.dashedBorder(color: Color, shape: RoundedCornerShape, width: Dp = DayCanvasDefaults.BorderWidth): Modifier =
+internal fun Modifier.dashedBorder(color: Color, shape: RoundedCornerShape, width: Dp = DayCanvasDefaults.BorderWidth): Modifier =
     drawBehind {
         val sw = width.toPx()
         val radius = shape.topStart.toPx(size, this) - sw / 2
@@ -853,12 +866,12 @@ private fun Modifier.innerGapDots(innerGaps: List<InnerGap>): Modifier {
 }
 
 /**
- * The label of a tracking start/stop mark ("Tracking started 07:02"): `labelSmall`, muted, right-aligned in the canvas
- * column at the marker's rule. It has no pointer input, so taps fall through to the blocks below. Spoken as plain text
+ * The label of a tracking start/stop mark ("Tracking started 07:02"): `labelSmall`, muted, right-aligned in the
+ * visits-and-trips column (never under a job block) at the marker's rule. It has no pointer input, so taps fall through to the blocks below. Spoken as plain text
  * in time order, between the blocks it falls between.
  */
 @Composable
-private fun TrackingMarkerLabel(placed: PlacedMarker, ordered: List<Placed>, timeColumn: Dp, zone: ZoneId) {
+private fun TrackingMarkerLabel(placed: PlacedMarker, ordered: List<Placed>, timeColumn: Dp, visitEnd: Dp, zone: ZoneId) {
     val formats = rememberTimeFormats()
     val m = placed.marker
     val stopped = m.stoppedMs?.let { formats.time(it, zone) }
@@ -885,7 +898,7 @@ private fun TrackingMarkerLabel(placed: PlacedMarker, ordered: List<Placed>, tim
         textAlign = TextAlign.End,
         modifier = Modifier
             .offset(y = placed.labelTopDp.dp)
-            .padding(start = timeColumn + DayCanvasDefaults.BlockInset, end = DayCanvasDefaults.BlockInset)
+            .padding(start = timeColumn + DayCanvasDefaults.BlockInset, end = visitEnd + DayCanvasDefaults.BlockInset)
             .fillMaxWidth()
             .semantics { traversalIndex = traversal }
             .testTag("timeline_tracking_marker"),

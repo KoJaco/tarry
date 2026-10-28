@@ -107,7 +107,8 @@ internal fun List<TimelineItem>.toScrubItems(): List<ScrubItem> = map {
 @Composable
 internal fun DayScrubber(
     model: ScrubberModel,
-    visits: List<TimelineItem.Visit>,
+    /** The job block covering each visit (by visit id), to colour its segment; a visit without one is neutral. */
+    visitJobs: Map<String, JobBlockItem>,
     time: Long,
     onTimeChange: (Long) -> Unit,
     onOpenVisit: (String) -> Unit,
@@ -129,8 +130,8 @@ internal fun DayScrubber(
     var widthPx by remember { mutableStateOf(0) }
     var pickingDay by rememberSaveable { mutableStateOf(false) }
     var pickedDay by rememberSaveable { mutableStateOf<LocalDate?>(null) }
-    val jobColors = remember(visits, dark) {
-        visits.associate { v -> v.id to v.jobId?.let { JobPalette.lookup(v.jobColorArgb, it).colors(dark) } }
+    val jobColors = remember(visitJobs, dark) {
+        visitJobs.mapValues { (_, b) -> JobPalette.lookup(b.jobColorArgb, b.jobId).colors(dark) }
     }
     val previous = model.previous(time)
     val next = model.next(time)

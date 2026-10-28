@@ -52,13 +52,7 @@ fun EditDrawer(
     }
     val actions = remember(viewModel, target) {
         EditDrawerActions(
-            onSetJob = { viewModel.setJob(it) },
-            onCreateJob = { viewModel.createJob(it) },
-            onToggleTag = { viewModel.toggleTag(it) },
-            onCreateTag = { viewModel.createTag(it) },
-            onBillable = { viewModel.setBillable(it) },
             onNotes = { viewModel.setNotes(it) },
-            onSetPlaceDefault = { viewModel.setPlaceDefault(it) },
             onRenamePlace = { viewModel.renamePlace(it) },
             onTrimStart = { viewModel.trimStart(it) },
             onTrimEnd = { viewModel.trimEnd(it) },
@@ -67,6 +61,16 @@ fun EditDrawer(
             onChangePlace = { viewModel.changePlace(it) },
             onDelete = { viewModel.delete() },
             onReset = { viewModel.resetToDetected() },
+            onSetBlockJob = { viewModel.setBlockJob(it) },
+            onBlockStart = { viewModel.setBlockStart(it) },
+            onBlockEnd = { viewModel.setBlockEnd(it) },
+            onBlockBillable = { viewModel.setBlockBillable(it) },
+            onDeleteBlock = { viewModel.deleteBlock() },
+            onCreateBlock = { jobId, start, end, billable, notes -> viewModel.createBlock(jobId, start, end, billable, notes) },
+            onCreateJob = { name, onCreated -> viewModel.createJob(name, onCreated) },
+            onAddToJob = { viewModel.addToJob(it) },
+            onOpenBlock = { currentRetarget(EditTarget.Job(it)) },
+            onSetPlaceDefaultJob = { viewModel.setPlaceDefaultJob(it) },
             onCreateManual = { placeId, start, end -> viewModel.createManual(placeId, start, end) },
             onCreateManualAtNewPlace = { lat, lng, start, end -> viewModel.createManualAtNewPlace(lat, lng, start, end) },
             onAddStop = {

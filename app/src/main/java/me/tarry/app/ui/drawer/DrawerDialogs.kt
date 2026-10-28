@@ -6,8 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -50,7 +48,6 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.TarryCard
-import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
@@ -91,14 +88,14 @@ private fun SheetTitle(text: String) {
 }
 
 /**
- * The job list as a bottom sheet of selectable rows with colour swatches. [noneLabel] is the "no job" row ("No job" for
- * a visit, "Unattributed" for a trip). [onNewJob] adds the "New job…" action when set.
+ * The job list as a bottom sheet of selectable rows with colour swatches. [noneLabel] is the optional "no job" row (null
+ * hides it; the place default picker uses "None"). [onNewJob] adds the "New job…" action when set.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun JobPickerSheet(
     title: String,
-    noneLabel: String,
+    noneLabel: String?,
     jobs: List<JobOption>,
     selectedId: String?,
     onSelect: (String?) -> Unit,
@@ -119,71 +116,15 @@ internal fun JobPickerSheet(
         ) {
             SheetTitle(title)
             TarryCard(contentPadding = PaddingValues(0.dp), modifier = Modifier.selectableGroup()) {
-                PickerRow(label = noneLabel, selected = noneSelected, swatch = null, onClick = { onSelect(null) })
-                jobs.forEach { job ->
-                    HorizontalDivider(thickness = 1.dp, color = TarryTheme.colors.divider)
+                if (noneLabel != null) PickerRow(label = noneLabel, selected = noneSelected, swatch = null, onClick = { onSelect(null) })
+                jobs.forEachIndexed { index, job ->
+                    if (noneLabel != null || index > 0) HorizontalDivider(thickness = 1.dp, color = TarryTheme.colors.divider)
                     PickerRow(label = job.name, selected = job.id == selectedId, swatch = job, onClick = { onSelect(job.id) })
                 }
             }
             if (onNewJob != null) {
                 SecondaryButton(stringResource(R.string.edit_job_new), onClick = onNewJob, modifier = Modifier.fillMaxWidth())
             }
-        }
-    }
-}
-
-/**
- * Tags to add to every selected visit: grouped checkbox chips and an Apply button (disabled until one is ticked).
- * [groups] must already hide archived tags.
- */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-internal fun TagMultiSelectSheet(
-    groups: List<TagGroupOption>,
-    onApply: (Set<String>) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var picked by remember { mutableStateOf(emptySet<String>()) }
-    ModalBottomSheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(horizontal = TarryTheme.space.gutter)
-                .padding(bottom = TarryTheme.space.l),
-            verticalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
-        ) {
-            SheetTitle(stringResource(R.string.selection_tags_title))
-            if (groups.isEmpty()) {
-                Text(
-                    stringResource(R.string.edit_tags_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TarryTheme.colors.muted,
-                )
-            }
-            groups.forEach { group ->
-                Text(group.name, style = MaterialTheme.typography.labelMedium, color = TarryTheme.colors.muted)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-                    verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-                ) {
-                    group.tags.forEach { tag ->
-                        TarryChip(
-                            text = tag.name,
-                            selected = tag.id in picked,
-                            onClick = { picked = if (tag.id in picked) picked - tag.id else picked + tag.id },
-                            role = Role.Checkbox,
-                        )
-                    }
-                }
-            }
-            PrimaryButton(
-                stringResource(R.string.selection_tags_apply),
-                onClick = { onApply(picked) },
-                enabled = picked.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }

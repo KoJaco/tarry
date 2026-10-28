@@ -43,10 +43,6 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.ROUND_DAILY_TOTAL_PER_JOB] = enabled }
     }
 
-    suspend fun setTravelAttribution(attribution: TravelAttribution) {
-        dataStore.edit { it[Keys.TRAVEL_ATTRIBUTION] = attribution.name }
-    }
-
     /** [days] must be 30, 90, 365, or null (keep forever, stored as a removed key). */
     suspend fun setRawPingRetentionDays(days: Int?) {
         require(days == null || days in Settings.ALLOWED_RETENTION_DAYS) { "Invalid retention days: $days" }
@@ -93,7 +89,6 @@ class SettingsRepository @Inject constructor(
         val ROUNDING_MODE = stringPreferencesKey("rounding_mode")
         val MIN_BILLABLE_MINUTES = intPreferencesKey("min_billable_minutes")
         val ROUND_DAILY_TOTAL_PER_JOB = booleanPreferencesKey("round_daily_total_per_job")
-        val TRAVEL_ATTRIBUTION = stringPreferencesKey("travel_attribution")
         val RAW_PING_RETENTION_DAYS = intPreferencesKey("raw_ping_retention_days")
         val RETENTION_FOREVER = booleanPreferencesKey("raw_ping_retention_forever")
         val REVIEW_REMINDER_ENABLED = booleanPreferencesKey("review_reminder_enabled")
@@ -116,7 +111,6 @@ class SettingsRepository @Inject constructor(
             roundingMode = enumOrDefault(this[Keys.ROUNDING_MODE], d.roundingMode),
             minBillableMinutes = this[Keys.MIN_BILLABLE_MINUTES]?.takeIf { it >= 0 } ?: d.minBillableMinutes,
             roundDailyTotalPerJob = this[Keys.ROUND_DAILY_TOTAL_PER_JOB] ?: d.roundDailyTotalPerJob,
-            travelAttribution = enumOrDefault(this[Keys.TRAVEL_ATTRIBUTION], d.travelAttribution),
             rawPingRetentionDays = retention,
             reviewReminderEnabled = this[Keys.REVIEW_REMINDER_ENABLED] ?: d.reviewReminderEnabled,
             reviewReminderMinuteOfDay = this[Keys.REVIEW_REMINDER_MINUTE]

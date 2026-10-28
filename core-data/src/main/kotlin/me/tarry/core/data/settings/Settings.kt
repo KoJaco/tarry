@@ -2,8 +2,6 @@ package me.tarry.core.data.settings
 
 enum class RoundingMode { NEAREST, UP }
 
-enum class TravelAttribution { DESTINATION, ORIGIN, SPLIT, UNATTRIBUTED }
-
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 /** User-facing settings, persisted in Preferences DataStore. */
@@ -13,7 +11,6 @@ data class Settings(
     val roundingMode: RoundingMode = RoundingMode.NEAREST,
     val minBillableMinutes: Int = 0,
     val roundDailyTotalPerJob: Boolean = false,
-    val travelAttribution: TravelAttribution = TravelAttribution.DESTINATION,
     /** One of [ALLOWED_RETENTION_DAYS]; null = keep forever. */
     val rawPingRetentionDays: Int? = 90,
     val reviewReminderEnabled: Boolean = false,
