@@ -4,6 +4,7 @@ import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.VisitOrigin
+import me.tarry.core.data.repository.JobBlockRepository
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -123,6 +124,47 @@ internal fun dragJobRange(
     val start = minOf(minOf(a, b), dayEnd - step)
     val length = if (a == b) config.defaultLengthMs else abs(a - b)
     return Span(start, minOf(start + length, dayEnd))
+}
+
+/** The block to save plus the ids of other same-job blocks it swallowed (soft-delete them in the same transaction). */
+data class BlockMerge(val block: JobBlock, val deleteIds: List<String>)
+
+/**
+ * Keeps blocks of one job from overlapping (overlaps across different jobs are allowed). Unions [candidate] with every
+ * live same-job block of [dayBlocks] it really overlaps (half-open, so touching does not merge), repeating until nothing
+ * more overlaps. The kept block is [candidate] when its id is already in [dayBlocks], else the earliest block of the
+ * union; it carries the union range and its own billable. Notes are the distinct non-blank notes joined with a newline.
+ * [dayBlocks] must cover the candidate's range (blocks can cross midnight).
+ */
+fun mergeSameJob(candidate: JobBlock, dayBlocks: List<JobBlock>): BlockMerge {
+    val others = dayBlocks.filter { !it.deleted && it.jobId == candidate.jobId && it.id != candidate.id }
+    val cluster = ArrayList<JobBlock>()
+    var start = candidate.start
+    var end = candidate.end
+    do {
+        val next = others.firstOrNull { b -> b !in cluster && overlaps(start, end, b.start, b.end) }?.also {
+            cluster.add(it)
+            start = minOf(start, it.start)
+            end = maxOf(end, it.end)
+        }
+    } while (next != null)
+    if (cluster.isEmpty()) return BlockMerge(candidate, emptyList())
+    val sorted = cluster.sortedWith(compareBy({ it.start }, { it.id }))
+    val candidateExists = dayBlocks.any { it.id == candidate.id }
+    val kept = if (candidateExists) candidate else sorted.first()
+    val ordered = listOf(kept) + (if (candidateExists) emptyList() else listOf(candidate)) + sorted.filter { it.id != kept.id }
+    val notes = ordered.mapNotNull { it.notes?.takeIf(String::isNotBlank) }.distinct().joinToString("\n").ifEmpty { null }
+    return BlockMerge(kept.copy(start = start, end = end, notes = notes), sorted.filter { it.id != kept.id }.map { it.id })
+}
+
+/**
+ * Saves [candidate] merged with the same-job blocks it overlaps ([mergeSameJob]) in one transaction and returns what was
+ * saved. Reads the blocks around the candidate's range, widened by [windowMs] so a neighbour is never missed.
+ */
+suspend fun JobBlockRepository.saveMerged(candidate: JobBlock, windowMs: Long = JobBlockConfig().joinWindowMs): JobBlock {
+    val merged = mergeSameJob(candidate, overlapping(candidate.start - windowMs, candidate.end + windowMs))
+    replace(merged.block, merged.deleteIds)
+    return merged.block
 }
 
 /** Earliest start to latest end of [segments]; null for an empty selection. */

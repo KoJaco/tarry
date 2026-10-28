@@ -126,6 +126,13 @@ class JobBlockRepository @Inject constructor(private val blocks: JobBlockDao) {
     /** Insert or update; always stamps [JobBlock.updatedAt]. */
     suspend fun save(block: JobBlock, now: Long = System.currentTimeMillis()) = blocks.upsert(block.copy(updatedAt = now))
 
+    /** One-shot live blocks overlapping `[from, to)` ordered by start. */
+    suspend fun overlapping(from: Long, to: Long): List<JobBlock> = blocks.getOverlapping(from, to)
+
+    /** Saves [save] and soft-deletes [deleteIds] atomically (a same-job merge); stamps [JobBlock.updatedAt] on all of them. */
+    suspend fun replace(save: JobBlock, deleteIds: List<String>, now: Long = System.currentTimeMillis()) =
+        blocks.replace(save, deleteIds, now)
+
     /** Soft delete. No-op when the block does not exist. */
     suspend fun delete(id: String, now: Long = System.currentTimeMillis()) {
         blocks.getById(id)?.let { blocks.upsert(it.copy(deleted = true, updatedAt = now)) }

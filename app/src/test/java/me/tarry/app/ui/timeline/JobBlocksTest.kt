@@ -162,7 +162,7 @@ class JobBlocksTest {
 
     // region covering job
 
-    private fun item(id: String, start: Long, end: Long) = JobBlockItem(id, "j", "J", 0, start * min, end * min, true, null, Lane(0, 1))
+    private fun item(id: String, start: Long, end: Long) = JobBlockItem(id, "j", "J", 0, start * min, end * min, true, null)
 
     @Test
     fun theCoveringJobIsTheFirstOverlappingBlockByStart() {
@@ -274,6 +274,146 @@ class JobBlocksTest {
         val r = addJobToSegment(span(60, 90), "j", blocks, config)
 
         assertThat(r).isEqualTo(AddJobResult.Extend("near", 60 * min, 140 * min))
+    }
+
+    // endregion
+
+    // region merge same job
+
+    private fun block(id: String, start: Long, end: Long, jobId: String, notes: String?, billable: Boolean = true) =
+        block(id, start, end, jobId).copy(notes = notes, billable = billable)
+
+    @Test
+    fun mergeWithNothingOverlappingKeepsTheCandidate() {
+        val c = block("c", 0, 60)
+
+        val m = mergeSameJob(c, listOf(block("far", 100, 160), block("other", 0, 60, jobId = "k"), block("touch", 60, 90)))
+
+        assertThat(m).isEqualTo(BlockMerge(c, emptyList()))
+    }
+
+    @Test
+    fun aNewBlockOverlappingTwoExistingOnesUnionsThemIntoTheEarliestOne() {
+        // A 9-10 + B 11-12, then a new 9:30-11:30: ONE block 9-12.
+        val a = block("A", 9 * 60, 10 * 60, "j", "a note", billable = false)
+        val b = block("B", 11 * 60, 12 * 60, "j", "b note")
+        val fresh = block("new", 9 * 60 + 30, 11 * 60 + 30, "j", "fresh")
+
+        val m = mergeSameJob(fresh, listOf(b, a))
+
+        assertThat(m.block.id).isEqualTo("A")
+        assertThat(m.block.start).isEqualTo(9 * 60 * min)
+        assertThat(m.block.end).isEqualTo(12 * 60 * min)
+        assertThat(m.block.billable).isFalse() // the kept block's
+        assertThat(m.block.notes).isEqualTo("a note\nfresh\nb note")
+        assertThat(m.deleteIds).containsExactly("B")
+    }
+
+    @Test
+    fun anExistingCandidateIsKeptAndSwallowsLaterBlocks() {
+        val a = block("A", 0, 60, "j", "x")
+        val b = block("B", 120, 180, "j", "x")
+        val edited = a.copy(end = 150 * min) // A's end dragged over B
+
+        val m = mergeSameJob(edited, listOf(a, b))
+
+        assertThat(m.block.id).isEqualTo("A")
+        assertThat(m.block.end).isEqualTo(180 * min)
+        assertThat(m.block.notes).isEqualTo("x") // distinct
+        assertThat(m.deleteIds).containsExactly("B")
+    }
+
+    @Test
+    fun theUnionKeepsGrowingThroughChainedOverlaps() {
+        val m = mergeSameJob(
+            block("c", 50, 70),
+            listOf(block("a", 0, 60), block("b", 65, 100), block("z", 100, 130)),
+        )
+
+        assertThat(m.block.id).isEqualTo("a")
+        assertThat(m.block.start).isEqualTo(0)
+        assertThat(m.block.end).isEqualTo(100 * min) // z only touches
+        assertThat(m.deleteIds).containsExactly("b")
+    }
+
+    @Test
+    fun differentJobsAndDeletedBlocksAreNeverMerged() {
+        val c = block("c", 0, 60)
+
+        val m = mergeSameJob(c, listOf(block("k", 0, 60, jobId = "k"), block("gone", 0, 60).copy(deleted = true)))
+
+        assertThat(m).isEqualTo(BlockMerge(c, emptyList()))
+    }
+
+    @Test
+    fun touchingBlocksDoNotMergeOnAPlainSave() {
+        val c = block("c", 60, 120)
+
+        assertThat(mergeSameJob(c, listOf(block("a", 0, 60))).deleteIds).isEmpty()
+    }
+
+    // endregion
+
+    // region DST days (Sydney: 2026-10-04 is 23 h, 2026-04-05 is 25 h)
+
+    private val sydney = java.time.ZoneId.of("Australia/Sydney")
+    private val dstDays = listOf(java.time.LocalDate.of(2026, 10, 4), java.time.LocalDate.of(2026, 4, 5))
+
+    private fun isLocalQuarter(ms: Long): Boolean {
+        val t = java.time.Instant.ofEpochMilli(ms).atZone(sydney)
+        // Round-trips through local time: a snapped instant lands on a real :00/:15/:30/:45 wall-clock time.
+        return t.minute % 15 == 0 && t.second == 0 && t.toInstant().toEpochMilli() == ms
+    }
+
+    @Test
+    fun dayBoundsOnDstDaysAre23And25Hours() {
+        assertThat(dayBounds(dstDays[0], sydney).let { it.second - it.first }).isEqualTo(23 * 60 * min)
+        assertThat(dayBounds(dstDays[1], sydney).let { it.second - it.first }).isEqualTo(25 * 60 * min)
+    }
+
+    @Test
+    fun defaultJobRangeOnDstDaysIsValidAndClampedToTheRealDayEnd() {
+        for (date in dstDays) {
+            val (start, end) = dayBounds(date, sydney)
+            val other = defaultJobRange(date, isToday = false, nowMs = 0, zone = sydney, blocks = emptyList())
+            assertThat(other.start).isAtLeast(start)
+            assertThat(other.end).isAtMost(end)
+            assertThat(other.end - other.start).isEqualTo(60 * min)
+            assertThat(isLocalQuarter(other.start)).isTrue()
+
+            // Fully covered day falls back to 09:00.
+            val covered = defaultJobRange(date, false, 0, sydney, listOf(block("all", 0, 0).copy(start = start, end = end)))
+            assertThat(isLocalQuarter(covered.start)).isTrue()
+            assertThat(java.time.Instant.ofEpochMilli(covered.start).atZone(sydney).hour).isEqualTo(9)
+
+            // 23:50 today: clamped to the real end of the day, which is not start + 24 h.
+            val lateNow = date.atTime(23, 50).atZone(sydney).toInstant().toEpochMilli()
+            val today = defaultJobRange(date, isToday = true, nowMs = lateNow, zone = sydney, blocks = emptyList())
+            assertThat(today.start).isEqualTo(date.atTime(23, 45).atZone(sydney).toInstant().toEpochMilli())
+            assertThat(today.end).isEqualTo(end)
+        }
+    }
+
+    @Test
+    fun dragJobRangeOnDstDaysSnapsToValidTimesAndClampsToTheRealDayEnd() {
+        for (date in dstDays) {
+            val (start, end) = dayBounds(date, sydney)
+            fun local(h: Int, m: Int) = date.atTime(h, m).atZone(sydney).toInstant().toEpochMilli()
+
+            val drag = dragJobRange(local(9, 7), local(11, 22), start, end)
+            assertThat(drag.start).isEqualTo(local(9, 0))
+            assertThat(drag.end).isEqualTo(local(11, 15))
+
+            // A press without a drag late in the day stays inside the real day.
+            val late = dragJobRange(end - 5 * min, end - 5 * min, start, end)
+            assertThat(late.end).isAtMost(end)
+            assertThat(late.start).isAtLeast(start)
+            assertThat(late.end).isGreaterThan(late.start)
+
+            // Dragging past the end clamps to it.
+            val past = dragJobRange(local(22, 0), end + 3 * 60 * min, start, end)
+            assertThat(past.end).isEqualTo(end)
+        }
     }
 
     // endregion

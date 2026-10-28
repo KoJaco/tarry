@@ -2,6 +2,7 @@ package me.tarry.core.data.db.dao
 
 import androidx.room.Dao
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import me.tarry.core.data.db.entity.ExcludedRange
@@ -173,6 +174,20 @@ interface JobBlockDao {
     /** Non-deleted blocks overlapping [from, to), live. */
     @Query("SELECT * FROM job_block WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
     fun observeOverlapping(from: Long, to: Long): Flow<List<JobBlock>>
+
+    /** One-shot [observeOverlapping]. */
+    @Query("SELECT * FROM job_block WHERE deleted = 0 AND start < :to AND `end` > :from ORDER BY start")
+    suspend fun getOverlapping(from: Long, to: Long): List<JobBlock>
+
+    @Query("UPDATE job_block SET deleted = 1, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun softDelete(ids: List<String>, now: Long)
+
+    /** Saves [block] and soft-deletes [deleteIds] in one transaction, so a merge is never half applied. */
+    @Transaction
+    suspend fun replace(block: JobBlock, deleteIds: List<String>, now: Long) {
+        upsert(block.copy(updatedAt = now))
+        if (deleteIds.isNotEmpty()) softDelete(deleteIds, now)
+    }
 
     /** Live blocks of the job (what blocks deleting it). */
     @Query("SELECT COUNT(*) FROM job_block WHERE jobId = :jobId AND deleted = 0")

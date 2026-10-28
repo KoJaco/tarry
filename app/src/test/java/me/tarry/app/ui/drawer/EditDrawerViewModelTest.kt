@@ -620,6 +620,80 @@ class EditDrawerViewModelTest {
         assertThat(created.end).isEqualTo(base + 20 * minute)
     }
 
+
+    // region same-job blocks never overlap
+
+    @Test
+    fun addToJobBridgingTwoBlocksEndsAsOneBlock() = runBlocking<Unit> {
+        seedJob()
+        seed(visit("v", 90, 210)) // 9:30-11:30 relative to A 9-10 (60..120) and B 11-12 (180..240)
+        jobBlocks.save(block("A", "j", 60, 120, billable = false, notes = "a"))
+        jobBlocks.save(block("B", "j", 180, 240, notes = "b"))
+        viewModel.load(EditTarget.Visit("v"))
+        awaitState()
+
+        viewModel.addToJob("j")
+
+        awaitState { it.blocks.size == 1 }
+        val live = liveBlocks().single()
+        assertThat(live.id).isEqualTo("A")
+        assertThat(live.start).isEqualTo(base + 60 * minute)
+        assertThat(live.end).isEqualTo(base + 240 * minute)
+        assertThat(live.billable).isFalse()
+        assertThat(live.notes).isEqualTo("a\nb")
+        assertThat(jobBlocks.byId("B")!!.deleted).isTrue()
+    }
+
+    @Test
+    fun newJobOverlappingASameJobBlockMergesButADifferentJobStaysSeparate() = runBlocking<Unit> {
+        seedJob()
+        seedJob("k", "Beta")
+        jobBlocks.save(block("same", "j", 0, 60))
+        jobBlocks.save(block("other", "k", 0, 60))
+        viewModel.load(EditTarget.NewJob(base, base + 60 * minute))
+        awaitState()
+
+        viewModel.createBlock("j", base + 30 * minute, base + 120 * minute, null, "")
+        withTimeout(10_000) { viewModel.events.first() }
+
+        val live = liveBlocks()
+        assertThat(live.map { it.id }).containsExactly("same", "other")
+        assertThat(live.single { it.id == "same" }.end).isEqualTo(base + 120 * minute)
+        assertThat(live.single { it.id == "other" }.end).isEqualTo(base + 60 * minute)
+    }
+
+    @Test
+    fun editingAJobEndOverALaterSameJobBlockMergesThem() = runBlocking<Unit> {
+        seedJob()
+        jobBlocks.save(block("a", "j", 0, 60))
+        jobBlocks.save(block("b", "j", 120, 180))
+        viewModel.load(EditTarget.Job("a"))
+        awaitState()
+
+        viewModel.setBlockEnd(base + 150 * minute)
+
+        awaitState { it.end == base + 180 * minute }
+        assertThat(liveBlocks().map { it.id }).containsExactly("a")
+        assertThat(jobBlocks.byId("b")!!.deleted).isTrue()
+    }
+
+    @Test
+    fun changingABlocksJobMergesItIntoTheNewJobsOverlappingBlock() = runBlocking<Unit> {
+        seedJob()
+        seedJob("k", "Beta")
+        jobBlocks.save(block("a", "j", 0, 60))
+        jobBlocks.save(block("b", "k", 30, 90))
+        viewModel.load(EditTarget.Job("a"))
+        awaitState()
+
+        viewModel.setBlockJob("k")
+
+        awaitState { it.jobId == "k" }
+        assertThat(liveBlocks().map { it.id }).containsExactly("a")
+        assertThat(liveBlocks().single().end).isEqualTo(base + 90 * minute)
+    }
+
+    // endregion
     @Test
     fun placeDefaultJobIsSetAndCleared() = runBlocking<Unit> {
         seedJob()

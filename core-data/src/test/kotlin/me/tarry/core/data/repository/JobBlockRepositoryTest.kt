@@ -88,4 +88,37 @@ class JobBlockRepositoryTest : DbTestBase() {
         repo.save(block("b", 10, 20))
         assertThat(flow.first().map { it.id }).containsExactly("b")
     }
+
+    @Test
+    fun replaceSavesAndSoftDeletesTogether() = runTest {
+        seedJob()
+        listOf(block("a", 0, 10), block("b", 20, 30), block("c", 40, 50)).forEach { repo.save(it, now = 1) }
+
+        repo.replace(block("a", 0, 30), listOf("b", "c"), now = 90)
+
+        assertThat(repo.overlapping(0, 100).map { it.id to it.end }).containsExactly("a" to 30L)
+        assertThat(repo.byId("a")!!.updatedAt).isEqualTo(90)
+        assertThat(repo.byId("b")!!.deleted).isTrue()
+        assertThat(repo.byId("b")!!.updatedAt).isEqualTo(90)
+        assertThat(repo.byId("c")!!.deleted).isTrue()
+    }
+
+    @Test
+    fun replaceWithNoDeletionsJustSaves() = runTest {
+        seedJob()
+        repo.replace(block("a", 0, 10), emptyList(), now = 5)
+        assertThat(ids(0, 100)).containsExactly("a")
+    }
+
+    @Test
+    fun replaceRollsBackTheSaveWhenTheDeletionFails() = runTest {
+        // A block for a job that does not exist violates the foreign key, so the save fails; nothing else may change.
+        seedJob()
+        repo.save(block("keep", 0, 10), now = 1)
+
+        runCatching { repo.replace(block("x", 0, 5).copy(jobId = "ghost"), listOf("keep"), now = 9) }
+
+        assertThat(repo.byId("keep")!!.deleted).isFalse()
+        assertThat(repo.byId("x")).isNull()
+    }
 }

@@ -646,7 +646,7 @@ class DayLayoutTest {
 
     private fun visitMs(s: Long, e: Long) = e - s
 
-    private fun job(id: String, s: Long, e: Long) = JobBlockItem(id, "j", "Job $id", 0, s, e, true, null, Lane(0, 1))
+    private fun job(id: String, s: Long, e: Long) = JobBlockItem(id, "j", "Job $id", 0, s, e, true, null)
     private fun suggestion(visitId: String, s: Long, e: Long) = JobSuggestionItem(JobSuggestion(visitId, "j", s, e), "Job", 0)
 
     @Test

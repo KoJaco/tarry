@@ -38,8 +38,8 @@ class JobColumnTest {
     private val visits = listOf(TimelineItem.Visit("v", at(9), at(11), "Marina", needsReview = true))
     // A long visit, so the canvas reaches 13:00 and there is empty job column to draw on.
     private val longVisit = listOf(TimelineItem.Visit("v", at(9), at(13), "Marina", needsReview = true))
-    private fun block(id: String, start: Long, end: Long, name: String = "Smith reno", billable: Boolean = true, lane: Lane = Lane(0, 1)) =
-        JobBlockItem(id, "job-$id", name, sky.key, start, end, billable, null, lane)
+    private fun block(id: String, start: Long, end: Long, name: String = "Smith reno", billable: Boolean = true) =
+        JobBlockItem(id, "job-$id", name, sky.key, start, end, billable, null)
 
     private val opened = mutableListOf<String>()
     private val confirmed = mutableListOf<JobSuggestion>()
@@ -109,7 +109,7 @@ class JobColumnTest {
 
     @Test
     fun overlappingBlocksSitSideBySide() {
-        show(listOf(block("a", at(9), at(11), lane = Lane(0, 2)), block("b", at(10), at(12), name = "Other", lane = Lane(1, 2))))
+        show(listOf(block("a", at(9), at(11)), block("b", at(10), at(12), name = "Other")))
         val a = composeRule.onNodeWithTag("timeline_job_a").getUnclippedBoundsInRoot()
         val b = composeRule.onNodeWithTag("timeline_job_b").getUnclippedBoundsInRoot()
         assertThat(a.right.value).isAtMost(b.left.value + 0.01f)

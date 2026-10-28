@@ -29,6 +29,7 @@ import me.tarry.app.ui.timeline.Span
 import me.tarry.app.ui.timeline.addJobToSegment
 import me.tarry.app.ui.timeline.displayLabel
 import me.tarry.app.ui.timeline.labelIsCoordinates
+import me.tarry.app.ui.timeline.saveMerged
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.app.map.GeoPoint
@@ -148,7 +149,7 @@ class EditDrawerViewModel @Inject constructor(
         if (jobId == null) return@launch fail(EditError.JOB_REQUIRED)
         val job = jobs.job(jobId)?.takeUnless { it.deleted } ?: return@launch fail(EditError.JOB_REQUIRED)
         if (end <= start) return@launch finish(EditResult.EmptyRange)
-        jobBlocks.save(
+        jobBlocks.saveMerged(
             JobBlock(
                 jobId = job.id, start = start, end = end, zoneId = ZoneId.systemDefault().id,
                 billable = billable ?: job.defaultBillable, notes = notes.ifEmpty { null }, updatedAt = 0L,
@@ -173,31 +174,36 @@ class EditDrawerViewModel @Inject constructor(
     /** Soft-deletes the open block, offers Undo (which restores it) and closes the drawer. */
     fun deleteBlock() = viewModelScope.launch {
         val id = (target.value as? EditTarget.Job)?.id ?: return@launch
-        jobBlocks.delete(id)
-        undoEvents.offer(UndoEvent(R.string.edit_undo_job_deleted, null, onUndo = { jobBlocks.restore(id) }))
+        blockEdits.withLock {
+            jobBlocks.delete(id)
+            undoEvents.offer(UndoEvent(R.string.edit_undo_job_deleted, null, onUndo = { jobBlocks.restore(id) }))
+        }
         finish(EditResult.Ok())
         eventChannel.send(EditDrawerEvent.Dismiss)
     }
 
     /**
      * Puts the open visit or trip in [jobId]: extends a block of that job that overlaps or lies within the join window,
-     * else creates a block equal to the segment, billable per the job's default.
+     * else creates a block equal to the segment, billable per the job's default. Either way the result is merged with any
+     * same-job block it now overlaps, so blocks of one job never overlap.
      */
     fun addToJob(jobId: String) = viewModelScope.launch {
         val (start, end) = segmentRange() ?: return@launch
         val job = jobs.job(jobId)?.takeUnless { it.deleted } ?: return@launch fail(EditError.JOB_REQUIRED)
         val config = JobBlockConfig()
-        // The query is open at both ends, so widen by one ms to see a block exactly a join window away.
-        val nearby = jobBlocks.observeOverlapping(start - config.joinWindowMs - 1, end + config.joinWindowMs + 1).first()
-        when (val result = addJobToSegment(Span(start, end), job.id, nearby, config)) {
-            is AddJobResult.Extend -> nearby.firstOrNull { it.id == result.blockId }
-                ?.let { jobBlocks.save(it.copy(start = result.start, end = result.end)) }
-            is AddJobResult.Create -> jobBlocks.save(
-                JobBlock(
-                    jobId = job.id, start = result.start, end = result.end, zoneId = ZoneId.systemDefault().id,
-                    billable = job.defaultBillable, updatedAt = 0L,
-                ),
-            )
+        blockEdits.withLock {
+            // The query is open at both ends, so widen by one ms to see a block exactly a join window away.
+            val nearby = jobBlocks.overlapping(start - config.joinWindowMs - 1, end + config.joinWindowMs + 1)
+            when (val result = addJobToSegment(Span(start, end), job.id, nearby, config)) {
+                is AddJobResult.Extend -> nearby.firstOrNull { it.id == result.blockId }
+                    ?.let { jobBlocks.saveMerged(it.copy(start = result.start, end = result.end)) }
+                is AddJobResult.Create -> jobBlocks.saveMerged(
+                    JobBlock(
+                        jobId = job.id, start = result.start, end = result.end, zoneId = ZoneId.systemDefault().id,
+                        billable = job.defaultBillable, updatedAt = 0L,
+                    ),
+                )
+            }
         }
         finish(EditResult.Ok())
     }
@@ -214,7 +220,7 @@ class EditDrawerViewModel @Inject constructor(
         val block = jobBlocks.byId(id)?.takeUnless { it.deleted } ?: return@withLock finish(EditResult.NotFound)
         val changed = change(block)
         if (changed.end <= changed.start) return@withLock finish(EditResult.EmptyRange)
-        if (changed != block) jobBlocks.save(changed)
+        if (changed != block) jobBlocks.saveMerged(changed)
         finish(EditResult.Ok())
     }
 

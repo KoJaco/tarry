@@ -532,7 +532,7 @@ class TimelineViewModelTest {
     }
 
     @Test
-    fun jobBlocksFollowTheSelectedDaysBoundsAndCarryJobAndLane() = runBlocking {
+    fun jobBlocksFollowTheSelectedDaysBoundsAndCarryJob() = runBlocking {
         jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
         jobs.save(Job(id = "k", name = "Beta", colorArgb = 0xFF445566.toInt(), updatedAt = 0))
         val asked = java.util.concurrent.CopyOnWriteArrayList<Pair<Long, Long>>()
@@ -550,7 +550,6 @@ class TimelineViewModelTest {
 
         assertThat(asked.first()).isEqualTo(dayBounds(day, zone))
         assertThat(blocks.map { it.id to it.jobName }).containsExactly("b1" to "Acme", "b2" to "Beta").inOrder() // unknown job left out
-        assertThat(blocks.map { it.lane.index to it.lane.count }).containsExactly(0 to 2, 1 to 2).inOrder()
         assertThat(blocks.first().jobColorArgb).isEqualTo(0xFF112233.toInt())
 
         vm.previousDay()
@@ -626,7 +625,7 @@ class TimelineViewModelTest {
         jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, defaultBillable = false, updatedAt = 0))
         val saved = mutableListOf<JobBlock>()
         val vm = loadedViewModel("a", "b", "c") {
-            TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { saved += it })
+            TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { b, _ -> saved += b })
         }
         // a 08-09, b 10-11, c 12-13; select a and c only.
         vm.startSelection("c")
@@ -647,7 +646,7 @@ class TimelineViewModelTest {
     @Test
     fun assignJobWithAnUnknownJobSavesNothing() = runBlocking<Unit> {
         val saved = mutableListOf<JobBlock>()
-        val vm = loadedViewModel("a") { TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { saved += it }) }
+        val vm = loadedViewModel("a") { TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { b, _ -> saved += b }) }
         vm.startSelection("a")
 
         vm.assignJob("nope")
@@ -660,7 +659,7 @@ class TimelineViewModelTest {
     fun confirmSuggestionSavesABlockForTheSuggestionRangeBillablePerTheJob() = runBlocking<Unit> {
         jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, defaultBillable = true, updatedAt = 0))
         val saved = mutableListOf<JobBlock>()
-        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { saved += it }).managed()
+        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { b, _ -> saved += b }).managed()
 
         vm.confirmSuggestion(JobSuggestion("v", "j", at(day, 9), at(day, 10)))
         withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
@@ -670,6 +669,98 @@ class TimelineViewModelTest {
         assertThat(block.start).isEqualTo(at(day, 9))
         assertThat(block.end).isEqualTo(at(day, 10))
         assertThat(block.billable).isTrue()
+    }
+
+    // endregion
+
+    // region same-job blocks never overlap
+
+    private class SavedCall(val block: JobBlock, val deleteIds: List<String>)
+
+    @Test
+    fun assignJobAcrossAnExistingBlockOfTheSameJobMergesIntoIt() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        val saved = mutableListOf<SavedCall>()
+        val existing = block("old", "j", at(day, 9), at(day, 10))
+        val vm = loadedViewModel("a", "b", "c") {
+            TimelineViewModel(
+                timeline, places, jobs, zone, { day },
+                blocksOverlapping = { _, _ -> flowOf(listOf(existing)) },
+                saveBlock = { b, ids -> saved += SavedCall(b, ids) },
+            )
+        }
+        // a 08-09, c 12-13: the range 08-13 swallows the existing 09-10.
+        vm.startSelection("c")
+        vm.toggleSelected("a")
+
+        vm.assignJob("j")
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+
+        val call = saved.single()
+        assertThat(call.block.id).isEqualTo("old")
+        assertThat(call.block.start).isEqualTo(at(day, 8))
+        assertThat(call.block.end).isEqualTo(at(day, 13))
+        assertThat(call.deleteIds).isEmpty()
+    }
+
+    @Test
+    fun assignJobOverlappingABlockOfAnotherJobStaysSeparate() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        val saved = mutableListOf<SavedCall>()
+        val other = block("other", "k", at(day, 8), at(day, 13))
+        val vm = loadedViewModel("a") {
+            TimelineViewModel(
+                timeline, places, jobs, zone, { day },
+                blocksOverlapping = { _, _ -> flowOf(listOf(other)) },
+                saveBlock = { b, ids -> saved += SavedCall(b, ids) },
+            )
+        }
+        vm.startSelection("a")
+
+        vm.assignJob("j")
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+
+        assertThat(saved.single().block.id).isNotEqualTo("other")
+        assertThat(saved.single().deleteIds).isEmpty()
+    }
+
+    @Test
+    fun aDoubleTapOnASuggestionSavesOnce() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        val saved = mutableListOf<JobBlock>()
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day },
+            saveBlock = { b, _ -> gate.await(); saved += b },
+        ).managed()
+        val suggestion = JobSuggestion("v", "j", at(day, 9), at(day, 10))
+
+        vm.confirmSuggestion(suggestion)
+        vm.confirmSuggestion(suggestion)
+        gate.complete(Unit)
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+        delay(100)
+
+        assertThat(saved).hasSize(1)
+
+        // Once it has finished the same suggestion can be confirmed again.
+        vm.confirmSuggestion(suggestion)
+        withTimeout(10_000) { while (saved.size < 2) delay(10) }
+    }
+
+    @Test
+    fun aDoubleTapOnAssignJobSavesOnce() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        val saved = mutableListOf<JobBlock>()
+        val vm = loadedViewModel("a") { TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { b, _ -> saved += b }) }
+        vm.startSelection("a")
+
+        vm.assignJob("j")
+        vm.assignJob("j")
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+        delay(100)
+
+        assertThat(saved).hasSize(1)
     }
 
     // endregion
