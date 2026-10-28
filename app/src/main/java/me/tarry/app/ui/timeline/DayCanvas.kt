@@ -284,7 +284,7 @@ fun DayCanvas(
                 .semantics { isTraversalGroup = true },
         ) {
             // Time column | visits and trips | job column. The visit column ends [visitEnd] short of the right edge.
-            val jobWidth = (maxWidth - timeColumn) * DayColumns.jobFraction(fontScale)
+            val jobWidth = maxOf((maxWidth - timeColumn) * DayColumns.jobFraction(fontScale), DayColumns.MinJobWidth)
             val visitEnd = jobWidth + DayColumns.Gap
             layout.hourMarks.forEachIndexed { i, mark ->
                 if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed

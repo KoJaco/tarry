@@ -56,6 +56,13 @@
     <string name="timeline_job_suggestion">Suggested: %1$s</string>
     <string name="timeline_job_suggestion_description">Suggested job %1$s, %2$s</string>
     <string name="timeline_confirm_suggestion">Confirm suggested job</string>
+    <string name="timeline_job_overflow_label">+%1$d</string>
+    <plurals name="timeline_job_overflow_description">
+        <item quantity="one">%1$d more job</item>
+        <item quantity="other">%1$d more jobs</item>
+    </plurals>
+    <string name="timeline_show_jobs">Show jobs</string>
+    <string name="timeline_job_overflow_title">Jobs at this time</string>
     <string name="timeline_undo_visit_times">Visit times changed</string>
     <string name="timeline_filter_needs_review">Needs review</string>
 
