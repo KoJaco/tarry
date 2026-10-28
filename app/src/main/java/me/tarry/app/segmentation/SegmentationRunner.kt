@@ -20,7 +20,6 @@ import me.tarry.core.data.db.entity.SegmentationCheckpoint
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Trip
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.segmentation.KnownPlace
 import me.tarry.segmentation.Ping
@@ -126,8 +125,8 @@ class SegmentationRunner @Inject constructor(
                 is PlaceRef.New -> newPlaceIds[ref.index]
             }
         }
-        val places = reconcilePlaces(result, knownPlaces, newPlaceIds, placeIds, now)
-        val visitIds = reconcileVisits(result, placeIds, places, from, to, zones, now)
+        reconcilePlaces(result, knownPlaces, newPlaceIds, placeIds, now)
+        val visitIds = reconcileVisits(result, placeIds, from, to, zones, now)
         reconcileTrips(result, visitIds, from, to, zones, now)
         reconcileGaps(result, allGaps, zones, now)
         saveCheckpoint(minOf(nextCheckpoint(result, pings), now))
@@ -178,7 +177,6 @@ class SegmentationRunner @Inject constructor(
     private suspend fun reconcileVisits(
         result: SegmentationResult,
         placeIds: List<String>,
-        places: Map<String, Place>,
         from: Long,
         to: Long,
         zones: ZoneLookup,
@@ -198,15 +196,12 @@ class SegmentationRunner @Inject constructor(
                 if (updated != existing) visitDao.upsert(updated.copy(updatedAt = now))
                 existing.id
             } else {
-                // Place defaults apply to new visits only: a reused visit may have been edited since.
-                val place = places[placeIds[i]]
                 val visit = Visit(
                     placeId = placeIds[i], start = stay.range.startMs, end = stay.range.endMs,
-                    zoneId = zones.at(stay.range.startMs), jobId = place?.defaultJobId, billable = place?.defaultBillable,
+                    zoneId = zones.at(stay.range.startMs),
                     origin = VisitOrigin.DETECTED, confidence = stay.confidence, updatedAt = now,
                 )
                 visitDao.upsert(visit)
-                placeDao.getDefaultTags(placeIds[i]).forEach { visitDao.upsertTag(VisitTag(visit.id, it.tagId)) }
                 visit.id
             }
         }

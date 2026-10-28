@@ -35,7 +35,6 @@ import androidx.navigation3.ui.NavDisplay
 import me.tarry.app.tracking.TrackingState
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.app.ui.catalog.JobsScreen
-import me.tarry.app.ui.catalog.TagsScreen
 import me.tarry.app.ui.navigation.JobsRoute
 import me.tarry.app.ui.navigation.PlaceDetailRoute
 import me.tarry.app.ui.navigation.PlacesRoute
@@ -43,7 +42,6 @@ import me.tarry.app.ui.navigation.ScheduleRoute
 import me.tarry.app.ui.schedule.ScheduleScreen
 import me.tarry.app.ui.places.PlaceDetailScreen
 import me.tarry.app.ui.places.PlacesScreen
-import me.tarry.app.ui.navigation.TagsRoute
 import me.tarry.app.ui.navigation.PermissionsRoute
 import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
@@ -72,8 +70,6 @@ fun TarryApp(
     val trackingState by shellViewModel.trackingState.collectAsStateWithLifecycle()
     val trackingDetails by shellViewModel.trackingDetails.collectAsStateWithLifecycle()
     val selection by timelineViewModel.selection.collectAsStateWithLifecycle()
-    val pickerJobs by timelineViewModel.pickerJobs.collectAsStateWithLifecycle()
-    val pickerTagGroups by timelineViewModel.pickerTagGroups.collectAsStateWithLifecycle()
     // Selection belongs to the Timeline screen: leaving it (Settings, Permissions, Sessions) ends it.
     val onTimeline = backStack.lastOrNull() == TimelineRoute
     LaunchedEffect(onTimeline) { if (!onTimeline) timelineViewModel.clearSelection() }
@@ -103,12 +99,6 @@ fun TarryApp(
             {
                 SelectionBar(
                     count = selection.size,
-                    jobs = pickerJobs,
-                    tagGroups = pickerTagGroups,
-                    onSetJob = timelineViewModel::bulkSetJob,
-                    onNewJob = timelineViewModel::bulkSetNewJob,
-                    onAddTags = timelineViewModel::bulkAddTags,
-                    onSetBillable = timelineViewModel::bulkSetBillable,
                     onIgnorePlace = timelineViewModel::bulkIgnorePlace,
                     onCancel = timelineViewModel::clearSelection,
                 )
@@ -123,7 +113,6 @@ fun TarryApp(
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
                 onOpenSchedule = { if (backStack.lastOrNull() != ScheduleRoute) backStack.add(ScheduleRoute) },
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
-                onOpenTags = { if (backStack.lastOrNull() != TagsRoute) backStack.add(TagsRoute) },
                 onOpenPlaces = { if (backStack.lastOrNull() != PlacesRoute) backStack.add(PlacesRoute) },
             )
         },
@@ -135,7 +124,6 @@ fun TarryApp(
             ScheduleScreen(onClose = { if (backStack.lastOrNull() == ScheduleRoute) backStack.removeAt(backStack.lastIndex) })
         },
         jobsContent = { JobsScreen() },
-        tagsContent = { TagsScreen() },
         placesContent = { PlacesScreen(onOpenPlace = { if (backStack.lastOrNull() != PlaceDetailRoute(it)) backStack.add(PlaceDetailRoute(it)) }) },
         placeDetailContent = { id ->
             PlaceDetailScreen(
@@ -202,7 +190,6 @@ fun TarryAppContent(
     sessionsContent: @Composable () -> Unit = {},
     scheduleContent: @Composable () -> Unit = {},
     jobsContent: @Composable () -> Unit = {},
-    tagsContent: @Composable () -> Unit = {},
     placesContent: @Composable () -> Unit = {},
     placeDetailContent: @Composable (String) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -242,7 +229,6 @@ fun TarryAppContent(
                 entry<SessionsRoute> { sessionsContent() }
                 entry<ScheduleRoute> { scheduleContent() }
                 entry<JobsRoute> { jobsContent() }
-                entry<TagsRoute> { tagsContent() }
                 entry<PlacesRoute> { placesContent() }
                 entry<PlaceDetailRoute> { placeDetailContent(it.id) }
             },

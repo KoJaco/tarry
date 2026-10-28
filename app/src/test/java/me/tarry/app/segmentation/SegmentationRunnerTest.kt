@@ -12,9 +12,6 @@ import me.tarry.core.data.db.entity.ExcludedRange
 import me.tarry.core.data.db.entity.Gap
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.PlaceDefaultTag
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.GapCause
@@ -210,7 +207,7 @@ class SegmentationRunnerTest {
     fun frozenVisitIsUntouchedAndNothingOverlapsIt() = runBlocking<Unit> {
         insertTwoSiteDay()
         val frozen = Visit(
-            id = "frozen", placeId = null, start = t0, end = t0 + 30 * minute, zoneId = "Australia/Sydney", jobId = "job",
+            id = "frozen", placeId = null, start = t0, end = t0 + 30 * minute, zoneId = "Australia/Sydney",
             freeNotes = "mine", frozen = true, origin = VisitOrigin.MANUAL, confidence = 1f, updatedAt = 5,
         )
         db.visitDao().upsert(frozen)
@@ -243,40 +240,6 @@ class SegmentationRunnerTest {
     }
 
     @Test
-    fun placeDefaultsApplyToNewVisitsOnly() = runBlocking<Unit> {
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "Group", colorArgb = 0, sortOrder = 0, updatedAt = 0))
-        db.tagDao().upsert(Tag(id = "tag", groupId = "g", name = "Tag", sortOrder = 0, updatedAt = 0))
-        db.placeDao().upsert(
-            Place(
-                id = "placeA", centroidLat = siteA.first, centroidLng = siteA.second, defaultJobId = "job1",
-                defaultBillable = true, updatedAt = 0,
-            ),
-        )
-        db.placeDao().upsertDefaultTag(PlaceDefaultTag("placeA", "tag"))
-        insertTwoSiteDay()
-
-        runner.run(now1)
-
-        val visitA = visits().first()
-        assertThat(visitA.placeId).isEqualTo("placeA")
-        assertThat(visitA.jobId).isEqualTo("job1")
-        assertThat(visitA.billable).isTrue()
-        assertThat(db.visitDao().getTags(visitA.id).map { it.tagId }).containsExactly("tag")
-        assertThat(visits().last().jobId).isNull()
-
-        // The user clears the job and the tag; a later run reuses the visit and must not re-apply the defaults.
-        db.visitDao().upsert(visitA.copy(jobId = null, billable = null))
-        db.visitDao().deleteTag(visitA.id, "tag")
-        runner.run(now1 + 2 * minute)
-
-        val reused = db.visitDao().getById(visitA.id)!!
-        assertThat(reused.deleted).isFalse()
-        assertThat(reused.jobId).isNull()
-        assertThat(reused.billable).isNull()
-        assertThat(db.visitDao().getTags(visitA.id)).isEmpty()
-    }
-
-    @Test
     fun healthGapsAreNeverTouched() = runBlocking<Unit> {
         insertTwoSiteDay()
         val health = Gap(
@@ -302,7 +265,7 @@ class SegmentationRunnerTest {
     }
 
     private fun editor() = TimelineEditor(
-        db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+        db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
         db.segmentationCheckpointDao(), EditClock { now1 + 5 * minute },
     )
 

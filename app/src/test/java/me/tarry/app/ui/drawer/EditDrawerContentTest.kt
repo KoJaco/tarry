@@ -53,29 +53,17 @@ class EditDrawerContentTest {
     private val day = LocalDate.of(2026, 10, 21)
     private fun at(hour: Int, minute: Int = 0) = day.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private val acme = JobOption("job-acme", "Acme", 0xFFE3EDFB.toInt())
-    private val parts = TagOption("tag-parts", "Parts")
-    private val tools = TagOption("tag-tools", "Tools")
-    private val groups = listOf(TagGroupOption("g", "Materials", listOf(parts, tools)))
 
     private fun visit(
         placeLabel: String? = "Rose Bay Marina",
-        ownJob: JobOption? = null,
-        placeJob: JobOption? = null,
-        billable: Boolean? = null,
-        placeBillable: Boolean? = null,
-        tagIds: Set<String> = emptySet(),
-        tagsInherited: Boolean = false,
         frozen: Boolean = false,
         origin: VisitOrigin = VisitOrigin.DETECTED,
         error: EditError? = null,
     ) = EditDrawerState(
         kind = EditKind.VISIT, id = "v", start = at(9), end = at(11), zoneId = zone.id,
         placeLabel = placeLabel, hasPlace = true,
-        jobs = listOf(acme), tagGroups = groups,
         places = listOf(PlaceOption("p2", "Depot", "1 Main St")),
-        ownJob = ownJob, placeJob = placeJob, billable = billable, placeBillable = placeBillable,
-        tagIds = tagIds, tagsInherited = tagsInherited, frozen = frozen, origin = origin, error = error,
+        frozen = frozen, origin = origin, error = error,
     )
 
     private fun show(state: EditDrawerState, actions: EditDrawerActions = EditDrawerActions(), fontScale: Float? = null) {
@@ -97,64 +85,6 @@ class EditDrawerContentTest {
         show(visit())
         composeRule.onNodeWithText("Rose Bay Marina").assert(heading())
         composeRule.onNode(hasText("2 h", substring = true)).assertExists()
-    }
-
-    @Test
-    fun needsReviewChipShowsWithoutAResolvedJob() {
-        show(visit())
-        composeRule.onNodeWithText("Needs review").assertExists()
-    }
-
-    @Test
-    fun placeDefaultJobCountsAsResolvedSoNoNeedsReviewChip() {
-        show(visit(placeJob = acme))
-        composeRule.onNodeWithText("Needs review").assertDoesNotExist()
-        composeRule.onNodeWithText("From place: Acme").assertExists()
-    }
-
-    @Test
-    fun ownJobIsShownWithoutTheFromPlacePrefix() {
-        show(visit(ownJob = acme, placeJob = acme.copy(name = "Other")))
-        composeRule.onNodeWithText("Acme").assertExists()
-        composeRule.onNodeWithText("From place: Other").assertDoesNotExist()
-    }
-
-    @Test
-    fun inheritedBillableIsLabelledAndOn() {
-        show(visit(placeBillable = true))
-        composeRule.onNodeWithText("From place: billable").assertExists()
-        composeRule.onNode(hasText("Billable") and hasText("From place: billable", substring = true)).assertIsOn()
-    }
-
-    @Test
-    fun billableSwitchReportsTheNewValue() {
-        var value: Boolean? = null
-        show(visit(billable = false), EditDrawerActions(onBillable = { value = it }))
-        composeRule.onNodeWithText("Billable").performScrollTo().assertIsOff().performClick()
-        assertThat(value).isTrue()
-    }
-
-    @Test
-    fun explicitBillableIsNotLabelledAsInherited() {
-        show(visit(billable = true, placeBillable = false))
-        composeRule.onNodeWithText("From place: not billable").assertDoesNotExist()
-        composeRule.onNodeWithText("Billable").assertIsOn()
-    }
-
-    @Test
-    fun tagChipsAreCheckboxesThatToggle() {
-        val toggled = mutableListOf<String>()
-        show(visit(tagIds = setOf("tag-parts")), EditDrawerActions(onToggleTag = { toggled += it }))
-        composeRule.onNodeWithText("Parts").assertIsSelected().assert(role(Role.Checkbox))
-        composeRule.onNodeWithText("Tools").assertIsNotSelected().assert(role(Role.Checkbox)).performClick()
-        composeRule.onNodeWithText("Parts").performClick()
-        assertThat(toggled).containsExactly("tag-tools", "tag-parts").inOrder()
-    }
-
-    @Test
-    fun inheritedTagsAreMarkedFromPlace() {
-        show(visit(tagIds = setOf("tag-parts"), tagsInherited = true))
-        composeRule.onNodeWithText("From place").assertExists()
     }
 
     @Test
@@ -201,53 +131,14 @@ class EditDrawerContentTest {
         composeRule.onNodeWithText("That would overlap another visit.").assertExists()
     }
 
-    @Test
-    fun setAsDefaultIsASwitchThatReportsTheNewValue() {
-        var value: Boolean? = null
-        show(visit(), EditDrawerActions(onSetPlaceDefault = { value = it }))
-        composeRule.onNodeWithText("Set as default for this place")
-            .performScrollTo()
-            .assert(role(Role.Switch))
-            .assertIsOff()
-            .performClick()
-        assertThat(value).isTrue()
-    }
-
 
     @Test
-    fun sectionsAreOrderedJobTagsNotesTogglesTime() {
+    fun sectionsAreOrderedNotesTime() {
         show(visit())
         val order = composeRule.onAllNodes(heading()).fetchSemanticsNodes()
             .mapNotNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull() }
-            .filter { it in setOf("Job", "Tags", "Notes", "Toggles", "Time") }
-        assertThat(order).containsExactly("Job", "Tags", "Notes", "Toggles", "Time").inOrder()
-    }
-
-    @Test
-    fun newTagSurfaceIsAlwaysVisibleAndClickable() {
-        show(visit())
-        composeRule.onNode(hasText("New tag") and hasClickAction()).assertExists().assert(role(Role.Button))
-    }
-
-    @Test
-    fun newTagSurfaceShowsEvenWithNoTagGroups() {
-        show(visit().copy(tagGroups = emptyList()))
-        composeRule.onNode(hasText("New tag") and hasClickAction()).assertExists()
-    }
-
-    @Test
-    fun togglesGroupHoldsBothSwitches() {
-        show(visit())
-        composeRule.onNodeWithText("Billable").assert(role(Role.Switch))
-        composeRule.onNodeWithText("Set as default for this place").assert(role(Role.Switch))
-    }
-
-    @Test
-    fun tripTogglesHaveBillableOnly() {
-        val trip = EditDrawerState(kind = EditKind.TRIP, id = "t", start = at(11), end = at(11, 25), zoneId = zone.id)
-        show(trip)
-        composeRule.onNodeWithText("Billable").assert(role(Role.Switch))
-        composeRule.onNodeWithText("Set as default for this place").assertDoesNotExist()
+            .filter { it in setOf("Notes", "Time") }
+        assertThat(order).containsExactly("Notes", "Time").inOrder()
     }
 
     // Note: a TextField inside a dialog never goes idle under Robolectric, so the dialogs themselves are not opened here.
@@ -268,15 +159,14 @@ class EditDrawerContentTest {
     }
 
     @Test
-    fun tripShowsAttributionAndAddStopButNoTimeEdits() {
+    fun tripShowsNotesAndAddStopButNoTimeEdits() {
         var stops = 0
         val trip = EditDrawerState(
             kind = EditKind.TRIP, id = "t", start = at(11), end = at(11, 25), zoneId = zone.id,
-            tripMode = TripMode.VEHICLE, distanceM = 12_400f, jobs = listOf(acme), tagGroups = groups,
+            tripMode = TripMode.VEHICLE, distanceM = 12_400f,
         )
         show(trip, EditDrawerActions(onAddStop = { stops++ }))
         composeRule.onNodeWithText("Vehicle").assert(heading())
-        composeRule.onNodeWithText("Unattributed").assertExists()
         composeRule.onNodeWithText("Trim start").assertDoesNotExist()
         composeRule.onNodeWithText("Delete visit").assertDoesNotExist()
         composeRule.onNodeWithText("Add a stop during this trip").performScrollTo().performClick()
@@ -415,24 +305,9 @@ class EditDrawerContentTest {
     }
 
     @Test
-    fun jobRowOpensThePickerWithNoneAndNewJob() {
-        val picked = mutableListOf<String?>()
-        show(visit(), EditDrawerActions(onSetJob = { picked += it }))
-        composeRule.onNodeWithText("No job").performClick()
-        composeRule.onNodeWithText("Choose a job").assertExists()
-        composeRule.onNodeWithText("New job…").assertExists()
-        composeRule.onNodeWithText("Acme").performClick()
-        assertThat(picked).containsExactly("job-acme")
-    }
-
-    @Test
     fun fontScaleTwoKeepsHeaderRowsAndLabelsUntruncated() {
-        show(visit(placeLabel = "Rose Bay Marina", frozen = true, placeJob = acme, placeBillable = true), fontScale = 2f)
+        show(visit(placeLabel = "Rose Bay Marina", frozen = true), fontScale = 2f)
         composeRule.onNodeWithText("Rose Bay Marina", useUnmergedTree = true).assertNotTruncated()
-        composeRule.onNodeWithText("From place: Acme", useUnmergedTree = true).performScrollTo().assertNotTruncated()
-        composeRule.onNodeWithText("From place: billable", useUnmergedTree = true).performScrollTo().assertNotTruncated()
-        composeRule.onNodeWithText("Set as default for this place", useUnmergedTree = true).performScrollTo().assertNotTruncated()
-        composeRule.onNodeWithText("New tag", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("Trim start", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("Merge with previous", useUnmergedTree = true).performScrollTo().assertNotTruncated()
         composeRule.onNodeWithText("Reset to detected", useUnmergedTree = true).performScrollTo().assertNotTruncated()

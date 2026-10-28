@@ -284,7 +284,7 @@ class TimelineContentTest {
     fun summaryShowsTotalCaptionAndNeedsReviewCount() {
         show(
             listOf(
-                TimelineItem.Visit("v1", at(9, 0), at(10, 30), "A"),
+                TimelineItem.Visit("v1", at(9, 0), at(10, 30), "A", needsReview = true),
                 TimelineItem.Visit("v2", at(11, 0), at(12, 0), "B", jobName = "Job", jobColorArgb = 0xFFE3EDFB.toInt()),
                 TimelineItem.Trip("t", at(10, 30), at(11, 0), 5000f, TripMode.VEHICLE),
                 TimelineItem.Gap("g", at(13, 0), at(13, 30), GapCause.NO_FIX),

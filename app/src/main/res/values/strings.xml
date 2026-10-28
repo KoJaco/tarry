@@ -198,7 +198,6 @@
     <string name="settings_rounding_mode">Rounding mode</string>
     <string name="settings_min_billable">Minimum billable time</string>
     <string name="settings_round_daily_total">Round daily total per job</string>
-    <string name="settings_travel_attribution">Travel attribution</string>
     <string name="settings_ping_retention">Raw location retention</string>
     <string name="settings_review_reminder">Review reminder</string>
     <string name="settings_review_reminder_time">Review reminder time</string>

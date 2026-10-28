@@ -52,13 +52,7 @@ fun EditDrawer(
     }
     val actions = remember(viewModel, target) {
         EditDrawerActions(
-            onSetJob = { viewModel.setJob(it) },
-            onCreateJob = { viewModel.createJob(it) },
-            onToggleTag = { viewModel.toggleTag(it) },
-            onCreateTag = { viewModel.createTag(it) },
-            onBillable = { viewModel.setBillable(it) },
             onNotes = { viewModel.setNotes(it) },
-            onSetPlaceDefault = { viewModel.setPlaceDefault(it) },
             onRenamePlace = { viewModel.renamePlace(it) },
             onTrimStart = { viewModel.trimStart(it) },
             onTrimEnd = { viewModel.trimEnd(it) },

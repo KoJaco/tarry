@@ -69,7 +69,7 @@ class TimelineEditingUiTest {
     private fun at(hour: Int, minute: Int = 0): Long =
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private val review = TimelineItem.Visit("review", at(9), at(10), "Marina")
+    private val review = TimelineItem.Visit("review", at(9), at(10), "Marina", needsReview = true)
     private val labelled = TimelineItem.Visit("labelled", at(11), at(12), "Yard", jobName = "Antifoul", jobColorArgb = null, jobId = "j")
     private val trip = TimelineItem.Trip("trip", at(10), at(11), 4000f, TripMode.VEHICLE)
     private val gap = TimelineItem.Gap("gap", at(12, 15), at(13), GapCause.NO_FIX)
@@ -109,9 +109,7 @@ class TimelineEditingUiTest {
                     }
                     if (selection.isNotEmpty()) {
                         SelectionBar(
-                            count = selection.size, jobs = emptyList(), tagGroups = emptyList(),
-                            onSetJob = {}, onNewJob = {}, onAddTags = {},
-                            onSetBillable = { bulkCalls += selection.toList() to AnnotationOp.SetBillable(it); selection = emptySet() },
+                            count = selection.size,
                             onIgnorePlace = { bulkCalls += selection.toList() to AnnotationOp.IgnorePlace(); selection = emptySet() },
                             onCancel = { selection = emptySet() },
                         )
@@ -355,12 +353,12 @@ class TimelineEditingUiTest {
         tag("timeline_row_labelled").performClick()
         composeRule.waitForIdle()
 
-        composeRule.onNodeWithText("Billable").assertHasClickAction().performClick()
+        composeRule.onNodeWithText("Ignore place").assertHasClickAction().performClick()
         composeRule.waitForIdle()
 
         assertThat(bulkCalls).hasSize(1)
         assertThat(bulkCalls.single().first).containsExactly("review", "labelled")
-        assertThat(bulkCalls.single().second).isEqualTo(AnnotationOp.SetBillable(true))
+        assertThat(bulkCalls.single().second).isEqualTo(AnnotationOp.IgnorePlace())
         tag(SelectionBarTag).assertDoesNotExist()
         assertThat(isSelected("review")).isFalse()
     }
@@ -382,7 +380,7 @@ class TimelineEditingUiTest {
     fun selectionBarOffersEveryActionAndCancelExits() {
         showSelectable(listOf(review))
         longPress("review")
-        listOf("Set job", "Add tags", "Billable", "Not billable", "Ignore place", "Cancel").forEach {
+        listOf("Ignore place", "Cancel").forEach {
             composeRule.onNodeWithText(it).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         }
         composeRule.onNodeWithText("Cancel").performClick()

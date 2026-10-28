@@ -69,9 +69,6 @@ private val ErrorIconSize = 24.dp
 
 /** Which dialog or picker sheet is open. Kept in the content so a rotation re-asks rather than loses edits. */
 private sealed interface DrawerDialog {
-    data object JobPicker : DrawerDialog
-    data object NewJob : DrawerDialog
-    data object NewTag : DrawerDialog
     data object RenamePlace : DrawerDialog
     data object PlacePicker : DrawerDialog
     data object ConfirmReset : DrawerDialog
@@ -130,23 +127,17 @@ fun EditDrawerContent(
             )
             EditKind.TRIP -> {
                 ErrorBanner(state.error)
-                AttributionSection(state) { dialog = DrawerDialog.JobPicker }
-                TagsSection(state, actions, onNewTag = { dialog = DrawerDialog.NewTag })
                 NotesSection(state, actions)
-                TogglesSection(state, actions)
                 val addStop = stringResource(R.string.edit_trip_add_stop)
                 SettingsGroup { row(title = addStop, onClick = actions.onAddStop) }
             }
             EditKind.VISIT -> {
-                JobSection(state) { dialog = DrawerDialog.JobPicker }
-                TagsSection(state, actions, onNewTag = { dialog = DrawerDialog.NewTag })
                 NotesSection(state, actions)
-                TogglesSection(state, actions)
                 TimeSection(state, actions, onOpen = { dialog = it })
             }
         }
     }
-    DrawerDialogs(state, actions, dialog, onShow = { dialog = it }, onClose = { dialog = null })
+    DrawerDialogs(state, actions, dialog, onClose = { dialog = null })
     val zone = rememberZone(state.zoneId)
     val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
     if (dialog == DrawerDialog.NewPlace) {
@@ -299,18 +290,6 @@ private fun DrawerHeader(state: EditDrawerState, onRename: () -> Unit) {
                 modifier = Modifier.padding(top = TarryTheme.space.s),
             )
         }
-        if (state.needsReview) {
-            Text(
-                text = stringResource(R.string.timeline_needs_review),
-                style = MaterialTheme.typography.labelMedium,
-                color = TarryTheme.colors.onAccentSoft,
-                modifier = Modifier
-                    .padding(top = TarryTheme.space.xs)
-                    .clip(TarryTheme.shapes.pill)
-                    .background(TarryTheme.colors.accentSoft)
-                    .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.xs),
-            )
-        }
     }
 }
 
@@ -321,113 +300,6 @@ private fun rememberZone(zoneId: String): ZoneId =
 // endregion
 
 // region sections
-
-@Composable
-private fun JobSection(state: EditDrawerState, onOpen: () -> Unit) {
-    val own = state.ownJob
-    val inherited = state.placeJob
-    val subtitle = when {
-        own != null -> own.name
-        inherited != null -> stringResource(R.string.edit_job_from_place, inherited.name)
-        else -> stringResource(R.string.edit_job_none)
-    }
-    Section(R.string.edit_section_job) {
-        val title = stringResource(R.string.edit_job_row_title)
-        SettingsGroup { row(title = title, subtitle = subtitle, onClick = onOpen) }
-    }
-}
-
-@Composable
-private fun AttributionSection(state: EditDrawerState, onOpen: () -> Unit) {
-    val subtitle = state.ownJob?.name ?: stringResource(R.string.edit_attribution_none)
-    Section(R.string.edit_section_attribution) {
-        val title = stringResource(R.string.edit_attribution_row_title)
-        SettingsGroup { row(title = title, subtitle = subtitle, onClick = onOpen) }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun TagsSection(state: EditDrawerState, actions: EditDrawerActions, onNewTag: () -> Unit) {
-    Section(R.string.edit_section_tags) {
-        if (state.tagGroups.isEmpty()) {
-            Text(
-                stringResource(R.string.edit_tags_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = TarryTheme.colors.muted,
-            )
-        }
-        state.tagGroups.forEach { group ->
-            Text(group.name, style = MaterialTheme.typography.labelMedium, color = TarryTheme.colors.muted)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-                verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-            ) {
-                group.tags.forEach { tag ->
-                    TarryChip(
-                        text = tag.name,
-                        selected = tag.id in state.tagIds,
-                        onClick = { actions.onToggleTag(tag.id) },
-                        role = Role.Checkbox,
-                    )
-                }
-            }
-        }
-        if (state.tagsInherited) {
-            Text(
-                stringResource(R.string.edit_tags_from_place),
-                style = MaterialTheme.typography.bodySmall,
-                color = TarryTheme.colors.muted,
-            )
-        }
-        NewTagSurface(onClick = onNewTag)
-    }
-}
-
-/** Always-visible inset surface, the same treatment as the notes field, with a centred "+" and "New tag". */
-@Composable
-private fun NewTagSurface(onClick: () -> Unit) {
-    val label = stringResource(R.string.edit_tag_new)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(TarryTheme.shapes.card)
-            .background(TarryTheme.colors.inset)
-            .clickable(role = Role.Button, onClick = onClick)
-            .heightIn(min = CheckRowMinHeight)
-            .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.s),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s, Alignment.CenterHorizontally),
-    ) {
-        Icon(
-            painter = painterResource(R.drawable.ic_plus),
-            contentDescription = null,
-            tint = TarryTheme.colors.ink,
-            modifier = Modifier.size(ErrorIconSize),
-        )
-        Text(label, style = MaterialTheme.typography.titleSmall, color = TarryTheme.colors.ink)
-    }
-}
-
-@Composable
-private fun TogglesSection(state: EditDrawerState, actions: EditDrawerActions) {
-    val billableSubtitle = when {
-        !state.billableInherited -> null
-        state.resolvedBillable -> stringResource(R.string.edit_billable_from_place_yes)
-        else -> stringResource(R.string.edit_billable_from_place_no)
-    }
-    val billable = stringResource(R.string.edit_billable_title)
-    val setDefault = stringResource(R.string.edit_set_default)
-    val setDefaultHint = stringResource(R.string.edit_set_default_hint)
-    Section(R.string.edit_section_toggles) {
-        SettingsGroup {
-            switchRow(billable, state.resolvedBillable, actions.onBillable, subtitle = billableSubtitle)
-            if (state.kind == EditKind.VISIT && state.hasPlace) {
-                switchRow(setDefault, state.isPlaceDefault, actions.onSetPlaceDefault, subtitle = setDefaultHint)
-            }
-        }
-    }
-}
 
 @Composable
 private fun NotesSection(state: EditDrawerState, actions: EditDrawerActions) {
@@ -539,48 +411,10 @@ private fun DrawerDialogs(
     state: EditDrawerState,
     actions: EditDrawerActions,
     dialog: DrawerDialog?,
-    onShow: (DrawerDialog) -> Unit,
     onClose: () -> Unit,
 ) {
     val zone = rememberZone(state.zoneId)
     val is24Hour = DateFormat.is24HourFormat(LocalContext.current)
-    val isTrip = state.kind == EditKind.TRIP
-    if (dialog == DrawerDialog.JobPicker) {
-        JobPickerSheet(
-            title = stringResource(if (isTrip) R.string.edit_attribution_picker_title else R.string.edit_job_picker_title),
-            noneLabel = stringResource(if (isTrip) R.string.edit_attribution_none else R.string.edit_job_none),
-            jobs = state.jobs,
-            selectedId = state.ownJob?.id,
-            onSelect = {
-                actions.onSetJob(it)
-                onClose()
-            },
-            onNewJob = { onShow(DrawerDialog.NewJob) },
-            onDismiss = onClose,
-        )
-    }
-    if (dialog == DrawerDialog.NewJob) {
-        NameDialog(
-            title = stringResource(R.string.edit_job_new_title),
-            label = stringResource(R.string.edit_job_name_label),
-            onConfirm = {
-                actions.onCreateJob(it)
-                onClose()
-            },
-            onDismiss = onClose,
-        )
-    }
-    if (dialog == DrawerDialog.NewTag) {
-        NameDialog(
-            title = stringResource(R.string.edit_tag_new_title),
-            label = stringResource(R.string.edit_tag_name_label),
-            onConfirm = {
-                actions.onCreateTag(it)
-                onClose()
-            },
-            onDismiss = onClose,
-        )
-    }
     if (dialog == DrawerDialog.RenamePlace) {
         NameDialog(
             title = stringResource(R.string.edit_rename_place_title),

@@ -27,15 +27,6 @@
     <string name="place_default_job_none">No default</string>
     <string name="place_default_job_picker_title">Default job</string>
     <string name="place_default_job_none_option">No default job</string>
-    <string name="place_default_billable_row">Default billable</string>
-    <string name="place_default_billable_title">Default billable</string>
-    <string name="place_billable_not_set">Not set</string>
-    <string name="place_billable_yes">Billable</string>
-    <string name="place_billable_no">Not billable</string>
-    <string name="place_default_tags_row">Default tags</string>
-    <string name="place_default_tags_none">None</string>
-    <string name="place_default_tags_title">Default tags</string>
-    <string name="place_default_tags_save">Save</string>
     <string name="place_defaults_hint">Defaults apply to visits you have not edited.</string>
     <string name="place_ignore_row">Ignore this place</string>
     <string name="place_ignore_subtitle">Visits here never ask for review.</string>

@@ -77,15 +77,8 @@
     <string name="timeline_select_for_bulk">Select for bulk edit</string>
     <string name="timeline_toggle_selection">Toggle selection</string>
     <string name="selection_count">%1$d selected</string>
-    <string name="selection_set_job">Set job</string>
-    <string name="selection_add_tags">Add tags</string>
-    <string name="selection_billable">Billable</string>
-    <string name="selection_not_billable">Not billable</string>
     <string name="selection_ignore_place">Ignore place</string>
     <string name="selection_cancel">Cancel</string>
-    <string name="selection_job_picker_title">Set job for selected visits</string>
-    <string name="selection_tags_title">Add tags to selected visits</string>
-    <string name="selection_tags_apply">Apply</string>
     <plurals name="selection_undo_updated">
         <item quantity="one">%1$d visit updated</item>
         <item quantity="other">%1$d visits updated</item>

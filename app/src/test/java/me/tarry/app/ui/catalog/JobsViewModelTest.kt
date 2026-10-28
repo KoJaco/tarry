@@ -30,8 +30,7 @@ import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.model.VisitOrigin
+import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.repository.CatalogEditor
 import me.tarry.core.data.repository.EditClock
 import me.tarry.core.data.repository.JobRepository
@@ -62,10 +61,10 @@ class JobsViewModelTest {
         workManager = WorkManager.getInstance(context)
         val clock = EditClock { 1_000_000L }
         val timeline = TimelineEditor(
-            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
             db.segmentationCheckpointDao(), clock,
         )
-        val catalog = CatalogEditor(db, db.jobDao(), db.tagDao(), db.placeDao(), clock)
+        val catalog = CatalogEditor(db, db.jobDao(), db.jobBlockDao(), db.placeDao(), clock)
         undoEvents = UndoEvents(timeline, SegmentationScheduler(context, TrackingConfig()))
         viewModel = JobsViewModel(JobRepository(db.jobDao()), PlaceRepository(db.placeDao()), catalog, timeline, undoEvents)
     }
@@ -161,8 +160,8 @@ class JobsViewModelTest {
     fun deleteIsBlockedWhileInUseAndRemovesAnUnusedJob() = runBlocking<Unit> {
         db.jobDao().upsert(job("used"))
         db.jobDao().upsert(job("free"))
-        db.visitDao().upsert(
-            Visit(id = "v", placeId = null, start = 0, end = 1000, zoneId = "UTC", jobId = "used", origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0),
+        db.jobBlockDao().upsert(
+            JobBlock(id = "b", jobId = "used", start = 0, end = 1000, zoneId = "UTC", billable = true, updatedAt = 0),
         )
 
         assertThat(viewModel.uses("used")).isEqualTo(1)
@@ -176,8 +175,8 @@ class JobsViewModelTest {
     @Test
     fun aRefusedDeleteOrBlankRenameShowsANoticeWithNoUndoAction() = runBlocking<Unit> {
         db.jobDao().upsert(job("used"))
-        db.visitDao().upsert(
-            Visit(id = "v", placeId = null, start = 0, end = 1000, zoneId = "UTC", jobId = "used", origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0),
+        db.jobBlockDao().upsert(
+            JobBlock(id = "b", jobId = "used", start = 0, end = 1000, zoneId = "UTC", billable = true, updatedAt = 0),
         )
         val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
 

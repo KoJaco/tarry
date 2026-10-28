@@ -11,9 +11,6 @@ import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.PlaceDefaultTag
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.PingSource
@@ -92,7 +89,7 @@ class PlaceOpsRunnerTest {
     private suspend fun visits() = db.visitDao().getInRange(0, Long.MAX_VALUE)
 
     private fun editor(nowMs: Long) = TimelineEditor(
-        db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+        db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
         db.segmentationCheckpointDao(), EditClock { nowMs },
     )
 
@@ -109,16 +106,12 @@ class PlaceOpsRunnerTest {
 
     @Test
     fun orphanPlacesArePrunedAndEverythingElseIsKept() = runBlocking<Unit> {
-        db.tagDao().upsertGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 0))
-        db.tagDao().upsert(Tag(id = "tag", groupId = "g", name = "Tag", sortOrder = 0, updatedAt = 0))
         val recent = now1 - 10 * minute
         listOf(
             orphan("orphan"),
             orphan("deletedVisitLongAgo"),
             orphan("named").copy(name = "Home"),
             orphan("job").copy(defaultJobId = "j"),
-            orphan("billable").copy(defaultBillable = false),
-            orphan("tagged"),
             orphan("ignored").copy(ignored = true),
             orphan("radius").copy(radiusM = 100f),
             orphan("merged").copy(mergedIntoId = "named"),
@@ -128,7 +121,6 @@ class PlaceOpsRunnerTest {
             orphan("recentPlace", updatedAt = recent),
             orphan("alreadyDeleted").copy(deleted = true),
         ).forEach { db.placeDao().upsert(it) }
-        db.placeDao().upsertDefaultTag(PlaceDefaultTag("tagged", "tag"))
         db.visitDao().upsert(farVisit("v1", "deletedVisitLongAgo", deleted = true))
         db.visitDao().upsert(farVisit("v2", "frozenVisit", frozen = true))
         db.visitDao().upsert(farVisit("v3", "liveVisit"))
@@ -143,7 +135,7 @@ class PlaceOpsRunnerTest {
         assertThat(deleted("deletedVisitLongAgo")).isTrue()
         assertThat(all.getValue("orphan").updatedAt).isEqualTo(now1)
         for (kept in listOf(
-            "named", "job", "billable", "tagged", "ignored", "radius", "merged", "frozenVisit", "liveVisit", "recentlyDeletedVisit",
+            "named", "job", "ignored", "radius", "merged", "frozenVisit", "liveVisit", "recentlyDeletedVisit",
             "recentPlace",
         )) {
             assertThat(deleted(kept)).isFalse()

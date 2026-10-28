@@ -56,23 +56,21 @@ class SettingsUiTest {
     }
 
     @Test
-    fun labelsGroupHasJobsAndTagsRowsThatOpenTheirScreens() {
+    fun labelsGroupHasJobsAndPlacesRowsThatOpenTheirScreens() {
         val opened = mutableListOf<String>()
         composeRule.setContent {
             SettingsContent(
                 Settings(),
                 onOpenJobs = { opened += "jobs" },
-                onOpenTags = { opened += "tags" },
                 onOpenPlaces = { opened += "places" },
             )
         }
 
         composeRule.onNodeWithText("Labels", ignoreCase = true).assertExists()
         composeRule.onNodeWithText("Jobs").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
-        composeRule.onNodeWithText("Tags").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithText("Places").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
 
-        assertThat(opened).containsExactly("jobs", "tags", "places").inOrder()
+        assertThat(opened).containsExactly("jobs", "places").inOrder()
     }
 
     @Test

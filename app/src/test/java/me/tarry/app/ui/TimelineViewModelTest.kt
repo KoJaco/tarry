@@ -37,15 +37,14 @@ import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.db.entity.Job
+import me.tarry.core.data.db.entity.JobBlock
+import kotlinx.coroutines.flow.MutableStateFlow
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.AnnotationOp
 import me.tarry.core.data.repository.EditResult
 import me.tarry.core.data.repository.ItemRef
 import me.tarry.core.data.repository.PlaceRepository
 import me.tarry.core.data.repository.Snapshot
-import me.tarry.core.data.repository.TagRepository
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.app.R
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.core.data.repository.TimelineRepository
@@ -68,7 +67,6 @@ class TimelineViewModelTest {
     private lateinit var timeline: TimelineRepository
     private lateinit var places: PlaceRepository
     private lateinit var jobs: JobRepository
-    private lateinit var tags: TagRepository
 
     @Before
     fun setUp() {
@@ -79,7 +77,6 @@ class TimelineViewModelTest {
         timeline = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         places = PlaceRepository(db.placeDao())
         jobs = JobRepository(db.jobDao())
-        tags = TagRepository(db.tagDao())
     }
 
     @After
@@ -112,7 +109,7 @@ class TimelineViewModelTest {
     }
 
     private fun viewModel(today: () -> LocalDate = { day }) =
-        TimelineViewModel(timeline, places, jobs, tags, zone, today).managed()
+        TimelineViewModel(timeline, places, jobs, zone, today).managed()
 
     private fun TimelineViewModel.awaitItems(predicate: (List<TimelineItem>) -> Boolean): List<TimelineItem> =
         runBlocking { withTimeout(10_000) { items.first { it != null && predicate(it) } } }.orEmpty()
@@ -123,8 +120,8 @@ class TimelineViewModelTest {
         return build().managed().also { it.awaitItems { rows -> rows.size == ids.size } }
     }
 
-    private fun visit(id: String, start: Long, end: Long, placeId: String?, jobId: String? = null) = Visit(
-        id = id, placeId = placeId, jobId = jobId, start = start, end = end, zoneId = zone.id,
+    private fun visit(id: String, start: Long, end: Long, placeId: String?) = Visit(
+        id = id, placeId = placeId, start = start, end = end, zoneId = zone.id,
         origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0,
     )
 
@@ -144,7 +141,7 @@ class TimelineViewModelTest {
             PingPosition(at(day, 11, 5), -33.870, 151.205, 5f),
         )
         val vm = TimelineViewModel(
-            timeline, places, jobs, tags, zone, { day },
+            timeline, places, jobs, zone, { day },
             pingPositions = { from, to -> asked += from to to; flowOf(pings) },
         ).managed()
 
@@ -168,7 +165,7 @@ class TimelineViewModelTest {
             ),
         )
         val vm = TimelineViewModel(
-            timeline, places, jobs, tags, zone, { day },
+            timeline, places, jobs, zone, { day },
             trackingSessions = { from, to -> asked += from to to; flowOf(sessions) },
         ).managed()
 
@@ -190,7 +187,7 @@ class TimelineViewModelTest {
             timeline.saveTrip(Trip(id = id, start = at(d, 1), end = at(d, 1, 5), zoneId = zone.id, distanceM = 900f, mode = TripMode.VEHICLE, updatedAt = 0))
         }
         val vm = TimelineViewModel(
-            timeline, places, jobs, tags, zone, { day },
+            timeline, places, jobs, zone, { day },
             pingPositions = { from, _ ->
                 val lat = if (from == dayBounds(day, zone).first) -33.0 else -34.0
                 flowOf(listOf(PingPosition(from + 3_600_000, lat, 151.2, 5f), PingPosition(from + 3_660_000, lat, 151.21, 5f)))
@@ -231,7 +228,7 @@ class TimelineViewModelTest {
         val result = viewModel().awaitItems { it.size == 3 }
 
         assertThat(result.map { it.id }).containsExactly("v", "t", "g").inOrder()
-        assertThat(result[0]).isEqualTo(TimelineItem.Visit("v", at(day, 9), at(day, 11), "Office", placeId = "p"))
+        assertThat(result[0]).isEqualTo(TimelineItem.Visit("v", at(day, 9), at(day, 11), "Office", placeId = "p", needsReview = true))
         assertThat(result[1]).isEqualTo(TimelineItem.Trip("t", at(day, 11), at(day, 12), 900f, TripMode.VEHICLE))
         assertThat(result[2]).isEqualTo(TimelineItem.Gap("g", at(day, 13), at(day, 14), GapCause.NO_FIX))
     }
@@ -253,42 +250,6 @@ class TimelineViewModelTest {
         assertThat(labels).containsExactly(
             "Office", "2 Main St", "-33.86514, 151.20990", "-33.86514, 151.20990", null,
         ).inOrder()
-    }
-
-    @Test
-    fun visitWithJobGetsJobNameAndColour() = runBlocking {
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
-        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), null, jobId = "j"))
-
-        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
-
-        assertThat(v.jobName).isEqualTo("Acme")
-        assertThat(v.jobColorArgb).isEqualTo(0xFF112233.toInt())
-        assertThat(v.jobId).isEqualTo("j")
-    }
-
-    @Test
-    fun visitWithoutJobHasNullJobFields() = runBlocking {
-        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), null))
-
-        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
-
-        assertThat(v.jobName).isNull()
-        assertThat(v.jobColorArgb).isNull()
-        assertThat(v.jobId).isNull()
-    }
-
-    @Test
-    fun unknownOrDeletedJobGivesNullJobFields() = runBlocking {
-        jobs.save(Job(id = "gone", name = "Old", colorArgb = 1, updatedAt = 0, deleted = true))
-        timeline.saveVisit(visit("v1", at(day, 9), at(day, 10), null, jobId = "gone"))
-        timeline.saveVisit(visit("v2", at(day, 10), at(day, 11), null, jobId = "missing"))
-
-        val result = viewModel().awaitItems { it.size == 2 }.map { it as TimelineItem.Visit }
-
-        assertThat(result.map { it.jobName }).containsExactly(null, null).inOrder()
-        assertThat(result.map { it.jobColorArgb }).containsExactly(null, null).inOrder()
-        assertThat(result.map { it.jobId }).containsExactly(null, null).inOrder()
     }
 
     @Test
@@ -327,7 +288,7 @@ class TimelineViewModelTest {
             .build()
         try {
             val gatedTimeline = TimelineRepository(gatedDb.visitDao(), gatedDb.tripDao(), gatedDb.gapDao(), gatedDb.excludedRangeDao())
-            val vm = TimelineViewModel(gatedTimeline, places, jobs, tags, zone, { day }).managed()
+            val vm = TimelineViewModel(gatedTimeline, places, jobs, zone, { day }).managed()
             assertThat(vm.items.value).isNull()
             gate.countDown()
             val loaded = withTimeout(10_000) { vm.items.first { it != null } }
@@ -400,20 +361,7 @@ class TimelineViewModelTest {
     }
 
     @Test
-    fun visitWithoutOwnJobInheritsThePlaceDefaultJob() = runBlocking {
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
-        places.save(place("p", name = "Yard").copy(defaultJobId = "j"))
-        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
-
-        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
-
-        assertThat(v.jobName).isEqualTo("Acme")
-        assertThat(v.jobInherited).isTrue()
-        assertThat(v.needsReview).isFalse()
-    }
-
-    @Test
-    fun frozenVisitAtADeletedPlaceKeepsItsLabelAndInheritedJob() = runBlocking {
+    fun frozenVisitAtADeletedPlaceKeepsItsLabel() = runBlocking {
         jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
         places.save(place("p", name = "Yard").copy(defaultJobId = "j", deleted = true))
         timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p").copy(frozen = true))
@@ -421,23 +369,19 @@ class TimelineViewModelTest {
         val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
 
         assertThat(v.placeLabel).isEqualTo("Yard")
-        assertThat(v.jobName).isEqualTo("Acme")
-        assertThat(v.jobInherited).isTrue()
     }
 
     @Test
-    fun visitExposesFrozenBillableOriginPlaceAndIgnoredFlags() = runBlocking {
+    fun visitExposesFrozenOriginPlaceAndIgnoredFlags() = runBlocking {
         places.save(place("p", name = "Home").copy(ignored = true))
-        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p").copy(frozen = true, billable = true, origin = VisitOrigin.MANUAL))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p").copy(frozen = true, origin = VisitOrigin.MANUAL))
 
         val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
 
         assertThat(v.placeId).isEqualTo("p")
         assertThat(v.frozen).isTrue()
-        assertThat(v.billable).isTrue()
         assertThat(v.origin).isEqualTo(VisitOrigin.MANUAL)
         assertThat(v.placeIgnored).isTrue()
-        assertThat(v.jobInherited).isFalse()
         assertThat(v.needsReview).isFalse() // ignored place
     }
 
@@ -452,7 +396,7 @@ class TimelineViewModelTest {
         var reSegmented = 0
         val vm = loadedViewModel("a", "b", "c") {
             TimelineViewModel(
-                timeline, places, jobs, tags, zone, { day },
+                timeline, places, jobs, zone, { day },
                 offerUndo = { undos += it }, onEdited = { reSegmented++ },
                 bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
             )
@@ -462,11 +406,11 @@ class TimelineViewModelTest {
         vm.toggleSelected("c")
         assertThat(vm.selection.value).containsExactly("a", "b", "c").inOrder()
 
-        vm.bulkSetBillable(true)
+        vm.bulkIgnorePlace()
 
         assertThat(calls).hasSize(1)
         assertThat(calls.single().refs).containsExactly(ItemRef.visit("a"), ItemRef.visit("b"), ItemRef.visit("c")).inOrder()
-        assertThat(calls.single().op).isEqualTo(AnnotationOp.SetBillable(true))
+        assertThat(calls.single().op).isEqualTo(AnnotationOp.IgnorePlace())
         assertThat(undos).hasSize(1)
         assertThat(undos.single().message).isEqualTo(R.plurals.selection_undo_updated)
         assertThat(undos.single().count).isEqualTo(3)
@@ -481,7 +425,7 @@ class TimelineViewModelTest {
         val gate = CompletableDeferred<Unit>()
         val vm = loadedViewModel("a", "b") {
             TimelineViewModel(
-                timeline, places, jobs, tags, zone, { day },
+                timeline, places, jobs, zone, { day },
                 offerUndo = { undos += it },
                 // Suspends like a real Room write, so the second tap lands before the first bulk has finished.
                 bulk = { refs, op -> calls += BulkCall(refs, op); gate.await(); EditResult.Ok(undo = emptySnapshot) },
@@ -490,8 +434,8 @@ class TimelineViewModelTest {
         vm.startSelection("a")
         vm.toggleSelected("b")
 
-        vm.bulkSetBillable(true)
-        vm.bulkSetBillable(true)
+        vm.bulkIgnorePlace()
+        vm.bulkIgnorePlace()
         gate.complete(Unit)
         withTimeout(10_000) { while (undos.isEmpty()) delay(10) }
 
@@ -499,29 +443,6 @@ class TimelineViewModelTest {
         assertThat(undos).hasSize(1)
         assertThat(undos.single().count).isEqualTo(2)
         assertThat(vm.selection.value).isEmpty()
-    }
-
-    @Test
-    fun aDoubleTapOnNewJobCreatesOneJobAndRunsOneBulk() = runBlocking {
-        val calls = mutableListOf<BulkCall>()
-        var created = 0
-        val gate = CompletableDeferred<Unit>()
-        val vm = loadedViewModel("a") {
-            TimelineViewModel(
-                timeline, places, jobs, tags, zone, { day },
-                bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
-                createJob = { created++; gate.await(); EditResult.Ok(id = "new-job") },
-            )
-        }
-        vm.startSelection("a")
-
-        vm.bulkSetNewJob("Acme")
-        vm.bulkSetNewJob("Acme")
-        gate.complete(Unit)
-        withTimeout(10_000) { while (calls.isEmpty()) delay(10) }
-
-        assertThat(created).isEqualTo(1)
-        assertThat(calls).hasSize(1)
     }
 
     @Test
@@ -570,7 +491,7 @@ class TimelineViewModelTest {
     fun aRefusedBulkShowsANoticeWithNoUndoAndStillExitsSelection() = runBlocking {
         val undos = mutableListOf<UndoEvent>()
         val vm = loadedViewModel("a") {
-            TimelineViewModel(timeline, places, jobs, tags, zone, { day }, offerUndo = { undos += it })
+            TimelineViewModel(timeline, places, jobs, zone, { day }, offerUndo = { undos += it })
         }
         vm.startSelection("a")
         vm.bulkIgnorePlace() // default bulk returns NotFound
@@ -580,57 +501,31 @@ class TimelineViewModelTest {
         assertThat(vm.selection.value).isEmpty()
     }
 
+    private fun block(id: String, jobId: String, start: Long, end: Long) =
+        JobBlock(id = id, jobId = jobId, start = start, end = end, zoneId = zone.id, billable = true, updatedAt = 0)
+
     @Test
-    fun aFailedNewJobShowsANoticeAndRunsNoBulk() = runBlocking {
-        val calls = mutableListOf<BulkCall>()
-        val undos = mutableListOf<UndoEvent>()
-        val vm = loadedViewModel("a") {
-            TimelineViewModel(
-                timeline, places, jobs, tags, zone, { day }, offerUndo = { undos += it },
-                bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
-                createJob = { EditResult.BlankName },
-            )
-        }
-        vm.startSelection("a")
-        vm.bulkSetNewJob(" ")
-        assertThat(calls).isEmpty()
-        assertThat(undos.single().message).isEqualTo(R.string.edit_error_blank_name)
+    fun aVisitNeedsReviewUntilAJobBlockCoversIt() = runBlocking {
+        places.save(place("p", name = "Yard"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
+        val blocks = MutableStateFlow<List<JobBlock>>(emptyList())
+        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, blocksOverlapping = { _, _ -> blocks }).managed()
+
+        assertThat((vm.awaitItems { it.size == 1 }.single() as TimelineItem.Visit).needsReview).isTrue()
+
+        blocks.value = listOf(block("b", "j", at(day, 9, 30), at(day, 11)))
+        val covered = vm.awaitItems { rows -> rows.filterIsInstance<TimelineItem.Visit>().none { it.needsReview } }
+
+        assertThat(covered).hasSize(1)
     }
 
     @Test
-    fun newJobFromTheBulkPickerCreatesItThenSetsItOnEverySelectedVisit() = runBlocking {
-        val calls = mutableListOf<BulkCall>()
-        val vm = loadedViewModel("a", "b") {
-            TimelineViewModel(
-                timeline, places, jobs, tags, zone, { day },
-                bulk = { refs, op -> calls += BulkCall(refs, op); EditResult.Ok(undo = emptySnapshot) },
-                createJob = { EditResult.Ok(id = "new-job") },
-            )
-        }
-        vm.startSelection("a")
-        vm.toggleSelected("b")
-        vm.bulkSetNewJob("Acme")
-        assertThat(calls.single().op).isEqualTo(AnnotationOp.SetJob("new-job"))
-        assertThat(calls.single().refs).hasSize(2)
-        assertThat(vm.selection.value).isEmpty()
-    }
+    fun aVisitAtAnIgnoredPlaceNeverNeedsReview() = runBlocking {
+        places.save(place("p", name = "Home").copy(ignored = true))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
 
-    @Test
-    fun pickersHideArchivedJobsAndTagsAndEmptyGroups() = runBlocking {
-        jobs.save(Job(id = "live", name = "Live", colorArgb = 0, updatedAt = 0))
-        jobs.save(Job(id = "old", name = "Old", colorArgb = 0, archived = true, updatedAt = 0))
-        tags.saveGroup(TagGroup(id = "g1", name = "Kind", colorArgb = 0, sortOrder = 0, updatedAt = 0))
-        tags.saveGroup(TagGroup(id = "g2", name = "Gone", colorArgb = 0, sortOrder = 1, updatedAt = 0))
-        tags.save(Tag(id = "t1", groupId = "g1", name = "Rush", sortOrder = 0, updatedAt = 0))
-        tags.save(Tag(id = "t2", groupId = "g1", name = "Old tag", sortOrder = 1, archived = true, updatedAt = 0))
-        tags.save(Tag(id = "t3", groupId = "g2", name = "Only archived", sortOrder = 0, archived = true, updatedAt = 0))
-        val vm = viewModel()
+        val v = viewModel().awaitItems { it.size == 1 }.single() as TimelineItem.Visit
 
-        val pickedJobs = withTimeout(10_000) { vm.pickerJobs.first { it.isNotEmpty() } }
-        val pickedGroups = withTimeout(10_000) { vm.pickerTagGroups.first { it.isNotEmpty() } }
-
-        assertThat(pickedJobs.map { it.id }).containsExactly("live")
-        assertThat(pickedGroups.map { it.id }).containsExactly("g1")
-        assertThat(pickedGroups.single().tags.map { it.id }).containsExactly("t1").inOrder()
+        assertThat(v.needsReview).isFalse()
     }
 }

@@ -5,41 +5,20 @@
     <string name="edit_header_range">%1$s · %2$s</string>
     <string name="edit_header_range_distance">%1$s · %2$s · %3$s</string>
 
-    <string name="edit_section_job">Job</string>
-    <string name="edit_section_tags">Tags</string>
-    <string name="edit_section_toggles">Toggles</string>
     <string name="edit_section_notes">Notes</string>
     <string name="edit_section_time">Time</string>
-    <string name="edit_section_attribution">Attribution</string>
 
-    <string name="edit_job_row_title">Job</string>
-    <string name="edit_job_none">No job</string>
-    <string name="edit_job_from_place">From place: %1$s</string>
-    <string name="edit_job_picker_title">Choose a job</string>
     <string name="edit_job_new">New job…</string>
     <string name="edit_job_new_title">New job</string>
     <string name="edit_job_name_label">Job name</string>
 
-    <string name="edit_attribution_row_title">Attributed to</string>
-    <string name="edit_attribution_none">Unattributed</string>
-    <string name="edit_attribution_picker_title">Attribute this trip to</string>
 
-    <string name="edit_tags_from_place">From place</string>
-    <string name="edit_tags_empty">No tags yet. Add one to start labelling.</string>
-    <string name="edit_tag_new">New tag</string>
     <string name="edit_rename_place">Rename place</string>
     <string name="edit_rename_place_title">Name this place</string>
     <string name="edit_rename_place_label">Place name</string>
-    <string name="edit_tag_new_title">New tag</string>
-    <string name="edit_tag_name_label">Tag name</string>
 
-    <string name="edit_billable_title">Billable</string>
-    <string name="edit_billable_from_place_yes">From place: billable</string>
-    <string name="edit_billable_from_place_no">From place: not billable</string>
 
     <string name="edit_notes_label">Notes</string>
-    <string name="edit_set_default">Set as default for this place</string>
-    <string name="edit_set_default_hint">New visits here start with this job, billable state and tags.</string>
 
     <string name="edit_time_trim_start">Trim start</string>
     <string name="edit_time_trim_end">Trim end</string>
@@ -60,7 +39,7 @@
     <string name="edit_delete">Delete visit</string>
     <string name="edit_reset">Reset to detected</string>
     <string name="edit_reset_confirm_title">Reset to detected?</string>
-    <string name="edit_reset_confirm_body">This clears the job, tags, billable state and notes, and lets Tarry detect this visit again.</string>
+    <string name="edit_reset_confirm_body">This clears your notes and lets Tarry detect this visit again.</string>
     <string name="edit_reset_confirm_action">Reset</string>
 
     <string name="edit_trip_add_stop">Add a stop during this trip</string>

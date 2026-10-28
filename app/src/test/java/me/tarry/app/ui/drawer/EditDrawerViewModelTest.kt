@@ -30,23 +30,16 @@ import kotlinx.coroutines.withTimeout
 import me.tarry.app.R
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.TrackingConfig
-import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.core.data.db.TarryDatabase
-import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
-import me.tarry.core.data.db.entity.Tag
-import me.tarry.core.data.db.entity.TagGroup
 import me.tarry.core.data.db.entity.Trip
 import me.tarry.core.data.db.entity.Visit
-import me.tarry.core.data.db.entity.VisitTag
 import me.tarry.core.data.model.TripMode
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.EditClock
-import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.MergeDirection
 import me.tarry.core.data.repository.PlaceRepository
-import me.tarry.core.data.repository.TagRepository
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.core.data.repository.TimelineRepository
 import org.junit.After
@@ -63,8 +56,6 @@ class EditDrawerViewModelTest {
     private lateinit var db: TarryDatabase
     private lateinit var timeline: TimelineRepository
     private lateinit var places: PlaceRepository
-    private lateinit var jobs: JobRepository
-    private lateinit var tags: TagRepository
     private lateinit var workManager: WorkManager
     private lateinit var undoEvents: UndoEvents
     private lateinit var viewModel: EditDrawerViewModel
@@ -80,18 +71,16 @@ class EditDrawerViewModelTest {
         db = Room.inMemoryDatabaseBuilder(context, TarryDatabase::class.java).allowMainThreadQueries().build()
         timeline = TimelineRepository(db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao())
         places = PlaceRepository(db.placeDao())
-        jobs = JobRepository(db.jobDao())
-        tags = TagRepository(db.tagDao())
         // Workers hang instead of running segmentation: these tests only check that a run was requested.
         WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().setWorkerFactory(HangingWorkerFactory).build())
         workManager = WorkManager.getInstance(context)
         val scheduler = SegmentationScheduler(context, TrackingConfig())
         val editor = TimelineEditor(
-            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(), db.tagDao(),
+            db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
             db.segmentationCheckpointDao(), EditClock { base + 1_000 * minute },
         )
         undoEvents = UndoEvents(editor, scheduler)
-        val created = EditDrawerViewModel(timeline, places, jobs, tags, editor, undoEvents, scheduler)
+        val created = EditDrawerViewModel(timeline, places, editor, undoEvents, scheduler)
         // Held in a store so tearDown can clear it (cancelling viewModelScope) before the database closes.
         viewModel = ViewModelProvider.create(store, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -120,8 +109,8 @@ class EditDrawerViewModelTest {
             frozen = frozen, origin = origin, confidence = 1f, updatedAt = 0,
         )
 
-    private fun place(id: String = "p", name: String = "Office", defaultJobId: String? = null, defaultBillable: Boolean? = null) =
-        Place(id = id, centroidLat = -33.0, centroidLng = 151.0, name = name, defaultJobId = defaultJobId, defaultBillable = defaultBillable, updatedAt = 0)
+    private fun place(id: String = "p", name: String = "Office") =
+        Place(id = id, centroidLat = -33.0, centroidLng = 151.0, name = name, updatedAt = 0)
 
     private suspend fun seed(vararg visits: Visit) {
         places.save(place())
@@ -132,86 +121,32 @@ class EditDrawerViewModelTest {
         runBlocking { withTimeout(10_000) { viewModel.state.first { it != null && predicate(it) } } }!!
 
     @Test
-    fun annotatingFreezesTheVisitAndRecordsTheJob() = runBlocking<Unit> {
+    fun annotatingFreezesTheVisitAndRecordsTheNotes() = runBlocking<Unit> {
         seed(visit("v", 0, 60))
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
         viewModel.load(EditTarget.Visit("v"))
-        assertThat(awaitState().needsReview).isTrue()
         assertThat(awaitState().frozen).isFalse()
 
-        viewModel.setJob("j")
+        viewModel.setNotes("gate code 1234")
 
-        val state = awaitState { it.ownJob != null }
-        assertThat(state.ownJob?.id).isEqualTo("j")
-        assertThat(state.needsReview).isFalse()
+        val state = awaitState { it.notes == "gate code 1234" }
         assertThat(state.frozen).isTrue()
         val row = timeline.visit("v")!!
         assertThat(row.frozen).isTrue()
-        assertThat(row.jobId).isEqualTo("j")
+        assertThat(row.freeNotes).isEqualTo("gate code 1234")
         assertThat(row.updatedAt).isGreaterThan(0)
     }
 
     @Test
-    fun placeDefaultsAreInheritedUntilTheVisitSetsItsOwn() = runBlocking<Unit> {
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
-        jobs.save(Job(id = "k", name = "Beta", colorArgb = 2, updatedAt = 0))
-        places.save(place(defaultJobId = "j", defaultBillable = true))
-        timeline.saveVisit(visit("v", 0, 60))
-        viewModel.load(EditTarget.Visit("v"))
-
-        val inherited = awaitState()
-        assertThat(inherited.ownJob).isNull()
-        assertThat(inherited.placeJob?.id).isEqualTo("j")
-        assertThat(inherited.resolvedJob?.id).isEqualTo("j")
-        assertThat(inherited.needsReview).isFalse()
-        assertThat(inherited.billableInherited).isTrue()
-        assertThat(inherited.resolvedBillable).isTrue()
-
-        viewModel.setJob("k")
-        viewModel.setBillable(false)
-
-        val own = awaitState { it.ownJob != null && it.billable != null }
-        assertThat(own.resolvedJob?.id).isEqualTo("k")
-        assertThat(own.billableInherited).isFalse()
-        assertThat(own.resolvedBillable).isFalse()
-    }
-
-    @Test
-    fun frozenVisitAtADeletedPlaceKeepsItsHeaderAndInheritedJobButCannotRenameThePlace() = runBlocking<Unit> {
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
-        places.save(place(defaultJobId = "j").copy(deleted = true))
+    fun frozenVisitAtADeletedPlaceKeepsItsHeaderButCannotRenameThePlace() = runBlocking<Unit> {
+        places.save(place().copy(deleted = true))
         timeline.saveVisit(visit("v", 0, 60, frozen = true))
         viewModel.load(EditTarget.Visit("v"))
 
         val state = awaitState()
 
         assertThat(state.placeLabel).isEqualTo("Office")
-        assertThat(state.resolvedJob?.id).isEqualTo("j")
         assertThat(state.hasPlace).isFalse() // hides Rename place
         assertThat(state.places).isEmpty() // pickers still exclude the deleted place
-    }
-
-    @Test
-    fun setAsPlaceDefaultWritesTheResolvedValuesToThePlace() = runBlocking<Unit> {
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
-        seed(visit("v", 0, 60))
-        viewModel.load(EditTarget.Visit("v"))
-        viewModel.setJob("j")
-        viewModel.setBillable(true)
-        awaitState { it.ownJob != null && it.billable == true }
-
-        viewModel.setPlaceDefault(true)
-
-        val state = awaitState { it.isPlaceDefault }
-        assertThat(state.placeJob?.id).isEqualTo("j")
-        val saved = places.place("p")!!
-        assertThat(saved.defaultJobId).isEqualTo("j")
-        assertThat(saved.defaultBillable).isTrue()
-
-        viewModel.setPlaceDefault(false)
-
-        awaitState { !it.isPlaceDefault && it.placeJob == null }
-        assertThat(places.place("p")!!.defaultJobId).isNull()
     }
 
     @Test
@@ -306,15 +241,14 @@ class EditDrawerViewModelTest {
 
     @Test
     fun resetShowsForEditedDetectedVisitsAndClearsTheAnnotation() = runBlocking<Unit> {
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
         seed(visit("v", 0, 60))
         viewModel.load(EditTarget.Visit("v"))
-        viewModel.setJob("j")
-        assertThat(awaitState { it.ownJob != null }.canReset).isTrue()
+        viewModel.setNotes("x")
+        assertThat(awaitState { it.notes == "x" }.canReset).isTrue()
 
         viewModel.resetToDetected()
 
-        val state = awaitState { it.ownJob == null }
+        val state = awaitState { it.notes.isEmpty() }
         assertThat(state.canReset).isFalse()
         assertThat(timeline.visit("v")!!.frozen).isFalse()
     }
@@ -342,30 +276,6 @@ class EditDrawerViewModelTest {
     }
 
     @Test
-    fun newJobTakesTheNextPaletteSlotAndIsAppliedToTheVisit() = runBlocking<Unit> {
-        seed(visit("v", 0, 60))
-        viewModel.load(EditTarget.Visit("v"))
-
-        viewModel.createJob("Antifoul")
-
-        val state = awaitState { it.ownJob != null }
-        assertThat(state.ownJob?.name).isEqualTo("Antifoul")
-        assertThat(state.ownJob?.colorArgb).isEqualTo(JobPalette.slots.first().key)
-        assertThat(timeline.visit("v")!!.jobId).isEqualTo(state.ownJob?.id)
-    }
-
-    @Test
-    fun blankNewJobNameIsAnInlineError() = runBlocking<Unit> {
-        seed(visit("v", 0, 60))
-        viewModel.load(EditTarget.Visit("v"))
-        awaitState()
-
-        viewModel.createJob("   ")
-
-        assertThat(awaitState { it.error != null }.error).isEqualTo(EditError.BLANK_NAME)
-    }
-
-    @Test
     fun renamingThePlaceWritesTheNameAndBlankClearsIt() = runBlocking<Unit> {
         seed(visit("v", 0, 60))
         places.save(place().copy(address = "1 Main St"))
@@ -386,112 +296,21 @@ class EditDrawerViewModelTest {
     }
 
     @Test
-    fun newTagIsCreatedSelectedAndToggleable() = runBlocking<Unit> {
-        seed(visit("v", 0, 60))
-        viewModel.load(EditTarget.Visit("v"))
-
-        viewModel.createTag("Parts")
-
-        val created = awaitState { s -> s.tagIds.isNotEmpty() && s.tagGroups.flatMap { it.tags }.isNotEmpty() }
-        val tag = created.tagGroups.single().tags.single()
-        assertThat(tag.name).isEqualTo("Parts")
-        assertThat(created.tagIds).containsExactly(tag.id)
-        assertThat(timeline.visit("v")!!.frozen).isTrue()
-
-        viewModel.toggleTag(tag.id)
-
-        awaitState { it.tagIds.isEmpty() }
-        assertThat(timeline.visitTags("v")).isEmpty()
-    }
-
-    @Test
-    fun placeDefaultTagsShowAsInheritedAndTogglingStartsFromThem() = runBlocking<Unit> {
-        seed(visit("v", 0, 60))
-        viewModel.load(EditTarget.Visit("v"))
-        viewModel.createTag("Parts")
-        // The tag catalog and the selected ids arrive on separate flows, so wait for both.
-        val parts = awaitState { s -> s.tagIds.isNotEmpty() && s.tagGroups.flatMap { it.tags }.any { it.name == "Parts" } }
-            .tagGroups.single().tags.single()
-        viewModel.createTag("Tools")
-        val tools = awaitState { s -> s.tagIds.size == 2 && s.tagGroups.flatMap { it.tags }.any { it.name == "Tools" } }
-            .tagGroups.single().tags.first { it.name == "Tools" }
-        places.addDefaultTag(me.tarry.core.data.db.entity.PlaceDefaultTag("p", parts.id))
-        timeline.saveVisit(visit("w", 100, 160))
-
-        viewModel.load(EditTarget.Visit("w"))
-
-        val inherited = awaitState { it.id == "w" }
-        assertThat(inherited.tagsInherited).isTrue()
-        assertThat(inherited.tagIds).containsExactly(parts.id)
-
-        viewModel.toggleTag(tools.id)
-
-        val own = awaitState { it.id == "w" && !it.tagsInherited }
-        assertThat(own.tagIds).containsExactly(parts.id, tools.id)
-    }
-
-    @Test
-    fun tripAttributionAndAnnotationsFreezeTheTrip() = runBlocking<Unit> {
-        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+    fun tripAnnotationsFreezeTheTrip() = runBlocking<Unit> {
         timeline.saveTrip(
             Trip(id = "t", start = base, end = base + 20 * minute, zoneId = zone, distanceM = 5_000f, mode = TripMode.VEHICLE, updatedAt = 0),
         )
         viewModel.load(EditTarget.Trip("t"))
         val initial = awaitState()
         assertThat(initial.kind).isEqualTo(EditKind.TRIP)
-        assertThat(initial.needsReview).isFalse()
 
-        viewModel.setJob("j")
         viewModel.setNotes("fuel stop")
 
-        val state = awaitState { it.ownJob != null && it.notes == "fuel stop" }
+        val state = awaitState { it.notes == "fuel stop" }
         assertThat(state.frozen).isTrue()
-        assertThat(timeline.trip("t")!!.attributedJobId).isEqualTo("j")
-
-        viewModel.setJob(null)
-
-        awaitState { it.ownJob == null }
-        assertThat(timeline.trip("t")!!.attributedJobId).isNull()
+        assertThat(timeline.trip("t")!!.freeNotes).isEqualTo("fuel stop")
     }
 
-    @Test
-    fun archivedJobsAreHiddenFromThePickerUnlessCurrentOrThePlaceDefault() = runBlocking<Unit> {
-        jobs.save(Job(id = "live", name = "Live", colorArgb = 1, updatedAt = 0))
-        jobs.save(Job(id = "old", name = "Old", colorArgb = 2, archived = true, updatedAt = 0))
-        jobs.save(Job(id = "gone", name = "Gone", colorArgb = 3, archived = true, updatedAt = 0))
-        places.save(place())
-        timeline.saveVisit(visit("v", 0, 60))
-        timeline.saveVisit(visit("w", 100, 160).copy(jobId = "old"))
-        viewModel.load(EditTarget.Visit("v"))
-
-        assertThat(awaitState().jobs.map { it.id }).containsExactly("live")
-
-        viewModel.load(EditTarget.Visit("w"))
-
-        val state = awaitState { it.id == "w" }
-        assertThat(state.jobs.map { it.id }).containsExactly("live", "old")
-        assertThat(state.ownJob?.id).isEqualTo("old")
-    }
-
-    @Test
-    fun archivedTagsAreHiddenFromThePickerUnlessAlreadyApplied() = runBlocking<Unit> {
-        tags.saveGroup(TagGroup(id = "g", name = "G", colorArgb = 0, sortOrder = 0, updatedAt = 0))
-        tags.saveGroup(TagGroup(id = "h", name = "H", colorArgb = 0, sortOrder = 1, updatedAt = 0))
-        tags.save(Tag(id = "live", groupId = "g", name = "Live", sortOrder = 0, updatedAt = 0))
-        tags.save(Tag(id = "applied", groupId = "g", name = "Applied", sortOrder = 1, archived = true, updatedAt = 0))
-        tags.save(Tag(id = "old", groupId = "g", name = "Old", sortOrder = 2, archived = true, updatedAt = 0))
-        tags.save(Tag(id = "onlyOld", groupId = "h", name = "OnlyOld", sortOrder = 0, archived = true, updatedAt = 0))
-        places.save(place())
-        timeline.saveVisit(visit("v", 0, 60))
-        timeline.tagVisit(VisitTag("v", "applied"))
-        viewModel.load(EditTarget.Visit("v"))
-
-        val state = awaitState()
-
-        assertThat(state.tagGroups.map { it.id }).containsExactly("g")
-        assertThat(state.tagGroups.single().tags.map { it.id }).containsExactly("live", "applied").inOrder()
-        assertThat(state.tagIds).containsExactly("applied")
-    }
     @Test
     fun newVisitTargetIsPrefilledAndListsThePlaces() = runBlocking<Unit> {
         places.save(place())

@@ -26,7 +26,7 @@ class DaySummaryTest {
     fun totalsOnlyVisitsAndCountsEachKind() {
         val s = summarize(
             listOf(
-                TimelineItem.Visit("a", at(9), at(10, 30), "A"),
+                TimelineItem.Visit("a", at(9), at(10, 30), "A", needsReview = true),
                 TimelineItem.Visit("b", at(11), at(12), "B", jobName = "J", jobColorArgb = 1),
                 TimelineItem.Trip("t", at(10, 30), at(11), 1000f, TripMode.VEHICLE),
                 TimelineItem.Gap("g", at(13), at(14), GapCause.NO_FIX),

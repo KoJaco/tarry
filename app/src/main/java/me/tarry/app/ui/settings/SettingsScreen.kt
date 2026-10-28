@@ -50,7 +50,6 @@ fun SettingsScreen(
     onOpenSessions: () -> Unit,
     onOpenSchedule: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
-    onOpenTags: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -64,7 +63,6 @@ fun SettingsScreen(
         onOpenPermissions = onOpenPermissions,
         onOpenSessions = onOpenSessions,
         onOpenJobs = onOpenJobs,
-        onOpenTags = onOpenTags,
         onOpenPlaces = onOpenPlaces,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onThemeSelected = viewModel::setTheme,
@@ -83,7 +81,6 @@ fun SettingsContent(
     onOpenPermissions: () -> Unit = {},
     onOpenSessions: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
-    onOpenTags: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
@@ -101,7 +98,6 @@ fun SettingsContent(
             stringResource(R.string.settings_min_billable) to
                 stringResource(R.string.settings_minutes_value, s.minBillableMinutes),
             stringResource(R.string.settings_round_daily_total) to if (s.roundDailyTotalPerJob) on else off,
-            stringResource(R.string.settings_travel_attribution) to s.travelAttribution.name,
             stringResource(R.string.settings_ping_retention) to
                 (s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
                     ?: stringResource(R.string.settings_forever)),
@@ -172,11 +168,9 @@ fun SettingsContent(
         }
         SectionHeader(stringResource(R.string.settings_section_labels), Modifier.padding(top = space.m))
         val jobsTitle = stringResource(R.string.settings_jobs)
-        val tagsTitle = stringResource(R.string.settings_tags)
         val placesTitle = stringResource(R.string.settings_places)
         SettingsGroup {
             row(jobsTitle, onClick = onOpenJobs, icon = R.drawable.ic_work)
-            row(tagsTitle, onClick = onOpenTags, icon = R.drawable.ic_label)
             row(placesTitle, onClick = onOpenPlaces, icon = R.drawable.ic_location_pin)
         }
         if (settings != null) {

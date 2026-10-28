@@ -6,8 +6,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -50,7 +48,6 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.TarryCard
-import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
@@ -128,62 +125,6 @@ internal fun JobPickerSheet(
             if (onNewJob != null) {
                 SecondaryButton(stringResource(R.string.edit_job_new), onClick = onNewJob, modifier = Modifier.fillMaxWidth())
             }
-        }
-    }
-}
-
-/**
- * Tags to add to every selected visit: grouped checkbox chips and an Apply button (disabled until one is ticked).
- * [groups] must already hide archived tags.
- */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-internal fun TagMultiSelectSheet(
-    groups: List<TagGroupOption>,
-    onApply: (Set<String>) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var picked by remember { mutableStateOf(emptySet<String>()) }
-    ModalBottomSheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
-                .padding(horizontal = TarryTheme.space.gutter)
-                .padding(bottom = TarryTheme.space.l),
-            verticalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
-        ) {
-            SheetTitle(stringResource(R.string.selection_tags_title))
-            if (groups.isEmpty()) {
-                Text(
-                    stringResource(R.string.edit_tags_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TarryTheme.colors.muted,
-                )
-            }
-            groups.forEach { group ->
-                Text(group.name, style = MaterialTheme.typography.labelMedium, color = TarryTheme.colors.muted)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-                    verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-                ) {
-                    group.tags.forEach { tag ->
-                        TarryChip(
-                            text = tag.name,
-                            selected = tag.id in picked,
-                            onClick = { picked = if (tag.id in picked) picked - tag.id else picked + tag.id },
-                            role = Role.Checkbox,
-                        )
-                    }
-                }
-            }
-            PrimaryButton(
-                stringResource(R.string.selection_tags_apply),
-                onClick = { onApply(picked) },
-                enabled = picked.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }
