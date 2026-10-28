@@ -33,6 +33,8 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 ## Phases
 Each phase: own branch, short spec in `docs/specs/phase-N.md`, implementer → test-writer → reviewer, PR with green CI, device check.
 
+**Status (2026-10-29):** phase 6b (job blocks, PR #24) is merged; the owner's phone DB migrated to v2 cleanly. Next: **phase 7, Summary and export**. Handoff: `docs/handoffs/phase-7-summary-export.md`.
+
 **Status (2026-10-28):** phase 6 (schedule grid, PR #23) is merged. Next: **phase 6b, jobs on the timeline** (spec `docs/specs/phase-6b.md`): job blocks (start→end ranges in a second timeline column) replace per-visit/trip job, billable and travel attribution; tags are removed (folded into notes). First Room change (v1→v2). Then phase 7.
 
 **Status (2026-10-25):** phase 5 (Map) is done (spec `docs/specs/phase-5.md`); offline regions and map matching are deferred. Next: **phase 6, schedule grid + manual controls UI**. Handoff: `docs/handoffs/phase-6-schedule.md`.
