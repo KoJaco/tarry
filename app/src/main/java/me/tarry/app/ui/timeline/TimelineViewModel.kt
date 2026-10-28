@@ -171,6 +171,8 @@ class TimelineViewModel internal constructor(
     private val blocksOverlapping: (from: Long, to: Long) -> Flow<List<JobBlock>> = { _, _ -> flowOf(emptyList()) },
     /** Saves a job block and soft-deletes the same-job blocks it swallowed ([mergeSameJob]) in one transaction. */
     private val saveBlock: suspend (JobBlock, deleteIds: List<String>) -> Unit = { _, _ -> },
+    /** Undo of a block move or resize: saves the original block back and un-deletes the blocks the merge swallowed. */
+    private val restoreBlocks: suspend (original: JobBlock, restoreIds: List<String>) -> Unit = { _, _ -> },
     /** Creates a job with the given name; the result carries the new id. */
     private val createJob: suspend (String) -> EditResult = { EditResult.NotFound },
     /** The wall clock, for "Add job" on today. */
@@ -199,6 +201,10 @@ class TimelineViewModel internal constructor(
             trackingSessions = tracking::observeSessionsOverlapping,
             blocksOverlapping = jobBlocks::observeOverlapping,
             saveBlock = { block, deleteIds -> jobBlocks.replace(block, deleteIds) },
+            restoreBlocks = { original, ids ->
+                jobBlocks.replace(original, emptyList())
+                ids.forEach { jobBlocks.restore(it) }
+            },
             createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
         )
 
@@ -462,6 +468,34 @@ class TimelineViewModel internal constructor(
         viewModelScope.launch {
             try {
                 saveNewBlock(suggestion.jobId, suggestion.start, suggestion.end)
+            } finally {
+                inFlight.remove(key)
+            }
+        }
+    }
+
+    /**
+     * A job block was moved or resized on the canvas (or by an accessibility action): saves [id] with `[start, end)`,
+     * merged with any same-job block it now overlaps (the same path as the drawer's time edit), and offers Undo, which puts
+     * the block and every block the merge swallowed back. A second call for the block while the first is saving is ignored.
+     */
+    fun moveOrResizeBlock(id: String, start: Long, end: Long) {
+        val key = "block:$id"
+        if (end <= start || !inFlight.add(key)) return
+        viewModelScope.launch {
+            try {
+                val (from, to) = dayBounds(_selectedDate.value, zone)
+                val original = blocksOverlapping(from, to).first().firstOrNull { it.id == id } ?: return@launch
+                if (original.start == start && original.end == end) return@launch
+                val window = blockConfig.joinWindowMs
+                val merged = mergeSameJob(
+                    original.copy(start = start, end = end),
+                    blocksOverlapping(start - window, end + window).first(),
+                )
+                saveBlock(merged.block, merged.deleteIds)
+                offerUndo(
+                    UndoEvent(R.string.timeline_undo_job_times, null, onUndo = { restoreBlocks(original, merged.deleteIds) }),
+                )
             } finally {
                 inFlight.remove(key)
             }

@@ -62,6 +62,12 @@
         <item quantity="other">%1$d more jobs</item>
     </plurals>
     <string name="timeline_show_jobs">Show jobs</string>
+    <string name="timeline_undo_job_times">Job times changed</string>
+    <!-- Non-drag alternatives (WCAG 2.5.7) to moving and resizing a job block by dragging. -->
+    <string name="timeline_job_move_earlier">Move %1$d minutes earlier</string>
+    <string name="timeline_job_move_later">Move %1$d minutes later</string>
+    <string name="timeline_job_extend">Extend %1$d minutes</string>
+    <string name="timeline_job_shorten">Shorten %1$d minutes</string>
     <string name="timeline_job_overflow_title">Jobs at this time</string>
     <string name="timeline_undo_visit_times">Visit times changed</string>
     <string name="timeline_filter_needs_review">Needs review</string>

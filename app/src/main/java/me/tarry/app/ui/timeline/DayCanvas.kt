@@ -214,6 +214,8 @@ fun DayCanvas(
     onConfirmSuggestion: (JobSuggestion) -> Unit = {},
     /** A long press and drag on empty job column space was released: the snapped range (UTC epoch ms) for a new job. */
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
+    /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
+    onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -308,6 +310,7 @@ fun DayCanvas(
             JobColumn(
                 layout, dayStart, dayEnd, zone, jobWidth, fontScale, ordered, enabled = !selecting,
                 onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onCreateJob = onCreateJob,
+                onJobRangeChange = onJobRangeChange,
             )
             markersBehind.forEach { TrackingMarkerLabel(it, ordered, timeColumn, visitEnd, zone) }
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.

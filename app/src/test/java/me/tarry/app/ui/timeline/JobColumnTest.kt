@@ -3,6 +3,7 @@ package me.tarry.app.ui.timeline
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -52,6 +53,7 @@ class JobColumnTest {
     private val confirmed = mutableListOf<JobSuggestion>()
     private val created = mutableListOf<Pair<Long, Long>>()
     private val visitOpened = mutableListOf<String>()
+    private val changed = mutableListOf<Triple<String, Long, Long>>()
 
     private fun show(
         blocks: List<JobBlockItem>,
@@ -70,6 +72,7 @@ class JobColumnTest {
                         onOpenJob = { opened += it },
                         onConfirmSuggestion = { confirmed += it },
                         onCreateJob = { s, e -> created += s to e },
+                        onJobRangeChange = { id, s, e -> changed += Triple(id, s, e) },
                     )
                 }
             }
@@ -279,6 +282,128 @@ class JobColumnTest {
         composeRule.onNodeWithTag("timeline_job_a").assertExists()
         composeRule.onNodeWithTag("timeline_job_b").assertExists()
         composeRule.onNodeWithTag("timeline_job_overflow_0").assertDoesNotExist()
+    }
+
+    // endregion
+
+    // region move and resize
+
+    private val tall = listOf(block("a", at(10), at(12)))
+
+    @Test
+    fun longPressThenDragMovesTheBlockSnappedAndKeepsItsDuration() {
+        show(tall, items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_a").performTouchInput {
+            down(Offset(width / 2f, height / 2f))
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveBy(Offset(0f, 72.dp.toPx())) // 30 minutes at 144 dp per hour
+            up()
+        }
+        assertThat(changed).containsExactly(Triple("a", at(10, 30), at(12, 30)))
+        assertThat(opened).isEmpty()
+        assertThat(created).isEmpty()
+        // The moved copy stays on screen with its new range until the saved block arrives.
+        composeRule.onNodeWithTag("timeline_job_drag_preview", useUnmergedTree = true).assertExists()
+    }
+
+
+    @Test
+    fun draggingTheTopEdgeChangesOnlyTheStart() {
+        show(tall, items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_a").performTouchInput {
+            down(Offset(width / 2f, 4.dp.toPx()))
+            moveBy(Offset(0f, 72.dp.toPx()))
+            up()
+        }
+        assertThat(changed).containsExactly(Triple("a", at(10, 30), at(12)))
+        assertThat(opened).isEmpty()
+    }
+
+    @Test
+    fun draggingTheBottomEdgeChangesOnlyTheEnd() {
+        show(tall, items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_a").performTouchInput {
+            down(Offset(width / 2f, height - 4.dp.toPx()))
+            moveBy(Offset(0f, 72.dp.toPx()))
+            up()
+        }
+        assertThat(changed).containsExactly(Triple("a", at(10), at(12, 30)))
+    }
+
+    @Test
+    fun anEdgeCannotBeDraggedPastTheOtherOne() {
+        show(tall, items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_a").performTouchInput {
+            down(Offset(width / 2f, 4.dp.toPx()))
+            moveBy(Offset(0f, 400.dp.toPx())) // far past the end
+            up()
+        }
+        assertThat(changed).containsExactly(Triple("a", at(11, 45), at(12)))
+    }
+
+    @Test
+    fun aSwipeFromTheMiddleOfABlockMovesNothingAndOpensNothing() {
+        show(tall, items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_a").performTouchInput {
+            swipeUp(startY = height / 2f + 40.dp.toPx(), endY = height / 2f - 40.dp.toPx())
+        }
+        assertThat(changed).isEmpty()
+        assertThat(opened).isEmpty()
+    }
+
+    @Test
+    fun aTapOnABlockStillOpensItAndChangesNothing() {
+        show(tall, items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_a").performClick()
+        assertThat(opened).containsExactly("a")
+        assertThat(changed).isEmpty()
+    }
+
+    @Test
+    fun aSuggestionIsNotMovable() {
+        val s = JobSuggestion("v", "job-x", at(10), at(12))
+        show(emptyList(), listOf(JobSuggestionItem(s, "Smith reno", sky.key)), items = longVisit)
+        composeRule.onNodeWithTag("timeline_suggestion_v").performTouchInput {
+            down(Offset(width / 2f, height / 2f))
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveBy(Offset(0f, 72.dp.toPx()))
+            up()
+        }
+        composeRule.onNodeWithTag("timeline_suggestion_v").performTouchInput {
+            down(Offset(width / 2f, 4.dp.toPx()))
+            moveBy(Offset(0f, 72.dp.toPx()))
+            up()
+        }
+        assertThat(changed).isEmpty()
+        assertThat(SemanticsActions.CustomActions in composeRule.onNodeWithTag("timeline_suggestion_v").fetchSemanticsNode().config).isFalse()
+    }
+
+    @Test
+    fun theOverflowTileIsNotMovable() {
+        show(threeOverlapping, fontScale = 2f)
+        composeRule.onNodeWithTag("timeline_job_overflow_0").performTouchInput {
+            down(Offset(width / 2f, height / 2f))
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveBy(Offset(0f, 72.dp.toPx()))
+            up()
+        }
+        assertThat(changed).isEmpty()
+    }
+
+    @Test
+    fun customActionsMoveAndResizeByOneStep() {
+        show(tall, items = longVisit)
+        val actions = composeRule.onNodeWithTag("timeline_job_a").fetchSemanticsNode().config[SemanticsActions.CustomActions]
+        assertThat(actions.map { it.label }).containsExactly(
+            "Move 15 minutes earlier", "Move 15 minutes later", "Extend 15 minutes", "Shorten 15 minutes",
+        ).inOrder()
+        composeRule.runOnUiThread { actions.forEach { it.action() } }
+        assertThat(changed).containsExactly(
+            Triple("a", at(9, 45), at(11, 45)),
+            Triple("a", at(10, 15), at(12, 15)),
+            Triple("a", at(10), at(12, 15)),
+            Triple("a", at(10), at(11, 45)),
+        ).inOrder()
     }
 
     // endregion

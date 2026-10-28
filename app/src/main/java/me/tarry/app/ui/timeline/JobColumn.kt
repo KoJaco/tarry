@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,9 +38,11 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -47,9 +50,11 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
@@ -60,7 +65,9 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.rememberReducedMotion
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
+import kotlinx.coroutines.delay
 import java.time.ZoneId
+import kotlin.math.abs
 
 /** How the width right of the time column is shared between the visits-and-trips column and the job column. */
 internal object DayColumns {
@@ -103,6 +110,14 @@ private object JobColumnDefaults {
 
     /** Alpha of the range being drawn by a drag, over the card. */
     const val PreviewFillAlpha = 0.25f
+
+    /** Alpha of a block while it is being dragged (the moved copy is drawn over it). */
+    const val DraggedAlpha = 0.4f
+
+    /** The grab pills on a movable block's top and bottom edge. */
+    val GripWidth = 24.dp
+    val GripHeight = 3.dp
+    const val GripAlpha = 0.6f
 }
 
 /** Test tag of the job column (the area a long press and drag draws a new job on). */
@@ -205,6 +220,11 @@ internal fun planJobColumn(
  * scrolls the page (the pattern of the schedule grid). A press without a drag asks for
  * [JobBlockConfig.defaultLengthMs] from the pressed time. The non-drag alternative (WCAG 2.5.7) is the "Add job" button
  * in the review row, which opens the same new-job drawer. With [enabled] false (multi-select) nothing here reacts.
+ *
+ * Move and resize a block: long-press a block and drag to move it (duration kept); touch the top or bottom edge and drag to
+ * move that edge ([blockDragGesture]). Both snap to [JobBlockConfig.snapMinutes] and are handed to [onJobRangeChange] on
+ * release. The non-drag alternatives (WCAG 2.5.7) are the drawer's time pickers and the custom accessibility actions on
+ * each block (move earlier / later, extend, shorten by one snap step). Suggestions and "+N" tiles cannot be moved.
  */
 @Composable
 internal fun BoxScope.JobColumn(
@@ -219,6 +239,7 @@ internal fun BoxScope.JobColumn(
     onOpenJob: (String) -> Unit,
     onConfirmSuggestion: (JobSuggestion) -> Unit,
     onCreateJob: (start: Long, end: Long) -> Unit,
+    onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
     config: JobBlockConfig = JobBlockConfig(),
 ) {
     val formats = rememberTimeFormats()
@@ -226,12 +247,26 @@ internal fun BoxScope.JobColumn(
     val reducedMotion = rememberReducedMotion()
     val currentLayout by rememberUpdatedState(layout)
     val currentCreate by rememberUpdatedState(onCreateJob)
+    val currentRangeChange by rememberUpdatedState(onJobRangeChange)
     var preview by remember { mutableStateOf<Span?>(null) }
+    var blockDrag by remember { mutableStateOf<BlockDrag?>(null) }
     val dpPerMs = layout.scale / MsPerHour
     val plan = remember(layout, width, dayStart, dayEnd) {
         planJobColumn(layout.jobs, layout.suggestions, maxJobLanes(width), dayStart, dayEnd)
     }
     var sheetKeys by remember { mutableStateOf<Set<String>?>(null) }
+    // A released drag keeps showing until the saved block arrives (or a moment passes, if nothing was saved).
+    LaunchedEffect(plan.jobs, layout.jobs) {
+        blockDrag = blockDrag?.takeIf { d ->
+            !d.committed || layout.jobs.any { it.item.id == d.id && it.item.start == d.fromStart && it.item.end == d.fromEnd }
+        }
+    }
+    LaunchedEffect(blockDrag?.committed) {
+        if (blockDrag?.committed == true) {
+            delay(CommitHoldMs)
+            blockDrag = null
+        }
+    }
     fun traversal(startMs: Long) = ordered.count { (if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start) < startMs } - 0.25f
 
     Box(Modifier.align(Alignment.TopEnd).width(width).fillMaxHeight().testTag(JobColumnTag)) {
@@ -289,6 +324,40 @@ internal fun BoxScope.JobColumn(
             val end = minOf(b.end, dayEnd)
             val spoken = stringResource(R.string.timeline_spoken_range, formats.time(start, zone), formats.time(end, zone))
             val billable = stringResource(if (b.billable) R.string.timeline_job_billable else R.string.timeline_job_not_billable)
+            // A block cut by midnight is edited in the drawer only: dragging would clamp the part that is off screen.
+            val movable = enabled && b.start >= dayStart && b.end <= dayEnd
+            val stepMs = config.snapMinutes * 60_000L
+            val minutes = config.snapMinutes
+            fun applyRange(r: Span): Boolean {
+                if (r.start == b.start && r.end == b.end) return false
+                currentRangeChange(b.id, r.start, r.end)
+                return true
+            }
+            val earlier = stringResource(R.string.timeline_job_move_earlier, minutes)
+            val later = stringResource(R.string.timeline_job_move_later, minutes)
+            val extend = stringResource(R.string.timeline_job_extend, minutes)
+            val shorten = stringResource(R.string.timeline_job_shorten, minutes)
+            val actions = if (!movable) emptyList() else listOf(
+                CustomAccessibilityAction(earlier) { applyRange(moveRange(b.start, b.end, -stepMs, dayStart, dayEnd, config)) },
+                CustomAccessibilityAction(later) { applyRange(moveRange(b.start, b.end, stepMs, dayStart, dayEnd, config)) },
+                CustomAccessibilityAction(extend) { applyRange(resizeRange(ResizeEdge.End, b.start, b.end, b.end + stepMs, dayStart, dayEnd, config)) },
+                CustomAccessibilityAction(shorten) { applyRange(resizeRange(ResizeEdge.End, b.start, b.end, b.end - stepMs, dayStart, dayEnd, config)) },
+            )
+            val touchHeight = maxOf(placed.heightDp, JobColumnDefaults.Touch.value)
+            val gesture = if (!movable) {
+                Modifier
+            } else {
+                Modifier.blockDragGesture(
+                    b, placed.heightDp, touchHeight, { currentLayout.scale }, dayStart, dayEnd, config, haptics, reducedMotion,
+                    onDrag = { r ->
+                        blockDrag = if (r != null) BlockDrag(b.id, r, b.start, b.end) else blockDrag?.takeIf { it.committed }
+                    },
+                    onCommit = { r ->
+                        blockDrag = BlockDrag(b.id, r, b.start, b.end, committed = true)
+                        currentRangeChange(b.id, r.start, r.end)
+                    },
+                )
+            }
             JobTile(
                 top = placed.topDp, height = placed.heightDp, lane = placed.lane, laneCount = placed.laneCount, columnWidth = width,
                 traversal = traversal(b.start),
@@ -298,6 +367,10 @@ internal fun BoxScope.JobColumn(
                 container = colors.container, border = colors.border, dashed = false,
                 tag = "timeline_job_${b.id}",
                 onClick = { onOpenJob(b.id) },
+                gesture = gesture,
+                actions = actions,
+                alpha = if (blockDrag?.id == b.id) JobColumnDefaults.DraggedAlpha else 1f,
+                gripColor = if (movable) colors.border else null,
             ) {
                 val textColor = colors.text
                 Text(
@@ -415,6 +488,38 @@ internal fun BoxScope.JobColumn(
                 )
             }
         }
+        blockDrag?.let { drag ->
+            val placed = plan.jobs.firstOrNull { it.item.id == drag.id } ?: return@let
+            val b = placed.item
+            val colors = JobPalette.lookup(b.jobColorArgb, b.jobId).colors(TarryTheme.isDark)
+            val shape = TarryTheme.shapes.small
+            val gap = JobColumnDefaults.LaneGap
+            val laneWidth = maxOf((width - gap * (placed.laneCount - 1)) / placed.laneCount, JobColumnDefaults.Touch)
+            Box(
+                Modifier
+                    .offset(x = (laneWidth + gap) * placed.lane, y = ((drag.range.start - layout.canvasStart) * dpPerMs).dp)
+                    .width(laneWidth)
+                    .height(((drag.range.end - drag.range.start) * dpPerMs).dp)
+                    .clip(shape)
+                    .background(colors.container)
+                    .border(JobColumnDefaults.BorderWidth * 2, colors.border, shape)
+                    .padding(horizontal = JobColumnDefaults.PaddingH, vertical = JobColumnDefaults.PaddingV)
+                    // Visual feedback for the drag in flight; the block itself keeps its description.
+                    .testTag("timeline_job_drag_preview")
+                    .clearAndSetSemantics {},
+            ) {
+                Column {
+                    Text(
+                        text = b.jobName, style = MaterialTheme.typography.labelLarge, color = colors.text,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = stringResource(R.string.timeline_time_range, formats.time(drag.range.start, zone), formats.time(drag.range.end, zone)),
+                        style = MaterialTheme.typography.bodySmall, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -440,6 +545,13 @@ private fun JobTile(
     dashed: Boolean,
     tag: String,
     onClick: () -> Unit,
+    /** Move / resize gesture of a block; empty for everything else. */
+    gesture: Modifier = Modifier,
+    /** Non-drag alternatives to [gesture] (WCAG 2.5.7), as TalkBack custom actions. */
+    actions: List<CustomAccessibilityAction> = emptyList(),
+    alpha: Float = 1f,
+    /** The colour of the grab pills on the top and bottom edge, or null for a tile that cannot be moved. */
+    gripColor: Color? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val c = TarryTheme.colors
@@ -453,13 +565,15 @@ private fun JobTile(
             .offset(x = (laneWidth + gap) * lane, y = top.dp + (height.dp - touchHeight) / 2)
             .width(maxOf(laneWidth, JobColumnDefaults.Touch))
             .height(touchHeight)
-            .then(if (enabled) Modifier.clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onClick) else Modifier)
+            .alpha(alpha)
+            .then(if (enabled) gesture.then(Modifier.clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onClick)) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .semantics(mergeDescendants = true) {
                 contentDescription = description
                 traversalIndex = traversal
                 blockColor = container
                 blockDashed = dashed
+                if (actions.isNotEmpty()) customActions = actions
             }
             .testTag(tag),
         contentAlignment = Alignment.Center,
@@ -475,6 +589,18 @@ private fun JobTile(
                 .padding(horizontal = JobColumnDefaults.PaddingH, vertical = JobColumnDefaults.PaddingV),
             content = content,
         )
+        if (gripColor != null) {
+            val inset = (touchHeight - height.dp) / 2 + JobColumnDefaults.PaddingV / 2
+            listOf(Alignment.TopCenter, Alignment.BottomCenter).forEach { side ->
+                Box(
+                    Modifier
+                        .align(side)
+                        .padding(vertical = inset)
+                        .size(JobColumnDefaults.GripWidth, JobColumnDefaults.GripHeight)
+                        .background(gripColor.copy(alpha = JobColumnDefaults.GripAlpha), CircleShape),
+                )
+            }
+        }
     }
 }
 
@@ -568,6 +694,89 @@ private fun OverflowRow(
         Column(Modifier.weight(1f)) {
             Text(text = title, style = MaterialTheme.typography.bodyLarge, color = TarryTheme.colors.ink)
             Text(text = range, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
+        }
+    }
+}
+
+/** A block being moved or resized: the live [range] (and, once released, held until the saved block shows up). */
+private data class BlockDrag(val id: String, val range: Span, val fromStart: Long, val fromEnd: Long, val committed: Boolean = false)
+
+private enum class BlockIntent { Resize, Move, Ignore }
+
+/** How long a released drag keeps showing its range while the save lands, if the block never changes. */
+private const val CommitHoldMs = 1_000L
+
+/**
+ * Move and resize gesture of one job block, on the block's own touch box ([touchHeightDp] tall, [blockHeightDp] of it
+ * the block). Decided in the Initial pass before the page scroll can react:
+ *  - held still for the long-press timeout: move (the whole block, duration kept);
+ *  - moved past touch slop vertically from the top / bottom edge zone ([edgeAt]): resize that edge at once;
+ *  - moved past slop anywhere else: not ours, left to the page scroll. A tap is left to the block's click.
+ * Once ours, every event is consumed so the page does not scroll. [onDrag] gets the live range and null when the gesture
+ * ends; [onCommit] the final range on release (never on cancel). Ranges are snapped by [moveRange] / [resizeRange].
+ */
+private fun Modifier.blockDragGesture(
+    block: JobBlockItem,
+    blockHeightDp: Float,
+    touchHeightDp: Float,
+    layoutScale: () -> Float,
+    dayStart: Long,
+    dayEnd: Long,
+    config: JobBlockConfig,
+    haptics: HapticFeedback,
+    reducedMotion: Boolean,
+    onDrag: (Span?) -> Unit,
+    onCommit: (Span) -> Unit,
+): Modifier = pointerInput(block.id, block.start, block.end, blockHeightDp, touchHeightDp, dayStart, dayEnd, reducedMotion) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val edge = edgeAt(down.position.y / density, blockHeightDp, touchHeightDp, config.edgeZoneDp)
+        val slop = viewConfiguration.touchSlop
+        val longPressMs = viewConfiguration.longPressTimeoutMillis
+        val decided = withTimeoutOrNull(longPressMs) {
+            var verdict: BlockIntent? = null
+            while (verdict == null) {
+                val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id }
+                verdict = when {
+                    change == null || change.isConsumed || !change.pressed -> BlockIntent.Ignore
+                    change.uptimeMillis - down.uptimeMillis >= longPressMs -> BlockIntent.Move
+                    (change.position - down.position).getDistance() > slop -> {
+                        val d = change.position - down.position
+                        if (edge != null && abs(d.y) >= abs(d.x)) BlockIntent.Resize.also { change.consume() } else BlockIntent.Ignore
+                    }
+                    else -> null
+                }
+            }
+            verdict
+        } ?: BlockIntent.Move
+        if (decided == BlockIntent.Ignore) return@awaitEachGesture
+        val resizeEdge = if (decided == BlockIntent.Resize) edge else null
+        val origin = Span(block.start, block.end)
+        var range = origin
+        if (decided == BlockIntent.Move) haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        onDrag(range)
+        try {
+            while (true) {
+                val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                change.consume()
+                val deltaMs = ((change.position.y - down.position.y) / density / layoutScale() * MsPerHour).toLong()
+                val next = when (resizeEdge) {
+                    null -> moveRange(origin.start, origin.end, deltaMs, dayStart, dayEnd, config)
+                    ResizeEdge.Start -> resizeRange(ResizeEdge.Start, origin.start, origin.end, origin.start + deltaMs, dayStart, dayEnd, config)
+                    ResizeEdge.End -> resizeRange(ResizeEdge.End, origin.start, origin.end, origin.end + deltaMs, dayStart, dayEnd, config)
+                }
+                if (!change.pressed) {
+                    if (next != origin) onCommit(next)
+                    break
+                }
+                if (next != range) {
+                    range = next
+                    onDrag(next)
+                    if (!reducedMotion) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                }
+            }
+        } finally {
+            onDrag(null)
         }
     }
 }

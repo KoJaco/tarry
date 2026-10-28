@@ -764,4 +764,82 @@ class TimelineViewModelTest {
     }
 
     // endregion
+
+    // region move / resize a block on the canvas
+
+    private class Restored(val original: JobBlock, val ids: List<String>)
+
+    @Test
+    fun moveOrResizeMergesIntoAnOverlappingBlockOfTheSameJobAndUndoRestoresBoth() = runBlocking<Unit> {
+        val saved = mutableListOf<SavedCall>()
+        val restored = mutableListOf<Restored>()
+        val undos = mutableListOf<UndoEvent>()
+        val moving = block("moving", "j", at(day, 9), at(day, 10))
+        val neighbour = block("neighbour", "j", at(day, 11), at(day, 12))
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day },
+            blocksOverlapping = { _, _ -> flowOf(listOf(moving, neighbour)) },
+            saveBlock = { b, ids -> saved += SavedCall(b, ids) },
+            restoreBlocks = { o, ids -> restored += Restored(o, ids) },
+            offerUndo = { undos += it },
+        ).managed()
+
+        vm.moveOrResizeBlock("moving", at(day, 10, 30), at(day, 11, 30))
+        withTimeout(10_000) { while (undos.isEmpty()) delay(10) }
+
+        val call = saved.single()
+        assertThat(call.block.id).isEqualTo("moving")
+        assertThat(call.block.start).isEqualTo(at(day, 10, 30))
+        assertThat(call.block.end).isEqualTo(at(day, 12))
+        assertThat(call.deleteIds).containsExactly("neighbour")
+        assertThat(undos.single().undoable).isTrue()
+
+        undos.single().onUndo!!.invoke()
+        assertThat(restored.single().original).isEqualTo(moving)
+        assertThat(restored.single().ids).containsExactly("neighbour")
+    }
+
+    @Test
+    fun moveOrResizeKeepsADifferentJobSeparate() = runBlocking<Unit> {
+        val saved = mutableListOf<SavedCall>()
+        val moving = block("moving", "j", at(day, 9), at(day, 10))
+        val other = block("other", "k", at(day, 11), at(day, 12))
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day },
+            blocksOverlapping = { _, _ -> flowOf(listOf(moving, other)) },
+            saveBlock = { b, ids -> saved += SavedCall(b, ids) },
+        ).managed()
+
+        vm.moveOrResizeBlock("moving", at(day, 10, 30), at(day, 11, 30))
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+
+        assertThat(saved.single().block.id).isEqualTo("moving")
+        assertThat(saved.single().deleteIds).isEmpty()
+    }
+
+    @Test
+    fun aDoubleMoveOrResizeSavesOnceAndAnUnchangedRangeSavesNothing() = runBlocking<Unit> {
+        val saved = mutableListOf<JobBlock>()
+        val gate = CompletableDeferred<Unit>()
+        val moving = block("moving", "j", at(day, 9), at(day, 10))
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day },
+            blocksOverlapping = { _, _ -> flowOf(listOf(moving)) },
+            saveBlock = { b, _ -> gate.await(); saved += b },
+        ).managed()
+
+        vm.moveOrResizeBlock("moving", at(day, 9), at(day, 10))
+        delay(100)
+        assertThat(saved).isEmpty()
+
+        vm.moveOrResizeBlock("moving", at(day, 10), at(day, 11))
+        vm.moveOrResizeBlock("moving", at(day, 10), at(day, 11))
+        gate.complete(Unit)
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+        delay(100)
+
+        assertThat(saved).hasSize(1)
+    }
+
+    // endregion
 }

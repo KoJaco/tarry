@@ -102,6 +102,8 @@ fun TimelineContent(
     onConfirmSuggestion: (JobSuggestion) -> Unit = {},
     /** A range was drawn on the job column; the host opens `EditTarget.NewJob(start, end)`. */
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
+    /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
+    onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -238,6 +240,7 @@ fun TimelineContent(
                         onOpenJob = onOpenJob,
                         onConfirmSuggestion = onConfirmSuggestion,
                         onCreateJob = onCreateJob,
+                        onJobRangeChange = onJobRangeChange,
                     )
                     val sheetBlock = gapSheetId?.let { id ->
                         layout.blocks.firstOrNull { it.item.id == id && it.item is TimelineItem.Gap }

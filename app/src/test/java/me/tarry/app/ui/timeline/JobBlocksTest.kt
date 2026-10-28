@@ -417,4 +417,76 @@ class JobBlocksTest {
     }
 
     // endregion
+
+    // region move and resize
+
+    private val cfg = JobBlockConfig()
+
+    @Test
+    fun moveKeepsTheDurationAndSnapsTheStart() {
+        val r = moveRange(60 * min, 150 * min, 22 * min, 0, 600 * min, cfg)
+        assertThat(r).isEqualTo(Span(75 * min, 165 * min)) // 60 + 22 = 82 -> 75; still 90 min long
+    }
+
+    @Test
+    fun moveWithoutMovementIsUnchangedEvenOffTheGrid() {
+        assertThat(moveRange(62 * min, 100 * min, 0, 0, 600 * min, cfg)).isEqualTo(Span(62 * min, 100 * min))
+    }
+
+    @Test
+    fun moveClampsToTheDayAndKeepsTheDuration() {
+        assertThat(moveRange(60 * min, 120 * min, -500 * min, 0, 600 * min, cfg)).isEqualTo(Span(0, 60 * min))
+        assertThat(moveRange(60 * min, 120 * min, 900 * min, 0, 600 * min, cfg)).isEqualTo(Span(540 * min, 600 * min))
+    }
+
+    @Test
+    fun resizeMovesOnlyTheGrabbedEdgeAndSnaps() {
+        assertThat(resizeRange(ResizeEdge.Start, 60 * min, 120 * min, 38 * min, 0, 600 * min, cfg)).isEqualTo(Span(45 * min, 120 * min))
+        assertThat(resizeRange(ResizeEdge.End, 60 * min, 120 * min, 142 * min, 0, 600 * min, cfg)).isEqualTo(Span(60 * min, 135 * min))
+    }
+
+    @Test
+    fun resizeKeepsTheMinimumDurationAndEdgesCannotCross() {
+        assertThat(resizeRange(ResizeEdge.Start, 60 * min, 120 * min, 300 * min, 0, 600 * min, cfg)).isEqualTo(Span(105 * min, 120 * min))
+        assertThat(resizeRange(ResizeEdge.End, 60 * min, 120 * min, 10 * min, 0, 600 * min, cfg)).isEqualTo(Span(60 * min, 75 * min))
+    }
+
+    @Test
+    fun resizeClampsToTheDay() {
+        assertThat(resizeRange(ResizeEdge.Start, 60 * min, 120 * min, -50 * min, 0, 600 * min, cfg)).isEqualTo(Span(0, 120 * min))
+        assertThat(resizeRange(ResizeEdge.End, 60 * min, 120 * min, 900 * min, 0, 600 * min, cfg)).isEqualTo(Span(60 * min, 600 * min))
+    }
+
+    @Test
+    fun edgeAtFindsTheZonesOfATallBlockAndSplitsAShortOneInHalf() {
+        // 100 dp block in a 100 dp touch box, 16 dp zones.
+        assertThat(edgeAt(5f, 100f, 100f, 16f)).isEqualTo(ResizeEdge.Start)
+        assertThat(edgeAt(50f, 100f, 100f, 16f)).isNull()
+        assertThat(edgeAt(90f, 100f, 100f, 16f)).isEqualTo(ResizeEdge.End)
+        // 30 dp block (under 3 zones) in a 48 dp touch box: upper half = start, lower half = end.
+        assertThat(edgeAt(10f, 30f, 48f, 16f)).isEqualTo(ResizeEdge.Start)
+        assertThat(edgeAt(30f, 30f, 48f, 16f)).isEqualTo(ResizeEdge.End)
+    }
+
+    @Test
+    fun moveAndResizeOnDstDaysSnapToWallClockQuarterHours() {
+        for (date in dstDays) {
+            val (start, end) = dayBounds(date, sydney)
+            fun local(h: Int, m: Int) = date.atTime(h, m).atZone(sydney).toInstant().toEpochMilli()
+
+            val moved = moveRange(local(9, 0), local(10, 0), 3 * 60 * min + 7 * min, start, end, cfg)
+            assertThat(moved.start).isEqualTo(local(12, 0))
+            assertThat(moved.length).isEqualTo(60 * min)
+
+            val resized = resizeRange(ResizeEdge.End, local(9, 0), local(10, 0), local(11, 22), start, end, cfg)
+            assertThat(resized).isEqualTo(Span(local(9, 0), local(11, 15)))
+            assertThat(isLocalQuarter(resized.end)).isTrue()
+
+            // The real end of the day, 23 or 25 hours after its start.
+            assertThat(moveRange(local(22, 0), local(23, 0), 5 * 60 * min, start, end, cfg).end).isEqualTo(end)
+            assertThat(resizeRange(ResizeEdge.End, local(22, 0), local(23, 0), end + 60 * min, start, end, cfg).end).isEqualTo(end)
+        }
+    }
+
+    // endregion
 }

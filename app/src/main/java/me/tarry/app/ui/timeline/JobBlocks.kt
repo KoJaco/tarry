@@ -30,6 +30,11 @@ data class JobBlockConfig(
     val roundingMinutes: Int = 15,
     /** Drag-to-create on the canvas snaps both ends to this many minutes; it is also the shortest range a drag makes. */
     val snapMinutes: Int = 15,
+    /**
+     * Height of the grab zone at a block's top and bottom edge, in dp. A touch that starts there and moves vertically
+     * resizes; a block shorter than three zones is split in half instead (upper half = start, lower half = end).
+     */
+    val edgeZoneDp: Float = 16f,
 )
 
 /** A visit or trip as the logic sees it. */
@@ -124,6 +129,63 @@ internal fun dragJobRange(
     val start = minOf(minOf(a, b), dayEnd - step)
     val length = if (a == b) config.defaultLengthMs else abs(a - b)
     return Span(start, minOf(start + length, dayEnd))
+}
+
+private fun snapTo(ms: Long, dayFrom: Long, step: Long): Long = dayFrom + Math.floorDiv(ms - dayFrom + step / 2, step) * step
+
+/**
+ * A block moved by [deltaMs] (a drag, or the "move earlier/later" accessibility actions): the start is snapped to
+ * [JobBlockConfig.snapMinutes] counted from [dayFrom] (the local midnight, so a DST day still lands on wall-clock quarter
+ * hours) and the duration is kept. The block stays inside `[dayFrom, dayTo]`. No movement returns the range unchanged.
+ */
+internal fun moveRange(
+    start: Long,
+    end: Long,
+    deltaMs: Long,
+    dayFrom: Long,
+    dayTo: Long,
+    config: JobBlockConfig = JobBlockConfig(),
+): Span {
+    if (deltaMs == 0L) return Span(start, end)
+    val step = config.snapMinutes * 60_000L
+    val length = end - start
+    val moved = snapTo(start + deltaMs, dayFrom, step).coerceAtMost(dayTo - length).coerceAtLeast(dayFrom)
+    return Span(moved, moved + length)
+}
+
+/**
+ * A block with one [edge] dragged to [newEdgeMs]: snapped like [moveRange], never leaving the block shorter than
+ * [JobBlockConfig.snapMinutes] (so an edge cannot cross the other), and inside `[dayFrom, dayTo]`. The other edge is untouched.
+ */
+internal fun resizeRange(
+    edge: ResizeEdge,
+    start: Long,
+    end: Long,
+    newEdgeMs: Long,
+    dayFrom: Long,
+    dayTo: Long,
+    config: JobBlockConfig = JobBlockConfig(),
+): Span {
+    val step = config.snapMinutes * 60_000L
+    val snapped = snapTo(newEdgeMs, dayFrom, step)
+    return when (edge) {
+        ResizeEdge.Start -> Span(snapped.coerceAtMost(end - step).coerceAtLeast(dayFrom), end)
+        ResizeEdge.End -> Span(start, snapped.coerceAtLeast(start + step).coerceAtMost(dayTo))
+    }
+}
+
+/**
+ * Which edge a touch at [yDp] (from the top of the touch box, which is [touchHeightDp] tall and holds the block centred)
+ * grabs, or null for the middle. A block shorter than three [zoneDp] is split in half so both edges stay reachable.
+ */
+internal fun edgeAt(yDp: Float, blockHeightDp: Float, touchHeightDp: Float, zoneDp: Float): ResizeEdge? {
+    if (blockHeightDp < zoneDp * 3) return if (yDp < touchHeightDp / 2) ResizeEdge.Start else ResizeEdge.End
+    val top = (touchHeightDp - blockHeightDp) / 2
+    return when {
+        yDp < top + zoneDp -> ResizeEdge.Start
+        yDp > top + blockHeightDp - zoneDp -> ResizeEdge.End
+        else -> null
+    }
 }
 
 /** The block to save plus the ids of other same-job blocks it swallowed (soft-delete them in the same transaction). */
