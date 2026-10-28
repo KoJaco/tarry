@@ -30,6 +30,7 @@ import me.tarry.app.ui.timeline.addJobToSegment
 import me.tarry.app.ui.timeline.displayLabel
 import me.tarry.app.ui.timeline.labelIsCoordinates
 import me.tarry.app.ui.timeline.saveMerged
+import me.tarry.app.ui.timeline.saveMergedUndoable
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.app.map.GeoPoint
@@ -194,15 +195,18 @@ class EditDrawerViewModel @Inject constructor(
         blockEdits.withLock {
             // The query is open at both ends, so widen by one ms to see a block exactly a join window away.
             val nearby = jobBlocks.overlapping(start - config.joinWindowMs - 1, end + config.joinWindowMs + 1)
-            when (val result = addJobToSegment(Span(start, end), job.id, nearby, config)) {
+            val save = when (val result = addJobToSegment(Span(start, end), job.id, nearby, config)) {
                 is AddJobResult.Extend -> nearby.firstOrNull { it.id == result.blockId }
-                    ?.let { jobBlocks.saveMerged(it.copy(start = result.start, end = result.end)) }
-                is AddJobResult.Create -> jobBlocks.saveMerged(
+                    ?.let { jobBlocks.saveMergedUndoable(it.copy(start = result.start, end = result.end)) }
+                is AddJobResult.Create -> jobBlocks.saveMergedUndoable(
                     JobBlock(
                         jobId = job.id, start = result.start, end = result.end, zoneId = ZoneId.systemDefault().id,
                         billable = job.defaultBillable, updatedAt = 0L,
                     ),
                 )
+            }
+            save?.let {
+                undoEvents.offer(UndoEvent(R.string.edit_undo_added_to_job, null, onUndo = { it.undo(jobBlocks) }, args = listOf(job.name)))
             }
         }
         finish(EditResult.Ok())

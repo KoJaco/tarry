@@ -104,6 +104,31 @@ class JobBlockRepositoryTest : DbTestBase() {
     }
 
     @Test
+    fun revertPutsTheOriginalBackAndUnDeletesWhatWasSwallowed() = runTest {
+        seedJob()
+        val a = block("a", 0, 10)
+        listOf(a, block("b", 20, 30)).forEach { repo.save(it, now = 1) }
+        repo.replace(block("a", 0, 30), listOf("b"), now = 5)
+
+        repo.revert(a, "a", listOf("b"), now = 9)
+
+        assertThat(repo.overlapping(0, 100).map { Triple(it.id, it.start, it.end) })
+            .containsExactly(Triple("a", 0L, 10L), Triple("b", 20L, 30L))
+        assertThat(repo.byId("b")!!.updatedAt).isEqualTo(9)
+    }
+
+    @Test
+    fun revertWithNoOriginalSoftDeletesTheNewBlock() = runTest {
+        seedJob()
+        repo.save(block("new", 0, 10), now = 1)
+
+        repo.revert(null, "new", emptyList(), now = 9)
+
+        assertThat(ids(0, 100)).isEmpty()
+        assertThat(repo.byId("new")!!.deleted).isTrue()
+    }
+
+    @Test
     fun replaceWithNoDeletionsJustSaves() = runTest {
         seedJob()
         repo.replace(block("a", 0, 10), emptyList(), now = 5)

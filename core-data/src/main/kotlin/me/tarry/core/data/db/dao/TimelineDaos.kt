@@ -189,6 +189,19 @@ interface JobBlockDao {
         if (deleteIds.isNotEmpty()) softDelete(deleteIds, now)
     }
 
+    @Query("UPDATE job_block SET deleted = 0, updatedAt = :now WHERE id IN (:ids)")
+    suspend fun unDelete(ids: List<String>, now: Long)
+
+    /**
+     * Undoes a [replace] in one transaction: puts [before] back (or soft-deletes [blockId] when it did not exist before)
+     * and un-deletes [restoreIds], the blocks the merge swallowed.
+     */
+    @Transaction
+    suspend fun revert(before: JobBlock?, blockId: String, restoreIds: List<String>, now: Long) {
+        if (before != null) upsert(before.copy(updatedAt = now)) else softDelete(listOf(blockId), now)
+        if (restoreIds.isNotEmpty()) unDelete(restoreIds, now)
+    }
+
     /** Live blocks of the job (what blocks deleting it). */
     @Query("SELECT COUNT(*) FROM job_block WHERE jobId = :jobId AND deleted = 0")
     suspend fun countLive(jobId: String): Int

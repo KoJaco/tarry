@@ -96,15 +96,22 @@ data class JobSuggestion(val visitId: String, val jobId: String, val start: Long
 
 /**
  * One suggestion per live DETECTED visit whose place has a default job and which no block of that job overlaps.
- * Manual and edited-by-hand visits (origin MANUAL) and visits at ignored places never get one.
+ * Manual and edited-by-hand visits (origin MANUAL) and visits at ignored places never get one. A (visit id, job id) pair in
+ * [declined] is skipped; another job at the same visit is still offered.
  */
-fun suggestions(visits: List<Visit>, placesById: Map<String, Place>, blocks: List<JobBlock>): List<JobSuggestion> =
+fun suggestions(
+    visits: List<Visit>,
+    placesById: Map<String, Place>,
+    blocks: List<JobBlock>,
+    declined: Set<Pair<String, String>> = emptySet(),
+): List<JobSuggestion> =
     visits.mapNotNull { v ->
         if (v.deleted || v.origin != VisitOrigin.DETECTED) return@mapNotNull null
         val place = v.placeId?.let(placesById::get) ?: return@mapNotNull null
         // You don't bill an ignored place, so it is never offered a job.
         if (place.ignored) return@mapNotNull null
         val jobId = place.defaultJobId ?: return@mapNotNull null
+        if ((v.id to jobId) in declined) return@mapNotNull null
         val covered = blocks.any { it.jobId == jobId && overlaps(v.start, v.end, it.start, it.end) }
         if (covered) null else JobSuggestion(v.id, jobId, v.start, v.end)
     }
@@ -223,10 +230,21 @@ fun mergeSameJob(candidate: JobBlock, dayBlocks: List<JobBlock>): BlockMerge {
  * Saves [candidate] merged with the same-job blocks it overlaps ([mergeSameJob]) in one transaction and returns what was
  * saved. Reads the blocks around the candidate's range, widened by [windowMs] so a neighbour is never missed.
  */
-suspend fun JobBlockRepository.saveMerged(candidate: JobBlock, windowMs: Long = JobBlockConfig().joinWindowMs): JobBlock {
+suspend fun JobBlockRepository.saveMerged(candidate: JobBlock, windowMs: Long = JobBlockConfig().joinWindowMs): JobBlock =
+    saveMergedUndoable(candidate, windowMs).saved
+
+/** What [saveMergedUndoable] did, enough to put it all back: the block as it was ([before], null when new) and what the merge swallowed. */
+class MergedSave(val saved: JobBlock, val before: JobBlock?, val swallowedIds: List<String>) {
+    /** Undo, atomically: the saved block goes back to [before] (or is deleted when it was new) and swallowed blocks return. */
+    suspend fun undo(blocks: JobBlockRepository) = blocks.revert(before, saved.id, swallowedIds)
+}
+
+/** [saveMerged] that also reports how to undo it. */
+suspend fun JobBlockRepository.saveMergedUndoable(candidate: JobBlock, windowMs: Long = JobBlockConfig().joinWindowMs): MergedSave {
     val merged = mergeSameJob(candidate, overlapping(candidate.start - windowMs, candidate.end + windowMs))
+    val before = byId(merged.block.id)
     replace(merged.block, merged.deleteIds)
-    return merged.block
+    return MergedSave(merged.block, before, merged.deleteIds)
 }
 
 /** Earliest start to latest end of [segments]; null for an empty selection. */

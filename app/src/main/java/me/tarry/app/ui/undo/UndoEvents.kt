@@ -24,6 +24,8 @@ data class UndoEvent(
     val count: Int? = null,
     /** An undo that is not a timeline [Snapshot] (a deleted job block coming back). Takes the place of [snapshot]. */
     val onUndo: (suspend () -> Unit)? = null,
+    /** Format arguments of a plain string [message] ("Added to Smith reno"). */
+    val args: List<Any> = emptyList(),
 ) {
     /** Whether the snackbar offers an Undo action. */
     val undoable: Boolean get() = snapshot != null || onUndo != null

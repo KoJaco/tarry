@@ -23,6 +23,7 @@
     <string name="edit_job_save">Save</string>
     <string name="edit_job_delete">Delete job block</string>
     <string name="edit_undo_job_deleted">Job block deleted</string>
+    <string name="edit_undo_added_to_job">Added to %1$s</string>
     <string name="edit_error_job_required">Choose a job first.</string>
     <string name="edit_job_covers">Covers %1$s · %2$s</string>
     <plurals name="edit_job_covers_visits">
