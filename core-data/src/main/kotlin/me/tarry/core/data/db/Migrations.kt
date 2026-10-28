@@ -7,9 +7,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * v1 -> v2 (phase 6b): job blocks replace per-segment job, billable, attribution and tags.
  *
  * 1. Tags are folded into `freeNotes` as a `Tags: Group:Tag, ...` line, so no annotation text is lost.
- * 2. Each live visit with a `jobId`, and each live trip with an `attributedJobId`, becomes a `job_block` over its span.
- *    Blocks are only made for jobs that still exist (a dangling id would violate the block's foreign key and fail the
- *    upgrade); jobs are soft-deleted, so in practice none are skipped.
+ * 2. Each live visit with a `jobId`, each live visit that inherited its place's default job (v1 displayed it; the place
+ *    must be live and not ignored) and each live trip with an `attributedJobId` becomes a `job_block` over its span.
+ *    Blocks are only made for live jobs (a dangling id would violate the block's foreign key and fail the upgrade;
+ *    a soft-deleted job is gone from the user's view).
  * 3. `job.defaultBillable` is added (existing jobs default to billable).
  * 4. The tag tables are dropped.
  * 5. visit, trip and place are rebuilt without the removed columns (minSdk 29 has no `DROP COLUMN`). By then no table
@@ -35,14 +36,23 @@ val MIGRATION_1_2: Migration = object : Migration(1, 2) {
             "INSERT INTO job_block (id, jobId, start, `end`, zoneId, billable, notes, updatedAt, deleted) " +
                 "SELECT $UUID_SQL, v.jobId, v.start, v.`end`, v.zoneId, COALESCE(v.billable, p.defaultBillable, 0), NULL, ?, 0 " +
                 "FROM visit v LEFT JOIN place p ON p.id = v.placeId " +
-                "WHERE v.deleted = 0 AND v.jobId IS NOT NULL AND EXISTS (SELECT 1 FROM job j WHERE j.id = v.jobId)",
+                "WHERE v.deleted = 0 AND v.jobId IS NOT NULL AND EXISTS (SELECT 1 FROM job j WHERE j.id = v.jobId AND j.deleted = 0)",
+            arrayOf<Any?>(now),
+        )
+        // Inherited job: v1 displayed the place default for a visit with no job of its own (live, non-ignored place).
+        db.execSQL(
+            "INSERT INTO job_block (id, jobId, start, `end`, zoneId, billable, notes, updatedAt, deleted) " +
+                "SELECT $UUID_SQL, p.defaultJobId, v.start, v.`end`, v.zoneId, COALESCE(v.billable, p.defaultBillable, 0), NULL, ?, 0 " +
+                "FROM visit v JOIN place p ON p.id = v.placeId " +
+                "WHERE v.deleted = 0 AND v.jobId IS NULL AND p.deleted = 0 AND p.ignored = 0 AND p.defaultJobId IS NOT NULL " +
+                "AND EXISTS (SELECT 1 FROM job j WHERE j.id = p.defaultJobId AND j.deleted = 0)",
             arrayOf<Any?>(now),
         )
         db.execSQL(
             "INSERT INTO job_block (id, jobId, start, `end`, zoneId, billable, notes, updatedAt, deleted) " +
                 "SELECT $UUID_SQL, t.attributedJobId, t.start, t.`end`, t.zoneId, COALESCE(t.billable, 0), NULL, ?, 0 " +
                 "FROM trip t " +
-                "WHERE t.deleted = 0 AND t.attributedJobId IS NOT NULL AND EXISTS (SELECT 1 FROM job j WHERE j.id = t.attributedJobId)",
+                "WHERE t.deleted = 0 AND t.attributedJobId IS NOT NULL AND EXISTS (SELECT 1 FROM job j WHERE j.id = t.attributedJobId AND j.deleted = 0)",
             arrayOf<Any?>(now),
         )
 
@@ -89,7 +99,7 @@ val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2)
 /** A random lowercase 8-4-4-4-12 version-4 UUID, evaluated per row. */
 private const val UUID_SQL =
     "(lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || substr(lower(hex(randomblob(2))), 2) || '-' || " +
-        "substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))))"
+        "substr('89ab', (random() & 3) + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' || lower(hex(randomblob(6))))"
 
 /** Appends `Tags: Group:Tag, Group:Tag` (groups then tags in their sort order) to each item's notes, on a new line when notes exist. */
 private fun foldTagsIntoNotes(db: SupportSQLiteDatabase, itemTable: String, linkTable: String, linkColumn: String) {

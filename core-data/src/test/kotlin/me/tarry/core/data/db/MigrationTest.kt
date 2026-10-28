@@ -111,8 +111,8 @@ class MigrationTest {
         assertThat(notes("trip", "tr1")).isEqualTo("toll\nTags: Work:Install")
         assertThat(notes("trip", "tr3")).isEmpty()
 
-        // Blocks: tr1, tr2, v3, v4 (v5 is deleted, v1/v2/v6 have no job).
-        assertThat(db.count("job_block")).isEqualTo(4)
+        // Blocks: v1, v2 (inherit p1 default j1), tr1, tr2, v3, v4 (v5 is deleted; v6 sits at an ignored place with no default).
+        assertThat(db.count("job_block")).isEqualTo(6)
         val b = db.prepare("SELECT jobId, start, `end`, zoneId, billable, notes, updatedAt, deleted FROM job_block ORDER BY start").use { st ->
             buildList {
                 while (st.step()) {
@@ -123,7 +123,9 @@ class MigrationTest {
         val at = b[0].updatedAt
         assertThat(at).isGreaterThan(1_000_000_000_000L)
         assertThat(b).containsExactly(
+            B("j1", 1_000_000, 1_001_000, "Australia/Sydney", 1, null, at, 0), // v1: inherited place default job, place billable true
             B("j1", 1_500_000, 1_500_500, "UTC", 0, null, at, 0), // tr1: trip billable null -> false
+            B("j1", 2_000_000, 2_001_000, "Australia/Sydney", 1, null, at, 0), // v2: inherited
             B("j2", 2_500_000, 2_500_500, "UTC", 1, null, at, 0), // tr2: trip billable true
             B("j1", 3_000_000, 3_001_000, "Australia/Sydney", 1, null, at, 0), // v3: visit null, place default true
             B("j1", 4_000_000, 4_001_000, "Australia/Sydney", 0, null, at, 0), // v4: visit billable false
@@ -131,7 +133,7 @@ class MigrationTest {
 
         // Block ids are proper lowercase v4 UUIDs and unique.
         val ids = db.strings("SELECT id FROM job_block")
-        assertThat(ids.toSet()).hasSize(4)
+        assertThat(ids.toSet()).hasSize(6)
         ids.forEach { assertThat(it).matches("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}") }
 
         // Job gains defaultBillable = 1 for existing rows; other job columns survive.
@@ -207,6 +209,55 @@ class MigrationTest {
 
         assertThat(db.strings("SELECT jobId FROM job_block")).containsExactly("j1")
         assertThat(db.count("visit")).isEqualTo(2)
+        db.close()
+    }
+
+    private fun place(id: String, defaultJobId: String?, defaultBillable: Int?, ignored: Int = 0, deleted: Int = 0) =
+        "INSERT INTO place (id, centroidLat, centroidLng, radiusM, address, name, defaultJobId, defaultBillable, ignored, mergedIntoId, lastVisitAt, updatedAt, deleted) " +
+            "VALUES ('$id', 0, 0, 75, NULL, NULL, ${q(defaultJobId)}, ${defaultBillable ?: "NULL"}, $ignored, NULL, NULL, 1, $deleted)"
+
+    @Test
+    fun migrate1To2_inheritedPlaceDefaultJobBecomesBlock_butNotAtIgnoredOrDeletedPlaces() {
+        helper.createDatabase(1).also { db ->
+            db.execSQL("INSERT INTO job (id, name, colorArgb, archived, updatedAt, deleted) VALUES ('j1', 'J', 1, 0, 1, 0)")
+            db.execSQL(place("billablePlace", "j1", 1))
+            db.execSQL(place("unbillablePlace", "j1", 0))
+            db.execSQL(place("nullBillablePlace", "j1", null))
+            db.execSQL(place("ignoredPlace", "j1", 1, ignored = 1))
+            db.execSQL(place("deletedPlace", "j1", 1, deleted = 1))
+            db.execSQL(place("noDefaultPlace", null, 1))
+            db.execSQL(visit("a", 1000, null, null, "", placeId = "billablePlace"))
+            db.execSQL(visit("b", 2000, null, null, "", placeId = "unbillablePlace"))
+            db.execSQL(visit("c", 3000, null, 1, "", placeId = "unbillablePlace")) // own billable wins
+            db.execSQL(visit("d", 4000, null, null, "", placeId = "nullBillablePlace"))
+            db.execSQL(visit("e", 5000, null, null, "", placeId = "ignoredPlace"))
+            db.execSQL(visit("f", 6000, null, null, "", placeId = "deletedPlace"))
+            db.execSQL(visit("g", 7000, null, null, "", placeId = "noDefaultPlace"))
+            db.execSQL(visit("h", 8000, null, null, "", placeId = "billablePlace", deleted = 1))
+        }.close()
+
+        val db = helper.runMigrationsAndValidate(2, listOf(MIGRATION_1_2))
+
+        assertThat(db.strings("SELECT start || ':' || jobId || ':' || billable FROM job_block ORDER BY start"))
+            .containsExactly("1000:j1:1", "2000:j1:0", "3000:j1:1", "4000:j1:0").inOrder()
+        db.close()
+    }
+
+    @Test
+    fun migrate1To2_noBlocksForSoftDeletedJobs() {
+        helper.createDatabase(1).also { db ->
+            db.execSQL("INSERT INTO job (id, name, colorArgb, archived, updatedAt, deleted) VALUES ('live', 'L', 1, 0, 1, 0)")
+            db.execSQL("INSERT INTO job (id, name, colorArgb, archived, updatedAt, deleted) VALUES ('gone', 'G', 1, 0, 1, 1)")
+            db.execSQL(place("goneDefault", "gone", 1))
+            db.execSQL(visit("own", 1000, "gone", 1, "", placeId = null))
+            db.execSQL(visit("inherited", 2000, null, null, "", placeId = "goneDefault"))
+            db.execSQL(trip("t", 3000, "gone", 1))
+            db.execSQL(visit("ok", 4000, "live", 1, "", placeId = null))
+        }.close()
+
+        val db = helper.runMigrationsAndValidate(2, listOf(MIGRATION_1_2))
+
+        assertThat(db.strings("SELECT jobId FROM job_block")).containsExactly("live")
         db.close()
     }
 }

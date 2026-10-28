@@ -48,8 +48,13 @@ class RealDbMigrationTest {
         SQLiteDatabase.openDatabase(copy.path, null, SQLiteDatabase.OPEN_READWRITE).use { v1 ->
             assertThat(v1.version).isEqualTo(1)
             before = tables.associateWith { v1.count("SELECT COUNT(*) FROM $it") }
-            expectedBlocks = v1.count("SELECT COUNT(*) FROM visit WHERE deleted = 0 AND jobId IS NOT NULL") +
-                v1.count("SELECT COUNT(*) FROM trip WHERE deleted = 0 AND attributedJobId IS NOT NULL")
+            val liveJob = "EXISTS (SELECT 1 FROM job j WHERE j.id = %s AND j.deleted = 0)"
+            expectedBlocks = v1.count("SELECT COUNT(*) FROM visit WHERE deleted = 0 AND jobId IS NOT NULL AND " + liveJob.format("visit.jobId")) +
+                v1.count(
+                    "SELECT COUNT(*) FROM visit v JOIN place p ON p.id = v.placeId WHERE v.deleted = 0 AND v.jobId IS NULL " +
+                        "AND p.deleted = 0 AND p.ignored = 0 AND p.defaultJobId IS NOT NULL AND " + liveJob.format("p.defaultJobId"),
+                ) +
+                v1.count("SELECT COUNT(*) FROM trip WHERE deleted = 0 AND attributedJobId IS NOT NULL AND " + liveJob.format("trip.attributedJobId"))
         }
         println("REAL_DB v1 counts: $before, expected job_block rows: $expectedBlocks")
 
