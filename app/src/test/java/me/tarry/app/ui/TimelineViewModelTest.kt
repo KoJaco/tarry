@@ -725,6 +725,100 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun decliningASuggestionHidesItAndKeepsTheOthers() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        places.save(place("p", name = "Yard").copy(defaultJobId = "j"))
+        timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
+        timeline.saveVisit(visit("w", at(day, 11), at(day, 12), "p"))
+        val declined = MutableStateFlow<Set<Pair<String, String>>>(emptySet())
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day },
+            declinedSuggestions = declined, rememberDeclined = { v, j -> declined.value += v to j },
+        ).managed()
+        withTimeout(10_000) { vm.jobSuggestions.first { it.size == 2 } }
+
+        vm.declineSuggestion(JobSuggestion("v", "j", at(day, 9), at(day, 10)))
+
+        val left = withTimeout(10_000) { vm.jobSuggestions.first { it.size == 1 } }
+        assertThat(left.single().suggestion.visitId).isEqualTo("w")
+        assertThat(declined.value).containsExactly("v" to "j")
+    }
+
+    @Test
+    fun confirmSuggestionOffersNoUndo() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        val saved = mutableListOf<JobBlock>()
+        val undos = mutableListOf<UndoEvent>()
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day }, saveBlock = { b, _ -> saved += b }, offerUndo = { undos += it },
+        ).managed()
+
+        vm.confirmSuggestion(JobSuggestion("v", "j", at(day, 9), at(day, 10)))
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+        delay(100)
+
+        assertThat(undos).isEmpty()
+    }
+
+    private class Reverted(val before: JobBlock?, val blockId: String, val ids: List<String>)
+
+    @Test
+    fun undoOfAssignJobThatCreatedABlockDeletesIt() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        val saved = mutableListOf<SavedCall>()
+        val reverted = mutableListOf<Reverted>()
+        val undos = mutableListOf<UndoEvent>()
+        val vm = loadedViewModel("a") {
+            TimelineViewModel(
+                timeline, places, jobs, zone, { day },
+                saveBlock = { b, ids -> saved += SavedCall(b, ids) },
+                revertBlocks = { b, id, ids -> reverted += Reverted(b, id, ids) },
+                offerUndo = { undos += it },
+            )
+        }
+        vm.startSelection("a")
+
+        vm.assignJob("j")
+        withTimeout(10_000) { while (undos.isEmpty()) delay(10) }
+
+        val event = undos.single()
+        assertThat(event.message).isEqualTo(R.string.timeline_undo_assigned_to_job)
+        assertThat(event.args).containsExactly("Acme")
+        event.onUndo!!.invoke()
+        assertThat(reverted.single().before).isNull() // new block: undo deletes it
+        assertThat(reverted.single().blockId).isEqualTo(saved.single().block.id)
+        assertThat(reverted.single().ids).isEmpty()
+    }
+
+    @Test
+    fun undoOfAssignJobThatMergedRestoresTheOriginalAndTheSwallowedBlocks() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
+        val reverted = mutableListOf<Reverted>()
+        val undos = mutableListOf<UndoEvent>()
+        val early = block("early", "j", at(day, 8), at(day, 9))
+        val late = block("late", "j", at(day, 9), at(day, 10))
+        val vm = loadedViewModel("a", "b") {
+            TimelineViewModel(
+                timeline, places, jobs, zone, { day },
+                blocksOverlapping = { _, _ -> flowOf(listOf(early, late)) },
+                revertBlocks = { b, id, ids -> reverted += Reverted(b, id, ids) },
+                offerUndo = { undos += it },
+            )
+        }
+        // a 08-09 and b 10-11: the range 08-11 overlaps the late block, which joins the early one.
+        vm.startSelection("a")
+        vm.toggleSelected("b")
+
+        vm.assignJob("j")
+        withTimeout(10_000) { while (undos.isEmpty()) delay(10) }
+        undos.single().onUndo!!.invoke()
+
+        assertThat(reverted.single().before).isEqualTo(early)
+        assertThat(reverted.single().blockId).isEqualTo("early")
+        assertThat(reverted.single().ids).containsExactly("late")
+    }
+
+    @Test
     fun aDoubleTapOnASuggestionSavesOnce() = runBlocking<Unit> {
         jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, updatedAt = 0))
         val saved = mutableListOf<JobBlock>()
@@ -780,7 +874,7 @@ class TimelineViewModelTest {
             timeline, places, jobs, zone, { day },
             blocksOverlapping = { _, _ -> flowOf(listOf(moving, neighbour)) },
             saveBlock = { b, ids -> saved += SavedCall(b, ids) },
-            restoreBlocks = { o, ids -> restored += Restored(o, ids) },
+            revertBlocks = { o, _, ids -> restored += Restored(o!!, ids) },
             offerUndo = { undos += it },
         ).managed()
 

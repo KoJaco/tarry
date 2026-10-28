@@ -100,6 +100,7 @@ fun TimelineContent(
     /** A job block was tapped; the host opens its drawer (`EditTarget.Job`). */
     onOpenJob: (String) -> Unit = {},
     onConfirmSuggestion: (JobSuggestion) -> Unit = {},
+    onDeclineSuggestion: (JobSuggestion) -> Unit = {},
     /** A range was drawn on the job column; the host opens `EditTarget.NewJob(start, end)`. */
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
     /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
@@ -239,6 +240,7 @@ fun TimelineContent(
                         onOpenGap = { gap, _ -> gapSheetId = gap.id },
                         onOpenJob = onOpenJob,
                         onConfirmSuggestion = onConfirmSuggestion,
+                        onDeclineSuggestion = onDeclineSuggestion,
                         onCreateJob = onCreateJob,
                         onJobRangeChange = onJobRangeChange,
                     )

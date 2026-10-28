@@ -210,8 +210,10 @@ fun DayCanvas(
     trackingMarkers: List<TrackingMarker> = emptyList(),
     /** A job block (or TalkBack activation of it) was tapped: opens its drawer. The blocks themselves are in [layout]. */
     onOpenJob: (String) -> Unit = {},
-    /** A suggestion was tapped: the host stores it as a real block. */
+    /** A suggestion was accepted in its review sheet: the host stores it as a real block. */
     onConfirmSuggestion: (JobSuggestion) -> Unit = {},
+    /** A suggestion was declined in its review sheet: the host stops suggesting it. */
+    onDeclineSuggestion: (JobSuggestion) -> Unit = {},
     /** A long press and drag on empty job column space was released: the snapped range (UTC epoch ms) for a new job. */
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
     /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
@@ -309,7 +311,7 @@ fun DayCanvas(
             }
             JobColumn(
                 layout, dayStart, dayEnd, zone, jobWidth, fontScale, ordered, enabled = !selecting,
-                onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onCreateJob = onCreateJob,
+                onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onDeclineSuggestion = onDeclineSuggestion, onCreateJob = onCreateJob,
                 onJobRangeChange = onJobRangeChange,
             )
             markersBehind.forEach { TrackingMarkerLabel(it, ordered, timeColumn, visitEnd, zone) }

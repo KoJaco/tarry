@@ -171,8 +171,14 @@ class TimelineViewModel internal constructor(
     private val blocksOverlapping: (from: Long, to: Long) -> Flow<List<JobBlock>> = { _, _ -> flowOf(emptyList()) },
     /** Saves a job block and soft-deletes the same-job blocks it swallowed ([mergeSameJob]) in one transaction. */
     private val saveBlock: suspend (JobBlock, deleteIds: List<String>) -> Unit = { _, _ -> },
-    /** Undo of a block move or resize: saves the original block back and un-deletes the blocks the merge swallowed. */
-    private val restoreBlocks: suspend (original: JobBlock, restoreIds: List<String>) -> Unit = { _, _ -> },
+    /** Atomic undo of a block save: puts [before] back (null: the block was new, delete it) and un-deletes the swallowed blocks. */
+    private val revertBlocks: suspend (before: JobBlock?, blockId: String, restoreIds: List<String>) -> Unit = { _, _, _ -> },
+    /** Declined (visit id, job id) pairs, live; those are not suggested again. */
+    private val declinedSuggestions: Flow<Set<Pair<String, String>>> = flowOf(emptySet()),
+    /** Remembers a declined (visit id, job id) pair. */
+    private val rememberDeclined: suspend (visitId: String, jobId: String) -> Unit = { _, _ -> },
+    /** Forgets declined pairs whose visit no longer exists. */
+    private val pruneDeclined: suspend () -> Unit = {},
     /** Creates a job with the given name; the result carries the new id. */
     private val createJob: suspend (String) -> EditResult = { EditResult.NotFound },
     /** The wall clock, for "Add job" on today. */
@@ -190,6 +196,7 @@ class TimelineViewModel internal constructor(
         params: SegmentationParams,
         tracking: TrackingRepository,
         jobBlocks: JobBlockRepository,
+        declined: DeclinedSuggestionStore,
     ) :
         this(
             timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
@@ -201,10 +208,10 @@ class TimelineViewModel internal constructor(
             trackingSessions = tracking::observeSessionsOverlapping,
             blocksOverlapping = jobBlocks::observeOverlapping,
             saveBlock = { block, deleteIds -> jobBlocks.replace(block, deleteIds) },
-            restoreBlocks = { original, ids ->
-                jobBlocks.replace(original, emptyList())
-                ids.forEach { jobBlocks.restore(it) }
-            },
+            revertBlocks = { before, id, ids -> jobBlocks.revert(before, id, ids) },
+            declinedSuggestions = declined.declined,
+            rememberDeclined = declined::decline,
+            pruneDeclined = { declined.prune { id -> timeline.visit(id)?.deleted == false } },
             createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
         )
 
@@ -285,10 +292,10 @@ class TimelineViewModel internal constructor(
         .flatMapLatest { date ->
             val (from, to) = dayBounds(date, zone)
             combine(
-                timeline.observeVisits(from, to), places.observeLabels(), blocksOverlapping(from, to), jobs.observeAll(),
-            ) { visits, allPlaces, blocks, allJobs ->
+                timeline.observeVisits(from, to), places.observeLabels(), blocksOverlapping(from, to), jobs.observeAll(), declinedSuggestions,
+            ) { visits, allPlaces, blocks, allJobs, declined ->
                 val jobsById = allJobs.associateBy { it.id }
-                suggestions(visits, allPlaces.associateBy { it.id }, blocks).mapNotNull { s ->
+                suggestions(visits, allPlaces.associateBy { it.id }, blocks, declined).mapNotNull { s ->
                     jobsById[s.jobId]?.let { JobSuggestionItem(s, it.name, it.colorArgb) }
                 }
             }
@@ -373,6 +380,10 @@ class TimelineViewModel internal constructor(
     val selection: StateFlow<Set<String>> = _selection
 
     init {
+        viewModelScope.launch { pruneDeclined() }
+    }
+
+    init {
         // A selected visit can vanish under us (undo, re-segmentation, delete): drop it, and leave the mode when none remain.
         viewModelScope.launch {
             items.collect { rows ->
@@ -437,7 +448,14 @@ class TimelineViewModel internal constructor(
                 val (from, to) = dayBounds(_selectedDate.value, zone)
                 val visits = rowsIn(from, to).first().filterIsInstance<TimelineItem.Visit>().filter { it.id in ids }
                 val range = assignRange(visits.map { Segment(it.id, it.start, it.end) }) ?: return@launch
-                saveNewBlock(jobId, range.start, range.end)
+                saveNewBlock(jobId, range.start, range.end)?.let { saved ->
+                    offerUndo(
+                        UndoEvent(
+                            R.string.timeline_undo_assigned_to_job, null, args = listOf(saved.jobName),
+                            onUndo = { revertBlocks(saved.before, saved.block.id, saved.swallowedIds) },
+                        ),
+                    )
+                }
             } finally {
                 inFlight.remove(ASSIGN_KEY)
             }
@@ -459,8 +477,8 @@ class TimelineViewModel internal constructor(
     }
 
     /**
-     * One tap on a suggested block: saves it for the suggestion's range and job, billable per the job's default. A second
-     * tap while the first is still saving is ignored.
+     * Accept on a suggested block: saves it for the suggestion's range and job, billable per the job's default. There is no
+     * undo (delete the job instead). A second accept while the first is still saving is ignored.
      */
     fun confirmSuggestion(suggestion: JobSuggestion) {
         val key = "suggestion:${suggestion.visitId}:${suggestion.jobId}"
@@ -472,6 +490,11 @@ class TimelineViewModel internal constructor(
                 inFlight.remove(key)
             }
         }
+    }
+
+    /** Decline on a suggested block: it is not suggested again (the pair is remembered across restarts). */
+    fun declineSuggestion(suggestion: JobSuggestion) {
+        viewModelScope.launch { rememberDeclined(suggestion.visitId, suggestion.jobId) }
     }
 
     /**
@@ -494,7 +517,7 @@ class TimelineViewModel internal constructor(
                 )
                 saveBlock(merged.block, merged.deleteIds)
                 offerUndo(
-                    UndoEvent(R.string.timeline_undo_job_times, null, onUndo = { restoreBlocks(original, merged.deleteIds) }),
+                    UndoEvent(R.string.timeline_undo_job_times, null, onUndo = { revertBlocks(original, original.id, merged.deleteIds) }),
                 )
             } finally {
                 inFlight.remove(key)
@@ -505,14 +528,19 @@ class TimelineViewModel internal constructor(
     /** Keys of saves still running, so a double tap saves once. Touched on the main thread only. */
     private val inFlight = HashSet<String>()
 
-    private suspend fun saveNewBlock(jobId: String, start: Long, end: Long) {
-        val job = jobs.job(jobId)?.takeUnless { it.deleted } ?: return
+    /** A block saved by [saveNewBlock], with what undoing it needs. */
+    private class NewBlock(val jobName: String, val block: JobBlock, val before: JobBlock?, val swallowedIds: List<String>)
+
+    private suspend fun saveNewBlock(jobId: String, start: Long, end: Long): NewBlock? {
+        val job = jobs.job(jobId)?.takeUnless { it.deleted } ?: return null
         val candidate = JobBlock(
             jobId = job.id, start = start, end = end, zoneId = zone.id, billable = job.defaultBillable, updatedAt = 0L,
         )
         val window = blockConfig.joinWindowMs
-        val merged = mergeSameJob(candidate, blocksOverlapping(start - window, end + window).first())
+        val nearby = blocksOverlapping(start - window, end + window).first()
+        val merged = mergeSameJob(candidate, nearby)
         saveBlock(merged.block, merged.deleteIds)
+        return NewBlock(job.name, merged.block, nearby.firstOrNull { it.id == merged.block.id }, merged.deleteIds)
     }
 
     // endregion

@@ -55,7 +55,10 @@
     <string name="timeline_open_job">Open job</string>
     <string name="timeline_job_suggestion">Suggested: %1$s</string>
     <string name="timeline_job_suggestion_description">Suggested job %1$s, %2$s</string>
-    <string name="timeline_confirm_suggestion">Confirm suggested job</string>
+    <string name="timeline_review_suggestion">Review suggested job</string>
+    <string name="timeline_suggestion_sheet_title">Suggested: %1$s · %2$s</string>
+    <string name="timeline_suggestion_accept">Accept</string>
+    <string name="timeline_suggestion_decline">Decline</string>
     <string name="timeline_job_overflow_label">+%1$d</string>
     <plurals name="timeline_job_overflow_description">
         <item quantity="one">%1$d more job</item>
@@ -63,6 +66,7 @@
     </plurals>
     <string name="timeline_show_jobs">Show jobs</string>
     <string name="timeline_undo_job_times">Job times changed</string>
+    <string name="timeline_undo_assigned_to_job">Assigned to %1$s</string>
     <!-- Non-drag alternatives (WCAG 2.5.7) to moving and resizing a job block by dragging. -->
     <string name="timeline_job_move_earlier">Move %1$d minutes earlier</string>
     <string name="timeline_job_move_later">Move %1$d minutes later</string>

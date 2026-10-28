@@ -18,6 +18,9 @@ import me.tarry.app.tracking.TrackingConfig
 import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.tracking.TrackingStatusDataStore
 import me.tarry.app.tracking.createTrackingStatusDataStore
+import me.tarry.app.ui.timeline.DeclinedSuggestionConfig
+import me.tarry.app.ui.timeline.DeclinedSuggestionsDataStore
+import me.tarry.app.ui.timeline.createDeclinedSuggestionsDataStore
 import javax.inject.Singleton
 
 @Module
@@ -31,6 +34,18 @@ abstract class AppModule {
         @Provides
         @Singleton
         fun provideTrackingConfig(): TrackingConfig = TrackingConfig()
+
+        @Provides
+        @Singleton
+        fun provideDeclinedSuggestionConfig(): DeclinedSuggestionConfig = DeclinedSuggestionConfig()
+
+        @Provides
+        @Singleton
+        @DeclinedSuggestionsDataStore
+        fun provideDeclinedSuggestionsDataStore(@ApplicationContext context: Context): DataStore<Preferences> =
+            createDeclinedSuggestionsDataStore(CoroutineScope(Dispatchers.IO + SupervisorJob())) {
+                context.preferencesDataStoreFile("declined_suggestions")
+            }
 
         @Provides
         @Singleton
