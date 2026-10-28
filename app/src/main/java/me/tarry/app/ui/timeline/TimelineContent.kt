@@ -85,6 +85,8 @@ fun TimelineContent(
     onStartSelection: (String) -> Unit = {},
     onToggleSelected: (String) -> Unit = {},
     onClearSelection: () -> Unit = {},
+    /** "Add job" in the review row; the host opens the new-job drawer prefilled (see `TimelineViewModel.addJobTarget`). */
+    onAddJob: () -> Unit = {},
     /** Timeline | Map: true shows the day on the map instead of the canvas. */
     showMap: Boolean = false,
     onShowMapChange: (Boolean) -> Unit = {},
@@ -125,10 +127,7 @@ fun TimelineContent(
             reviewOnly = reviewOnly,
             showToggle = !items.isNullOrEmpty(),
             onReviewOnlyChange = { reviewOnly = it },
-            onNewVisit = {
-                val (start, end) = firstFreeSlot(date, zone, items.orEmpty().filterIsInstance<TimelineItem.Visit>())
-                onEdit(EditTarget.NewVisit(start, end))
-            },
+            onAddJob = onAddJob,
             showMap = showMap,
             onShowMapChange = onShowMapChange,
             modifier = gutter,

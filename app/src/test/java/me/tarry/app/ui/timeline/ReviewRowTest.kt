@@ -35,7 +35,7 @@ class ReviewRowTest {
         composeRule.setContent {
             TarryTheme {
                 ReviewRow(
-                    reviewOnly = false, showToggle = showToggle, onReviewOnlyChange = {}, onNewVisit = {},
+                    reviewOnly = false, showToggle = showToggle, onReviewOnlyChange = {}, onAddJob = {},
                     showMap = showMap, onShowMapChange = { showMap = it }, modifier = Modifier.width(width),
                 )
             }
@@ -43,18 +43,18 @@ class ReviewRowTest {
     }
 
     @Test
-    fun wideRowKeepsTheNewVisitLabel() {
+    fun wideRowKeepsTheAddJobLabel() {
         show(560.dp)
-        composeRule.onNodeWithText("New visit").assertExists()
+        composeRule.onNodeWithText("Add job").assertExists()
         composeRule.onNodeWithText("Needs review").assertExists()
     }
 
     @Test
-    fun narrowRowShowsNewVisitAsAnIconWithItsLabelAsDescription() {
+    fun narrowRowShowsAddJobAsAnIconWithItsLabelAsDescription() {
         // Narrower than the labelled row (Robolectric measures text narrower than a device, so 320 dp would still fit).
         show(200.dp)
-        composeRule.onNodeWithText("New visit").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("New visit")
+        composeRule.onNodeWithText("Add job").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Add job")
             .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
         composeRule.onNodeWithText("Needs review").assertExists()
     }

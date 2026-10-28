@@ -22,7 +22,13 @@ data class UndoEvent(
     @param:AnyRes val message: Int,
     val snapshot: Snapshot?,
     val count: Int? = null,
-)
+    /** An undo that is not a timeline [Snapshot] (a deleted job block coming back). Takes the place of [snapshot]. */
+    val onUndo: (suspend () -> Unit)? = null,
+) {
+    /** Whether the snackbar offers an Undo action. */
+    val undoable: Boolean get() = snapshot != null || onUndo != null
+}
+
 
 /**
  * App-wide channel between whoever makes a destructive edit (the drawer, bulk actions) and the snackbar host in the
@@ -45,6 +51,10 @@ class UndoEvents @Inject constructor(
 
     /** Restores the rows captured before the edit and re-runs segmentation over the rewound range. */
     suspend fun undo(event: UndoEvent) {
+        event.onUndo?.let {
+            it()
+            return
+        }
         editor.restore(event.snapshot ?: return)
         scheduler.enqueueNow()
     }

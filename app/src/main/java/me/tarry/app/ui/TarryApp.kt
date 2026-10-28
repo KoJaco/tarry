@@ -52,9 +52,16 @@ import me.tarry.app.ui.sessions.SessionsScreen
 import me.tarry.app.ui.settings.SettingsScreen
 import me.tarry.app.ui.shell.ShellViewModel
 import me.tarry.app.ui.shell.TarryBottomBar
+import me.tarry.app.R
+import androidx.compose.ui.res.stringResource
+import me.tarry.app.ui.drawer.JobPickerSheet
+import me.tarry.app.ui.drawer.NameDialog
 import me.tarry.app.ui.timeline.SelectionBar
 import me.tarry.app.ui.timeline.TimelineScreen
 import me.tarry.app.ui.timeline.TimelineViewModel
+
+/** The multi-select bar's "Assign job" flow: pick a job, or name a new one first. */
+private enum class AssignStep { NONE, PICK, NEW }
 
 /** Hilt-wired root. Owns the back stack and connects ViewModels to [TarryAppContent]. */
 @Composable
@@ -70,6 +77,8 @@ fun TarryApp(
     val trackingState by shellViewModel.trackingState.collectAsStateWithLifecycle()
     val trackingDetails by shellViewModel.trackingDetails.collectAsStateWithLifecycle()
     val selection by timelineViewModel.selection.collectAsStateWithLifecycle()
+    var assignStep by rememberSaveable { mutableStateOf(AssignStep.NONE) }
+    val jobOptions by timelineViewModel.jobOptions.collectAsStateWithLifecycle()
     // Selection belongs to the Timeline screen: leaving it (Settings, Permissions, Sessions) ends it.
     val onTimeline = backStack.lastOrNull() == TimelineRoute
     LaunchedEffect(onTimeline) { if (!onTimeline) timelineViewModel.clearSelection() }
@@ -99,6 +108,7 @@ fun TarryApp(
             {
                 SelectionBar(
                     count = selection.size,
+                    onAssignJob = { assignStep = AssignStep.PICK },
                     onIgnorePlace = timelineViewModel::bulkIgnorePlace,
                     onCancel = timelineViewModel::clearSelection,
                 )
@@ -132,6 +142,32 @@ fun TarryApp(
             )
         },
     )
+    if (selection.isEmpty() && assignStep != AssignStep.NONE) assignStep = AssignStep.NONE
+    if (assignStep == AssignStep.PICK) {
+        JobPickerSheet(
+            title = stringResource(R.string.selection_assign_job_title),
+            noneLabel = null,
+            jobs = jobOptions,
+            selectedId = null,
+            onSelect = { id ->
+                assignStep = AssignStep.NONE
+                id?.let(timelineViewModel::assignJob)
+            },
+            onNewJob = { assignStep = AssignStep.NEW },
+            onDismiss = { assignStep = AssignStep.NONE },
+        )
+    }
+    if (assignStep == AssignStep.NEW) {
+        NameDialog(
+            title = stringResource(R.string.edit_job_new_title),
+            label = stringResource(R.string.edit_job_name_label),
+            onConfirm = {
+                assignStep = AssignStep.NONE
+                timelineViewModel.createJobAndAssign(it)
+            },
+            onDismiss = { assignStep = AssignStep.NONE },
+        )
+    }
     if (customSheetVisible && trackingState != TrackingState.ATTENTION) {
         CustomDurationSheet(
             state = trackingState,

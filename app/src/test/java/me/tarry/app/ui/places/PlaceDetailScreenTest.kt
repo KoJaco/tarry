@@ -131,7 +131,7 @@ class PlaceDetailScreenTest {
 
         composeRule.onNodeWithText("Merge into Depot?").assertExists()
         composeRule.onNodeWithText("combined circle will be 120 m", substring = true).assertExists()
-        composeRule.onNodeWithText("may pick up this place's defaults", substring = true).assertExists()
+        composeRule.onNodeWithText("keeps its default job", substring = true).assertExists()
         composeRule.onNodeWithText("limited to", substring = true).assertDoesNotExist()
         composeRule.onNode(hasText("Merge") and hasClickAction()).performClick()
 

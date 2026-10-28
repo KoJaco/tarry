@@ -88,14 +88,14 @@ private fun SheetTitle(text: String) {
 }
 
 /**
- * The job list as a bottom sheet of selectable rows with colour swatches. [noneLabel] is the "no job" row ("No job" for
- * a visit, "Unattributed" for a trip). [onNewJob] adds the "New job…" action when set.
+ * The job list as a bottom sheet of selectable rows with colour swatches. [noneLabel] is the optional "no job" row (null
+ * hides it; the place default picker uses "None"). [onNewJob] adds the "New job…" action when set.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun JobPickerSheet(
     title: String,
-    noneLabel: String,
+    noneLabel: String?,
     jobs: List<JobOption>,
     selectedId: String?,
     onSelect: (String?) -> Unit,
@@ -116,9 +116,9 @@ internal fun JobPickerSheet(
         ) {
             SheetTitle(title)
             TarryCard(contentPadding = PaddingValues(0.dp), modifier = Modifier.selectableGroup()) {
-                PickerRow(label = noneLabel, selected = noneSelected, swatch = null, onClick = { onSelect(null) })
-                jobs.forEach { job ->
-                    HorizontalDivider(thickness = 1.dp, color = TarryTheme.colors.divider)
+                if (noneLabel != null) PickerRow(label = noneLabel, selected = noneSelected, swatch = null, onClick = { onSelect(null) })
+                jobs.forEachIndexed { index, job ->
+                    if (noneLabel != null || index > 0) HorizontalDivider(thickness = 1.dp, color = TarryTheme.colors.divider)
                     PickerRow(label = job.name, selected = job.id == selectedId, swatch = job, onClick = { onSelect(job.id) })
                 }
             }

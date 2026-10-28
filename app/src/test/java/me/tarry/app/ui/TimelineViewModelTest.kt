@@ -21,6 +21,8 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
 import me.tarry.app.map.GeoPoint
+import me.tarry.app.ui.drawer.EditTarget
+import me.tarry.app.ui.timeline.JobSuggestion
 import me.tarry.app.ui.timeline.TimelineItem
 import me.tarry.core.data.db.dao.PingPosition
 import kotlinx.coroutines.flow.flowOf
@@ -573,4 +575,102 @@ class TimelineViewModelTest {
         blocks.value = listOf(block("b", "j", at(day, 9), at(day, 10)))
         withTimeout(10_000) { vm.jobSuggestions.first { it.isEmpty() } }
     }
+
+    // region phase 6b T5: Add job, Assign job, confirmSuggestion
+
+    private fun addJobVm(today: LocalDate = day, nowMs: Long, blocks: List<JobBlock> = emptyList()) =
+        TimelineViewModel(timeline, places, jobs, zone, { today }, blocksOverlapping = { _, _ -> flowOf(blocks) }, nowMs = { nowMs }).managed()
+
+    @Test
+    fun addJobOnTodayStartsAtTheCurrentQuarterHourForAnHour() = runBlocking<Unit> {
+        val vm = addJobVm(nowMs = at(day, 10, 37))
+
+        assertThat(vm.addJobTarget()).isEqualTo(EditTarget.NewJob(at(day, 10, 30), at(day, 11, 30)))
+    }
+
+    @Test
+    fun addJobOnTodayIsClampedToTheEndOfTheDay() = runBlocking<Unit> {
+        val vm = addJobVm(nowMs = at(day, 23, 50))
+
+        assertThat(vm.addJobTarget()).isEqualTo(EditTarget.NewJob(at(day, 23, 45), at(day.plusDays(1), 0)))
+    }
+
+    @Test
+    fun addJobOnAnotherDayTakesTheFirstHourFrom8ThatNoBlockCovers() = runBlocking<Unit> {
+        val other = day.minusDays(1)
+        val blocks = listOf(
+            block("a", "j", at(other, 8), at(other, 9, 30)),
+            block("b", "j", at(other, 10), at(other, 11)),
+        )
+        val vm = addJobVm(nowMs = at(day, 12), blocks = blocks)
+        vm.selectDate(other)
+
+        // 08-09 and 09-10 are touched by the first block, 10-11 by the second; 11-12 is free.
+        assertThat(vm.addJobTarget()).isEqualTo(EditTarget.NewJob(at(other, 11), at(other, 12)))
+    }
+
+    @Test
+    fun addJobOnAnEmptyOtherDayStartsAt8AndFallsBackTo9WhenEverythingIsCovered() = runBlocking<Unit> {
+        val other = day.minusDays(1)
+        val empty = addJobVm(nowMs = at(day, 12))
+        empty.selectDate(other)
+        assertThat(empty.addJobTarget()).isEqualTo(EditTarget.NewJob(at(other, 8), at(other, 9)))
+
+        val full = addJobVm(nowMs = at(day, 12), blocks = listOf(block("all", "j", at(other, 0), at(day, 0))))
+        full.selectDate(other)
+        assertThat(full.addJobTarget()).isEqualTo(EditTarget.NewJob(at(other, 9), at(other, 10)))
+    }
+
+    @Test
+    fun assignJobSavesOneBlockFromTheEarliestStartToTheLatestEndAndLeavesSelection() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, defaultBillable = false, updatedAt = 0))
+        val saved = mutableListOf<JobBlock>()
+        val vm = loadedViewModel("a", "b", "c") {
+            TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { saved += it })
+        }
+        // a 08-09, b 10-11, c 12-13; select a and c only.
+        vm.startSelection("c")
+        vm.toggleSelected("a")
+
+        vm.assignJob("j")
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+
+        val block = saved.single()
+        assertThat(block.jobId).isEqualTo("j")
+        assertThat(block.start).isEqualTo(at(day, 8))
+        assertThat(block.end).isEqualTo(at(day, 13))
+        assertThat(block.billable).isFalse() // the job's default
+        assertThat(block.zoneId).isEqualTo(zone.id)
+        assertThat(vm.selection.value).isEmpty()
+    }
+
+    @Test
+    fun assignJobWithAnUnknownJobSavesNothing() = runBlocking<Unit> {
+        val saved = mutableListOf<JobBlock>()
+        val vm = loadedViewModel("a") { TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { saved += it }) }
+        vm.startSelection("a")
+
+        vm.assignJob("nope")
+        delay(100)
+
+        assertThat(saved).isEmpty()
+    }
+
+    @Test
+    fun confirmSuggestionSavesABlockForTheSuggestionRangeBillablePerTheJob() = runBlocking<Unit> {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 1, defaultBillable = true, updatedAt = 0))
+        val saved = mutableListOf<JobBlock>()
+        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, saveBlock = { saved += it }).managed()
+
+        vm.confirmSuggestion(JobSuggestion("v", "j", at(day, 9), at(day, 10)))
+        withTimeout(10_000) { while (saved.isEmpty()) delay(10) }
+
+        val block = saved.single()
+        assertThat(block.jobId).isEqualTo("j")
+        assertThat(block.start).isEqualTo(at(day, 9))
+        assertThat(block.end).isEqualTo(at(day, 10))
+        assertThat(block.billable).isTrue()
+    }
+
+    // endregion
 }

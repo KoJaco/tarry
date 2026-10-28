@@ -13,9 +13,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import me.tarry.app.map.DayMap
+import me.tarry.app.ui.drawer.EditTarget
+import me.tarry.app.ui.drawer.JobOption
+import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.map.GeoPoint
 import me.tarry.app.map.MapConfig
 import me.tarry.app.map.PinInput
@@ -158,8 +162,8 @@ private fun <T> Flow<T>.throttleLatest(periodMs: Long): Flow<T> = conflate().tra
 class TimelineViewModel internal constructor(
     timeline: TimelineRepository,
     places: PlaceRepository,
-    jobs: JobRepository,
-    zone: ZoneId,
+    private val jobs: JobRepository,
+    private val zone: ZoneId,
     private val todayProvider: () -> LocalDate,
     private val resize: suspend (id: String, start: Long, end: Long) -> EditResult = { _, _, _ -> EditResult.NotFound },
     private val offerUndo: (UndoEvent) -> Unit = {},
@@ -174,6 +178,13 @@ class TimelineViewModel internal constructor(
     private val trackingSessions: (from: Long, to: Long) -> Flow<List<TrackingSession>> = { _, _ -> flowOf(emptyList()) },
     /** Live job blocks overlapping `[from, to)`. */
     private val blocksOverlapping: (from: Long, to: Long) -> Flow<List<JobBlock>> = { _, _ -> flowOf(emptyList()) },
+    /** Inserts or updates a job block. */
+    private val saveBlock: suspend (JobBlock) -> Unit = {},
+    /** Creates a job with the given name; the result carries the new id. */
+    private val createJob: suspend (String) -> EditResult = { EditResult.NotFound },
+    /** The wall clock, for "Add job" on today. */
+    private val nowMs: () -> Long = System::currentTimeMillis,
+    private val blockConfig: JobBlockConfig = JobBlockConfig(),
 ) : ViewModel() {
     @Inject
     constructor(
@@ -196,6 +207,8 @@ class TimelineViewModel internal constructor(
             pingPositions = tracking::observePingPositions,
             trackingSessions = tracking::observeSessionsOverlapping,
             blocksOverlapping = jobBlocks::observeOverlapping,
+            saveBlock = { jobBlocks.save(it) },
+            createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -391,6 +404,63 @@ class TimelineViewModel internal constructor(
     }
 
     fun bulkIgnorePlace() = applyBulk(AnnotationOp.IgnorePlace())
+
+    // region job blocks (phase 6b)
+
+    /** Jobs the "Assign job" picker offers: every live, unarchived job, by name. */
+    val jobOptions: StateFlow<List<JobOption>> = jobs.observeAll()
+        .map { all -> all.filterNot { it.archived }.map { JobOption(it.id, it.name, it.colorArgb, it.defaultBillable) } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
+    /**
+     * The "Add job" target for the selected day, prefilled by [defaultJobRange]: on today the current quarter hour for an
+     * hour, on another day the first free whole hour from 08:00.
+     */
+    suspend fun addJobTarget(): EditTarget.NewJob {
+        val date = _selectedDate.value
+        val (from, to) = dayBounds(date, zone)
+        val range = defaultJobRange(date, date == _today.value, nowMs(), zone, blocksOverlapping(from, to).first(), blockConfig)
+        return EditTarget.NewJob(range.start, range.end)
+    }
+
+    /**
+     * Bar action "Assign job": one block from the earliest start to the latest end of the selected visits, billable per
+     * the job's default, then back to normal mode.
+     */
+    fun assignJob(jobId: String) {
+        val ids = takeSelection()?.toSet() ?: return
+        viewModelScope.launch {
+            val (from, to) = dayBounds(_selectedDate.value, zone)
+            val visits = rowsIn(from, to).first().filterIsInstance<TimelineItem.Visit>().filter { it.id in ids }
+            val range = assignRange(visits.map { Segment(it.id, it.start, it.end) }) ?: return@launch
+            saveNewBlock(jobId, range.start, range.end)
+        }
+    }
+
+    /** Creates a job from the picker's "New job" and assigns the selection to it. A refused name shows a notice. */
+    fun createJobAndAssign(name: String) {
+        viewModelScope.launch {
+            val created = createJob(name)
+            val id = (created as? EditResult.Ok)?.id
+            if (id != null) assignJob(id) else notifyRefused(created)
+        }
+    }
+
+    /** One tap on a suggested block: saves it for the suggestion's range and job, billable per the job's default. */
+    fun confirmSuggestion(suggestion: JobSuggestion) {
+        viewModelScope.launch { saveNewBlock(suggestion.jobId, suggestion.start, suggestion.end) }
+    }
+
+    private suspend fun saveNewBlock(jobId: String, start: Long, end: Long) {
+        val job = jobs.job(jobId)?.takeUnless { it.deleted } ?: return
+        saveBlock(
+            JobBlock(
+                jobId = job.id, start = start, end = end, zoneId = zone.id, billable = job.defaultBillable, updatedAt = 0L,
+            ),
+        )
+    }
+
+    // endregion
 
     /** One editor call over every selected id, one undo event, then back to normal mode. Annotations do not re-segment. */
     private fun applyBulk(op: AnnotationOp) {

@@ -27,7 +27,7 @@
     <string name="place_default_job_none">No default</string>
     <string name="place_default_job_picker_title">Default job</string>
     <string name="place_default_job_none_option">No default job</string>
-    <string name="place_defaults_hint">Defaults apply to visits you have not edited.</string>
+    <string name="place_defaults_hint">Suggests this job for new visits here.</string>
     <string name="place_ignore_row">Ignore this place</string>
     <string name="place_ignore_subtitle">Visits here never ask for review.</string>
     <string name="place_radius_row">Radius</string>
@@ -39,7 +39,7 @@
     <string name="place_merge_confirm_body">All visits here move to %1$s and this place is removed. The combined circle will be %2$d m.</string>
     <string name="place_merge_checking">Checking the combined circle…</string>
     <string name="place_merge_capped">The circle is limited to %1$d m, so it will not fully cover both places.</string>
-    <string name="place_merge_defaults_note">Visits there that you have not edited may pick up this place\'s defaults.</string>
+    <string name="place_merge_defaults_note">The merged place keeps its default job, or takes this one\'s if it has none.</string>
     <string name="place_merge_confirm">Merge</string>
 
     <string name="place_delete_action">Delete place</string>

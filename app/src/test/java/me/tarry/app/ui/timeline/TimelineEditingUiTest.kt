@@ -78,12 +78,15 @@ class TimelineEditingUiTest {
 
     private val resizes = mutableListOf<Resize>()
 
+    private var addJobClicks = 0
+
     private fun show(items: List<TimelineItem>) {
         composeRule.setContent {
             TarryTheme {
                 TimelineContent(
                     date, items, {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = { targets += it },
                     onResizeVisit = { id, s, e -> resizes += Resize(id, s, e) },
+                    onAddJob = { addJobClicks++ },
                 )
             }
         }
@@ -92,6 +95,7 @@ class TimelineEditingUiTest {
     /** Multi-select harness: the same wiring as the shell (content + bar), with the bulk call recorded. */
     private var selection by mutableStateOf(emptySet<String>())
     private val bulkCalls = mutableListOf<Pair<List<String>, AnnotationOp>>()
+    private val assigned = mutableListOf<List<String>>()
 
     private fun showSelectable(items: List<TimelineItem>) {
         composeRule.setContent {
@@ -110,6 +114,7 @@ class TimelineEditingUiTest {
                     if (selection.isNotEmpty()) {
                         SelectionBar(
                             count = selection.size,
+                            onAssignJob = { assigned += selection.toList() },
                             onIgnorePlace = { bulkCalls += selection.toList() to AnnotationOp.IgnorePlace(); selection = emptySet() },
                             onCancel = { selection = emptySet() },
                         )
@@ -376,11 +381,23 @@ class TimelineEditingUiTest {
         assertThat(count[SemanticsProperties.LiveRegion]).isEqualTo(androidx.compose.ui.semantics.LiveRegionMode.Polite)
     }
 
+
+    @Test
+    fun assignJobHandsTheSelectedVisitsToTheHost() {
+        showSelectable(listOf(review, trip, labelled))
+        longPress("review")
+        tag("timeline_row_labelled").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Assign job").assertHasClickAction().performClick()
+
+        assertThat(assigned).containsExactly(listOf("review", "labelled"))
+    }
     @Test
     fun selectionBarOffersEveryActionAndCancelExits() {
         showSelectable(listOf(review))
         longPress("review")
-        listOf("Ignore place", "Cancel").forEach {
+        listOf("Assign job", "Ignore place", "Cancel").forEach {
             composeRule.onNodeWithText(it).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         }
         composeRule.onNodeWithText("Cancel").performClick()
@@ -412,11 +429,13 @@ class TimelineEditingUiTest {
     }
 
     @Test
-    fun newVisitButtonHasALabelAndNoPlusIsLeftInTheHeader() {
+    fun addJobButtonHasALabelAndNoNewVisitOrPlusIsLeftInTheHeader() {
         show(listOf(review))
-        composeRule.onNodeWithText("New visit").assertIsDisplayed()
+        composeRule.onNodeWithText("Add job").assertIsDisplayed()
+        composeRule.onNodeWithText("New visit").assertDoesNotExist()
         composeRule.onNodeWithContentDescription("Add visit").assertDoesNotExist()
         tag("timeline_add_visit").assertDoesNotExist()
+        tag("timeline_new_visit").assertDoesNotExist()
     }
 
     @Test
@@ -480,17 +499,11 @@ class TimelineEditingUiTest {
     }
 
     @Test
-    fun newVisitButtonOpensANewVisitOnTheFirstFreeHourAfterTheLastVisit() {
+    fun addJobButtonAsksTheHostToOpenTheNewJobDrawer() {
         show(listOf(review, labelled))
-        composeRule.onNodeWithText("New visit").assertIsDisplayed().performClick()
-        assertThat(targets).containsExactly(EditTarget.NewVisit(at(12), at(13)))
-    }
-
-    @Test
-    fun newVisitButtonDefaultsTo9To10OnAnEmptyDay() {
-        show(emptyList())
-        composeRule.onNodeWithText("New visit").performClick()
-        assertThat(targets).containsExactly(EditTarget.NewVisit(at(9), at(10)))
+        tag("timeline_add_job").assertIsDisplayed().performClick()
+        assertThat(addJobClicks).isEqualTo(1)
+        assertThat(targets).isEmpty() // the host builds the prefilled target (TimelineViewModel.addJobTarget)
     }
 
     @Test

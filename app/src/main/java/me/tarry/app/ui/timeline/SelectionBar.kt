@@ -46,6 +46,7 @@ private val BarMaxHeight = 280.dp
 @Composable
 fun SelectionBar(
     count: Int,
+    onAssignJob: () -> Unit,
     onIgnorePlace: () -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -76,6 +77,7 @@ fun SelectionBar(
             horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xs),
         ) {
+            SecondaryButton(stringResource(R.string.selection_assign_job), onClick = onAssignJob)
             SecondaryButton(stringResource(R.string.selection_ignore_place), onClick = onIgnorePlace)
             TertiaryButton(stringResource(R.string.selection_cancel), onClick = onCancel)
         }

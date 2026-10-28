@@ -4,6 +4,9 @@ import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.VisitOrigin
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 /*
  * Pure job block logic for the day timeline (phase 6b): lanes, coverage, suggestions and range helpers.
@@ -15,6 +18,14 @@ import me.tarry.core.data.model.VisitOrigin
 data class JobBlockConfig(
     /** A block of the same job this close (or closer) to a segment is extended instead of a new block being created. */
     val joinWindowMs: Long = 15 * 60_000L,
+    /** Length of the range "Add job" prefills. */
+    val defaultLengthMs: Long = 60 * 60_000L,
+    /** On a day other than today, "Add job" looks for the first free whole hour from this local hour. */
+    val searchStartHour: Int = 8,
+    /** ...and falls back to this local hour when every hour from [searchStartHour] is covered. */
+    val fallbackStartHour: Int = 9,
+    /** Today's "Add job" starts at the current time rounded down to this many minutes. */
+    val roundingMinutes: Int = 15,
 )
 
 /** A visit or trip as the logic sees it. */
@@ -107,4 +118,34 @@ internal fun addJobToSegment(
         .minWithOrNull(compareBy<JobBlock>({ gap(it) }, { it.start }, { it.id }))
         ?: return AddJobResult.Create(segment.start, segment.end)
     return AddJobResult.Extend(near.id, minOf(near.start, segment.start), maxOf(near.end, segment.end))
+}
+
+/**
+ * The range "Add job" prefills on [date], as `[start, end)` epoch ms. Today: [nowMs] rounded down to
+ * [JobBlockConfig.roundingMinutes], [JobBlockConfig.defaultLengthMs] long. Any other day: the first whole local hour from
+ * [JobBlockConfig.searchStartHour] that no block overlaps, else [JobBlockConfig.fallbackStartHour]. Never past the end of
+ * the day.
+ */
+internal fun defaultJobRange(
+    date: LocalDate,
+    isToday: Boolean,
+    nowMs: Long,
+    zone: ZoneId,
+    blocks: List<JobBlock>,
+    config: JobBlockConfig = JobBlockConfig(),
+): Span {
+    val (dayStart, dayEnd) = dayBounds(date, zone)
+    fun spanFrom(start: Long) = Span(start, minOf(start + config.defaultLengthMs, dayEnd))
+    if (isToday) {
+        val now = Instant.ofEpochMilli(nowMs).atZone(zone)
+        val rounded = now.withMinute(now.minute / config.roundingMinutes * config.roundingMinutes).withSecond(0).withNano(0)
+        return spanFrom(maxOf(rounded.toInstant().toEpochMilli(), dayStart))
+    }
+    fun hourStart(hour: Int) = date.atTime(hour, 0).atZone(zone).toInstant().toEpochMilli()
+    for (hour in config.searchStartHour until 24) {
+        val candidate = spanFrom(hourStart(hour))
+        if (candidate.start >= dayEnd) break
+        if (blocks.none { !it.deleted && overlaps(candidate.start, candidate.end, it.start, it.end) }) return candidate
+    }
+    return spanFrom(hourStart(config.fallbackStartHour))
 }

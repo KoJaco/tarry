@@ -49,7 +49,7 @@
     <string name="timeline_edit_visit">Edit visit</string>
     <string name="timeline_edit_trip">Edit trip</string>
     <string name="timeline_show_details">Show details</string>
-    <string name="timeline_new_visit">New visit</string>
+    <string name="timeline_add_job">Add job</string>
     <string name="timeline_undo_visit_times">Visit times changed</string>
     <string name="timeline_filter_needs_review">Needs review</string>
 
@@ -78,6 +78,8 @@
     <string name="timeline_toggle_selection">Toggle selection</string>
     <string name="selection_count">%1$d selected</string>
     <string name="selection_ignore_place">Ignore place</string>
+    <string name="selection_assign_job">Assign job</string>
+    <string name="selection_assign_job_title">Assign job to selected visits</string>
     <string name="selection_cancel">Cancel</string>
     <plurals name="selection_undo_updated">
         <item quantity="one">%1$d visit updated</item>

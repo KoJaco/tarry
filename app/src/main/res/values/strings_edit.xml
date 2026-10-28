@@ -11,6 +11,34 @@
     <string name="edit_job_new">New job…</string>
     <string name="edit_job_new_title">New job</string>
     <string name="edit_job_name_label">Job name</string>
+    <string name="edit_section_job">Job</string>
+    <string name="edit_job_row_title">Job</string>
+    <string name="edit_job_choose">Choose a job</string>
+    <string name="edit_job_picker_title">Choose a job</string>
+    <string name="edit_job_required">Choose a job to save this block.</string>
+    <string name="edit_job_drawer_title">Job block</string>
+    <string name="edit_job_drawer_title_new">New job block</string>
+    <string name="edit_job_end_before_start">The end needs to be after the start.</string>
+    <string name="edit_job_billable">Billable</string>
+    <string name="edit_job_save">Save</string>
+    <string name="edit_job_delete">Delete job block</string>
+    <string name="edit_undo_job_deleted">Job block deleted</string>
+    <string name="edit_error_job_required">Choose a job first.</string>
+    <string name="edit_job_covers">Covers %1$s · %2$s</string>
+    <plurals name="edit_job_covers_visits">
+        <item quantity="one">%d visit</item>
+        <item quantity="other">%d visits</item>
+    </plurals>
+    <plurals name="edit_job_covers_trips">
+        <item quantity="one">%d trip</item>
+        <item quantity="other">%d trips</item>
+    </plurals>
+    <string name="edit_segment_no_jobs">Not in a job yet.</string>
+    <string name="edit_segment_add_to_job">Add to job</string>
+    <string name="edit_segment_block_chip">%1$s, %2$s</string>
+    <string name="edit_place_default_job_row">Default job for %1$s</string>
+    <string name="edit_place_default_job_none">None</string>
+    <string name="edit_place_default_job_picker">Default job</string>
 
 
     <string name="edit_rename_place">Rename place</string>
