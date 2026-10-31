@@ -5,10 +5,10 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 ## Decisions
 | Topic | Decision |
 |---|---|
-| MVP "done" | Signed APK sideloaded onto the phone. Play Store work moves post-MVP |
+| MVP "done" | Production release on Google Play with a 7-day trial, then a one-time lifetime purchase (about 29 AUD, to be confirmed) through Play Billing. Changed 2026-10-31; it was "signed APK sideloaded". The core app never needs a subscription; a later Pro subscription covers new features only |
 | Modules | `:segmentation` (pure Kotlin/JVM), `:core-data` (Room + DataStore), `:app` (tracking, UI, export as packages) |
 | Map tiles | OpenFreeMap via MapLibre Native |
-| Licence | GPL-3.0 |
+| Licence | GPL-3.0 today; re-decided before launch (ADR 0005, phase 8) |
 | Dogfood device | Pixel. OEM guidance stays generic |
 | Executor | Claude subagents (implementer → test-writer → reviewer); owner tests on device |
 | Priority | Tracking ASAP, with early segmentation in the first phone build |
@@ -32,6 +32,14 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 
 ## Phases
 Each phase: own branch, short spec in `docs/specs/phase-N.md`, implementer → test-writer → reviewer, PR with green CI, device check.
+
+**Status (2026-10-31):** the phase 6b follow-up (#25) is merged. The order to the MVP:
+1. **6.5 trust pass:** `docs/handoffs/phase-6.5-trust-pass.md`
+2. **7 summary and export:** `docs/handoffs/phase-7-summary-export.md`
+3. **7.5 UI and logic pass:** `docs/handoffs/phase-7.5-ui-logic-pass.md`
+4. **8 launch:** `docs/handoffs/phase-8-launch.md`
+
+Brand and landing-page copy: `docs/brand/brand-and-copy.md`.
 
 **Status (2026-10-29):** phase 6b (job blocks, PR #24) is merged; the owner's phone DB migrated to v2 cleanly. Next: **phase 7, Summary and export**. Handoff: `docs/handoffs/phase-7-summary-export.md`.
 
@@ -57,10 +65,18 @@ Each phase: own branch, short spec in `docs/specs/phase-N.md`, implementer → t
 4. **Jobs, tags and places management (M):** jobs CRUD, tag groups/tags CRUD with reorder and archive, places list with defaults, radius slider, ignore, merge, delete.
 5. **Map (L):** MapLibre + OpenFreeMap, route and numbered pins, scrubber, date-time jump, mini maps, radius preview, map-pin manual visit, offline regions (check OpenFreeMap terms).
 6. **Schedule grid + manual controls UI (M):** 7×48 paint grid, copy day, presets, template vs override, toggle long-press sheet.
-7. **Summary and export (M):** grouping, rounding, minimum billable, attribution, clipping, unlabelled row. CSV, PDF, JSON backup/restore. Summary-maths unit tests.
-8. **Onboarding and hardening (M):** full onboarding, diagnostics, self-check, review reminder, retention, delete-all, About, release signing, GitHub Releases, lifecycle test pass.
+   - **6b Job blocks (M):** jobs as time ranges in a second timeline column; tags removed; Room v2.
+   - **6.5 Trust pass (S–M):** the 24 Oct no-Gap capture bug, the lifecycle test pass, a battery measurement.
+7. **Summary and export (M):** backup and restore first, editable billing settings, a summary of job blocks (grouping, rounding, minimum billable, clipping, unlabelled row), CSV, PDF. Summary-maths unit tests.
+   - **7.5 UI and logic pass (M, owner-driven):** launch-ready UI on every screen, `tokens.md` updated, and a new `docs/design/ui-rules.md` that phase 8 builds on; logic tidy-up.
+8. **Launch (L):**
+   - **In the app:** onboarding with the privacy promise and Play's prominent disclosure; diagnostics and self-check; review reminder; retention; delete-all; About.
+   - **Pricing:** Play Billing with a trial and a lifetime purchase (ADR 0004, a network exception).
+   - **Licence:** decided in ADR 0005.
+   - **Release:** release signing from CI secrets, Play Console, closed test, production release.
+   - The lifecycle test pass moved to 6.5.
 
-**Post-MVP:** Play Store submission, F-Droid flavour, Pro tier (derived-data sync, MCP, Walkflow).
+**Post-MVP:** F-Droid flavour (depends on ADR 0005), the Pro subscription tier (derived-data sync, MCP, Walkflow), offline map regions, map matching.
 
 ## Verification
 - Every PR: `gradlew.bat assembleDebug testDebugUnitTest lintDebug`, same in CI.
