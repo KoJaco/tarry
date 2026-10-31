@@ -144,6 +144,22 @@ class JobBlocksTest {
     }
 
     @Test
+    fun aDeclinedPairIsSkippedButOtherVisitsAtThePlaceAreStillSuggested() {
+        val visits = listOf(visit("v", 10, 40), visit("w", 50, 80))
+
+        val s = suggestions(visits, mapOf("p" to place()), emptyList(), declined = setOf("v" to "j"))
+
+        assertThat(s.map { it.visitId }).containsExactly("w")
+    }
+
+    @Test
+    fun decliningAnotherJobAtTheSameVisitDoesNotHideTheSuggestion() {
+        val s = suggestions(listOf(visit("v", 10, 40)), mapOf("p" to place()), emptyList(), declined = setOf("v" to "other"))
+
+        assertThat(s.map { it.jobId }).containsExactly("j")
+    }
+
+    @Test
     fun aBlockOfThatJobOverlappingTheVisitSuppressesTheSuggestion() {
         val v = visit("v", 10, 40)
 

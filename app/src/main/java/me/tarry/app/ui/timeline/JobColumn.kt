@@ -3,6 +3,7 @@ package me.tarry.app.ui.timeline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
@@ -56,6 +57,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.onClick as semanticsOnClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.style.TextOverflow
@@ -212,7 +214,7 @@ internal fun planJobColumn(
 }
 
 /**
- * The job column of the day canvas: job blocks (side by side in lanes), suggestions (dashed, tap to confirm) and the
+ * The job column of the day canvas: job blocks (side by side in lanes), suggestions (dashed, double tap to review: accept or decline) and the
  * range preview of a drag. Aligned to the end of the canvas, [width] wide, full height; positions come from [layout].
  *
  * Drag to create: long-press empty space, then drag vertically; the range is snapped to
@@ -238,6 +240,7 @@ internal fun BoxScope.JobColumn(
     enabled: Boolean,
     onOpenJob: (String) -> Unit,
     onConfirmSuggestion: (JobSuggestion) -> Unit,
+    onDeclineSuggestion: (JobSuggestion) -> Unit,
     onCreateJob: (start: Long, end: Long) -> Unit,
     onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
     config: JobBlockConfig = JobBlockConfig(),
@@ -255,6 +258,8 @@ internal fun BoxScope.JobColumn(
         planJobColumn(layout.jobs, layout.suggestions, maxJobLanes(width), dayStart, dayEnd)
     }
     var sheetKeys by remember { mutableStateOf<Set<String>?>(null) }
+    // The suggestion whose accept / decline sheet is open, by (visit id, job id).
+    var reviewing by remember { mutableStateOf<Pair<String, String>?>(null) }
     // A released drag keeps showing until the saved block arrives (or a moment passes, if nothing was saved).
     LaunchedEffect(plan.jobs, layout.jobs) {
         blockDrag = blockDrag?.takeIf { d ->
@@ -408,11 +413,12 @@ internal fun BoxScope.JobColumn(
                 top = placed.topDp, height = placed.heightDp, lane = placed.lane, laneCount = placed.laneCount, columnWidth = width,
                 traversal = traversal(s.suggestion.start),
                 description = stringResource(R.string.timeline_job_suggestion_description, s.jobName, spoken),
-                clickLabel = stringResource(R.string.timeline_confirm_suggestion),
+                clickLabel = stringResource(R.string.timeline_review_suggestion),
                 enabled = enabled,
                 container = Color.Transparent, border = colors.border, dashed = true,
                 tag = "timeline_suggestion_${s.suggestion.visitId}",
-                onClick = { onConfirmSuggestion(s.suggestion) },
+                onClick = {},
+                onDoubleClick = { reviewing = s.suggestion.visitId to s.suggestion.jobId },
             ) {
                 Text(
                     text = stringResource(R.string.timeline_job_suggestion, s.jobName),
@@ -458,8 +464,21 @@ internal fun BoxScope.JobColumn(
                     blocks = blocks.map { it.item }, suggestions = suggestions.map { it.item }, dayStart = dayStart, dayEnd = dayEnd,
                     zone = zone,
                     onOpenJob = { id -> sheetKeys = null; onOpenJob(id) },
-                    onConfirmSuggestion = { s -> sheetKeys = null; onConfirmSuggestion(s) },
+                    onReviewSuggestion = { s -> sheetKeys = null; reviewing = s.visitId to s.jobId },
                     onDismiss = { sheetKeys = null },
+                )
+            }
+        }
+        reviewing?.let { (visitId, jobId) ->
+            val item = layout.suggestions.firstOrNull { it.item.suggestion.visitId == visitId && it.item.suggestion.jobId == jobId }?.item
+            if (item == null) {
+                reviewing = null
+            } else {
+                SuggestionSheet(
+                    item = item, dayStart = dayStart, dayEnd = dayEnd, zone = zone,
+                    onAccept = { reviewing = null; onConfirmSuggestion(item.suggestion) },
+                    onDecline = { reviewing = null; onDeclineSuggestion(item.suggestion) },
+                    onDismiss = { reviewing = null },
                 )
             }
         }
@@ -547,6 +566,8 @@ private fun JobTile(
     onClick: () -> Unit,
     /** Move / resize gesture of a block; empty for everything else. */
     gesture: Modifier = Modifier,
+    /** Set for a tile that opens on a double tap only (a single tap does nothing); TalkBack activation still opens it at once. */
+    onDoubleClick: (() -> Unit)? = null,
     /** Non-drag alternatives to [gesture] (WCAG 2.5.7), as TalkBack custom actions. */
     actions: List<CustomAccessibilityAction> = emptyList(),
     alpha: Float = 1f,
@@ -566,7 +587,15 @@ private fun JobTile(
             .width(maxOf(laneWidth, JobColumnDefaults.Touch))
             .height(touchHeight)
             .alpha(alpha)
-            .then(if (enabled) gesture.then(Modifier.clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onClick)) else Modifier)
+            .then(
+                if (!enabled) Modifier
+                else if (onDoubleClick != null) {
+                    // The semantics sit outside the clickable so its (do-nothing) click action does not replace this one.
+                    Modifier
+                        .semantics { semanticsOnClick(label = clickLabel) { onDoubleClick(); true } }
+                        .combinedClickable(onClickLabel = clickLabel, role = Role.Button, onClick = {}, onDoubleClick = onDoubleClick)
+                } else gesture.then(Modifier.clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onClick)),
+            )
             .onFocusChanged { focused = it.isFocused }
             .semantics(mergeDescendants = true) {
                 contentDescription = description
@@ -606,7 +635,7 @@ private fun JobTile(
 
 private const val SuggestionKeyPrefix = "suggestion:"
 
-/** The blocks and suggestions folded into a "+N" tile, as a bottom sheet; each row opens the block or confirms the suggestion. */
+/** The blocks and suggestions folded into a "+N" tile, as a bottom sheet; each row opens the block or the suggestion's review sheet. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun JobOverflowSheet(
@@ -616,7 +645,7 @@ private fun JobOverflowSheet(
     dayEnd: Long,
     zone: ZoneId,
     onOpenJob: (String) -> Unit,
-    onConfirmSuggestion: (JobSuggestion) -> Unit,
+    onReviewSuggestion: (JobSuggestion) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val formats = rememberTimeFormats()
@@ -655,12 +684,67 @@ private fun JobOverflowSheet(
                         OverflowRow(
                             s.jobColorArgb, s.suggestion.jobId, stringResource(R.string.timeline_job_suggestion, s.jobName),
                             range(s.suggestion.start, s.suggestion.end), dashed = true,
-                            clickLabel = stringResource(R.string.timeline_confirm_suggestion),
+                            clickLabel = stringResource(R.string.timeline_review_suggestion),
                             tag = "job_overflow_row_$SuggestionKeyPrefix${s.suggestion.visitId}",
-                        ) { onConfirmSuggestion(s.suggestion) }
+                        ) { onReviewSuggestion(s.suggestion) }
                     }
                 }
             rows.sortedBy { it.first }.forEach { (_, row) -> row() }
+        }
+    }
+}
+
+/** The accept / decline sheet of one suggestion, titled with the job and the range. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SuggestionSheet(
+    item: JobSuggestionItem,
+    dayStart: Long,
+    dayEnd: Long,
+    zone: ZoneId,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val formats = rememberTimeFormats()
+    val range = stringResource(
+        R.string.timeline_time_range,
+        formats.time(maxOf(item.suggestion.start, dayStart), zone), formats.time(minOf(item.suggestion.end, dayEnd), zone),
+    )
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
+        containerColor = TarryTheme.colors.paper,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = TarryTheme.space.gutter)
+                .padding(bottom = TarryTheme.space.l)
+                .testTag("job_suggestion_sheet"),
+        ) {
+            Text(
+                text = stringResource(R.string.timeline_suggestion_sheet_title, item.jobName, range),
+                style = MaterialTheme.typography.titleLarge,
+                color = TarryTheme.colors.ink,
+                modifier = Modifier.semantics { heading() }.padding(bottom = TarryTheme.space.s),
+            )
+            listOf(
+                Triple(R.string.timeline_suggestion_accept, "job_suggestion_accept", onAccept),
+                Triple(R.string.timeline_suggestion_decline, "job_suggestion_decline", onDecline),
+            ).forEach { (label, tag, action) ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = JobColumnDefaults.Touch)
+                        .clickable(role = Role.Button, onClick = action)
+                        .testTag(tag),
+                    contentAlignment = Alignment.CenterStart,
+                ) {
+                    Text(text = stringResource(label), style = MaterialTheme.typography.bodyLarge, color = TarryTheme.colors.ink)
+                }
+            }
         }
     }
 }

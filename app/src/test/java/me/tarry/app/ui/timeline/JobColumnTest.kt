@@ -11,11 +11,14 @@ import androidx.compose.ui.test.TouchInjectionScope
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.doubleClick
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
@@ -51,6 +54,7 @@ class JobColumnTest {
 
     private val opened = mutableListOf<String>()
     private val confirmed = mutableListOf<JobSuggestion>()
+    private val declined = mutableListOf<JobSuggestion>()
     private val created = mutableListOf<Pair<Long, Long>>()
     private val visitOpened = mutableListOf<String>()
     private val changed = mutableListOf<Triple<String, Long, Long>>()
@@ -71,6 +75,7 @@ class JobColumnTest {
                         jobBlocks = blocks, jobSuggestions = suggestions,
                         onOpenJob = { opened += it },
                         onConfirmSuggestion = { confirmed += it },
+                        onDeclineSuggestion = { declined += it },
                         onCreateJob = { s, e -> created += s to e },
                         onJobRangeChange = { id, s, e -> changed += Triple(id, s, e) },
                     )
@@ -138,15 +143,64 @@ class JobColumnTest {
     }
 
     @Test
-    fun suggestionIsDashedAndConfirmsOnTap() {
+    fun suggestionIsDashed() {
         val s = JobSuggestion("v", "job-x", at(9), at(11))
         show(emptyList(), listOf(JobSuggestionItem(s, "Smith reno", sky.key)))
         val node = composeRule.onNodeWithTag("timeline_suggestion_v")
         assertThat(node.fetchSemanticsNode().config[BlockDashedKey]).isTrue()
         assertThat(description("timeline_suggestion_v")).startsWith("Suggested job Smith reno, from ")
         assertThat(node.fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text }).contains("Suggested: Smith reno")
-        node.performClick()
-        assertThat(confirmed).containsExactly(s)
+    }
+
+    private val suggested = JobSuggestion("v", "job-x", at(9), at(11))
+
+    private fun showSuggestion() = show(emptyList(), listOf(JobSuggestionItem(suggested, "Smith reno", sky.key)))
+
+    @Test
+    fun singleTapAndLongPressOnASuggestionDoNothing() {
+        showSuggestion()
+        composeRule.onNodeWithTag("timeline_suggestion_v").performClick()
+        composeRule.onNodeWithTag("timeline_suggestion_v").performTouchInput { longClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("job_suggestion_sheet").assertDoesNotExist()
+        assertThat(confirmed).isEmpty()
+        assertThat(declined).isEmpty()
+    }
+
+    @Test
+    fun doubleTapOpensTheReviewSheetAndAcceptConfirms() {
+        showSuggestion()
+        composeRule.onNodeWithTag("timeline_suggestion_v").performTouchInput { doubleClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("job_suggestion_sheet").assertIsDisplayed()
+        composeRule.onNodeWithText("Suggested: Smith reno · ", substring = true).assertIsDisplayed()
+        assertThat(confirmed).isEmpty()
+        composeRule.onNodeWithTag("job_suggestion_accept").performClick()
+        composeRule.waitForIdle()
+        assertThat(confirmed).containsExactly(suggested)
+        assertThat(declined).isEmpty()
+        composeRule.onNodeWithTag("job_suggestion_sheet").assertDoesNotExist()
+    }
+
+    @Test
+    fun declineFromTheReviewSheetDeclines() {
+        showSuggestion()
+        composeRule.onNodeWithTag("timeline_suggestion_v").performTouchInput { doubleClick() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("job_suggestion_decline").performClick()
+        composeRule.waitForIdle()
+        assertThat(declined).containsExactly(suggested)
+        assertThat(confirmed).isEmpty()
+    }
+
+    @Test
+    fun talkBackActivationOpensTheReviewSheetAtOnce() {
+        showSuggestion()
+        val node = composeRule.onNodeWithTag("timeline_suggestion_v")
+        assertThat(node.fetchSemanticsNode().config[SemanticsActions.OnClick].label).isEqualTo("Review suggested job")
+        node.performSemanticsAction(SemanticsActions.OnClick)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("job_suggestion_sheet").assertIsDisplayed()
     }
 
     @Test
@@ -260,7 +314,7 @@ class JobColumnTest {
     }
 
     @Test
-    fun aHiddenSuggestionIsConfirmedFromTheSheet() {
+    fun aHiddenSuggestionOpensTheReviewSheetFromTheOverflowSheet() {
         val s = JobSuggestion("v", "job-x", at(9), at(12))
         show(
             listOf(block("a", at(9), at(12)), block("b", at(10), at(12))),
@@ -272,6 +326,10 @@ class JobColumnTest {
         composeRule.onNodeWithTag("job_overflow_row_suggestion:v").performClick()
         composeRule.waitForIdle()
 
+        composeRule.onNodeWithTag("job_suggestion_sheet").assertIsDisplayed()
+        assertThat(confirmed).isEmpty()
+        composeRule.onNodeWithTag("job_suggestion_accept").performClick()
+        composeRule.waitForIdle()
         assertThat(confirmed).containsExactly(s)
     }
 

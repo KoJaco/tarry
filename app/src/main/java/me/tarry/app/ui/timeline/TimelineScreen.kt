@@ -56,6 +56,7 @@ fun TimelineScreen(
         jobSuggestions = jobSuggestions,
         onOpenJob = { editTarget = EditTarget.Job(it) },
         onConfirmSuggestion = viewModel::confirmSuggestion,
+        onDeclineSuggestion = viewModel::declineSuggestion,
         onCreateJob = { start, end -> editTarget = EditTarget.NewJob(start, end) },
         onJobRangeChange = viewModel::moveOrResizeBlock,
         modifier = modifier,

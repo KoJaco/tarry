@@ -133,6 +133,13 @@ class JobBlockRepository @Inject constructor(private val blocks: JobBlockDao) {
     suspend fun replace(save: JobBlock, deleteIds: List<String>, now: Long = System.currentTimeMillis()) =
         blocks.replace(save, deleteIds, now)
 
+    /**
+     * Undo of [replace], atomically: [before] is the saved block as it was (null when it was newly created, so it is
+     * soft-deleted), [restoreIds] the blocks the merge swallowed.
+     */
+    suspend fun revert(before: JobBlock?, blockId: String, restoreIds: List<String>, now: Long = System.currentTimeMillis()) =
+        blocks.revert(before, blockId, restoreIds, now)
+
     /** Soft delete. No-op when the block does not exist. */
     suspend fun delete(id: String, now: Long = System.currentTimeMillis()) {
         blocks.getById(id)?.let { blocks.upsert(it.copy(deleted = true, updatedAt = now)) }

@@ -587,6 +587,49 @@ class EditDrawerViewModelTest {
     }
 
     @Test
+    fun undoOfAddToJobThatCreatedABlockDeletesIt() = runBlocking<Unit> {
+        seedJob()
+        seed(visit("v", 60, 90))
+        viewModel.load(EditTarget.Visit("v"))
+        awaitState()
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.addToJob("j")
+
+        val event = withTimeout(10_000) { offered.await() }
+        assertThat(event.message).isEqualTo(R.string.edit_undo_added_to_job)
+        assertThat(event.args).containsExactly("Acme")
+        assertThat(liveBlocks()).hasSize(1)
+        undoEvents.undo(event)
+        assertThat(liveBlocks()).isEmpty()
+    }
+
+    @Test
+    fun undoOfAddToJobThatExtendedAndMergedRestoresTheOriginalsExactly() = runBlocking<Unit> {
+        seedJob()
+        seed(visit("v", 90, 210))
+        val a = block("A", "j", 60, 120, billable = false, notes = "a")
+        jobBlocks.save(a)
+        jobBlocks.save(block("B", "j", 180, 240, notes = "b"))
+        viewModel.load(EditTarget.Visit("v"))
+        awaitState()
+        val offered = CoroutineScope(Dispatchers.Unconfined).async { undoEvents.events.first() }
+
+        viewModel.addToJob("j")
+
+        val event = withTimeout(10_000) { offered.await() }
+        assertThat(liveBlocks().map { it.id }).containsExactly("A")
+        undoEvents.undo(event)
+        val live = liveBlocks().sortedBy { it.start }
+        assertThat(live.map { it.id }).containsExactly("A", "B").inOrder()
+        assertThat(live[0].start).isEqualTo(a.start)
+        assertThat(live[0].end).isEqualTo(a.end)
+        assertThat(live[0].notes).isEqualTo("a")
+        assertThat(live[0].billable).isFalse()
+        assertThat(live[1].notes).isEqualTo("b")
+    }
+
+    @Test
     fun addToJobCreatesABlockEqualToTheSegmentWhenNoneIsNear() = runBlocking<Unit> {
         seedJob(billable = false)
         seedJob("k", "Beta")
