@@ -1,8 +1,31 @@
 package me.tarry.app.ui.settings
 
+import android.content.res.Resources
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import me.tarry.app.export.backup.BackupError
+import me.tarry.app.ui.components.DestructiveButton
+import me.tarry.app.ui.components.SecondaryButton
+import me.tarry.app.ui.components.TertiaryButton
+import me.tarry.core.data.db.BackupCounts
+import java.text.NumberFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -51,14 +74,34 @@ fun SettingsScreen(
     onOpenSchedule: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
+    snackbarHostState: SnackbarHostState? = null,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val schedule by viewModel.schedule.collectAsStateWithLifecycle()
+    val data by viewModel.data.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    // Both go through the system file picker (SAF): nothing is read or written unless the user picks a document.
+    val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE)) { uri ->
+        if (uri != null) viewModel.backUp(uri)
+    }
+    val openBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.openBackup(uri)
+    }
+    LaunchedEffect(viewModel, snackbarHostState) {
+        viewModel.events.collect { event -> snackbarHostState?.showSnackbar(dataEventMessage(context.resources, event)) }
+    }
+    val startBackup = { createBackup.launch("tarry-backup-${LocalDate.now()}.json.gz") }
     SettingsContent(
         settings = settings,
         schedule = schedule,
+        data = data,
+        onBackUp = startBackup,
+        onRestore = { openBackup.launch(arrayOf("*/*")) },
+        onConfirmRestore = viewModel::confirmRestore,
+        onBackUpFirst = startBackup,
+        onCancelRestore = viewModel::cancelRestore,
         onOpenSchedule = onOpenSchedule,
         onOpenPermissions = onOpenPermissions,
         onOpenSessions = onOpenSessions,
@@ -84,6 +127,12 @@ fun SettingsContent(
     onOpenPlaces: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
+    data: DataUiState = DataUiState(),
+    onBackUp: () -> Unit = {},
+    onRestore: () -> Unit = {},
+    onConfirmRestore: () -> Unit = {},
+    onBackUpFirst: () -> Unit = {},
+    onCancelRestore: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
@@ -185,7 +234,126 @@ fun SettingsContent(
                 billing.forEach { (label, value) -> row(label, value = value) }
             }
         }
+        DataSection(settings?.lastBackupMs, data, onBackUp, onRestore)
     }
+    // Hidden (not dropped) while "Back up current data first" runs, so it comes back when that finishes.
+    if (data.prompt != null && data.busy == null) {
+        RestoreDialog(data.prompt, onReplace = onConfirmRestore, onBackUpFirst = onBackUpFirst, onCancel = onCancelRestore)
+    }
+}
+
+/** Settings → Data: back up, restore, and a progress row while either runs. */
+@Composable
+private fun ColumnScope.DataSection(lastBackupMs: Long?, data: DataUiState, onBackUp: () -> Unit, onRestore: () -> Unit) {
+    val space = TarryTheme.space
+    val busy = data.busy != null
+    SectionHeader(stringResource(R.string.settings_section_data), Modifier.padding(top = space.m))
+    val backUpTitle = stringResource(R.string.settings_backup_now)
+    val restoreTitle = stringResource(R.string.settings_restore)
+    val lastBackup = lastBackupMs?.let { stringResource(R.string.settings_backup_last, formatBackupDate(it)) }
+    val working = data.busy?.let { stringResource(it.labelRes()) }
+    SettingsGroup {
+        // A row without a click handler is read-only: that is how the rows are disabled while an operation runs.
+        row(backUpTitle, onClick = if (busy) null else onBackUp, subtitle = lastBackup)
+        row(restoreTitle, onClick = if (busy) null else onRestore)
+        if (working != null) item { WorkingRow(working) }
+    }
+    Text(
+        text = stringResource(R.string.settings_data_privacy),
+        style = MaterialTheme.typography.bodyMedium,
+        color = TarryTheme.colors.muted,
+    )
+}
+
+@Composable
+private fun WorkingRow(label: String) {
+    val space = TarryTheme.space
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = space.l, vertical = space.m)
+            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+        verticalArrangement = Arrangement.spacedBy(space.s),
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.ink)
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth(),
+            color = TarryTheme.colors.ink,
+            trackColor = TarryTheme.colors.inset,
+        )
+    }
+}
+
+/** The backup's date and counts against this phone's, then Replace / Back up first / Cancel. */
+@Composable
+private fun RestoreDialog(prompt: RestorePrompt, onReplace: () -> Unit, onBackUpFirst: () -> Unit, onCancel: () -> Unit) {
+    val colors = TarryTheme.colors
+    val space = TarryTheme.space
+    val resources = LocalContext.current.resources
+    AlertDialog(
+        onDismissRequest = onCancel,
+        shape = TarryTheme.shapes.container,
+        containerColor = colors.card,
+        title = { Text(stringResource(R.string.restore_dialog_title), style = MaterialTheme.typography.titleLarge, color = colors.ink) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(space.s)) {
+                Text(stringResource(R.string.restore_dialog_body), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                Text(
+                    stringResource(R.string.restore_dialog_backup_counts, formatBackupDate(prompt.backupCreatedAt), formatCounts(resources, prompt.backup)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.muted,
+                )
+                Text(
+                    stringResource(R.string.restore_dialog_phone_counts, formatCounts(resources, prompt.phone)),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.muted,
+                )
+                Column(Modifier.padding(top = space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
+                    DestructiveButton(stringResource(R.string.restore_dialog_replace), onClick = onReplace, modifier = Modifier.fillMaxWidth())
+                    SecondaryButton(stringResource(R.string.restore_dialog_backup_first), onClick = onBackUpFirst, modifier = Modifier.fillMaxWidth())
+                    TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+private const val BACKUP_MIME_TYPE = "application/gzip"
+
+private fun DataBusy.labelRes(): Int = when (this) {
+    DataBusy.BACKING_UP -> R.string.data_working_backup
+    DataBusy.READING -> R.string.data_working_read
+    DataBusy.RESTORING -> R.string.data_working_restore
+}
+
+/** "2 Nov 2026" in the phone's language and time zone. */
+private fun formatBackupDate(epochMs: Long): String =
+    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
+
+/** "77 visits, 10,952 locations". */
+internal fun formatCounts(resources: Resources, counts: BackupCounts): String {
+    val number = NumberFormat.getIntegerInstance()
+    return resources.getString(
+        R.string.data_counts,
+        resources.getQuantityString(R.plurals.data_visits, counts.visits, number.format(counts.visits)),
+        resources.getQuantityString(R.plurals.data_locations, counts.locations, number.format(counts.locations)),
+    )
+}
+
+internal fun dataEventMessage(resources: Resources, event: DataEvent): String = when (event) {
+    is DataEvent.BackedUp -> resources.getString(R.string.data_backed_up, formatCounts(resources, event.counts))
+    is DataEvent.Restored -> resources.getString(R.string.data_restored, formatCounts(resources, event.counts))
+    is DataEvent.Failed -> resources.getString(
+        when (event.error) {
+            BackupError.CANNOT_OPEN -> R.string.data_error_cannot_open
+            BackupError.NOT_A_BACKUP -> R.string.data_error_not_a_backup
+            BackupError.TOO_NEW -> R.string.data_error_too_new
+            BackupError.DAMAGED -> R.string.data_error_damaged
+            BackupError.WRITE_FAILED -> R.string.data_error_write
+            BackupError.RESTORE_FAILED -> R.string.data_error_restore
+        },
+    )
 }
 
 private fun ThemeMode.labelRes(): Int = when (this) {

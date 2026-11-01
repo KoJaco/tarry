@@ -212,6 +212,37 @@
     <string name="settings_section_tracking">Tracking</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_section_billing">Billing</string>
+    <string name="settings_section_data">Data</string>
+    <string name="settings_backup_now">Back up now</string>
+    <string name="settings_backup_last">Last backup: %1$s</string>
+    <string name="settings_restore">Restore from backup</string>
+    <string name="settings_data_privacy">The file contains your full location history. Keep it somewhere private.</string>
+    <string name="data_working_backup">Backing up…</string>
+    <string name="data_working_read">Reading the backup…</string>
+    <string name="data_working_restore">Restoring…</string>
+    <plurals name="data_visits">
+        <item quantity="one">%1$s visit</item>
+        <item quantity="other">%1$s visits</item>
+    </plurals>
+    <plurals name="data_locations">
+        <item quantity="one">%1$s location</item>
+        <item quantity="other">%1$s locations</item>
+    </plurals>
+    <string name="data_counts">%1$s, %2$s</string>
+    <string name="data_backed_up">Backed up %1$s</string>
+    <string name="data_restored">Restored %1$s</string>
+    <string name="data_error_cannot_open">Couldn\'t open that file.</string>
+    <string name="data_error_not_a_backup">That isn\'t a Tarry backup.</string>
+    <string name="data_error_too_new">That backup was made by a newer version of Tarry. Update the app to restore it.</string>
+    <string name="data_error_damaged">That backup is damaged. Nothing was changed.</string>
+    <string name="data_error_write">Couldn\'t save the backup.</string>
+    <string name="data_error_restore">Restore failed. Your data is unchanged.</string>
+    <string name="restore_dialog_title">Restore this backup?</string>
+    <string name="restore_dialog_body">This replaces everything on this phone.</string>
+    <string name="restore_dialog_backup_counts">Backup from %1$s: %2$s</string>
+    <string name="restore_dialog_phone_counts">This phone now: %1$s</string>
+    <string name="restore_dialog_backup_first">Back up current data first</string>
+    <string name="restore_dialog_replace">Replace</string>
     <string name="settings_theme_system">System</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>

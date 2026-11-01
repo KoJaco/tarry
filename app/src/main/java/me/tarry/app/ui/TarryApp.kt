@@ -124,6 +124,7 @@ fun TarryApp(
                 onOpenSchedule = { if (backStack.lastOrNull() != ScheduleRoute) backStack.add(ScheduleRoute) },
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
                 onOpenPlaces = { if (backStack.lastOrNull() != PlacesRoute) backStack.add(PlacesRoute) },
+                snackbarHostState = snackbarHostState,
             )
         },
         permissionsContent = {
