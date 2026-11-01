@@ -21,7 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.tarry.app.export.backup.BackupError
 import me.tarry.app.export.backup.BackupException
-import me.tarry.app.export.backup.BackupManager
+import me.tarry.app.export.backup.DataBackup
 import me.tarry.app.export.backup.RestorePreview
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.app.ui.schedule.WeekScheduleSummary
@@ -39,8 +39,8 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
     schedules: ScheduleRepository,
-    clock: TrackingClock,
-    private val backup: BackupManager,
+    private val clock: TrackingClock,
+    private val backup: DataBackup,
 ) : ViewModel() {
     /** Null until the first DataStore read completes. */
     val settings: StateFlow<Settings?> = repository.settings
@@ -64,6 +64,9 @@ class SettingsViewModel @Inject constructor(
     fun setTheme(mode: ThemeMode) {
         viewModelScope.launch { repository.setTheme(mode) }
     }
+
+    /** The zone dates are shown in (the capture clock's), not a second opinion from the system default. */
+    val zone: java.time.ZoneId get() = clock.zone()
 
     private val _data = MutableStateFlow(DataUiState())
     val data: StateFlow<DataUiState> = _data.asStateFlow()

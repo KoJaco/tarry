@@ -2,6 +2,8 @@ package me.tarry.app.ui
 
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -44,7 +46,7 @@ class SettingsDataUiTest {
         }
 
         composeRule.onNodeWithText("Data", ignoreCase = true).performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Back up now").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithText("Back up now").performScrollTo().assertIsEnabled().assertHeightIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithText("Restore from backup").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
         composeRule.onNodeWithText("The file contains your full location history. Keep it somewhere private.")
             .performScrollTo().assertIsDisplayed()
@@ -79,8 +81,8 @@ class SettingsDataUiTest {
         }
 
         composeRule.onNodeWithText("Backing up…").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Back up now").performScrollTo().performClick()
-        composeRule.onNodeWithText("Restore from backup").performScrollTo().performClick()
+        composeRule.onNodeWithText("Back up now").performScrollTo().assertIsNotEnabled().performClick()
+        composeRule.onNodeWithText("Restore from backup").performScrollTo().assertIsNotEnabled().performClick()
 
         assertThat(calls).isEmpty()
     }

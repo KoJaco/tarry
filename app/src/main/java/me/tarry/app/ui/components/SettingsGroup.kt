@@ -50,8 +50,9 @@ class SettingsGroupScope internal constructor() {
         subtitle: String? = null,
         value: String? = null,
         contentDescription: String? = null,
+        enabled: Boolean = true,
     ) {
-        rows += { GroupedSettingsRow(title, onClick, icon, subtitle, value, contentDescription) }
+        rows += { GroupedSettingsRow(title, onClick, icon, subtitle, value, contentDescription, enabled) }
     }
 
     /** A row whose whole surface toggles; the [Switch] is a non-interactive indicator. */
@@ -98,11 +99,12 @@ private fun GroupedSettingsRow(
     subtitle: String?,
     value: String?,
     description: String?,
+    enabled: Boolean,
 ) {
     val space = TarryTheme.space
     val describe = if (description != null) Modifier.semantics { contentDescription = description } else Modifier
     val frame = if (onClick != null) {
-        Modifier.clickable(role = Role.Button, onClick = onClick)
+        Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
     } else {
         Modifier.semantics(mergeDescendants = true) {}
     }
@@ -123,7 +125,7 @@ private fun GroupedSettingsRow(
             )
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = TarryTheme.colors.ink)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) TarryTheme.colors.ink else TarryTheme.colors.muted)
             if (subtitle != null) {
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
             }
@@ -131,7 +133,7 @@ private fun GroupedSettingsRow(
         if (value != null) {
             Text(value, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
         }
-        if (onClick != null) Chevron()
+        if (onClick != null && enabled) Chevron()
     }
 }
 

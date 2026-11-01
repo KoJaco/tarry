@@ -97,6 +97,7 @@ fun SettingsScreen(
         settings = settings,
         schedule = schedule,
         data = data,
+        zone = viewModel.zone,
         onBackUp = startBackup,
         onRestore = { openBackup.launch(arrayOf("*/*")) },
         onConfirmRestore = viewModel::confirmRestore,
@@ -128,6 +129,7 @@ fun SettingsContent(
     onStayRadiusSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
     data: DataUiState = DataUiState(),
+    zone: ZoneId = ZoneId.systemDefault(),
     onBackUp: () -> Unit = {},
     onRestore: () -> Unit = {},
     onConfirmRestore: () -> Unit = {},
@@ -234,28 +236,27 @@ fun SettingsContent(
                 billing.forEach { (label, value) -> row(label, value = value) }
             }
         }
-        DataSection(settings?.lastBackupMs, data, onBackUp, onRestore)
+        DataSection(settings?.lastBackupMs, data, zone, onBackUp, onRestore)
     }
     // Hidden (not dropped) while "Back up current data first" runs, so it comes back when that finishes.
     if (data.prompt != null && data.busy == null) {
-        RestoreDialog(data.prompt, onReplace = onConfirmRestore, onBackUpFirst = onBackUpFirst, onCancel = onCancelRestore)
+        RestoreDialog(data.prompt, zone, onReplace = onConfirmRestore, onBackUpFirst = onBackUpFirst, onCancel = onCancelRestore)
     }
 }
 
 /** Settings → Data: back up, restore, and a progress row while either runs. */
 @Composable
-private fun ColumnScope.DataSection(lastBackupMs: Long?, data: DataUiState, onBackUp: () -> Unit, onRestore: () -> Unit) {
+private fun ColumnScope.DataSection(lastBackupMs: Long?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit) {
     val space = TarryTheme.space
     val busy = data.busy != null
     SectionHeader(stringResource(R.string.settings_section_data), Modifier.padding(top = space.m))
     val backUpTitle = stringResource(R.string.settings_backup_now)
     val restoreTitle = stringResource(R.string.settings_restore)
-    val lastBackup = lastBackupMs?.let { stringResource(R.string.settings_backup_last, formatBackupDate(it)) }
+    val lastBackup = lastBackupMs?.let { stringResource(R.string.settings_backup_last, formatBackupDate(it, zone)) }
     val working = data.busy?.let { stringResource(it.labelRes()) }
     SettingsGroup {
-        // A row without a click handler is read-only: that is how the rows are disabled while an operation runs.
-        row(backUpTitle, onClick = if (busy) null else onBackUp, subtitle = lastBackup)
-        row(restoreTitle, onClick = if (busy) null else onRestore)
+        row(backUpTitle, onClick = onBackUp, subtitle = lastBackup, enabled = !busy)
+        row(restoreTitle, onClick = onRestore, enabled = !busy)
         if (working != null) item { WorkingRow(working) }
     }
     Text(
@@ -286,7 +287,7 @@ private fun WorkingRow(label: String) {
 
 /** The backup's date and counts against this phone's, then Replace / Back up first / Cancel. */
 @Composable
-private fun RestoreDialog(prompt: RestorePrompt, onReplace: () -> Unit, onBackUpFirst: () -> Unit, onCancel: () -> Unit) {
+private fun RestoreDialog(prompt: RestorePrompt, zone: ZoneId, onReplace: () -> Unit, onBackUpFirst: () -> Unit, onCancel: () -> Unit) {
     val colors = TarryTheme.colors
     val space = TarryTheme.space
     val resources = LocalContext.current.resources
@@ -299,7 +300,7 @@ private fun RestoreDialog(prompt: RestorePrompt, onReplace: () -> Unit, onBackUp
             Column(verticalArrangement = Arrangement.spacedBy(space.s)) {
                 Text(stringResource(R.string.restore_dialog_body), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
                 Text(
-                    stringResource(R.string.restore_dialog_backup_counts, formatBackupDate(prompt.backupCreatedAt), formatCounts(resources, prompt.backup)),
+                    stringResource(R.string.restore_dialog_backup_counts, formatBackupDate(prompt.backupCreatedAt, zone), formatCounts(resources, prompt.backup)),
                     style = MaterialTheme.typography.bodyMedium,
                     color = colors.muted,
                 )
@@ -327,9 +328,9 @@ private fun DataBusy.labelRes(): Int = when (this) {
     DataBusy.RESTORING -> R.string.data_working_restore
 }
 
-/** "2 Nov 2026" in the phone's language and time zone. */
-private fun formatBackupDate(epochMs: Long): String =
-    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).format(Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()))
+/** "2 Nov 2026" in the phone's language and the capture clock's zone. */
+private fun formatBackupDate(epochMs: Long, zone: ZoneId): String =
+    DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).format(Instant.ofEpochMilli(epochMs).atZone(zone))
 
 /** "77 visits, 10,952 locations". */
 internal fun formatCounts(resources: Resources, counts: BackupCounts): String {
