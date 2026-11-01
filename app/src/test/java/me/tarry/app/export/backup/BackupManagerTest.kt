@@ -1,0 +1,205 @@
+package me.tarry.app.export.backup
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import me.tarry.app.tracking.FakeClock
+import me.tarry.core.data.db.BackupSnapshot
+import me.tarry.core.data.db.BackupStore
+import me.tarry.core.data.db.TarryDatabase
+import me.tarry.core.data.db.entity.Job
+import me.tarry.core.data.db.entity.LocationPing
+import me.tarry.core.data.db.entity.TrackingSession
+import me.tarry.core.data.model.PingSource
+import me.tarry.core.data.model.SessionEndReason
+import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.settings.RoundingMode
+import me.tarry.core.data.settings.SettingsRepository
+import me.tarry.core.data.settings.ThemeMode
+import org.junit.After
+import org.junit.Assert.assertThrows
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+
+private class RecordingHooks : RestoreHooks {
+    val calls = mutableListOf<String>()
+    override suspend fun stopTracking() { calls += "stop" }
+    override suspend fun resumeTracking() { calls += "resume" }
+}
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], application = android.app.Application::class)
+class BackupManagerTest {
+    @get:Rule
+    val folder = TemporaryFolder()
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private lateinit var db: TarryDatabase
+    private lateinit var store: BackupStore
+    private lateinit var settingsStore: DataStore<Preferences>
+    private lateinit var declinedStore: DataStore<Preferences>
+    private lateinit var settingsRepo: SettingsRepository
+    private lateinit var hooks: RecordingHooks
+    private lateinit var manager: BackupManager
+    private val declinedKey = stringPreferencesKey("declined")
+
+    @Before
+    fun setUp() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        db = Room.inMemoryDatabaseBuilder(context, TarryDatabase::class.java).allowMainThreadQueries().build()
+        store = BackupStore(db)
+        settingsStore = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") }
+        declinedStore = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("declined.preferences_pb") }
+        settingsRepo = SettingsRepository(settingsStore)
+        hooks = RecordingHooks()
+        manager = BackupManager(context, store, settingsStore, declinedStore, settingsRepo, hooks, FakeClock(now = 1_700_000_000_000L))
+    }
+
+    @After
+    fun tearDown() {
+        scope.cancel()
+        db.close()
+    }
+
+    private suspend fun backupBytes(): ByteArray =
+        ByteArrayOutputStream().also { out -> manager.backUp { out } }.toByteArray()
+
+    private suspend fun previewOf(bytes: ByteArray) = manager.preview { ByteArrayInputStream(bytes) }
+
+    @Test
+    fun restoreReplacesEverythingOnThePhoneWithTheBackupsRows() = runBlocking<Unit> {
+        // Phone A: data, settings, declined suggestions.
+        store.replaceAll(everythingSnapshot("a"))
+        settingsRepo.setTheme(ThemeMode.DARK)
+        settingsRepo.setRoundingMode(RoundingMode.UP)
+        declinedStore.edit { it[declinedKey] = "v1|j1" }
+        val bytes = backupBytes()
+        val backedUp = store.snapshot()
+
+        // Now the phone holds different data and settings.
+        store.replaceAll(
+            BackupSnapshot(
+                sessions = listOf(TrackingSession(77, 1L, 2L, "UTC", SessionTrigger.MANUAL, SessionEndReason.USER_STOP)),
+                jobs = listOf(Job("other", "Other", 1, updatedAt = 1L)),
+            ),
+        )
+        settingsRepo.setTheme(ThemeMode.LIGHT)
+        settingsRepo.setStayGeofenceRadiusM(50)
+        declinedStore.edit { it[declinedKey] = "zzz|yyy" }
+
+        val counts = manager.restore(previewOf(bytes))
+
+        assertThat(store.snapshot()).isEqualTo(backedUp)
+        assertThat(counts.visits).isEqualTo(1)
+        assertThat(counts.locations).isEqualTo(3)
+        val s = settingsRepo.settings.first()
+        assertThat(s.theme).isEqualTo(ThemeMode.DARK)
+        assertThat(s.roundingMode).isEqualTo(RoundingMode.UP)
+        assertThat(s.stayGeofenceRadiusM).isEqualTo(100) // the radius set after the backup is gone
+        assertThat(declinedStore.data.first()[declinedKey]).isEqualTo("v1|j1")
+        assertThat(hooks.calls).containsExactly("stop", "resume").inOrder()
+    }
+
+    @Test
+    fun backingUpRecordsWhenAndKeepsThatTimestampOutOfTheFileAndAcrossARestore() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        val first = backupBytes()
+        assertThat(settingsRepo.settings.first().lastBackupMs).isEqualTo(1_700_000_000_000L)
+
+        val second = backupBytes() // would carry last_backup_ms if it were exported
+        assertThat(decodeSettingsKeys(second)).doesNotContain("last_backup_ms")
+
+        manager.restore(previewOf(first))
+        assertThat(settingsRepo.settings.first().lastBackupMs).isEqualTo(1_700_000_000_000L)
+    }
+
+    private fun decodeSettingsKeys(bytes: ByteArray) =
+        BackupCodec.decode { ByteArrayInputStream(bytes) }.settings.map { it.key }
+
+    @Test
+    fun aFailureMidInsertLeavesTheDatabaseAndBothDataStoresUnchanged() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("keep"))
+        settingsRepo.setTheme(ThemeMode.DARK)
+        declinedStore.edit { it[declinedKey] = "keep|keep" }
+        val dbBefore = store.snapshot()
+        val settingsBefore = settingsStore.data.first()
+        val declinedBefore = declinedStore.data.first()
+
+        // A preview that validation would have refused (ping without a session), forced through to the apply step.
+        val bad = everythingSnapshot("new").copy(
+            pings = listOf(LocationPing(5, 1L, "UTC", 0.0, 0.0, 1f, null, null, null, PingSource.FUSED, sessionId = 404)),
+        )
+        val badPreview = RestorePreview(
+            createdAt = 1L,
+            counts = bad.counts(),
+            snapshot = bad,
+            settings = listOf(PrefEntry("theme", "string", "LIGHT")).toPreferences(),
+            declined = listOf(PrefEntry("declined", "string", "new|new")).toPreferences(),
+        )
+
+        val e = assertThrows(BackupException::class.java) { runBlocking { manager.restore(badPreview) } }
+
+        assertThat(e.error).isEqualTo(BackupError.RESTORE_FAILED)
+        assertThat(store.snapshot()).isEqualTo(dbBefore)
+        assertThat(settingsStore.data.first()).isEqualTo(settingsBefore)
+        assertThat(declinedStore.data.first()).isEqualTo(declinedBefore)
+    }
+
+    @Test
+    fun invalidFilesAreRejectedBeforeAnythingChanges() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("keep"))
+        val before = store.snapshot()
+        val settingsBefore = settingsStore.data.first()
+
+        val newer = encodeFile(fileOf(everythingSnapshot(), version = BackupCodec.CURRENT_VERSION + 1))
+        val notGzip = """{"format":"tarry-backup","formatVersion":1}""".toByteArray()
+        val orphanPing = everythingSnapshot().let { s -> fileOf(s.copy(pings = s.pings.map { it.copy(sessionId = 404) })) }
+
+        for ((bytes, error) in listOf(
+            newer to BackupError.TOO_NEW,
+            notGzip to BackupError.NOT_A_BACKUP,
+            encodeFile(orphanPing) to BackupError.DAMAGED,
+        )) {
+            val e = assertThrows(BackupException::class.java) { runBlocking { previewOf(bytes) } }
+            assertThat(e.error).isEqualTo(error)
+        }
+
+        assertThat(store.snapshot()).isEqualTo(before)
+        assertThat(settingsStore.data.first()).isEqualTo(settingsBefore)
+        assertThat(hooks.calls).isEmpty()
+    }
+
+    @Test
+    fun aBackupTakenMidSessionRestoresWithThatSessionClosedAtItsLastPingAndNoGap() = runBlocking<Unit> {
+        // Encoded straight from a snapshot, the way a backup taken on a live phone holds the still-open row.
+        val open = everythingSnapshot(openSession = true).copy(gaps = emptyList())
+        val bytes = ByteArrayOutputStream().also { BackupCodec.encode(fileOf(open), it) }.toByteArray()
+
+        manager.restore(previewOf(bytes))
+
+        assertThat(db.trackingSessionDao().getOpenSession()).isNull()
+        val closed = db.trackingSessionDao().getById(2)!!
+        assertThat(closed.end).isEqualTo(5_500L)
+        assertThat(closed.endReason).isEqualTo(SessionEndReason.KILLED)
+        assertThat(store.snapshot().gaps).isEmpty()
+    }
+}
