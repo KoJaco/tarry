@@ -46,7 +46,7 @@ Use the light theme for the site by default; dark is optional (the hex values be
 ## 4. Typography
 - **Headings: Nunito** (700, also 600), a rounded sans. Use it for the hero line, section titles, prices and big numbers ("6 h 12 m").
 - **Body and UI: Nunito Sans** (400, 600, 700). Use it for paragraphs, buttons, navigation and captions.
-- **Both are OFL 1.1.** Self-host the font files rather than loading them from Google Fonts, so the site makes no third-party requests, which keeps the privacy promise.
+- **Both are OFL 1.1** and both are on Google Fonts, so load them from there. The site handles no user data, so the app's no-network rule doesn't apply to it (owner, 2026-11-01).
 - **Suggested web scale:**
   - hero 48–56 px Nunito 700, line height 1.1, letter spacing −0.5;
   - H2 32 px Nunito 700;

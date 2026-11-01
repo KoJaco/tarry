@@ -68,7 +68,7 @@
 - **Trial:**
   - **The catch:** Play one-time products have **no built-in free trial** (trials are a subscription feature).
   - **The plan:** a **local trial clock** that starts when onboarding finishes and is stored in DataStore.
-  - **The weakness:** it is resettable by clearing data or reinstalling. That also wipes the user's tracking data, so it is an accepted weakness, but confirm with the owner.
+  - **The weakness:** it is resettable by clearing data or reinstalling. That also wipes the user's tracking data, which is enough of a deterrent. **Accepted by the owner, 2026-11-01.**
   - **The display:** show "Trial · N days left" in Settings, and once (not nagging) near the end.
 - **Entitlement states:** TRIAL, TRIAL_ENDED, OWNED, PENDING (Play pending purchases) and REVOKED (refund).
   - Cache the last known state.
@@ -99,18 +99,19 @@
   - **Data safety form:** location is collected, processed on device only, not shared, and not sent off the device; purchase handling goes through Google Play;
   - privacy policy URL, hosted on the landing page;
   - content rating, target audience, ads declaration (none) and the foreground service type declaration (location);
-  - **testing track:** a new personal developer account must run a **closed test with a minimum number of testers for 14 days** before production (12 testers at last check; **verify the current rule**). Plan the owner's tester list early, since this is the critical path to launch.
-- **Landing page:** separate from the app, built by the owner from the brand doc. It hosts the privacy policy, support and the Play badge. The site should follow the same privacy promise (no third-party trackers), so the brand and behaviour match.
+  - **testing track:** the owner is using a **Google Play organisation (business) developer account** (2026-11-01).
+    - The closed-test minimum (12 testers for 14 days, at last check) applies to new *personal* accounts, so an organisation account should be exempt. **Verify this in Play Console.**
+    - Organisation accounts need a **D-U-N-S number** and business verification, which can take days or weeks. Start it early, because it is now the critical path.
+    - Run an internal test track (licence testers) anyway, to test billing.
+- **Landing page:** separate from the app, built by the owner from the brand doc. It hosts the privacy policy, support and the Play badge. The app's privacy rules do not bind the site (owner, 2026-11-01): it handles no location data, so Google Fonts and ordinary site tooling are fine. The privacy promise is about the app.
 
 ## Questions for the owner (ask while planning, rule 12)
 1. **When the trial ends,** what locks? The recommendation is tracking only, never data access.
 2. **The price:** final AUD price, and whether to let Play convert it per country or set a few by hand.
 3. **The licence choice** (ADR 0005), and whether GitHub Releases APKs continue.
-4. **The developer account:** personal or organisation (this affects the testing-track rule and the seller name shown on Play), plus the support email and the seller country (tax).
-5. **Closed-test testers:** who, and when to start, given the 14-day minimum.
-6. **Trial-reset weakness** (clearing data restarts the trial): accept it?
-7. **Launch countries:** Australia only, or worldwide?
-8. **Refunds:** rely on Play's standard policy?
+4. **The developer account** is an organisation account (decided 2026-11-01). Still needed: the seller name shown on Play, the support email, and the seller country (tax), plus confirming the closed-test exemption.
+5. **Launch countries:** Australia only, or worldwide?
+6. **Refunds:** rely on Play's standard policy?
 
 ## Hard constraints (AGENTS.md)
 - **Rule 2:** network only as amended by ADR 0004. No analytics and no crash SDK. Play's own vitals are fine; we add nothing.
