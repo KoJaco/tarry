@@ -24,6 +24,8 @@ data class Settings(
 ) {
     companion object {
         const val DEFAULT_REVIEW_REMINDER_MINUTE = 1050
+        /** DataStore key of [lastBackupMs]; device-local, so a backup file neither carries nor overwrites it. */
+        const val LAST_BACKUP_KEY = "last_backup_ms"
         const val DEFAULT_STAY_RADIUS_M = 100
 
         /** 300 m was an option before dogfood 1; a stored 300 now reads as [MAX_STAY_RADIUS_M]. */

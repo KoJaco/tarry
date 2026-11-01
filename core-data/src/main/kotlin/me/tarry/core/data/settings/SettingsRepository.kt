@@ -102,7 +102,7 @@ class SettingsRepository @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val STAY_GEOFENCE_RADIUS_M = intPreferencesKey("stay_geofence_radius_m")
         val SEGMENTATION_VERSION = intPreferencesKey("segmentation_version")
-        val LAST_BACKUP_MS = longPreferencesKey("last_backup_ms")
+        val LAST_BACKUP_MS = longPreferencesKey(Settings.LAST_BACKUP_KEY)
     }
 
     private fun Preferences.toSettings(): Settings {
