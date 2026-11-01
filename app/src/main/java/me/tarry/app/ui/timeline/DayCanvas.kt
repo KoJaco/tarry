@@ -472,7 +472,7 @@ private fun VisitBlock(
     val d = DayCanvasDefaults
     val summaryRoom = d.BlockPaddingV.value * 2 + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale +
         (if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f) + d.SummaryLineDp * fontScale
-    val showSummary = notTracked != null && !oneLine && placed.heightDp >= summaryRoom
+    val summary = notTracked?.takeIf { !oneLine && placed.heightDp >= summaryRoom }
     var focused by remember { mutableStateOf(false) }
     // A visit no job block covers keeps the dashed "needs review" outline; a covered one is a plain card.
     val look = if (visit.needsReview) {
@@ -565,7 +565,7 @@ private fun VisitBlock(
                 maxLines = detailLines,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (showSummary && notTracked != null) {
+            if (summary != null) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs),
@@ -577,7 +577,7 @@ private fun VisitBlock(
                         modifier = Modifier.size(DayCanvasDefaults.InnerGapIconSize),
                     )
                     Text(
-                        text = notTracked.replaceFirstChar { it.uppercase() },
+                        text = summary.replaceFirstChar { it.uppercase() },
                         style = MaterialTheme.typography.bodySmall,
                         color = c.onAlertSoft,
                         maxLines = 1,
