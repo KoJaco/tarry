@@ -19,6 +19,8 @@ data class Settings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     /** One of [ALLOWED_STAY_RADII_M]. Radius of the stay geofence created at the next stop. */
     val stayGeofenceRadiusM: Int = DEFAULT_STAY_RADIUS_M,
+    /** When the last user-initiated backup finished (UTC epoch ms); null if none yet. */
+    val lastBackupMs: Long? = null,
 ) {
     companion object {
         const val DEFAULT_REVIEW_REMINDER_MINUTE = 1050

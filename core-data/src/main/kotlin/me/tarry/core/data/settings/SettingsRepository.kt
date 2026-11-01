@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -84,6 +85,11 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.SEGMENTATION_VERSION] = version }
     }
 
+    /** Records when the last user-initiated backup finished (UTC epoch ms). */
+    suspend fun setLastBackupMs(epochMs: Long) {
+        dataStore.edit { it[Keys.LAST_BACKUP_MS] = epochMs }
+    }
+
     private object Keys {
         val ROUNDING_INCREMENT_MIN = intPreferencesKey("rounding_increment_min")
         val ROUNDING_MODE = stringPreferencesKey("rounding_mode")
@@ -96,6 +102,7 @@ class SettingsRepository @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val STAY_GEOFENCE_RADIUS_M = intPreferencesKey("stay_geofence_radius_m")
         val SEGMENTATION_VERSION = intPreferencesKey("segmentation_version")
+        val LAST_BACKUP_MS = longPreferencesKey("last_backup_ms")
     }
 
     private fun Preferences.toSettings(): Settings {
@@ -119,6 +126,7 @@ class SettingsRepository @Inject constructor(
             stayGeofenceRadiusM = this[Keys.STAY_GEOFENCE_RADIUS_M]
                 ?.let { if (it == Settings.LEGACY_STAY_RADIUS_M) Settings.MAX_STAY_RADIUS_M else it }
                 ?.takeIf { it in Settings.ALLOWED_STAY_RADII_M } ?: d.stayGeofenceRadiusM,
+            lastBackupMs = this[Keys.LAST_BACKUP_MS],
         )
     }
 
