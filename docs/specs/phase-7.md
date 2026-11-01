@@ -71,6 +71,7 @@ DTOs live in `:app` (`export/backup/`). `:core-data` stays free of serialization
      - if the transaction throws, the DataStore snapshots are written back and an error is shown. Room has rolled back itself;
   6. **after:**
      - an open session in the backup (a backup taken mid-session) is closed at its last ping with `KILLED` and **no** Gap. The time between backup and restore was not lost on this device, so recovery must not write one;
+     - every manual override (START or PAUSE) still active at the backup's `createdAt` is ended at `createdAt` in the same transaction as the inserts, so the restored phone follows only the schedule until the user acts; overrides that had already ended are untouched (owner decision 2026-11-02);
      - then the controller reconciles (a window in progress starts a fresh session), the segmentation upgrade check runs, and the UI follows Room invalidation.
 
 ### UI states
@@ -116,4 +117,4 @@ No Room schema change (stays at v2). One new settings key: `last_backup_ms`.
 ### Risks
 - **Size and memory:** about 100k pings. Stream the encode and decode, and insert in chunks inside the transaction. Measure with the real-data test.
 - **DataStore and Room are not one transaction:** handled by snapshot and rollback. A crash at exactly that point could leave the new settings with the old DB, which is harmless; nothing is lost from the DB.
-- **Restoring during a scheduled window** stops and restarts tracking, which leaves a short Gap of a few seconds. That is acceptable and visible.
+- **Restoring during a scheduled window** stops and restarts tracking under the controller lock. No Gap row is written for that stop and start; a failed restore undoes the stop. The restore runs to completion even if the user leaves the screen.

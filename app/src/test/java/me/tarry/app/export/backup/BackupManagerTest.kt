@@ -10,6 +10,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -42,8 +44,20 @@ import java.io.ByteArrayOutputStream
 
 private class RecordingHooks : RestoreHooks {
     val calls = mutableListOf<String>()
-    override suspend fun stopTracking() { calls += "stop" }
-    override suspend fun resumeTracking() { calls += "resume" }
+    override suspend fun <T> captureSuspended(block: suspend () -> T): T {
+        calls += "suspend"
+        return try {
+            block().also { calls += "resume" }
+        } catch (e: Throwable) {
+            calls += "undo"
+            throw e
+        }
+    }
+    var afterGate: (suspend () -> Unit)? = null
+    override suspend fun afterRestore() {
+        calls += "after"
+        afterGate?.invoke()
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -81,7 +95,7 @@ class BackupManagerTest {
     }
 
     private suspend fun backupBytes(): ByteArray =
-        ByteArrayOutputStream().also { out -> manager.backUp { out } }.toByteArray()
+        ByteArrayOutputStream().also { out -> manager.backUp(open = { out }) }.toByteArray()
 
     private suspend fun previewOf(bytes: ByteArray) = manager.preview { ByteArrayInputStream(bytes) }
 
@@ -108,7 +122,11 @@ class BackupManagerTest {
 
         val counts = manager.restore(previewOf(bytes))
 
-        assertThat(store.snapshot()).isEqualTo(backedUp)
+        // Overrides still active when the backup was made end at its createdAt (the fake clock).
+        val endedAt = 1_700_000_000_000L
+        assertThat(store.snapshot()).isEqualTo(
+            backedUp.copy(manualOverrides = backedUp.manualOverrides.map { if (it.end == null) it.copy(end = endedAt, active = false) else it }),
+        )
         assertThat(counts.visits).isEqualTo(1)
         assertThat(counts.locations).isEqualTo(3)
         val s = settingsRepo.settings.first()
@@ -116,7 +134,7 @@ class BackupManagerTest {
         assertThat(s.roundingMode).isEqualTo(RoundingMode.UP)
         assertThat(s.stayGeofenceRadiusM).isEqualTo(100) // the radius set after the backup is gone
         assertThat(declinedStore.data.first()[declinedKey]).isEqualTo("v1|j1")
-        assertThat(hooks.calls).containsExactly("stop", "resume").inOrder()
+        assertThat(hooks.calls).containsExactly("suspend", "resume", "after").inOrder()
     }
 
     @Test
@@ -159,6 +177,7 @@ class BackupManagerTest {
         val e = assertThrows(BackupException::class.java) { runBlocking { manager.restore(badPreview) } }
 
         assertThat(e.error).isEqualTo(BackupError.RESTORE_FAILED)
+        assertThat(hooks.calls).containsExactly("suspend", "undo").inOrder()
         assertThat(store.snapshot()).isEqualTo(dbBefore)
         assertThat(settingsStore.data.first()).isEqualTo(settingsBefore)
         assertThat(declinedStore.data.first()).isEqualTo(declinedBefore)
@@ -201,5 +220,51 @@ class BackupManagerTest {
         assertThat(closed.end).isEqualTo(5_500L)
         assertThat(closed.endReason).isEqualTo(SessionEndReason.KILLED)
         assertThat(store.snapshot().gaps).isEmpty()
+    }
+
+    @Test
+    fun leavingTheScreenAfterRoomCommittedDoesNotPutTheOldSettingsBack() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("a"))
+        settingsRepo.setTheme(ThemeMode.DARK)
+        val bytes = backupBytes()
+        store.replaceAll(BackupSnapshot(jobs = listOf(Job("other", "Other", 1, updatedAt = 1L))))
+        settingsRepo.setTheme(ThemeMode.LIGHT)
+        val preview = previewOf(bytes)
+        val reached = CompletableDeferred<Unit>()
+        val gate = CompletableDeferred<Unit>()
+        hooks.afterGate = {
+            reached.complete(Unit)
+            gate.await()
+        }
+
+        val job = launch(Dispatchers.Default) { manager.restore(preview) }
+        reached.await() // Room has committed and the settings are written
+        job.cancel() // the user left the screen
+        gate.complete(Unit)
+        job.join()
+
+        assertThat(store.snapshot().jobs.map { it.id }).containsExactly("j1", "j2")
+        assertThat(settingsRepo.settings.first().theme).isEqualTo(ThemeMode.DARK)
+    }
+
+    @Test
+    fun aDocumentThatCannotBeOpenedIsCannotOpenAndAFailedWriteDiscardsTheDocument() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+
+        val e1 = assertThrows(BackupException::class.java) {
+            runBlocking { manager.backUp(open = { throw java.io.IOException("gone") }) }
+        }
+        assertThat(e1.error).isEqualTo(BackupError.CANNOT_OPEN)
+
+        var discarded = false
+        val failing = object : java.io.OutputStream() {
+            override fun write(b: Int) = throw java.io.IOException("disk full")
+        }
+        val e2 = assertThrows(BackupException::class.java) {
+            runBlocking { manager.backUp(open = { failing }, discard = { discarded = true }) }
+        }
+        assertThat(e2.error).isEqualTo(BackupError.WRITE_FAILED)
+        assertThat(discarded).isTrue()
+        assertThat(settingsRepo.settings.first().lastBackupMs).isNull()
     }
 }

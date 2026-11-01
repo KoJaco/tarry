@@ -71,8 +71,9 @@ class BackupStore(private val db: TarryDatabase) {
      * chunked). A session still open in [snapshot] (a backup taken mid-session) is closed at its last ping, or at its
      * start without pings, with [SessionEndReason.KILLED] and no Gap: the time between backup and restore was not lost
      * on this device, and crash recovery would otherwise find the open row and write one.
+     * When [backupCreatedAt] is given, manual overrides still active at that time are ended at it (see above).
      */
-    suspend fun replaceAll(snapshot: BackupSnapshot) = db.withTransaction {
+    suspend fun replaceAll(snapshot: BackupSnapshot, backupCreatedAt: Long? = null) = db.withTransaction {
         // Children first, so no cascade or FK check fires on the way out.
         dao.deletePings()
         dao.deleteJobBlocks()
@@ -89,6 +90,15 @@ class BackupStore(private val db: TarryDatabase) {
         dao.deleteCheckpoints()
 
         val lastPing = snapshot.pings.groupBy { it.sessionId }.mapValues { (_, p) -> p.maxOf { it.timestamp } }
+        // Manual overrides still active when the backup was made end then: the restored phone follows only the schedule
+        // until the user acts. Ones that had already ended are untouched.
+        val overrides = snapshot.manualOverrides.map {
+            if (backupCreatedAt != null && (it.end == null || it.end > backupCreatedAt)) {
+                it.copy(end = maxOf(backupCreatedAt, it.start), active = false)
+            } else {
+                it
+            }
+        }
         val sessions = snapshot.sessions.map {
             if (it.end == null) it.copy(end = lastPing[it.id] ?: it.start, endReason = SessionEndReason.KILLED) else it
         }
@@ -103,7 +113,7 @@ class BackupStore(private val db: TarryDatabase) {
         snapshot.gaps.chunked(CHUNK).forEach { dao.insertGaps(it) }
         snapshot.scheduleTemplates.chunked(CHUNK).forEach { dao.insertScheduleTemplates(it) }
         snapshot.scheduleOverrides.chunked(CHUNK).forEach { dao.insertScheduleOverrides(it) }
-        snapshot.manualOverrides.chunked(CHUNK).forEach { dao.insertManualOverrides(it) }
+        overrides.chunked(CHUNK).forEach { dao.insertManualOverrides(it) }
         snapshot.checkpoints.chunked(CHUNK).forEach { dao.insertCheckpoints(it) }
     }
 

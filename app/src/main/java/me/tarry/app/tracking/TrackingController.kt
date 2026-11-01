@@ -233,6 +233,50 @@ class TrackingController @Inject constructor(
 
     /** Ends the session; tracking resumes at the next scheduled window. */
     suspend fun stop() = mutex.withLock {
+        stopLocked()
+        reconcileLocked(ReconcileSource.UI)
+    }
+
+    /**
+     * Runs [block] with capture stopped and the controller lock held, so no alarm, manual start or service callback can
+     * begin a session while [block] replaces the data (a restore). Capture is stopped like [stop] (USER_STOP, an open START
+     * or an in-window PAUSE as stop leaves them), then [block] runs, then the state reconciles against whatever the
+     * data now says.
+     *
+     * If [block] throws, what the stop changed is undone first (the manual START it ended is active again, the PAUSE it
+     * wrote is ended), then the state reconciles and the exception is rethrown. If the final reconcile itself fails, the
+     * outage is reported through the health path (ATTENTION and a Gap), never swallowed.
+     */
+    suspend fun <T> withCaptureSuspended(block: suspend () -> T): T = mutex.withLock {
+        val activeBefore = trackingRepo.observeActiveOverrides().first()
+        stopLocked()
+        val result = try {
+            block()
+        } catch (e: Throwable) {
+            val now = clock.nowMs()
+            val ids = activeBefore.mapTo(HashSet()) { it.id }
+            for (o in trackingRepo.observeActiveOverrides().first()) {
+                if (o.id !in ids) trackingRepo.saveOverride(o.copy(active = false, end = minOf(o.end ?: now, now)))
+            }
+            for (o in activeBefore) trackingRepo.saveOverride(o)
+            reconcileOrReportLocked()
+            throw e
+        }
+        reconcileOrReportLocked()
+        result
+    }
+
+    private suspend fun reconcileOrReportLocked() {
+        try {
+            reconcileLocked(ReconcileSource.UI)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            health.reportOutage(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED), clock.nowMs())
+        }
+    }
+
+    private suspend fun stopLocked() {
         val now = clock.nowMs()
         deactivateActive(ManualOverrideType.START, now)
         val nowInstant = Instant.ofEpochMilli(now)
@@ -253,7 +297,6 @@ class TrackingController @Inject constructor(
             )
         }
         stopCapture(SessionEndReason.USER_STOP)
-        reconcileLocked(ReconcileSource.UI)
     }
 
     /**
