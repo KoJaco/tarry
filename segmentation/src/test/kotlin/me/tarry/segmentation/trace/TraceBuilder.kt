@@ -189,6 +189,13 @@ class TraceBuilder(
     /** Advances time with no pings. */
     fun gap(durationMs: Long) = apply { timeMs += durationMs }
 
+    /** Moves the cursor without adding pings or time (movement capture never saw); pair with [gap]. */
+    fun jumpBy(bearingDeg: Double, distanceM: Double) = apply {
+        val (toLat, toLng) = destination(lat, lng, bearingDeg, distanceM)
+        lat = toLat
+        lng = toLng
+    }
+
     /**
      * Low-accuracy outliers offset [offsetM] from the current point in random directions. Each spike is
      * 30 s after the previous one and advances the cursor, so spikes never share a timestamp with other pings.

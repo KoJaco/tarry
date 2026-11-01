@@ -94,6 +94,27 @@ class GoldenCasesTest {
     }
 
     @Test
+    fun aDriveWithNoFixesAfterSittingInTheCarIsAGap() {
+        // The 24 Oct 2026 shape: a stay, five minutes sitting in the car, then 12 minutes and 2.7 km with no fixes
+        // before capture picks the drive up again.
+        val b = builder()
+            .stay(HOUR)
+            .stay(5 * MIN, intervalMs = 10_000, jitterM = 5.0, activity = Activity.IN_VEHICLE)
+        val lastBefore = b.currentTimeMs - 10_000
+        b.gap(12 * MIN).jumpBy(270.0, 2_700.0)
+        val firstAfter = b.currentTimeMs + 20_000
+        val pings = b.moveBy(270.0, 2_000.0, 12.5).stay(HOUR).build()
+        val r = run(pings, sessions = listOf(TimeRange(t0, pings.last().timeMs + 1)))
+
+        assertEquals(2, r.stays.size)
+        val gap = r.gaps.single()
+        assertEquals(GapCause.NO_FIX, gap.cause)
+        assertEquals(TimeRange(lastBefore, firstAfter), gap.range)
+        assertTrue(r.trips.isNotEmpty())
+        assertTrue(r.trips.none { it.range.overlaps(gap.range) })
+    }
+
+    @Test
     fun aFuelStopUnderFiveMinutesIsPartOfTheTrip() {
         val pings = builder()
             .stay(HOUR)

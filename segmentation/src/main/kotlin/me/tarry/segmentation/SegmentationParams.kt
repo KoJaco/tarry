@@ -29,6 +29,12 @@ data class SegmentationParams(
     val bridgedConfidence: Float = 0.6f,
     /** Accuracy floor when weighting pings, so one very confident fix cannot dominate a centroid. */
     val minWeightAccuracyM: Double = 5.0,
+    /**
+     * A silence shorter than [maxGapToBridgeMs] is still a NO_FIX gap when it lasts longer than this and the good
+     * fixes either side are further apart than [minTripDistanceM] (accuracy allowed for): the phone moved unseen.
+     * A stationary session can legitimately go several minutes without a fix, but then it has not moved.
+     */
+    val unrecordedMoveMinMs: Long = 5 * 60_000L,
     /** Gap pieces shorter than this are display noise and dropped. */
     val minGapMs: Long = 60_000L,
     /** A matched place's centroid is only rewritten when it moves further than this. Used by the `:app` glue. */
@@ -135,7 +141,7 @@ data class SegmentationParams(
         require(vehicleMinSpeedMps > 0 && walkModeMaxSpeedMps > 0 && modeMovingMinSpeedMps >= 0 && modeMinSpeedSamples >= 1 && modeMaxHopMs > 0 && modeSustainedSamples >= 1 && modeSustainedMarginMps >= 0)
         require(spikeMinM > 0 && spikeMaxRunMs >= 0 && maxPlausibleSpeedMps > 0 && anchorMinRepeats >= 1 && anchorWindowMs > 0)
         require(smoothWindowMs >= 0 && smoothMinFixes >= 1 && placeNoiseFactor >= 0 && placeMaxRadiusM > 0)
-        require(robustDisplacementQuantile in 0.0..1.0)
+        require(robustDisplacementQuantile in 0.0..1.0 && unrecordedMoveMinMs > 0)
         require(bridgedConfidence in 0f..confidence && confidence <= 1f)
     }
 }

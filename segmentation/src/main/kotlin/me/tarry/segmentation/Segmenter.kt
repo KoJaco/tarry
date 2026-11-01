@@ -62,7 +62,7 @@ object Segmenter {
 
         val assignment = assignPlaces(stays, input.places, params)
         val stayRanges = stays.map { it.range }
-        val gaps = buildGaps(input, pings, params).flatMap { gap ->
+        val gaps = buildGaps(input, pings, params, fixes = cleanedAll).flatMap { gap ->
             gap.range.minus(stayRanges).filter { it.durationMs > 0 }.map { Gap(it, gap.cause) }
         }
         // A trip is movement seen by capture. Time outside every session (overnight, between windows) and excluded
