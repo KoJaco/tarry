@@ -61,8 +61,12 @@ object BackupCodec {
             throw classify(open, e)
         } catch (e: IllegalArgumentException) {
             throw classify(open, e)
+        } catch (e: EOFException) {
+            throw BackupException(BackupError.DAMAGED, e) // truncated
+        } catch (e: ZipException) {
+            throw BackupException(BackupError.DAMAGED, e) // corrupt gzip body or trailer
         } catch (e: IOException) {
-            throw BackupException(BackupError.DAMAGED, e)
+            throw BackupException(BackupError.CANNOT_OPEN, e) // the provider failed mid-read
         }
         checkHeader(file.format, file.formatVersion)
         return upgrade(file)
@@ -96,7 +100,8 @@ object BackupCodec {
         } catch (e: BackupException) {
             return e
         } catch (e: Exception) {
-            return BackupException(BackupError.NOT_A_BACKUP, cause)
+            // Not even the header parses. If the start still says it is ours, the file is cut short or corrupt.
+            return BackupException(if (looksLikeTarry(open)) BackupError.DAMAGED else BackupError.NOT_A_BACKUP, cause)
         }
         return try {
             checkHeader(header.format, header.formatVersion)
@@ -105,6 +110,25 @@ object BackupCodec {
             e
         }
     }
+
+    /** The first bytes of the decompressed file carry our `format` marker (we write it first). */
+    private fun looksLikeTarry(open: () -> InputStream): Boolean = try {
+        gzipped(open).use { stream ->
+            val buf = ByteArray(SNIFF_BYTES)
+            var n = 0
+            while (n < buf.size) {
+                val r = stream.read(buf, n, buf.size - n)
+                if (r < 0) break
+                n += r
+            }
+            MARKER.containsMatchIn(String(buf, 0, n, Charsets.UTF_8))
+        }
+    } catch (e: Exception) {
+        false
+    }
+
+    private val MARKER = Regex("\"format\"\\s*:\\s*\"$FORMAT\"")
+    private const val SNIFF_BYTES = 4096
 
     private fun checkHeader(format: String, version: Int) {
         if (format != FORMAT || version < 1) throw BackupException(BackupError.NOT_A_BACKUP)

@@ -31,6 +31,7 @@ internal fun Preferences.toEntries(skip: Set<String> = emptySet()): List<PrefEnt
  * anything is written. An entry of an unknown type is skipped (a later version's key).
  */
 internal fun List<PrefEntry>.toPreferences(): Preferences {
+    if (map { it.key }.toSet().size != size) throw BackupException(BackupError.DAMAGED)
     val prefs = mutablePreferencesOf()
     try {
         for (e in this) {

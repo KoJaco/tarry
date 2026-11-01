@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.SessionEndReason
 import org.junit.Assert.assertThrows
@@ -140,5 +141,61 @@ class BackupCodecTest {
 
         val future = listOf(PrefEntry("x", "quaternion", "1"), PrefEntry("ok", "int", "2"))
         assertThat(future.toPreferences().asMap().keys.map { it.name }).containsExactly("ok")
+    }
+
+    @Test
+    fun everyEntityPropertyTakesAtLeastTwoDifferentValuesInTheFixture() {
+        val s = everythingSnapshot()
+        val tables: Map<String, List<Any>> = mapOf(
+            "sessions" to s.sessions, "pings" to s.pings, "jobs" to s.jobs, "places" to s.places, "visits" to s.visits,
+            "trips" to s.trips, "jobBlocks" to s.jobBlocks, "excludedRanges" to s.excludedRanges, "gaps" to s.gaps,
+            "scheduleTemplates" to s.scheduleTemplates, "scheduleOverrides" to s.scheduleOverrides,
+            "manualOverrides" to s.manualOverrides, "checkpoints" to s.checkpoints,
+        )
+        for ((name, rows) in tables) {
+            assertThat(rows.size).isAtLeast(2)
+            val fields = rows.first().javaClass.declaredFields.filter { !java.lang.reflect.Modifier.isStatic(it.modifiers) && !it.isSynthetic }
+            assertThat(fields).isNotEmpty()
+            for (field in fields) {
+                field.isAccessible = true
+                val values = rows.map { row -> field.get(row).let { if (it is ByteArray) it.toList() else it } }.toSet()
+                assertWithMessage("$name.${field.name} takes one value only in the fixture").that(values.size).isAtLeast(2)
+            }
+        }
+    }
+
+    @Test
+    fun theAccuracySentinelSurvivesTheFile() {
+        val decoded = BackupCodec.validate(decode(encodeFile(fileOf(everythingSnapshot()))))
+        assertThat(decoded.pings.map { it.accuracyM }).contains(Float.MAX_VALUE)
+    }
+
+    @Test
+    fun aCompleteGzipOfCutOffJsonThatIsOursIsDamagedNotForeign() {
+        val cut = gzip("""{"format":"tarry-backup","formatVersion":1,"tables":{"sessions":[{"id":1,"sta""")
+        assertThat(errorOf(cut)).isEqualTo(BackupError.DAMAGED)
+    }
+
+    @Test
+    fun aProviderFailureMidReadIsReportedAsCannotOpen() {
+        val good = encodeFile(fileOf(everythingSnapshot()))
+        val e = assertThrows(BackupException::class.java) {
+            BackupCodec.decode {
+                object : java.io.FilterInputStream(ByteArrayInputStream(good)) {
+                    var n = 0
+                    override fun read(b: ByteArray, off: Int, len: Int): Int {
+                        if (n++ > 0) throw IOException("provider died")
+                        return super.read(b, off, minOf(len, 64))
+                    }
+                }
+            }
+        }
+        assertThat(e.error).isEqualTo(BackupError.CANNOT_OPEN)
+    }
+
+    @Test
+    fun duplicateSettingKeysAreDamaged() {
+        val dup = listOf(PrefEntry("a", "int", "1"), PrefEntry("a", "int", "2"))
+        assertThat(assertThrows(BackupException::class.java) { dup.toPreferences() }.error).isEqualTo(BackupError.DAMAGED)
     }
 }

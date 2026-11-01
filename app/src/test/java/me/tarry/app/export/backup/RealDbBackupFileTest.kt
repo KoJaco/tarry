@@ -56,6 +56,8 @@ class RealDbBackupFileTest {
             val decoded = BackupCodec.validate(BackupCodec.decode { file.inputStream() })
             val t2 = System.nanoTime()
             println("REAL_DB file: ${file.length()} bytes, encode ${(t1 - t0) / 1_000_000} ms, decode ${(t2 - t1) / 1_000_000} ms")
+            val rt = Runtime.getRuntime()
+            println("REAL_DB heap in use after decode: ${(rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)} MB (max ${rt.maxMemory() / (1024 * 1024)} MB)")
             assertThat(decoded.sessions).isEqualTo(snapshot.sessions)
             assertThat(decoded.pings).isEqualTo(snapshot.pings)
             assertThat(decoded.jobs).isEqualTo(snapshot.jobs)

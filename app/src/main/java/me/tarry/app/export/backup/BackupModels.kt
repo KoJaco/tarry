@@ -30,7 +30,9 @@ import java.util.Base64
  * The backup file's JSON shape. DTOs mirror the entities field by field, so `:core-data` stays free of serialization.
  *
  * Compatibility rule: a field added in a later version MUST have a default, so older files still decode. A breaking
- * change bumps [BackupCodec.CURRENT_VERSION] and adds an explicit upgrade step (see [BackupCodec.upgrade]).
+ * change bumps [BackupCodec.CURRENT_VERSION] and adds an explicit upgrade step (see [BackupCodec.upgrade]). Adding an
+ * enum constant is breaking too: an older app cannot decode it, so it needs a `formatVersion` bump (the older app then
+ * says "newer version" instead of "damaged").
  */
 @Serializable
 data class BackupFile(
