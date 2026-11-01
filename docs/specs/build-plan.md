@@ -8,7 +8,7 @@ Approved 2026-10-20. Source spec: `docs/specs/tarry-mvp.md`. Where they conflict
 | MVP "done" | Production release on Google Play with a 7-day trial, then a one-time lifetime purchase (about 29 AUD, to be confirmed) through Play Billing. Changed 2026-10-31; it was "signed APK sideloaded". The core app never needs a subscription; a later Pro subscription covers new features only |
 | Modules | `:segmentation` (pure Kotlin/JVM), `:core-data` (Room + DataStore), `:app` (tracking, UI, export as packages) |
 | Map tiles | OpenFreeMap via MapLibre Native |
-| Licence | GPL-3.0 today; re-decided before launch (ADR 0005, phase 8) |
+| Licence | GPL-3.0 today. Moving to source-available FSL-1.1-ALv2 (owner, 2026-11-01): forks for personal use are allowed, competing products are not, and each version becomes Apache-2.0 after 2 years. Pro code stays closed. ADR 0005 |
 | Dogfood device | Pixel. OEM guidance stays generic |
 | Executor | Claude subagents (implementer → test-writer → reviewer); owner tests on device |
 | Priority | Tracking ASAP, with early segmentation in the first phone build |

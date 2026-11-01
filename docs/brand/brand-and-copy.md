@@ -129,7 +129,7 @@ Keep these claims exactly in line with AGENTS.md rule 2 and ADR 0004. If the app
 - **What happens after the trial?** Decide in phase 8, then write it here, e.g. "Your data stays yours: you can still view, edit and export everything. Unlock Tarry to keep tracking."
 
 ### Footer
-Privacy policy · Support (email) · Made in Australia (if true) · © Tarry. The licence or source line follows ADR 0005; if the source stays public, say so, because it builds trust.
+Privacy policy · Support (email) · Made in Australia (if true) · © Tarry. Source line (per ADR 0005): "Source available on GitHub" with a link. Showing the code builds trust in the privacy promise.
 
 ## 8. Store listing snippets (Play, for phase 8)
 - **Title (30 characters max):** Tarry: Work Hours Timeline

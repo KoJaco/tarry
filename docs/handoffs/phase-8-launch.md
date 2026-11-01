@@ -20,16 +20,27 @@
    - **Verification:** client side only, which is an accepted risk at this price.
    - **The Data safety form** must reflect this.
 2. **ADR 0005, licence.**
-   - **Options to put to the owner:**
-     - keep GPL-3.0, with the paid build on Play for convenience;
-     - a source-available licence (for example PolyForm Noncommercial, FSL or BSL), with the repo kept public;
-     - proprietary, with the repo made private.
-   - **Facts to check:**
-     - every commit is the owner's (co-authored with Claude), so the owner can relicense future versions;
+   - **Owner direction (2026-11-01): source-available, via the Functional Source License (`FSL-1.1-ALv2` proposed).**
+     - The repo stays public, and individuals may fork it, build it and run it themselves.
+     - No one may build a competing product or service from it.
+     - Each version converts to Apache-2.0 two years after release.
+     - Making money from the lifetime purchase matters more than F-Droid ("maybe eventually"), and a future Pro subscription must stay possible.
+     - The relicence itself may land earlier as a small PR, ideally before the repo gets attention. The ADR records it.
+   - **Facts behind it:**
+     - every commit is the owner's (268 commits, two addresses, no outside contributors, 0 forks at 2026-11-01), so the owner can relicense future versions;
      - versions already published under GPL stay GPL for anyone who has them;
      - third-party licences must still be met: MapLibre (BSD), OpenFreeMap and OSM attribution (ODbL), the fonts (OFL), Material Symbols (Apache 2.0) and AndroidX (Apache 2.0);
-     - F-Droid (post-MVP) needs a FOSS licence, so the choice decides whether that is possible.
-   - **The ADR decides:** whether GitHub Releases APKs continue, and what the About screen links to.
+     - FSL is not an OSI or FOSS licence, so F-Droid's main repo can't ship current versions;
+     - a self-builder can remove the trial check, which is accepted ("run it themselves");
+     - FSL grants no trademark rights, so register "Tarry" as a trademark to stop renamed or lookalike clones.
+   - **Pro and subscription:**
+     - keep Pro code (sync, MCP, Walkflow) in a separate, closed module or repo and server, so it never falls under the FSL two-year conversion;
+     - if outside contributions are ever accepted, require a CLA so dual licensing and relicensing stay possible.
+   - **The ADR decides:**
+     - whether GitHub Releases APKs continue (probably not, since Play is the paid channel);
+     - the README licence section;
+     - what the About screen says ("Source available under FSL-1.1-ALv2", with a link).
+   - Optional: a short review by a lawyer before launch.
 
 ## Scope
 ### 8a. App hardening and onboarding (MVP spec § Onboarding, § Settings, § Permissions, privacy and Play Store)
