@@ -37,6 +37,12 @@ data class TrackingConfig(
      * stationary request at once (a battery knob).
      */
     val noProgressKeepsMovingRequest: Boolean = true,
+    /**
+     * Upper bound on that kept moving request, measured by fix times from the demotion (no timer): if AR never reports
+     * STILL (a phone in a car cradle, a stale moving activity), the first fix this long after the demotion switches to
+     * the stationary request. The stay geofence and the safety net still catch a later departure.
+     */
+    val noProgressKeptRequestMaxMs: Long = 20 * 60_000L,
     // MOVING location request.
     val movingPriority: LocationPriority = LocationPriority.HIGH_ACCURACY,
     val movingIntervalMs: Long = 10_000L,

@@ -141,22 +141,14 @@ class CaptureModeMachine(
         recentFixes.addLast(fix)
         while (recentFixes.size > config.staleRepeatMemory) recentFixes.removeFirst()
         if (mode == CaptureMode.STATIONARY) {
-            val centre = geofenceCentre
-            // Safety net if the geofence exit event is late or lost: accuracy-aware and sustained, so one noisy hop
-            // (a berthed boat) does not flap the mode.
-            if (centre == null || fix.distanceTo(centre) - fix.accuracyM <= geofenceRadiusM) {
-                exitBase = null
-                exitCount = 0
-                return step()
+            val since = stationarySinceMs
+            if (movingRequestKept && since != null && fix.timeMs - since >= config.noProgressKeptRequestMaxMs) {
+                // AR never reported STILL (a cradle, a stale moving activity): stop paying for the moving request.
+                movingRequestKept = false
+                val rest = onStationaryFix(fix, repeated)
+                return if (rest.mode == CaptureMode.STATIONARY) MachineStep(mode, listOf(requestStationary()) + rest.effects) else rest
             }
-            // An exact repeat of a recent coordinate is a provider re-emitting an anchor (network fixes alternate
-            // between a few), not a new reading: it is never evidence of leaving.
-            if (repeated) return step()
-            val base = exitBase ?: fix.also { exitBase = it }
-            exitCount++
-            if (exitCount < config.stationaryExitFixes || fix.timeMs - base.timeMs < config.stationaryExitMinMs) return step()
-            nextSource = PingSource.GEOFENCE_EXIT
-            return enterMoving()
+            return onStationaryFix(fix, repeated)
         }
         if (stillPending) return enterStationary(fix)
         if (noProgress(fix)) {
@@ -176,6 +168,25 @@ class CaptureModeMachine(
             fix.timeMs - a.timeMs >= config.stationaryEntryDurationMs -> enterStationary(fix)
             else -> step()
         }
+    }
+
+    private fun onStationaryFix(fix: Fix, repeated: Boolean): MachineStep {
+        val centre = geofenceCentre
+        // Safety net if the geofence exit event is late or lost: accuracy-aware and sustained, so one noisy hop
+        // (a berthed boat) does not flap the mode.
+        if (centre == null || fix.distanceTo(centre) - fix.accuracyM <= geofenceRadiusM) {
+            exitBase = null
+            exitCount = 0
+            return step()
+        }
+        // An exact repeat of a recent coordinate is a provider re-emitting an anchor (network fixes alternate
+        // between a few), not a new reading: it is never evidence of leaving.
+        if (repeated) return step()
+        val base = exitBase ?: fix.also { exitBase = it }
+        exitCount++
+        if (exitCount < config.stationaryExitFixes || fix.timeMs - base.timeMs < config.stationaryExitMinMs) return step()
+        nextSource = PingSource.GEOFENCE_EXIT
+        return enterMoving()
     }
 
     /** True once [TrackingConfig.noProgressFixes] fixes in a row, over the minimum duration, stayed near the run's first. */

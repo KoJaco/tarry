@@ -226,6 +226,44 @@ class CaptureModeMachineTest {
     }
 
     @Test
+    fun aKeptMovingRequestDropsAfterTheCapWithoutStill() {
+        // A phone in a car cradle at a job site: AR never reports STILL.
+        val m = machine()
+        m.onActivity(ActivityType.IN_VEHICLE)
+        var t = 0L
+        while (m.mode == CaptureMode.MOVING && t < 20 * min) { m.onAcceptedFix(fixAt(t)); t += 10_000L }
+        val since = checkNotNull(m.stationarySinceMs)
+
+        while (t < since + config.noProgressKeptRequestMaxMs) {
+            assertThat(m.onAcceptedFix(fixAt(t, northM = 5.0)).effects).isEmpty()
+            t += 10_000L
+        }
+        val step = m.onAcceptedFix(fixAt(t))
+        assertThat(step.mode).isEqualTo(CaptureMode.STATIONARY)
+        assertThat(step.effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params.intervalMs)
+            .isEqualTo(config.stationaryFixIntervalMs)
+        // Only once: later fixes and a late STILL change nothing.
+        assertThat(m.onAcceptedFix(fixAt(t + min)).effects).isEmpty()
+        assertThat(m.onActivity(ActivityType.STILL).effects).isEmpty()
+    }
+
+    @Test
+    fun aDepartureAtTheCapIsMovingNotAStationaryRequest() {
+        val m = machine()
+        m.onActivity(ActivityType.IN_VEHICLE)
+        var t = 0L
+        while (m.mode == CaptureMode.MOVING && t < 20 * min) { m.onAcceptedFix(fixAt(t)); t += 10_000L }
+        val since = checkNotNull(m.stationarySinceMs)
+        m.onAcceptedFix(fixAt(since + config.noProgressKeptRequestMaxMs - min, northM = DEFAULT_RADIUS + 100.0))
+
+        val step = m.onAcceptedFix(fixAt(since + config.noProgressKeptRequestMaxMs, northM = DEFAULT_RADIUS + 400.0))
+
+        assertThat(step.mode).isEqualTo(CaptureMode.MOVING)
+        assertThat(step.effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params.intervalMs)
+            .isEqualTo(config.movingIntervalMs)
+    }
+
+    @Test
     fun stillAfterNoProgressInVehicleSwitchesToTheStationaryRequest() {
         val m = machine()
         m.onActivity(ActivityType.IN_VEHICLE)

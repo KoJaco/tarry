@@ -6,10 +6,10 @@ Goal: before the numbers are used for invoicing, find out where tracking can sto
 
 ## 1. The 24 Oct silent drive (postmortem)
 - **Cause:** sitting in the parked car (IN_VEHICLE, ~0.3 m/s) for 5 min tripped the no-progress rule, which demoted capture to STATIONARY with the 60 s request. That request got no fixes for 12 min of driving (11:16:59–11:28:51, 2.7 km). Health waits 20 min and segmentation bridges up to 45 min, so no Gap was written.
-- **Fix (073ef8d):**
-  - A: segmentation writes a NO_FIX Gap for a silence of more than 5 min between good fixes that are further apart than a trip (`SegmentationParams.unrecordedMoveMinMs`, `SEGMENTATION_VERSION` 8).
-  - B: a no-progress demotion keeps the 10 s request while Activity Recognition still says moving (`TrackingConfig.noProgressKeepsMovingRequest`).
-- **Detect sooner:** the replay of the real 24–30 Oct data flags only this hole. The golden test `aDriveWithNoFixesAfterSittingInTheCarIsAGap` keeps the shape covered.
+- **Fix (073ef8d, narrowed in 5b75d60 and the cap commit after review):**
+  - A: segmentation writes a NO_FIX Gap for more than 5 min with no fix of any accuracy, when the good fixes either side are further apart than a trip (`SegmentationParams.unrecordedMoveMinMs`, `SEGMENTATION_VERSION` 9). Poor fixes still record a trip, so a tunnel or network-only drive stays a trip (owner decision, 3 Nov).
+  - B: a no-progress demotion keeps the 10 s request while Activity Recognition still says moving (`TrackingConfig.noProgressKeepsMovingRequest`). If AR never reports STILL, the first fix 20 min after the demotion switches to the 60 s request (`noProgressKeptRequestMaxMs`; owner decision, 3 Nov).
+- **Detect sooner:** golden tests `aDriveWithNoFixesAfterSittingInTheCarIsAGap` and `aDriveWithOnlyPoorFixesIsATripNotAGap` keep both shapes covered. A local replay of the owner's 24–30 Oct data (kept out of the repo) flagged only this hole.
 
 ## 2. Lifecycle results (Pixel 10, Android 17, 1–2 Nov 2026)
 | Case | Result | Notes |
