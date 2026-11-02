@@ -183,3 +183,93 @@ No Room change. No new DataStore keys. Backups already carry these keys.
   - the labels contain no enum names.
 - View model: each setter writes through `SettingsRepository`, and the settings flow reflects it.
 - Commands: `gradlew.bat :app:testDebugUnitTest :core-data:testDebugUnitTest`, `gradlew.bat assembleDebug lintDebug`.
+
+## 3. Summary
+
+### Problem
+The timeline shows one day of job blocks, but invoicing needs totals over a range: per job, with rounding and the minimum applied, and with uncovered time visible so nothing is lost.
+
+### Owner decisions (2026-11-03)
+- **Grand total:** per-job totals, then "Billed 9 h 30 · on the clock 7 h". "Billed" sums every job. "On the clock" is the wall-clock time any block covers, so overlapping blocks count once there.
+- **Unlabelled:** visits at non-ignored places and trips that no block covers, shown as two lines, "On site" and "Travel".
+- **Where:** a bottom-bar tab. The bar becomes **Timeline · Summary · Settings · tracking toggle**, with the toggle moving from the centre to the right end.
+- **Hours only.** No rates, so no schema change.
+- From step 2: one switch applies rounding and the minimum either per block or per job per day.
+
+### Calculation (pure Kotlin in `app/.../summary/`, JVM-tested)
+**Inputs:**
+- the range: inclusive local dates `from..to` and the zone;
+- live (not deleted) job blocks overlapping the range, and their jobs;
+- visits and trips in the range;
+- the ignored places;
+- the billing settings.
+
+**Steps:**
+1. **Clip and split.**
+   - Each block is clipped to `[startOfDay(from), startOfDay(to + 1))` in the zone.
+   - It is then split at each local midnight into day pieces. Day boundaries come from `ZonedDateTime`, so DST days are 23 h or 25 h.
+   - A block of a deleted job is excluded. Archived jobs are included.
+2. **Billed time** (billable pieces only; non-billable pieces count toward total time, never toward billed):
+   - per block (switch off): each billable day piece is billed on its own;
+   - per day, per job (switch on): a job's billable pieces on one local day are added up and billed once.
+   
+   Each billing unit is rounded first, then the minimum is applied:
+   - **Rounding** to the increment: NEAREST rounds half up (7.5 min at a 15 min step becomes 15), UP rounds up any part of a step. An increment of 0 means no rounding.
+   - **Minimum:** `billed = max(rounded, minimum)` when the unit's raw time is above 0. This applies even if NEAREST rounded it to 0.
+3. **Groups.**
+   - **By job** (default): one row per job with blocks in the range, showing block count, total time (raw, clipped), billable raw time and billed time. Rows are sorted by billed time, descending.
+   - **By day:** one section per local day with that day's job rows.
+4. **Grand totals.**
+   - **Billed:** the sum of every row.
+   - **On the clock:** the length of the union of all block pieces, of any job and any billable flag, in the range.
+5. **Unlabelled.**
+   - **On site:** time of non-deleted visits at non-ignored places, clipped to the range, that no live block covers. Only the uncovered part counts.
+   - **Travel:** the same for trips.
+
+**Assumption (cheap to change):** a block crossing local midnight is billed as two day pieces in both modes, so the by-day view and the per-day mode agree. Overnight blocks are rare.
+
+### UI
+- **Bottom bar:** add the Summary slot (new icon and the label "Summary"). Order: Timeline, Summary, Settings, then the toggle. The selection indicator glides between the three nav items. Bar tests are updated.
+- **Summary screen:**
+  - **Range chips:** Today, Yesterday, This week, Last week, Custom. Weeks run Monday to Sunday, as in the schedule. Custom opens a Material date-range picker. The chosen range survives rotation.
+  - **Grouping:** a "By job / By day" segmented toggle.
+  - **Job rows:** colour dot, name ("archived" suffix if archived), block count, total, and billed in bold.
+  - **Footer cards:**
+    - "Billed X · on the clock Y";
+    - "Unlabelled: on site A · travel B", hidden when both are 0.
+  - **Tapping a job row** opens that job's blocks in the range: date, start–end, duration, billed, and notes. Tapping a block opens the timeline at that day.
+  - **Empty state:** "No job blocks in this range." The unlabelled card still shows, so untagged time is visible.
+  - **Live data:** the screen follows Room flows, so editing a block on the timeline updates the Summary.
+  - **No export button yet.** Step 4 adds it.
+- Tokens, touch targets of at least 48 dp, TalkBack labels, and durations read as "2 hours 15 minutes".
+
+### Tasks
+| # | Task | Size |
+|---|---|---|
+| U1 | `SummaryCalculator` (pure) and golden tests | M |
+| U2 | `SummaryRepository`/view model: range → flows (blocks, jobs, visits, trips, places, settings) → calculator; range state | M |
+| U3 | Bottom bar: Summary slot, toggle on the right, route, bar tests | S |
+| U4 | Summary screen, the job-blocks drill-down, navigation to the timeline day, Compose tests | M |
+
+### Acceptance criteria
+- Golden tests (U1):
+  - rounding NEAREST and UP at 6, 15 and 30 min, plus off;
+  - the minimum with and without rounding;
+  - per-block against per-day mode for the same blocks;
+  - non-billable blocks;
+  - clipping at range edges and at midnight;
+  - Sydney DST start and end days;
+  - two jobs overlapping (billed counts both, on the clock counts once);
+  - an archived job is included;
+  - a deleted block and a deleted job are excluded;
+  - unlabelled on site and travel with partial coverage;
+  - an ignored place is excluded.
+- View model: changing the range or grouping recomputes, and a block edit re-emits.
+- Compose:
+  - the bar order and selection;
+  - the range chips;
+  - rows show the right values;
+  - drill-down lists blocks, and a block tap navigates to its day;
+  - the empty state;
+  - the unlabelled card hides at zero.
+- Commands: `gradlew.bat :app:testDebugUnitTest`, `gradlew.bat assembleDebug lintDebug`.
