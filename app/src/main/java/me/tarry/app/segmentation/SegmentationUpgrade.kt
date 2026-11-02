@@ -38,7 +38,9 @@ class SegmentationUpgrade @Inject constructor(
          * 5 = dogfood-2 review (good-accuracy fixes are never anchors, smoothed positions for detection only, departure span cap).
          * 6 = dogfood-3 (directed walks stay in the trip; arrival radius only absorbs pottering and vehicle walk-in).
          * 7 = trip mode from speed first, activity second (walk vs vehicle, car and boat alike).
+         * 8 = phase 6.5: a silence of over 5 min across which the phone moved is a NO_FIX gap (unrecorded move).
+         * 9 = phase 6.5 review: only a silence with no fix of any accuracy counts; poor fixes record a trip.
          */
-        const val SEGMENTATION_VERSION = 7
+        const val SEGMENTATION_VERSION = 9
     }
 }

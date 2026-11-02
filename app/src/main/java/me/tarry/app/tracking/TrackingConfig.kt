@@ -30,6 +30,19 @@ data class TrackingConfig(
     val noProgressFixes: Int = 6,
     val noProgressRadiusFactor: Float = 1f,
     val noProgressMinDurationMs: Long = 5 * 60_000L,
+    /**
+     * When no progress demotes MOVING while Activity Recognition still reports a moving activity, the moving request
+     * stays (mode STATIONARY, geofence armed) until AR reports STILL. On 24 Oct 2026 five minutes sitting in the car
+     * switched to the stationary request, which then got no fixes for 12 minutes of driving. False switches to the
+     * stationary request at once (a battery knob).
+     */
+    val noProgressKeepsMovingRequest: Boolean = true,
+    /**
+     * Upper bound on that kept moving request, measured by fix times from the demotion (no timer): if AR never reports
+     * STILL (a phone in a car cradle, a stale moving activity), the first fix this long after the demotion switches to
+     * the stationary request. The stay geofence and the safety net still catch a later departure.
+     */
+    val noProgressKeptRequestMaxMs: Long = 20 * 60_000L,
     // MOVING location request.
     val movingPriority: LocationPriority = LocationPriority.HIGH_ACCURACY,
     val movingIntervalMs: Long = 10_000L,

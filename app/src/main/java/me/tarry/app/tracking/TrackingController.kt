@@ -98,6 +98,15 @@ class TrackingController @Inject constructor(
         reconcileLocked(source)
     }
 
+    /**
+     * The wall clock or the zone changed. A Stop's stored end is the next window start in the zone it was made in,
+     * so re-bound it in the current zone first, then reconcile as for any system event.
+     */
+    suspend fun onClockChanged() = mutex.withLock {
+        rebindStop(Instant.ofEpochMilli(clock.nowMs()), clock.zone())
+        reconcileLocked(ReconcileSource.SYSTEM)
+    }
+
     /** Manual START. [durationMin] is required for DURATION. Replaces any active manual override. */
     suspend fun start(endMode: ManualOverrideEndMode, durationMin: Int? = null) = mutex.withLock {
         require(endMode != ManualOverrideEndMode.DURATION || (durationMin ?: 0) > 0) { "DURATION needs durationMin" }
@@ -198,8 +207,10 @@ class TrackingController @Inject constructor(
      */
     private suspend fun rebindStop(now: Instant, zone: ZoneId) {
         val stops = trackingRepo.observeActiveOverrides().first().filter {
+            // A Stop made after "now" (the clock went backwards) is left alone: re-bounding it from an earlier now would
+            // end it before it started, and the Stop would be lost once the clock is corrected.
             it.type == ManualOverrideType.PAUSE && it.endMode == ManualOverrideEndMode.UNTIL_STOPPED &&
-                (it.end ?: return@filter false) > now.toEpochMilli()
+                it.start <= now.toEpochMilli() && (it.end ?: return@filter false) > now.toEpochMilli()
         }
         if (stops.isEmpty()) return
         val inputs = inputsProvider.inputs(now, now, zone)

@@ -35,7 +35,8 @@ data class MachineStep(val mode: CaptureMode, val effects: List<CaptureEffect>)
  * or when the last activity is not a moving one (so a vehicle stopped in traffic is not demoted).
  * MOVING is entered on a moving activity, a geofence exit, or a fix beyond the stay geofence.
  * MOVING is left again, whatever the activity says, when accepted fixes make no progress (see
- * [TrackingConfig.noProgressFixes]); only a fresh moving transition or a geofence exit re-enters it.
+ * [TrackingConfig.noProgressFixes]); only a fresh moving transition or a geofence exit re-enters it. If AR still said
+ * moving at that demotion, the moving request stays until AR reports STILL ([TrackingConfig.noProgressKeepsMovingRequest]).
  */
 class CaptureModeMachine(
     private val config: TrackingConfig,
@@ -66,6 +67,9 @@ class CaptureModeMachine(
     private var progressCount = 0
     private var exitBase: Fix? = null
     private var exitCount = 0
+
+    /** STATIONARY was entered by no progress while AR said moving: the moving request is still running. */
+    private var movingRequestKept = false
     private val recentFixes = ArrayDeque<Fix>()
 
     /** Time of the fix the current STATIONARY stay was entered at; null while MOVING. */
@@ -83,6 +87,7 @@ class CaptureModeMachine(
         stationarySinceMs = null
         stillPending = false
         nextSource = PingSource.FUSED
+        movingRequestKept = false
         resetProgress()
         return MachineStep(mode, listOf(CaptureEffect.RemoveGeofence, requestMoving()))
     }
@@ -136,25 +141,20 @@ class CaptureModeMachine(
         recentFixes.addLast(fix)
         while (recentFixes.size > config.staleRepeatMemory) recentFixes.removeFirst()
         if (mode == CaptureMode.STATIONARY) {
-            val centre = geofenceCentre
-            // Safety net if the geofence exit event is late or lost: accuracy-aware and sustained, so one noisy hop
-            // (a berthed boat) does not flap the mode.
-            if (centre == null || fix.distanceTo(centre) - fix.accuracyM <= geofenceRadiusM) {
-                exitBase = null
-                exitCount = 0
-                return step()
+            val since = stationarySinceMs
+            if (movingRequestKept && since != null && fix.timeMs - since >= config.noProgressKeptRequestMaxMs) {
+                // AR never reported STILL (a cradle, a stale moving activity): stop paying for the moving request.
+                movingRequestKept = false
+                val rest = onStationaryFix(fix, repeated)
+                return if (rest.mode == CaptureMode.STATIONARY) MachineStep(mode, listOf(requestStationary()) + rest.effects) else rest
             }
-            // An exact repeat of a recent coordinate is a provider re-emitting an anchor (network fixes alternate
-            // between a few), not a new reading: it is never evidence of leaving.
-            if (repeated) return step()
-            val base = exitBase ?: fix.also { exitBase = it }
-            exitCount++
-            if (exitCount < config.stationaryExitFixes || fix.timeMs - base.timeMs < config.stationaryExitMinMs) return step()
-            nextSource = PingSource.GEOFENCE_EXIT
-            return enterMoving()
+            return onStationaryFix(fix, repeated)
         }
         if (stillPending) return enterStationary(fix)
-        if (noProgress(fix)) return enterStationary(fix)
+        if (noProgress(fix)) {
+            val keepMoving = config.noProgressKeepsMovingRequest && activityRecognitionAvailable && activity in MOVING_ACTIVITIES
+            return enterStationary(fix, keepMovingRequest = keepMoving)
+        }
         if (!distanceGatingActive()) {
             anchor = null
             return step()
@@ -168,6 +168,25 @@ class CaptureModeMachine(
             fix.timeMs - a.timeMs >= config.stationaryEntryDurationMs -> enterStationary(fix)
             else -> step()
         }
+    }
+
+    private fun onStationaryFix(fix: Fix, repeated: Boolean): MachineStep {
+        val centre = geofenceCentre
+        // Safety net if the geofence exit event is late or lost: accuracy-aware and sustained, so one noisy hop
+        // (a berthed boat) does not flap the mode.
+        if (centre == null || fix.distanceTo(centre) - fix.accuracyM <= geofenceRadiusM) {
+            exitBase = null
+            exitCount = 0
+            return step()
+        }
+        // An exact repeat of a recent coordinate is a provider re-emitting an anchor (network fixes alternate
+        // between a few), not a new reading: it is never evidence of leaving.
+        if (repeated) return step()
+        val base = exitBase ?: fix.also { exitBase = it }
+        exitCount++
+        if (exitCount < config.stationaryExitFixes || fix.timeMs - base.timeMs < config.stationaryExitMinMs) return step()
+        nextSource = PingSource.GEOFENCE_EXIT
+        return enterMoving()
     }
 
     /** True once [TrackingConfig.noProgressFixes] fixes in a row, over the minimum duration, stayed near the run's first. */
@@ -193,8 +212,14 @@ class CaptureModeMachine(
     private fun distanceGatingActive(): Boolean =
         !activityRecognitionAvailable || activity !in MOVING_ACTIVITIES
 
-    private fun enterStationary(at: Fix): MachineStep {
-        if (mode == CaptureMode.STATIONARY) return step()
+    /** [keepMovingRequest] leaves the moving request running (see [TrackingConfig.noProgressKeepsMovingRequest]). */
+    private fun enterStationary(at: Fix, keepMovingRequest: Boolean = false): MachineStep {
+        if (mode == CaptureMode.STATIONARY) {
+            // AR now agrees the phone is still: the moving request kept by a no-progress demotion can drop.
+            if (!movingRequestKept || activity != ActivityType.STILL) return step()
+            movingRequestKept = false
+            return MachineStep(mode, listOf(requestStationary()))
+        }
         mode = CaptureMode.STATIONARY
         stillPending = false
         anchor = null
@@ -202,23 +227,21 @@ class CaptureModeMachine(
         geofenceCentre = at
         stationarySinceMs = at.timeMs
         geofenceRadiusM = stayRadiusM
-        return MachineStep(
-            mode,
-            listOf(
-                CaptureEffect.RequestLocation(
-                    LocationRequestParams(
-                        priority = config.stationaryPriority,
-                        intervalMs = config.stationaryFixIntervalMs,
-                        maxUpdateDelayMs = 0L,
-                        minUpdateIntervalMs = config.stationaryFixIntervalMs,
-                        waitForAccurateLocation = config.waitForAccurateLocation,
-                        maxUpdateAgeMs = config.maxUpdateAgeMs,
-                    ),
-                ),
-                CaptureEffect.AddStayGeofence(at.lat, at.lng, geofenceRadiusM),
-            ),
-        )
+        movingRequestKept = keepMovingRequest
+        val geofence = CaptureEffect.AddStayGeofence(at.lat, at.lng, geofenceRadiusM)
+        return MachineStep(mode, if (keepMovingRequest) listOf(geofence) else listOf(requestStationary(), geofence))
     }
+
+    private fun requestStationary() = CaptureEffect.RequestLocation(
+        LocationRequestParams(
+            priority = config.stationaryPriority,
+            intervalMs = config.stationaryFixIntervalMs,
+            maxUpdateDelayMs = 0L,
+            minUpdateIntervalMs = config.stationaryFixIntervalMs,
+            waitForAccurateLocation = config.waitForAccurateLocation,
+            maxUpdateAgeMs = config.maxUpdateAgeMs,
+        ),
+    )
 
     private fun enterMoving(): MachineStep {
         if (mode == CaptureMode.MOVING) return step()
@@ -227,6 +250,7 @@ class CaptureModeMachine(
         resetProgress()
         geofenceCentre = null
         stationarySinceMs = null
+        movingRequestKept = false
         return MachineStep(mode, listOf(CaptureEffect.RemoveGeofence, requestMoving()))
     }
 

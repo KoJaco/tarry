@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.TouchInjectionScope
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.doubleClick
@@ -64,6 +65,7 @@ class JobColumnTest {
         suggestions: List<JobSuggestionItem> = emptyList(),
         items: List<TimelineItem> = visits,
         fontScale: Float = 1f,
+        selection: Set<String> = emptySet(),
     ) {
         composeRule.setContent {
             val density = LocalDensity.current
@@ -78,6 +80,7 @@ class JobColumnTest {
                         onDeclineSuggestion = { declined += it },
                         onCreateJob = { s, e -> created += s to e },
                         onJobRangeChange = { id, s, e -> changed += Triple(id, s, e) },
+                        selection = selection,
                     )
                 }
             }
@@ -220,10 +223,26 @@ class JobColumnTest {
             down(Offset(width / 2f, yAt(at(10, 7))))
             advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
             moveTo(Offset(width / 2f, yAt(at(11, 40))))
-            up()
         }
+        composeRule.onNodeWithTag("timeline_job_preview").assertExists()
+        composeRule.onNodeWithTag(JobColumnTag).performTouchInput { up() }
         assertThat(created).containsExactly(at(10) to at(11, 45))
         composeRule.onNodeWithTag("timeline_job_preview").assertDoesNotExist()
+    }
+
+    @Test
+    fun inMultiSelectTheJobColumnDoesNotReact() {
+        show(listOf(block("a", at(9), at(9, 30))), items = longVisit, selection = setOf("v"))
+        composeRule.onNodeWithTag("timeline_job_a").assertHasNoClickAction().performClick()
+        composeRule.onNodeWithTag(JobColumnTag).performTouchInput {
+            down(Offset(width / 2f, yAt(at(10, 7))))
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveTo(Offset(width / 2f, yAt(at(11, 40))))
+        }
+        composeRule.onNodeWithTag("timeline_job_preview").assertDoesNotExist()
+        composeRule.onNodeWithTag(JobColumnTag).performTouchInput { up() }
+        assertThat(opened).isEmpty()
+        assertThat(created).isEmpty()
     }
 
     @Test

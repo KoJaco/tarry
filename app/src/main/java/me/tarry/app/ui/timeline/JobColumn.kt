@@ -494,9 +494,10 @@ internal fun BoxScope.JobColumn(
                     .background(c.accentSoft.copy(alpha = JobColumnDefaults.PreviewFillAlpha))
                     .dashedBorder(c.accentStrong, shape)
                     .padding(horizontal = JobColumnDefaults.PaddingH, vertical = JobColumnDefaults.PaddingV)
+                    // The tag sits outside the cleared semantics so tests can find the preview.
+                    .testTag("timeline_job_preview")
                     // Visual feedback for the drag in flight; the created job is announced by its own drawer.
-                    .clearAndSetSemantics {}
-                    .testTag("timeline_job_preview"),
+                    .clearAndSetSemantics {},
             ) {
                 Text(
                     text = stringResource(R.string.timeline_time_range, formats.time(range.start, zone), formats.time(range.end, zone)),

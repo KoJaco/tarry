@@ -43,6 +43,59 @@ class GapsTest {
         assertEquals(emptyList<Gap>(), run(input(sessions = listOf(r(0, 201))), pings))
     }
 
+    /** About 2.8 km east of (0, 0). */
+    private fun farPing(t: Long, accuracyM: Float = 20f) = Ping(m(t), 0.0, 0.025, accuracyM)
+
+    @Test fun shortSilenceWithMoveGivesNoFix() {
+        // The 24 Oct 2026 shape: 12 min without fixes, and the next good fix is kilometres away.
+        val pings = pingsEvery(0, 60) + (72L..120L).map { farPing(it) }
+        val g = run(input(sessions = listOf(r(0, 121))), pings)
+        assertEquals(listOf(Gap(r(60, 72), GapCause.NO_FIX)), g)
+    }
+
+    @Test fun moveSilenceShorterThanMinimumIgnored() {
+        val pings = pingsEvery(0, 60) + (64L..120L).map { farPing(it) }
+        assertEquals(emptyList<Gap>(), run(input(sessions = listOf(r(0, 121))), pings))
+    }
+
+    @Test fun moveShorterThanTripDistanceIgnored() {
+        // 100 m east: within a trip's minimum distance once accuracy is allowed for.
+        val pings = pingsEvery(0, 60) + (72L..120L).map { Ping(m(it), 0.0, 0.0009, 10f) }
+        assertEquals(emptyList<Gap>(), run(input(sessions = listOf(r(0, 121))), pings))
+    }
+
+    @Test fun poorFixAfterSilenceIsNoEvidenceOfAMove() {
+        // A network fix far away, then good fixes back where the phone was (the 28 Oct 2026 spike).
+        val pings = pingsEvery(0, 60) + farPing(72, accuracyM = 100f) + pingsEvery(73, 120)
+        assertEquals(emptyList<Gap>(), run(input(sessions = listOf(r(0, 121))), pings))
+    }
+
+    @Test fun poorFixesThroughoutAMoveRecordIt() {
+        // A tunnel or a train: only poor fixes, one a minute, along the way. Recorded, so not a gap.
+        val along = (61L..71L).map { Ping(m(it), 0.0, 0.025 * (it - 60) / 12, 100f) }
+        val pings = pingsEvery(0, 60) + along + (72L..120L).map { farPing(it) }
+        assertEquals(emptyList<Gap>(), run(input(sessions = listOf(r(0, 121))), pings))
+    }
+
+    @Test fun moveSilenceEitherSideOfALonePoorFixIsOneGap() {
+        val pings = pingsEvery(0, 60) + Ping(m(66), 0.0, 0.01, 100f) + (72L..120L).map { farPing(it) }
+        val g = run(input(sessions = listOf(r(0, 121))), pings)
+        assertEquals(listOf(Gap(r(60, 72), GapCause.NO_FIX)), g)
+    }
+
+    @Test fun moveSilenceOverlappingLongSilenceIsOneGap() {
+        // Good fixes at 10 and 70 with one poor fix at 40: the long-silence rule sees nothing over 45 min.
+        val pings = pingsEvery(0, 10) + Ping(m(40), 0.0, 0.01, 100f) + (70L..120L).map { farPing(it) }
+        val g = run(input(sessions = listOf(r(0, 121))), pings)
+        assertEquals(listOf(Gap(r(10, 70), GapCause.NO_FIX)), g)
+    }
+
+    @Test fun moveSilenceOutsideSessionIgnored() {
+        val pings = pingsEvery(0, 60) + (72L..120L).map { farPing(it) }
+        val g = run(input(sessions = listOf(r(0, 61), r(72, 121))), pings)
+        assertEquals(emptyList<Gap>(), g)
+    }
+
     @Test fun sessionWithoutPingsIsOneNoFix() {
         val g = run(input(sessions = listOf(r(60, 180))))
         assertEquals(listOf(Gap(r(60, 180), GapCause.NO_FIX)), g)

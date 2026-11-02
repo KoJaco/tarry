@@ -388,6 +388,58 @@ class TrackingControllerTest {
     }
 
     @Test
+    fun aZoneChangeRebindsAStopToTheNextWindowInTheNewZone() = runBlocking {
+        // 19:00 Sydney is 16:00 Perth: inside the Perth window, so the Stop suppresses it until 07:00 Perth (10:00 Sydney).
+        val perth = ZoneId.of("Australia/Perth")
+        clock.now = mondayAt(19).toEpochMilli()
+        clock.zone = perth
+        controller.reconcile(ReconcileSource.ALARM)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.stop()
+        assertThat(overrides().single().end).isEqualTo(mondayAt(10, day = 20).toEpochMilli())
+
+        clock.zone = sydney
+        controller.onClockChanged()
+
+        val suppress = trackingRepo.observeActiveOverrides().first().single()
+        assertThat(suppress.end).isEqualTo(mondayAt(7, day = 20).toEpochMilli())
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun aClockSetBackBeforeAStopKeepsTheStop() = runBlocking {
+        clock.now = mondayAt(15).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.stop()
+
+        clock.now = mondayAt(6).toEpochMilli()
+        controller.onClockChanged()
+        clock.now = mondayAt(15, minute = 5).toEpochMilli()
+        launcher.started.clear()
+        controller.onClockChanged()
+
+        assertThat(trackingRepo.observeActiveOverrides().first().single().end).isEqualTo(mondayAt(7, day = 20).toEpochMilli())
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun aClockChangeWithoutAStopOnlyRearmsInTheNewZone() = runBlocking {
+        clock.now = mondayAt(20).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+
+        // 20:00 Sydney is 17:00 Perth, just after the Perth window: the next start is 07:00 Perth.
+        clock.zone = ZoneId.of("Australia/Perth")
+        controller.onClockChanged()
+
+        assertThat(overrides()).isEmpty()
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(10, day = 20))
+    }
+
+    @Test
     fun stopWithNoNextWindowWithinTheLookAheadIsBoundedNotPermanent() = runBlocking {
         val short = TrackingConfig(scheduleLookAheadDays = 3)
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, short, clock)
