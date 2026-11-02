@@ -137,3 +137,49 @@ Locations are ~99% of the rows (about 100k at 90 days). They are never all in me
 - **Size and memory:** about 100k pings. Handled by streaming (above). Verified with a synthetic 100k-ping round trip and the real-data test.
 - **DataStore and Room are not one transaction:** handled by snapshot and rollback. A crash at exactly that point could leave the new settings with the old DB, which is harmless; nothing is lost from the DB.
 - **Restoring during a scheduled window** stops and restarts tracking under the controller lock. No Gap row is written for that stop and start; a failed restore undoes the stop. The restore runs to completion even if the user leaves the screen.
+
+## 2. Editable Billing settings
+
+### Problem
+Settings → Billing shows rounding increment, rounding mode, minimum billable time and "Round daily total per job" as read-only values. The Summary (step 3) bills with them, so the user must be able to set them. The DataStore keys and `SettingsRepository` setters already exist.
+
+### Owner decisions (2026-11-03)
+- **One switch decides where rounding and the minimum apply.**
+  - Off (default): each job block is rounded and topped up to the minimum on its own.
+  - On: a job's blocks on one local day are added up first, then rounded and topped up once.
+  - It keeps the existing key `round_daily_total_per_job`, relabelled "Round per day, per job".
+- **Minimum billable offers Off, 15, 30 and 60 min**, through a picker like the stop radius.
+
+### UI
+All rows are in Settings → Billing and use the existing components (`SettingsValueRow`, `SettingsSwitchRow`, `PickerSheet`).
+
+| Row | Control | Options or behaviour |
+|---|---|---|
+| Rounding | picker | Off, 6 min, 15 min, 30 min (`Settings.ALLOWED_ROUNDING_INCREMENTS`) |
+| Round to | picker | "Nearest" or "Always up". Disabled, with the subtitle "Rounding is off", while rounding is Off. |
+| Minimum billable time | picker | Off, 15 min, 30 min, 60 min (new `Settings.ALLOWED_MIN_BILLABLE_MINUTES`). A stored value outside the list (none exist today) still shows as "N min" and is never rewritten unless the user picks. |
+| Round per day, per job | switch | Subtitle: "Add up each job's blocks for the day before rounding and the minimum." |
+
+- Each picker sheet has a one-line explanation. Rounding's is "Billed time is rounded to this step", and the mode sheet explains nearest against always up.
+- Labels are readable by TalkBack (no enum names shown), rows are at least 48 dp, and tokens come from the theme.
+- The other Billing rows (location retention, review reminder) are unchanged and stay display-only.
+
+### Data
+No Room change. No new DataStore keys. Backups already carry these keys.
+
+### Tasks
+| # | Task | Size |
+|---|---|---|
+| S1 | `Settings.ALLOWED_MIN_BILLABLE_MINUTES`; view model setters for the four settings | S |
+| S2 | Billing rows: three pickers and a switch, strings, the disabled mode row | S |
+| S3 | Tests (below) | S |
+
+### Acceptance criteria
+- Compose (`SettingsContent`):
+  - each picker row opens its sheet with the right options and current choice;
+  - picking calls the callback with the value;
+  - the mode row is disabled while rounding is Off and enabled otherwise;
+  - the switch calls its callback;
+  - the labels contain no enum names.
+- View model: each setter writes through `SettingsRepository`, and the settings flow reflects it.
+- Commands: `gradlew.bat :app:testDebugUnitTest :core-data:testDebugUnitTest`, `gradlew.bat assembleDebug lintDebug`.
