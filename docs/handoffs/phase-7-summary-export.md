@@ -1,19 +1,21 @@
 # Handoff: phase 7 — Summary and export
 
-**From:** Claude (planner, session `tarry-phase-6`) → **To:** next Claude session (planner first, then subagents) · **Date:** 2026-10-29 · **Branch to create:** `feat/phase-7-summary-export` from `main`
+**From:** Claude (planner, session `tarry-phase-6`) → **To:** next Claude session (planner first, then subagents) · **Date:** 2026-10-29, updated 2026-10-31 · **Branch to create:** `feat/phase-7-summary-export` from `main`, **after phase 6.5 merges** (`docs/handoffs/phase-6.5-trust-pass.md`)
 
 ## Where things stand
 - **Merged on `main`:**
   - phase 6, the schedule grid and the toggle long-press sheet (PR #23, spec `docs/specs/phase-6.md`);
-  - phase 6b, job blocks with tags removed (PR #24, spec `docs/specs/phase-6b.md`).
+  - phase 6b, job blocks with tags removed (PR #24, spec `docs/specs/phase-6b.md`);
+  - the 6b follow-up (PR #25): suggestions open on double tap with Accept or Decline, declines persist in `DeclinedSuggestionStore`, and undo for "Add to job", "Assign job" and move/resize is atomic via `JobBlockRepository.revert`;
+  - phase 6.5, the trust pass (check that it has merged).
 - **The DB is Room v2.** The owner's phone migrated cleanly on 2026-10-28:
   - every count was preserved and 11 job blocks were created;
   - backups are in `tmp/pre-phase-6b-install/` (v1) and `tmp/post-phase-6b-install/` (v2);
   - `RealDbMigrationTest` (skipped unless `TARRY_REAL_DB` is set) is the pattern for checking a migration against a copy of the real DB.
-- **Follow-up PR for 6b, check it has merged before branching.** These changes landed after #24 merged:
-  - suggestions open on double tap with Accept or Decline;
-  - declines persist (`DeclinedSuggestionStore`, DataStore);
-  - undo for "Add to job" and "Assign job".
+- **Dogfood:** the owner tracked the full week of 26–30 Oct and is happy with the data (2026-10-31). Use a pulled copy in `tmp/` for summary sanity checks against real weeks, never in the repo.
+- **Where this sits in the MVP** (build plan, updated 2026-10-31):
+  - 6.5 trust pass → **7 summary and export** → 7.5 UI and logic pass (launch-ready UI, owner-driven) → 8 launch (onboarding, Play Store, Play Billing).
+  - **Pricing (phase 8):** a 7-day free trial, then a one-time lifetime purchase (about 29 AUD, to be confirmed) through Google Play Billing. Build phase 7 **without** gating. Phase 8 decides what the trial end locks. Keep the summary and export code free of entitlement checks so phase 8 can wrap them in one place.
 - **Read these first:**
   - `AGENTS.md`;
   - `docs/specs/build-plan.md`: the phase 7 line and the **Spec deltas**, especially the job blocks and no-tags deltas, which override the MVP spec;
@@ -39,6 +41,15 @@ Turn the labelled timeline into invoiceable numbers, and get them out of the app
 - **Day summary card:** `ui/timeline/DaySummary.kt` and `SummaryCard.kt`. Check what it sums now that visits carry no job.
 
 ## Scope
+**Build order (owner agreed 2026-10-31):**
+1. backup and restore, which protects the dogfood data, today backed up only by `adb` pulls;
+2. Billing settings made editable;
+3. Summary calculation and view;
+4. CSV;
+5. PDF.
+
+The numbered items below are by topic, not by order.
+
 1. **Summary view:**
    - date range presets: Today, Yesterday, This week, Last week, Custom;
    - grouped by job (with toggles for by day, and possibly by place, see questions);
@@ -83,16 +94,13 @@ Turn the labelled timeline into invoiceable numbers, and get them out of the app
 - **Design:** the owner does a full design pass at the end of the MVP, so focus on correct, complete logic and UX. Tokens still apply, as do touch targets of at least 48dp and TalkBack.
 
 ## Carried-over follow-ups (not phase 7; list them, don't fix them unasked)
-- **The 24 Oct no-Gap drive** (11:17–11:28, about 2.8 km, no fixes, no Gap) breaks rule 6. Use `debug-triage` on its own `fix/` branch, ideally before phase 7 or alongside it. Details are in `docs/specs/phase-5.md` § Device-pass revisions.
-- **Phase 6b leftovers:**
-  - undo after a merge restores with two repository calls, not one transaction (`TimelineViewModel.moveOrResizeBlock` restore path);
-  - in `JobColumnTest`, the create-preview `assertDoesNotExist` test is vacuous, because `clearAndSetSemantics` comes before `testTag`;
-  - no test covers the job column being disabled in multi-select;
-  - the dashed outline on suggestions may fall below 3:1 contrast in light theme, so check it in the design pass;
-  - at font scale 2 the job column narrows (`jobFraction = 0.4 / fontScale`, with a 48dp minimum), so job names cut off;
-  - `place_defaults_hint` wording.
-- **Lint:** `DayCanvas.kt:553` "Condition is always true" (from phase 2c); the existing unused resources (`ic_export`, `sessions_export_csv`, `sessions_export_gpx`, `timeline_trip_row`).
-- **Phase 5 nits** are listed in `docs/handoffs/phase-6-schedule.md` § Carried-over follow-ups.
-- **Questions for the owner:**
-  - Ask how the 26–30 Oct dogfood week went. Pull the DB to `tmp/` and check each day for holes and whether each hole has a Gap.
-  - The day-3 "tiny tweaks" were never reported. Ask once.
+- **Phase 6.5** handles the 24 Oct no-Gap drive, the lifecycle pass and the battery measurement.
+- **Phase 7.5** (the UI and logic pass) collects the visual and refactor items:
+  - suggestion outline contrast;
+  - job column at font scale 2;
+  - tracking-marker labels at 2×;
+  - hand-drawn icons;
+  - `place_defaults_hint` wording;
+  - unused resources (`ic_export`, `sessions_export_csv`, `sessions_export_gpx`, `timeline_trip_row`);
+  - the phase 5 nits in `docs/handoffs/phase-6-schedule.md`.
+- **Never answered:** the owner's day-3 "tiny tweaks". Ask once.
