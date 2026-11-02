@@ -29,6 +29,7 @@ import me.tarry.app.ui.schedule.mondayOf
 import me.tarry.app.ui.schedule.summarize
 import me.tarry.core.data.model.Schedule
 import me.tarry.core.data.repository.ScheduleRepository
+import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.SettingsRepository
 import me.tarry.core.data.settings.ThemeMode
@@ -63,6 +64,22 @@ class SettingsViewModel @Inject constructor(
 
     fun setTheme(mode: ThemeMode) {
         viewModelScope.launch { repository.setTheme(mode) }
+    }
+
+    fun setRoundingIncrementMin(minutes: Int) {
+        viewModelScope.launch { repository.setRoundingIncrementMin(minutes) }
+    }
+
+    fun setRoundingMode(mode: RoundingMode) {
+        viewModelScope.launch { repository.setRoundingMode(mode) }
+    }
+
+    fun setMinBillableMinutes(minutes: Int) {
+        viewModelScope.launch { repository.setMinBillableMinutes(minutes) }
+    }
+
+    fun setRoundDailyTotalPerJob(enabled: Boolean) {
+        viewModelScope.launch { repository.setRoundDailyTotalPerJob(enabled) }
     }
 
     /** The zone dates are shown in (the capture clock's), not a second opinion from the system default. */

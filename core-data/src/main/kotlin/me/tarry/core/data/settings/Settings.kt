@@ -32,6 +32,8 @@ data class Settings(
         const val LEGACY_STAY_RADIUS_M = 300
         const val MAX_STAY_RADIUS_M = 200
         val ALLOWED_ROUNDING_INCREMENTS = setOf(0, 6, 15, 30)
+        /** 0 = no minimum. */
+        val ALLOWED_MIN_BILLABLE_MINUTES = setOf(0, 15, 30, 60)
         val ALLOWED_RETENTION_DAYS = setOf(30, 90, 365)
         val ALLOWED_STAY_RADII_M = setOf(50, 75, 100, 150, 200)
     }

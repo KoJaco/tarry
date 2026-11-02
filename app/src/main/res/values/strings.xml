@@ -194,10 +194,19 @@
     <string name="sessions_export_privacy">Raw location leaves the phone only through the file you choose to save.</string>
 
 
-    <string name="settings_rounding_increment">Rounding increment</string>
-    <string name="settings_rounding_mode">Rounding mode</string>
+    <string name="settings_rounding_increment">Rounding</string>
+    <string name="settings_rounding_increment_explanation">Billed time is rounded to this step.</string>
+    <string name="settings_rounding_mode">Round to</string>
+    <string name="settings_rounding_mode_explanation">Nearest rounds to the closest step. Always up rounds any part of a step up to the next one.</string>
+    <string name="settings_rounding_mode_nearest">Nearest</string>
+    <string name="settings_rounding_mode_up">Always up</string>
+    <string name="settings_rounding_mode_nearest_detail">For example, 20 min at a 15 min step is billed as 15 min.</string>
+    <string name="settings_rounding_mode_up_detail">For example, 20 min at a 15 min step is billed as 30 min.</string>
+    <string name="settings_rounding_is_off">Rounding is off</string>
     <string name="settings_min_billable">Minimum billable time</string>
-    <string name="settings_round_daily_total">Round daily total per job</string>
+    <string name="settings_min_billable_explanation">Shorter jobs are billed as at least this long.</string>
+    <string name="settings_round_daily_total">Round per day, per job</string>
+    <string name="settings_round_daily_total_subtitle">Add up each job\'s blocks for the day before rounding and the minimum.</string>
     <string name="settings_ping_retention">Raw location retention</string>
     <string name="settings_review_reminder">Review reminder</string>
     <string name="settings_review_reminder_time">Review reminder time</string>

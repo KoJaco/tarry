@@ -15,6 +15,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -30,6 +31,7 @@ import me.tarry.core.data.db.BackupCounts
 import me.tarry.core.data.db.BackupSnapshot
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.repository.ScheduleRepository
+import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.SettingsRepository
 import org.junit.After
 import org.junit.Before
@@ -191,5 +193,27 @@ class SettingsViewModelDataTest {
         vm.confirmRestore()
         assertThat(vm.events.first()).isEqualTo(DataEvent.Failed(BackupError.RESTORE_FAILED))
         assertThat(vm.data.value.busy).isNull()
+    }
+
+    @Test
+    fun billingSettersWriteThroughAndTheSettingsFlowReflectsThem() = runBlocking<Unit> {
+        vm.setRoundingIncrementMin(15)
+        vm.setRoundingMode(RoundingMode.UP)
+        vm.setMinBillableMinutes(30)
+        vm.setRoundDailyTotalPerJob(true)
+
+        val s = withTimeout(5_000) {
+            vm.settings.first { it != null && it.roundingIncrementMin == 15 && it.roundingMode == RoundingMode.UP && it.minBillableMinutes == 30 && it.roundDailyTotalPerJob }
+        }!!
+        assertThat(s.roundingIncrementMin).isEqualTo(15)
+        assertThat(s.roundingMode).isEqualTo(RoundingMode.UP)
+        assertThat(s.minBillableMinutes).isEqualTo(30)
+        assertThat(s.roundDailyTotalPerJob).isTrue()
+
+        vm.setRoundingIncrementMin(0)
+        vm.setMinBillableMinutes(0)
+        vm.setRoundDailyTotalPerJob(false)
+        val off = withTimeout(5_000) { vm.settings.first { it != null && it.roundingIncrementMin == 0 && it.minBillableMinutes == 0 && !it.roundDailyTotalPerJob } }!!
+        assertThat(off.roundingMode).isEqualTo(RoundingMode.UP)
     }
 }

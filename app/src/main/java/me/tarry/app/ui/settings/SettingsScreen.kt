@@ -63,6 +63,7 @@ import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.scheduleSummaryText
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
 
@@ -110,13 +111,17 @@ fun SettingsScreen(
         onOpenPlaces = onOpenPlaces,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onThemeSelected = viewModel::setTheme,
+        onRoundingIncrementSelected = viewModel::setRoundingIncrementMin,
+        onRoundingModeSelected = viewModel::setRoundingMode,
+        onMinBillableSelected = viewModel::setMinBillableMinutes,
+        onRoundDailyTotalChange = viewModel::setRoundDailyTotalPerJob,
         modifier = modifier,
     )
 }
 
-private enum class Picker { RADIUS, THEME }
+private enum class Picker { RADIUS, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE }
 
-/** Stateless sectioned settings; the stop radius and theme are the editable ones. */
+/** Stateless sectioned settings; the stop radius, theme and the billing rounding rows are the editable ones. */
 @Composable
 fun SettingsContent(
     settings: Settings?,
@@ -128,6 +133,10 @@ fun SettingsContent(
     onOpenPlaces: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
+    onRoundingIncrementSelected: (Int) -> Unit = {},
+    onRoundingModeSelected: (RoundingMode) -> Unit = {},
+    onMinBillableSelected: (Int) -> Unit = {},
+    onRoundDailyTotalChange: (Boolean) -> Unit = {},
     data: DataUiState = DataUiState(),
     zone: ZoneId = ZoneId.systemDefault(),
     onBackUp: () -> Unit = {},
@@ -142,13 +151,6 @@ fun SettingsContent(
     val off = stringResource(R.string.settings_off)
     val billing: List<Pair<String, String>> = settings?.let { s ->
         listOf(
-            stringResource(R.string.settings_rounding_increment) to
-                if (s.roundingIncrementMin == 0) off
-                else stringResource(R.string.settings_minutes_value, s.roundingIncrementMin),
-            stringResource(R.string.settings_rounding_mode) to s.roundingMode.name,
-            stringResource(R.string.settings_min_billable) to
-                stringResource(R.string.settings_minutes_value, s.minBillableMinutes),
-            stringResource(R.string.settings_round_daily_total) to if (s.roundDailyTotalPerJob) on else off,
             stringResource(R.string.settings_ping_retention) to
                 (s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
                     ?: stringResource(R.string.settings_forever)),
@@ -181,6 +183,42 @@ fun SettingsContent(
                 current = settings.theme,
                 onSelect = {
                     onThemeSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.ROUNDING -> PickerSheet(
+                title = stringResource(R.string.settings_rounding_increment),
+                explanation = stringResource(R.string.settings_rounding_increment_explanation),
+                options = Settings.ALLOWED_ROUNDING_INCREMENTS.sorted().map { it to minutesOrOff(it) },
+                current = settings.roundingIncrementMin,
+                onSelect = {
+                    onRoundingIncrementSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.ROUND_TO -> PickerSheet(
+                title = stringResource(R.string.settings_rounding_mode),
+                explanation = stringResource(R.string.settings_rounding_mode_explanation),
+                options = RoundingMode.entries.map { it to stringResource(it.labelRes()) },
+                details = RoundingMode.entries.associateWith { stringResource(it.detailRes()) },
+                current = settings.roundingMode,
+                onSelect = {
+                    onRoundingModeSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.MIN_BILLABLE -> PickerSheet(
+                title = stringResource(R.string.settings_min_billable),
+                explanation = stringResource(R.string.settings_min_billable_explanation),
+                // A stored value outside the list still shows (and stays selected) until the user picks another.
+                options = (Settings.ALLOWED_MIN_BILLABLE_MINUTES + settings.minBillableMinutes).sorted()
+                    .map { it to minutesOrOff(it) },
+                current = settings.minBillableMinutes,
+                onSelect = {
+                    onMinBillableSelected(it)
                     picker = null
                 },
                 onDismiss = { picker = null },
@@ -232,7 +270,20 @@ fun SettingsContent(
                 row(themeTitle, onClick = { picker = Picker.THEME }, icon = R.drawable.ic_theme, subtitle = themeValue)
             }
             SectionHeader(stringResource(R.string.settings_section_billing), Modifier.padding(top = space.m))
+            val roundingTitle = stringResource(R.string.settings_rounding_increment)
+            val roundingValue = minutesOrOff(settings.roundingIncrementMin)
+            val roundToTitle = stringResource(R.string.settings_rounding_mode)
+            val roundingOff = settings.roundingIncrementMin == 0
+            val roundToValue = if (roundingOff) stringResource(R.string.settings_rounding_is_off) else stringResource(settings.roundingMode.labelRes())
+            val minTitle = stringResource(R.string.settings_min_billable)
+            val minValue = minutesOrOff(settings.minBillableMinutes)
+            val perDayTitle = stringResource(R.string.settings_round_daily_total)
+            val perDaySubtitle = stringResource(R.string.settings_round_daily_total_subtitle)
             SettingsGroup {
+                row(roundingTitle, onClick = { picker = Picker.ROUNDING }, subtitle = roundingValue)
+                row(roundToTitle, onClick = { picker = Picker.ROUND_TO }, subtitle = roundToValue, enabled = !roundingOff)
+                row(minTitle, onClick = { picker = Picker.MIN_BILLABLE }, subtitle = minValue)
+                switchRow(perDayTitle, settings.roundDailyTotalPerJob, onRoundDailyTotalChange, subtitle = perDaySubtitle)
                 billing.forEach { (label, value) -> row(label, value = value) }
             }
         }
@@ -355,6 +406,20 @@ internal fun dataEventMessage(resources: Resources, event: DataEvent): String = 
             BackupError.RESTORE_FAILED -> R.string.data_error_restore
         },
     )
+}
+
+@Composable
+private fun minutesOrOff(minutes: Int): String =
+    if (minutes == 0) stringResource(R.string.settings_off) else stringResource(R.string.settings_minutes_value, minutes)
+
+private fun RoundingMode.labelRes(): Int = when (this) {
+    RoundingMode.NEAREST -> R.string.settings_rounding_mode_nearest
+    RoundingMode.UP -> R.string.settings_rounding_mode_up
+}
+
+private fun RoundingMode.detailRes(): Int = when (this) {
+    RoundingMode.NEAREST -> R.string.settings_rounding_mode_nearest_detail
+    RoundingMode.UP -> R.string.settings_rounding_mode_up_detail
 }
 
 private fun ThemeMode.labelRes(): Int = when (this) {
