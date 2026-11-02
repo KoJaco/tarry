@@ -66,6 +66,17 @@ interface BackupDao {
     @Query("DELETE FROM manual_override") suspend fun deleteManualOverrides()
     @Query("DELETE FROM segmentation_checkpoint") suspend fun deleteCheckpoints()
 
+    @Query("SELECT MAX(id) FROM location_ping") suspend fun maxPingId(): Long?
+    @Query("SELECT * FROM location_ping WHERE id > :after AND id <= :maxId ORDER BY id LIMIT :limit")
+    suspend fun pingsPage(after: Long, maxId: Long, limit: Int): List<LocationPing>
+
+    /** Closes sessions still open: at their last ping (else their start), KILLED (stored as the enum name). */
+    @Query(
+        "UPDATE tracking_session SET `end` = COALESCE((SELECT MAX(timestamp) FROM location_ping " +
+            "WHERE location_ping.sessionId = tracking_session.id), start), endReason = 'KILLED' WHERE `end` IS NULL",
+    )
+    suspend fun closeOpenSessions()
+
     @Query("SELECT COUNT(*) FROM visit WHERE deleted = 0") suspend fun liveVisitCount(): Int
     @Query("SELECT COUNT(*) FROM location_ping") suspend fun pingCount(): Int
 }

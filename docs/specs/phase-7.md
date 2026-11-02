@@ -114,7 +114,26 @@ No Room schema change (stays at v2). One new settings key: `last_backup_ms`.
   - `gradlew.bat assembleDebug lintDebug`
   - real data: `set TARRY_REAL_DB=<copy> && gradlew.bat :core-data:testDebugUnitTest --tests *RealDbBackup*`
 
+### Streaming locations (owner decision, 2026-11-03)
+Locations are ~99% of the rows (about 100k at 90 days). They are never all in memory, on backup or restore. Everything else (sessions, visits, trips, places, jobs, blocks, gaps, schedule, overrides, settings) stays small and is held in memory as now.
+
+- **File body:** the gzip stream holds a sequence of newline-separated JSON values, not one object:
+  1. the header, i.e. today's `BackupFile` with `tables.pings` empty;
+  2. one `PingDto` per line, in ascending id order.
+  
+  A file whose header still has inline `tables.pings` (the earlier single-object layout) decodes too, so `formatVersion` stays 1; nothing was released with the old layout. Decoding uses `Json.decodeToSequence` over `JsonElement`s: the first must be the header, every later one a `PingDto`. Truncation is caught by the gzip trailer (EOF or CRC error → DAMAGED).
+- **Back up:**
+  - one short transaction reads the small tables and `maxPingId`;
+  - pings are then read by keyset pages (`id > after AND id <= maxPingId ORDER BY id LIMIT page`) outside a transaction, so tracking writes are never blocked while the file goes to a slow provider;
+  - the 90-day purge running mid-backup only drops leaf pings, so the file stays referentially valid;
+  - the snackbar count is the number of pings actually written.
+- **Restore, two passes over the file:**
+  1. **preview:** stream the whole file once; validate the header and small tables as now, and every ping (unique id, its session exists, it converts to an entity); keep only the count and the small tables.
+  2. **apply:** inside the one Room transaction, delete everything, insert the small tables, then stream the file again and insert pings in chunks of 500. If the second pass's ping count differs from the preview's, or anything throws, the transaction rolls back and the restore fails with nothing changed (the file was changed or became unreadable between passes).
+  - Open sessions from the backup are closed after the pings are in, with one SQL update (`end` = the session's last ping, or its start), `KILLED`, no Gap.
+- **Memory bound:** at most one page or chunk of pings (500–1,000) plus the small tables is held at a time.
+
 ### Risks
-- **Size and memory:** about 100k pings. Stream the encode and decode, and insert in chunks inside the transaction. Measure with the real-data test.
+- **Size and memory:** about 100k pings. Handled by streaming (above). Verified with a synthetic 100k-ping round trip and the real-data test.
 - **DataStore and Room are not one transaction:** handled by snapshot and rollback. A crash at exactly that point could leave the new settings with the old DB, which is harmless; nothing is lost from the DB.
 - **Restoring during a scheduled window** stops and restarts tracking under the controller lock. No Gap row is written for that stop and start; a failed restore undoes the stop. The restore runs to completion even if the user leaves the screen.

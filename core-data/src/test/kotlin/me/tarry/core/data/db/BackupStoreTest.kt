@@ -119,6 +119,105 @@ class BackupStoreTest : DbTestBase() {
         assertThat(store.snapshot().gaps.map { it.id }).containsExactly("g1")
     }
 
+    private fun ping(id: Long, session: Long = 1, ts: Long = id * 10) =
+        LocationPing(id, ts, "UTC", 1.0, 2.0, 3f, null, null, null, PingSource.FUSED, session)
+
+    @Test
+    fun theHeadHoldsTheSmallTablesAndTheHighestPingIdAndPagingStopsThere() = runBlocking<Unit> {
+        store.replaceAll(everything())
+        val head = store.readHead()
+        assertThat(head.snapshot.pings).isEmpty()
+        assertThat(head.snapshot.visits.map { it.id }).containsExactly("v1", "v2")
+        assertThat(head.snapshot.sessions.map { it.id }).containsExactly(1L, 2L)
+        assertThat(head.maxPingId).isEqualTo(12L)
+
+        // Written after the head was read: not part of the backup.
+        db.backupDao().insertPings(listOf(ping(13, session = 2)))
+
+        val seen = mutableListOf<Long>()
+        var after = 0L
+        while (true) {
+            val page = store.pingsPage(after, head.maxPingId, 2)
+            if (page.isEmpty()) break
+            assertThat(page.size).isAtMost(2)
+            seen += page.map { it.id }
+            after = page.last().id
+        }
+        assertThat(seen).containsExactly(10L, 11L, 12L).inOrder()
+    }
+
+    @Test
+    fun keysetPagingReturnsEveryPingOnceInOrder() = runBlocking<Unit> {
+        val s = BackupSnapshot(
+            sessions = listOf(TrackingSession(1, 0L, 1L, "UTC", SessionTrigger.SCHEDULE, SessionEndReason.SCHEDULE_END)),
+            pings = (1L..25L).map { ping(it * 3) }, // gaps in the ids
+        )
+        store.replaceAll(s)
+        val head = store.readHead()
+
+        val seen = mutableListOf<LocationPing>()
+        var after = 0L
+        do {
+            val page = store.pingsPage(after, head.maxPingId, 10)
+            seen += page
+            if (page.isNotEmpty()) after = page.last().id
+        } while (page.size == 10)
+
+        assertThat(seen).isEqualTo(s.pings)
+        assertThat(BackupStore(db).readHead().maxPingId).isEqualTo(75L)
+    }
+
+    @Test
+    fun anEmptyDatabaseHasMaxPingIdZero() = runBlocking<Unit> {
+        assertThat(store.readHead().maxPingId).isEqualTo(0L)
+    }
+
+    @Test
+    fun aStreamedSourceInsertsEverythingAndClosesOpenSessionsAtTheirLastPing() = runBlocking<Unit> {
+        val s = BackupSnapshot(
+            sessions = listOf(
+                TrackingSession(1, 100L, null, "UTC", SessionTrigger.SCHEDULE, null),
+                TrackingSession(2, 900L, null, "UTC", SessionTrigger.MANUAL, null),
+                TrackingSession(3, 50L, 60L, "UTC", SessionTrigger.MANUAL, SessionEndReason.USER_STOP),
+            ),
+        )
+        var chunks = 0
+
+        store.replaceAllStreaming(s) { insert ->
+            // Out of timestamp order on purpose: the end is the maximum, not the last inserted.
+            insert((1L..700L).map { ping(it, session = 1, ts = 100L + it) }.also { chunks++ })
+            insert(listOf(ping(1000, session = 1, ts = 5L)).also { chunks++ })
+        }
+
+        assertThat(chunks).isEqualTo(2)
+        assertThat(store.counts().locations).isEqualTo(701)
+        val sessions = store.snapshot().sessions.associateBy { it.id }
+        assertThat(sessions.getValue(1).end).isEqualTo(800L)
+        assertThat(sessions.getValue(1).endReason).isEqualTo(SessionEndReason.KILLED)
+        assertThat(sessions.getValue(2).end).isEqualTo(900L) // no pings: its start
+        assertThat(sessions.getValue(2).endReason).isEqualTo(SessionEndReason.KILLED)
+        assertThat(sessions.getValue(3)).isEqualTo(s.sessions[2])
+    }
+
+    @Test
+    fun aSourceThatThrowsMidStreamLeavesTheOldDatabaseUntouched() = runBlocking<Unit> {
+        store.replaceAll(everything("keep"))
+        val before = store.snapshot()
+        val s = BackupSnapshot(sessions = listOf(TrackingSession(9, 1L, 2L, "UTC", SessionTrigger.MANUAL, SessionEndReason.USER_STOP)))
+
+        val e = assertThrows(IllegalStateException::class.java) {
+            runBlocking {
+                store.replaceAllStreaming(s) { insert ->
+                    insert(listOf(ping(1, session = 9)))
+                    error("file went away")
+                }
+            }
+        }
+
+        assertThat(e.message).isEqualTo("file went away")
+        assertThat(store.snapshot()).isEqualTo(before)
+    }
+
     @Test
     fun anOpenSessionWithoutPingsIsClosedAtItsStart() = runBlocking<Unit> {
         val snap = BackupSnapshot(sessions = listOf(TrackingSession(7, 4_000L, null, "UTC", SessionTrigger.SCHEDULE, null)))
