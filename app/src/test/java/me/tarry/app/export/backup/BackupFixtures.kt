@@ -99,3 +99,10 @@ fun fileOf(snapshot: BackupSnapshot, version: Int = BackupCodec.CURRENT_VERSION)
     appVersionName = "test",
     tables = snapshot.toTables(),
 )
+
+/** Reads a whole file through [BackupCodec.read] and puts the pings back into `tables.pings` (small files only). */
+fun decodeAll(open: () -> java.io.InputStream): BackupFile = kotlinx.coroutines.runBlocking {
+    val pings = mutableListOf<PingDto>()
+    val header = BackupCodec.read(open) { pings += it }
+    header.copy(tables = header.tables.copy(pings = pings))
+}

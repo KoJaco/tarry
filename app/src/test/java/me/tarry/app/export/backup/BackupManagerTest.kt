@@ -42,7 +42,7 @@ import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
-private class RecordingHooks : RestoreHooks {
+internal class RecordingHooks : RestoreHooks {
     val calls = mutableListOf<String>()
     override suspend fun <T> captureSuspended(block: suspend () -> T): T {
         calls += "suspend"
@@ -151,7 +151,7 @@ class BackupManagerTest {
     }
 
     private fun decodeSettingsKeys(bytes: ByteArray) =
-        BackupCodec.decode { ByteArrayInputStream(bytes) }.settings.map { it.key }
+        decodeAll { ByteArrayInputStream(bytes) }.settings.map { it.key }
 
     @Test
     fun aFailureMidInsertLeavesTheDatabaseAndBothDataStoresUnchanged() = runBlocking<Unit> {
@@ -166,12 +166,15 @@ class BackupManagerTest {
         val bad = everythingSnapshot("new").copy(
             pings = listOf(LocationPing(5, 1L, "UTC", 0.0, 0.0, 1f, null, null, null, PingSource.FUSED, sessionId = 404)),
         )
+        val badBytes = encodeFile(fileOf(bad))
         val badPreview = RestorePreview(
             createdAt = 1L,
             counts = bad.counts(),
-            snapshot = bad,
+            snapshot = bad.copy(pings = emptyList()),
             settings = listOf(PrefEntry("theme", "string", "LIGHT")).toPreferences(),
             declined = listOf(PrefEntry("declined", "string", "new|new")).toPreferences(),
+            pingCount = 1,
+            open = { ByteArrayInputStream(badBytes) },
         )
 
         val e = assertThrows(BackupException::class.java) { runBlocking { manager.restore(badPreview) } }
@@ -181,6 +184,46 @@ class BackupManagerTest {
         assertThat(store.snapshot()).isEqualTo(dbBefore)
         assertThat(settingsStore.data.first()).isEqualTo(settingsBefore)
         assertThat(declinedStore.data.first()).isEqualTo(declinedBefore)
+    }
+
+    @Test
+    fun aFileChangedBetweenPreviewAndRestoreFailsTheRestoreAndChangesNothing() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("a"))
+        settingsRepo.setTheme(ThemeMode.DARK)
+        val full = backupBytes()
+        // Phone now holds other data and settings.
+        store.replaceAll(BackupSnapshot(jobs = listOf(Job("other", "Other", 1, updatedAt = 1L))))
+        settingsRepo.setTheme(ThemeMode.LIGHT)
+        declinedStore.edit { it[declinedKey] = "keep|keep" }
+        val dbBefore = store.snapshot()
+        val settingsBefore = settingsStore.data.first()
+        val declinedBefore = declinedStore.data.first()
+
+        // Pass 1 sees the full file; by pass 2 it has lost its last ping line.
+        val shorter = encodeFile(fileOf(everythingSnapshot("a").let { it.copy(pings = it.pings.dropLast(1)) }))
+        var opens = 0
+        val preview = manager.preview { ByteArrayInputStream(if (opens++ == 0) full else shorter) }
+        assertThat(preview.counts.locations).isEqualTo(3)
+
+        val e = assertThrows(BackupException::class.java) { runBlocking { manager.restore(preview) } }
+
+        assertThat(e.error).isEqualTo(BackupError.RESTORE_FAILED)
+        assertThat(hooks.calls).containsExactly("suspend", "undo").inOrder()
+        assertThat(store.snapshot()).isEqualTo(dbBefore)
+        assertThat(settingsStore.data.first()).isEqualTo(settingsBefore)
+        assertThat(declinedStore.data.first()).isEqualTo(declinedBefore)
+    }
+
+    @Test
+    fun aPingWithAnUnknownSessionOrADuplicateIdIsDamagedAtPreview() = runBlocking<Unit> {
+        val s = everythingSnapshot()
+        val unknownSession = encodeFile(fileOf(s.copy(pings = s.pings + s.pings.first().copy(id = 99, sessionId = 404))))
+        val duplicateId = encodeFile(fileOf(s.copy(pings = s.pings + s.pings.first().copy(timestamp = 7L))))
+
+        for (bytes in listOf(unknownSession, duplicateId)) {
+            val e = assertThrows(BackupException::class.java) { runBlocking { previewOf(bytes) } }
+            assertThat(e.error).isEqualTo(BackupError.DAMAGED)
+        }
     }
 
     @Test

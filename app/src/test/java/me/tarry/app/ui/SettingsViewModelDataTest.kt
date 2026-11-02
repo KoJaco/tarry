@@ -61,7 +61,7 @@ private class FakeBackup : DataBackup {
 
     override suspend fun preview(uri: Uri): RestorePreview {
         maybeFail()
-        return RestorePreview(5L, counts, BackupSnapshot(), emptyPreferences(), emptyPreferences())
+        return RestorePreview(5L, counts, BackupSnapshot(), emptyPreferences(), emptyPreferences(), counts.locations) { java.io.ByteArrayInputStream(ByteArray(0)) }
     }
 
     override suspend fun restore(preview: RestorePreview): BackupCounts {

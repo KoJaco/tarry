@@ -8,7 +8,9 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import com.google.common.truth.Truth.assertThat
 import com.google.common.truth.Truth.assertWithMessage
+import kotlinx.coroutines.runBlocking
 import me.tarry.core.data.model.GapCause
+import me.tarry.core.data.model.PingSource
 import me.tarry.core.data.model.SessionEndReason
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -16,7 +18,7 @@ import java.io.ByteArrayInputStream
 import java.io.IOException
 
 class BackupCodecTest {
-    private fun decode(bytes: ByteArray) = BackupCodec.decode { ByteArrayInputStream(bytes) }
+    private fun decode(bytes: ByteArray) = decodeAll { ByteArrayInputStream(bytes) }
 
     private fun errorOf(bytes: ByteArray) = assertThrows(BackupException::class.java) { decode(bytes) }.error
 
@@ -106,7 +108,7 @@ class BackupCodecTest {
 
     @Test
     fun aFileThatCannotBeOpenedIsReportedAsSuch() {
-        val e = assertThrows(BackupException::class.java) { BackupCodec.decode { throw IOException("no") } }
+        val e = assertThrows(BackupException::class.java) { decodeAll { throw IOException("no") } }
         assertThat(e.error).isEqualTo(BackupError.CANNOT_OPEN)
     }
 
@@ -180,7 +182,7 @@ class BackupCodecTest {
     fun aProviderFailureMidReadIsReportedAsCannotOpen() {
         val good = encodeFile(fileOf(everythingSnapshot()))
         val e = assertThrows(BackupException::class.java) {
-            BackupCodec.decode {
+            decodeAll {
                 object : java.io.FilterInputStream(ByteArrayInputStream(good)) {
                     var n = 0
                     override fun read(b: ByteArray, off: Int, len: Int): Int {
@@ -191,6 +193,123 @@ class BackupCodecTest {
             }
         }
         assertThat(e.error).isEqualTo(BackupError.CANNOT_OPEN)
+    }
+
+    private val inlineJson = kotlinx.serialization.json.Json { encodeDefaults = true }
+
+    private fun lines(bytes: ByteArray): List<String> =
+        java.util.zip.GZIPInputStream(ByteArrayInputStream(bytes)).readBytes().toString(Charsets.UTF_8).trimEnd().lines()
+
+    private fun manyPings(n: Int, sessionId: Long = 1) = (1..n).map { i ->
+        PingDto(i.toLong(), 1_000L + i, "UTC", i / 1000.0, -i / 1000.0, 5f, null, null, null, PingSource.FUSED, sessionId)
+    }
+
+    /** Collects every chunk the callback is handed. */
+    private fun chunksOf(bytes: ByteArray): List<List<PingDto>> = runBlocking {
+        val chunks = mutableListOf<List<PingDto>>()
+        BackupCodec.read({ ByteArrayInputStream(bytes) }) { chunks += it }
+        chunks
+    }
+
+    @Test
+    fun theFileIsAHeaderLineThenOnePingPerLine() {
+        val file = fileOf(everythingSnapshot())
+        val l = lines(encodeFile(file))
+
+        assertThat(l).hasSize(1 + 3)
+        assertThat(l[0]).contains("\"format\":\"tarry-backup\"")
+        assertThat(l[0]).contains("\"pings\":[]")
+        assertThat(l.drop(1).map { Regex("\"id\":(\\d+)").find(it)!!.groupValues[1] }).containsExactly("10", "11", "12").inOrder()
+    }
+
+    @Test
+    fun headerAndPingLinesRoundTripWithEveryFieldNullsAndEnums() {
+        val snapshot = everythingSnapshot()
+        val bytes = encodeFile(fileOf(snapshot))
+
+        val chunks = chunksOf(bytes)
+
+        assertThat(chunks.flatten().map { it.toEntity() }).isEqualTo(snapshot.pings)
+        val ping = chunks.flatten().single { it.id == 11L }
+        assertThat(ping.speedMps).isNull()
+        assertThat(ping.activity).isNull()
+        assertThat(ping.source).isEqualTo(PingSource.MANUAL_START)
+    }
+
+    @Test
+    fun anEarlierLayoutWithInlinePingsInTheHeaderDecodesThroughTheSameCallback() {
+        val snapshot = everythingSnapshot()
+        val inline = gzip(inlineJson.encodeToString(BackupFile.serializer(), fileOf(snapshot)))
+
+        val chunks = chunksOf(inline)
+
+        assertThat(chunks.flatten().map { it.toEntity() }).isEqualTo(snapshot.pings)
+        val header = decodeAll { ByteArrayInputStream(inline) }
+        assertThat(BackupCodec.validate(header)).isEqualTo(snapshot)
+    }
+
+    @Test
+    fun inlinePingsAndTrailingPingLinesAreBothDelivered() {
+        val snapshot = everythingSnapshot()
+        val json = inlineJson
+        val head = json.encodeToString(BackupFile.serializer(), fileOf(snapshot.copy(pings = snapshot.pings.take(2))))
+        val extra = json.encodeToString(PingDto.serializer(), snapshot.pings[2].toDto())
+
+        val got = chunksOf(gzip("$head\n$extra\n")).flatten()
+
+        assertThat(got.map { it.id }).containsExactly(10L, 11L, 12L).inOrder()
+    }
+
+    @Test
+    fun aGzipStreamCutMidPingsIsDamaged() {
+        val s = everythingSnapshot()
+        val big = fileOf(s.copy(pings = emptyList())).let { it.copy(tables = it.tables.copy(pings = manyPings(5_000, 1))) }
+        val bytes = encodeFile(big)
+        assertThat(chunksOf(bytes).flatten()).hasSize(5_000)
+
+        val e = assertThrows(BackupException::class.java) { chunksOf(bytes.copyOf(bytes.size * 2 / 3)) }
+
+        assertThat(e.error).isEqualTo(BackupError.DAMAGED)
+    }
+
+    @Test
+    fun aPingLineThatDoesNotDecodeIsDamaged() {
+        val head = lines(encodeFile(fileOf(everythingSnapshot().copy(pings = emptyList())))).first()
+        val e = assertThrows(BackupException::class.java) { chunksOf(gzip("$head\n{\"id\":1}\n")) }
+        assertThat(e.error).isEqualTo(BackupError.DAMAGED)
+    }
+
+    @Test
+    fun theCallbackNeverReceivesMoreThanFiveHundredPingsAtOnce() {
+        val s = everythingSnapshot()
+        val file = fileOf(s).let { it.copy(tables = it.tables.copy(pings = manyPings(1_234, 1))) }
+
+        val chunks = chunksOf(encodeFile(file))
+
+        assertThat(chunks.map { it.size }).containsExactly(500, 500, 234).inOrder()
+        assertThat(chunks.flatten().map { it.id }).isEqualTo((1L..1234L).toList())
+    }
+
+    @Test
+    fun checkPingsRejectsAnUnknownSessionADuplicateIdAcrossChunksAndAcceptsGoodOnes() {
+        val ok = manyPings(3, 1)
+        val seen = HashSet<Long>()
+        BackupCodec.checkPings(ok, setOf(1L), seen)
+        assertThat(seen).containsExactly(1L, 2L, 3L)
+
+        val unknown = assertThrows(BackupException::class.java) { BackupCodec.checkPings(manyPings(1, 404), setOf(1L), HashSet()) }
+        assertThat(unknown.error).isEqualTo(BackupError.DAMAGED)
+        val dup = assertThrows(BackupException::class.java) { BackupCodec.checkPings(listOf(ok[0]), setOf(1L), seen) }
+        assertThat(dup.error).isEqualTo(BackupError.DAMAGED)
+    }
+
+    @Test
+    fun anExceptionFromTheCallbackPassesThroughUnchanged() {
+        val bytes = encodeFile(fileOf(everythingSnapshot()))
+        val e = assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { BackupCodec.read({ ByteArrayInputStream(bytes) }) { throw IllegalArgumentException("mine") } }
+        }
+        assertThat(e.message).isEqualTo("mine")
     }
 
     @Test

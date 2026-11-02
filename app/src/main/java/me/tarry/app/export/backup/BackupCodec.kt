@@ -3,9 +3,11 @@ package me.tarry.app.export.backup
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.DecodeSequenceMode
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeFromStream
-import kotlinx.serialization.json.encodeToStream
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.decodeToSequence
 import me.tarry.core.data.db.BackupSnapshot
 import java.io.EOFException
 import java.io.IOException
@@ -39,28 +41,109 @@ object BackupCodec {
         encodeDefaults = true
     }
 
-    /** Writes [file] gzip-compressed to [out] and finishes the gzip stream. [out] stays open for the caller to close. */
-    fun encode(file: BackupFile, out: OutputStream) {
-        val gzip = GZIPOutputStream(out.buffered())
-        json.encodeToStream(file, gzip)
-        gzip.finish()
-        gzip.flush()
-    }
+    /** Largest number of pings [read] hands to its callback at once. */
+    const val PING_CHUNK = 500
 
     /**
-     * Reads, upgrades and checks a backup. [open] is called once, or twice when the body fails to decode and the
-     * header is re-read to say why. Throws [BackupException]: [BackupError.NOT_A_BACKUP] (not gzip, not JSON, wrong
-     * `format`), [BackupError.TOO_NEW], [BackupError.DAMAGED] (truncated, corrupt or inconsistent).
+     * Writes a file as a gzip stream of newline-separated JSON values: [writeHead] once (the [BackupFile] with no pings),
+     * then [writePing] per ping, then [finish]. Nothing is accumulated, so memory stays flat. [out] stays open for the
+     * caller to close.
      */
-    fun decode(open: () -> InputStream): BackupFile {
-        val file = try {
-            gzipped(open).use { json.decodeFromStream<BackupFile>(it) }
+    class Writer internal constructor(out: OutputStream) {
+        private val gzip = GZIPOutputStream(out.buffered())
+        private val sink = gzip.buffered(32 * 1024)
+        private var headWritten = false
+
+        fun writeHead(file: BackupFile) {
+            check(!headWritten) { "head already written" }
+            require(file.tables.pings.isEmpty()) { "pings go through writePing" }
+            headWritten = true
+            line(json.encodeToString(BackupFile.serializer(), file))
+        }
+
+        fun writePing(ping: PingDto) {
+            check(headWritten) { "head first" }
+            line(json.encodeToString(PingDto.serializer(), ping))
+        }
+
+        /** Flushes and finishes the gzip stream (writes the trailer that detects truncation). */
+        fun finish() {
+            sink.flush()
+            gzip.finish()
+            gzip.flush()
+        }
+
+        private fun line(text: String) {
+            sink.write(text.toByteArray(Charsets.UTF_8))
+            sink.write('\n'.code)
+        }
+    }
+
+    fun writer(out: OutputStream) = Writer(out)
+
+    /** Convenience for small files and tests: head, then every ping in `file.tables.pings`, then finish. */
+    fun encode(file: BackupFile, out: OutputStream) {
+        val w = writer(out)
+        w.writeHead(file.copy(tables = file.tables.copy(pings = emptyList())))
+        file.tables.pings.forEach(w::writePing)
+        w.finish()
+    }
+
+    /** Thrown by a callback; carried through [read]'s error mapping untouched. */
+    private class CallbackFailure(cause: Throwable) : Exception(cause)
+
+    /**
+     * Streams a backup once: reads, upgrades and checks the header, calls [onHeader] with it (pings emptied), then hands
+     * every ping to [onPings] in chunks of at most [PING_CHUNK], and returns the header. A file whose header still
+     * carries inline `tables.pings` (the earlier single-object layout) feeds them through [onPings] first.
+     * [open] is called once, or twice when the first value fails to decode and the header is re-read to say why.
+     * Throws [BackupException]: [BackupError.NOT_A_BACKUP] (not gzip, not JSON, wrong `format`), [BackupError.TOO_NEW],
+     * [BackupError.DAMAGED] (truncated, corrupt or inconsistent), [BackupError.CANNOT_OPEN]. What [onHeader] or
+     * [onPings] throw is rethrown as is.
+     */
+    suspend fun read(
+        open: () -> InputStream,
+        onHeader: suspend (BackupFile) -> Unit = {},
+        onPings: suspend (List<PingDto>) -> Unit,
+    ): BackupFile {
+        var headerRead = false
+        try {
+            gzipped(open).use { stream ->
+                val values = json.decodeToSequence<JsonElement>(stream, DecodeSequenceMode.WHITESPACE_SEPARATED).iterator()
+                if (!values.hasNext()) throw BackupException(BackupError.NOT_A_BACKUP)
+                val raw = try {
+                    json.decodeFromJsonElement<BackupFile>(values.next())
+                } catch (e: SerializationException) {
+                    throw classify(open, e)
+                } catch (e: IllegalArgumentException) {
+                    throw classify(open, e)
+                }
+                checkHeader(raw.format, raw.formatVersion)
+                val inline = raw.tables.pings
+                val header = upgrade(raw).let { it.copy(tables = it.tables.copy(pings = emptyList())) }
+                headerRead = true
+                callback { onHeader(header) }
+                val chunk = ArrayList<PingDto>(PING_CHUNK)
+                suspend fun add(p: PingDto) {
+                    chunk += p
+                    if (chunk.size == PING_CHUNK) {
+                        callback { onPings(chunk.toList()) }
+                        chunk.clear()
+                    }
+                }
+                for (p in inline) add(p)
+                while (values.hasNext()) add(json.decodeFromJsonElement<PingDto>(values.next()))
+                if (chunk.isNotEmpty()) callback { onPings(chunk.toList()) }
+                return header
+            }
+        } catch (e: CallbackFailure) {
+            throw e.cause!!
         } catch (e: BackupException) {
             throw e
         } catch (e: SerializationException) {
-            throw classify(open, e)
+            throw BackupException(if (headerRead) BackupError.DAMAGED else classifyAfterFailure(open, e), e)
         } catch (e: IllegalArgumentException) {
-            throw classify(open, e)
+            throw BackupException(if (headerRead) BackupError.DAMAGED else classifyAfterFailure(open, e), e)
         } catch (e: EOFException) {
             throw BackupException(BackupError.DAMAGED, e) // truncated
         } catch (e: ZipException) {
@@ -68,9 +151,19 @@ object BackupCodec {
         } catch (e: IOException) {
             throw BackupException(BackupError.CANNOT_OPEN, e) // the provider failed mid-read
         }
-        checkHeader(file.format, file.formatVersion)
-        return upgrade(file)
     }
+
+    private suspend fun callback(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: Throwable) {
+            throw CallbackFailure(e)
+        }
+    }
+
+    /** Before the header was read: the first value is not JSON at all; tell a cut-off or corrupt Tarry file from a foreign one. */
+    private fun classifyAfterFailure(open: () -> InputStream, cause: Throwable): BackupError =
+        classify(open, cause).error
 
     /** Opens the gzip layer; an empty or non-gzip file is "not a Tarry backup", any other open failure "cannot open". */
     private fun gzipped(open: () -> InputStream): InputStream {
@@ -96,7 +189,11 @@ object BackupCodec {
     /** The body failed to decode: look at the header alone to tell a newer or foreign file from a damaged one. */
     private fun classify(open: () -> InputStream, cause: Throwable): BackupException {
         val header = try {
-            gzipped(open).use { json.decodeFromStream<BackupHeader>(it) }
+            gzipped(open).use { stream ->
+                // Only the first value: the rest of the file may be ping lines (or broken).
+                val first = json.decodeToSequence<JsonElement>(stream, DecodeSequenceMode.WHITESPACE_SEPARATED).first()
+                json.decodeFromJsonElement<BackupHeader>(first)
+            }
         } catch (e: BackupException) {
             return e
         } catch (e: Exception) {
@@ -147,6 +244,22 @@ object BackupCodec {
             }
         }
         return f
+    }
+
+    /**
+     * Per-chunk ping checks for the preview pass: unique id (across chunks, via [seen]), session in [sessionIds], and it
+     * converts to an entity. Throws [BackupError.DAMAGED]. Nothing has been written when this throws.
+     */
+    fun checkPings(chunk: List<PingDto>, sessionIds: Set<Long>, seen: MutableSet<Long>) {
+        for (p in chunk) {
+            if (!seen.add(p.id)) throw BackupException(BackupError.DAMAGED)
+            if (p.sessionId !in sessionIds) throw BackupException(BackupError.DAMAGED)
+            try {
+                p.toEntity()
+            } catch (e: IllegalArgumentException) {
+                throw BackupException(BackupError.DAMAGED, e)
+            }
+        }
     }
 
     /** Referential and uniqueness checks, then the entities. Nothing has been written when this throws. */

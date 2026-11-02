@@ -211,11 +211,15 @@ data class CheckpointDto(val id: Int = 0, val processedUntil: Long)
 private fun ByteArray.b64(): String = Base64.getEncoder().encodeToString(this)
 private fun String.unb64(): ByteArray = Base64.getDecoder().decode(this)
 
+fun LocationPing.toDto() = PingDto(id, timestamp, zoneId, lat, lng, accuracyM, speedMps, bearing, activity, source, sessionId)
+
+fun PingDto.toEntity() = LocationPing(id, timestamp, zoneId, lat, lng, accuracyM, speedMps, bearing, activity, source, sessionId)
+
 /** Entities to DTOs. */
 fun BackupSnapshot.toTables() = BackupTables(
     sessions = sessions.map { SessionDto(it.id, it.start, it.end, it.zoneId, it.trigger, it.endReason) },
     pings = pings.map {
-        PingDto(it.id, it.timestamp, it.zoneId, it.lat, it.lng, it.accuracyM, it.speedMps, it.bearing, it.activity, it.source, it.sessionId)
+        it.toDto()
     },
     jobs = jobs.map { JobDto(it.id, it.name, it.colorArgb, it.archived, it.defaultBillable, it.updatedAt, it.deleted) },
     places = places.map {
@@ -250,7 +254,7 @@ fun BackupSnapshot.toTables() = BackupTables(
 fun BackupTables.toSnapshot() = BackupSnapshot(
     sessions = sessions.map { TrackingSession(it.id, it.start, it.end, it.zoneId, it.trigger, it.endReason) },
     pings = pings.map {
-        LocationPing(it.id, it.timestamp, it.zoneId, it.lat, it.lng, it.accuracyM, it.speedMps, it.bearing, it.activity, it.source, it.sessionId)
+        it.toEntity()
     },
     jobs = jobs.map { Job(it.id, it.name, it.colorArgb, it.archived, it.defaultBillable, it.updatedAt, it.deleted) },
     places = places.map {

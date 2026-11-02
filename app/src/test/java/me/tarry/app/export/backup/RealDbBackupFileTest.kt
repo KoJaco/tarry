@@ -8,6 +8,7 @@ import kotlinx.coroutines.runBlocking
 import me.tarry.core.data.db.ALL_MIGRATIONS
 import me.tarry.core.data.db.BackupStore
 import me.tarry.core.data.db.TarryDatabase
+import me.tarry.core.data.db.entity.LocationPing
 import org.junit.Assume.assumeTrue
 import org.junit.Rule
 import org.junit.Test
@@ -48,16 +49,29 @@ class RealDbBackupFileTest {
             .allowMainThreadQueries()
             .build()
         try {
-            val snapshot = BackupStore(db).snapshot()
+            val store = BackupStore(db)
+            val snapshot = store.snapshot()
+            val head = store.readHead()
             val file = File(dir, "backup.json.gz")
             val t0 = System.nanoTime()
-            file.outputStream().use { BackupCodec.encode(fileOf(snapshot), it) }
+            file.outputStream().use { raw ->
+                val writer = BackupCodec.writer(raw)
+                writer.writeHead(fileOf(head.snapshot))
+                var after = 0L
+                while (true) {
+                    val page = store.pingsPage(after, head.maxPingId, 1000)
+                    page.forEach { writer.writePing(it.toDto()) }
+                    if (page.size < 1000) break
+                    after = page.last().id
+                }
+                writer.finish()
+            }
             val t1 = System.nanoTime()
-            val decoded = BackupCodec.validate(BackupCodec.decode { file.inputStream() })
+            val pings = mutableListOf<LocationPing>()
+            val header = BackupCodec.read({ file.inputStream() }) { chunk -> pings += chunk.map { it.toEntity() } }
+            val decoded = BackupCodec.validate(header).copy(pings = pings)
             val t2 = System.nanoTime()
-            println("REAL_DB file: ${file.length()} bytes, encode ${(t1 - t0) / 1_000_000} ms, decode ${(t2 - t1) / 1_000_000} ms")
-            val rt = Runtime.getRuntime()
-            println("REAL_DB heap in use after decode: ${(rt.totalMemory() - rt.freeMemory()) / (1024 * 1024)} MB (max ${rt.maxMemory() / (1024 * 1024)} MB)")
+            println("REAL_DB file: ${file.length()} bytes, ${pings.size} pings, encode ${(t1 - t0) / 1_000_000} ms, decode ${(t2 - t1) / 1_000_000} ms")
             assertThat(decoded.sessions).isEqualTo(snapshot.sessions)
             assertThat(decoded.pings).isEqualTo(snapshot.pings)
             assertThat(decoded.jobs).isEqualTo(snapshot.jobs)

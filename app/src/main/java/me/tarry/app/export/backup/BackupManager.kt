@@ -75,7 +75,10 @@ abstract class BackupModule {
     abstract fun bindDataBackup(impl: BackupManager): DataBackup
 }
 
-/** A decoded and validated backup waiting for the user's go-ahead. Nothing has been changed yet. */
+/**
+ * A validated backup waiting for the user's go-ahead. Nothing has been changed yet. It holds the small tables and the
+ * settings, not the pings: [open] reads the file again at restore time.
+ */
 class RestorePreview internal constructor(
     /** UTC epoch ms the backup was made. */
     val createdAt: Long,
@@ -83,6 +86,9 @@ class RestorePreview internal constructor(
     internal val snapshot: BackupSnapshot,
     internal val settings: Preferences,
     internal val declined: Preferences,
+    /** Pings counted in pass 1; pass 2 must find the same number. */
+    internal val pingCount: Int,
+    internal val open: () -> InputStream,
 )
 
 /**
@@ -119,7 +125,7 @@ class BackupManager @Inject constructor(
     }
 
     suspend fun backUp(open: () -> OutputStream, discard: () -> Unit = {}): BackupCounts = withContext(Dispatchers.IO) {
-        val snapshot = store.snapshot()
+        val head = store.readHead()
         val file = BackupFile(
             format = BackupCodec.FORMAT,
             formatVersion = BackupCodec.CURRENT_VERSION,
@@ -128,7 +134,7 @@ class BackupManager @Inject constructor(
             appVersionName = BuildConfig.VERSION_NAME,
             settings = settingsStore.data.first().toEntries(skip = setOf(Settings.LAST_BACKUP_KEY)),
             declinedSuggestions = declinedStore.data.first().toEntries(),
-            tables = snapshot.toTables(),
+            tables = head.snapshot.toTables(),
         )
         val out = try {
             open()
@@ -137,21 +143,61 @@ class BackupManager @Inject constructor(
         } catch (e: SecurityException) {
             throw BackupException(BackupError.CANNOT_OPEN, e)
         }
+        var written = 0
         try {
-            out.use { BackupCodec.encode(file, it) }
+            out.use { raw ->
+                val writer = BackupCodec.writer(raw)
+                writer.writeHead(file)
+                // Keyset pages outside any transaction: tracking writes are never blocked by a slow provider, and rows
+                // added after the head read (id > maxPingId) are not in this backup.
+                var after = 0L
+                while (true) {
+                    val page = store.pingsPage(after, head.maxPingId, PAGE)
+                    page.forEach { writer.writePing(it.toDto()) }
+                    written += page.size
+                    if (page.size < PAGE) break
+                    after = page.last().id
+                }
+                writer.finish()
+            }
         } catch (e: Exception) {
             runCatching { discard() }
             if (e is CancellationException) throw e
             throw BackupException(BackupError.WRITE_FAILED, e)
         }
         settingsRepo.setLastBackupMs(file.createdAt)
-        snapshot.counts()
+        BackupCounts(visits = head.snapshot.visits.count { !it.deleted }, locations = written)
     }
 
+    /**
+     * Pass 1 over the file: validates the header, the small tables and every ping (unique id, its session exists, it
+     * converts), keeping only the small tables, the settings and the ping count. [open] is kept so [restore] can read
+     * the file again.
+     */
     suspend fun preview(open: () -> InputStream): RestorePreview = withContext(Dispatchers.IO) {
-        val file = BackupCodec.decode(open)
-        val snapshot = BackupCodec.validate(file)
-        RestorePreview(file.createdAt, snapshot.counts(), snapshot, file.settings.toPreferences(), file.declinedSuggestions.toPreferences())
+        var snapshot = BackupSnapshot()
+        var sessionIds = emptySet<Long>()
+        val seen = HashSet<Long>()
+        var count = 0
+        val file = BackupCodec.read(
+            open,
+            onHeader = {
+                snapshot = BackupCodec.validate(it)
+                sessionIds = snapshot.sessions.mapTo(HashSet()) { s -> s.id }
+            },
+        ) { chunk ->
+            BackupCodec.checkPings(chunk, sessionIds, seen)
+            count += chunk.size
+        }
+        RestorePreview(
+            createdAt = file.createdAt,
+            counts = BackupCounts(visits = snapshot.visits.count { !it.deleted }, locations = count),
+            snapshot = snapshot,
+            settings = file.settings.toPreferences(),
+            declined = file.declinedSuggestions.toPreferences(),
+            pingCount = count,
+            open = open,
+        )
     }
 
     /**
@@ -176,7 +222,16 @@ class BackupManager @Inject constructor(
                         }
                     }
                     declinedStore.updateData { _ -> preview.declined }
-                    store.replaceAll(preview.snapshot, preview.createdAt)
+                    // Pass 2: the file is streamed again straight into the transaction.
+                    store.replaceAllStreaming(preview.snapshot, preview.createdAt) { insert ->
+                        var n = 0
+                        BackupCodec.read(preview.open) { chunk ->
+                            insert(chunk.map { it.toEntity() })
+                            n += chunk.size
+                        }
+                        // The file changed between the passes: roll back rather than restore something not previewed.
+                        if (n != preview.pingCount) throw BackupException(BackupError.DAMAGED)
+                    }
                 } catch (e: Exception) {
                     runCatching { settingsStore.updateData { _ -> oldSettings } }
                     runCatching { declinedStore.updateData { _ -> oldDeclined } }
@@ -192,5 +247,10 @@ class BackupManager @Inject constructor(
             // The data is restored. The segmentation upgrade check runs again at the next app start.
         }
         preview.counts
+    }
+
+    private companion object {
+        /** Pings read per page while backing up. */
+        const val PAGE = 1000
     }
 }
