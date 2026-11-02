@@ -70,7 +70,14 @@ class GapsTest {
         assertEquals(emptyList<Gap>(), run(input(sessions = listOf(r(0, 121))), pings))
     }
 
-    @Test fun moveSilenceAcrossPoorFixesCounts() {
+    @Test fun poorFixesThroughoutAMoveRecordIt() {
+        // A tunnel or a train: only poor fixes, one a minute, along the way. Recorded, so not a gap.
+        val along = (61L..71L).map { Ping(m(it), 0.0, 0.025 * (it - 60) / 12, 100f) }
+        val pings = pingsEvery(0, 60) + along + (72L..120L).map { farPing(it) }
+        assertEquals(emptyList<Gap>(), run(input(sessions = listOf(r(0, 121))), pings))
+    }
+
+    @Test fun moveSilenceEitherSideOfALonePoorFixIsOneGap() {
         val pings = pingsEvery(0, 60) + Ping(m(66), 0.0, 0.01, 100f) + (72L..120L).map { farPing(it) }
         val g = run(input(sessions = listOf(r(0, 121))), pings)
         assertEquals(listOf(Gap(r(60, 72), GapCause.NO_FIX)), g)

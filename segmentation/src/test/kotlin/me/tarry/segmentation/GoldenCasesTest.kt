@@ -115,6 +115,21 @@ class GoldenCasesTest {
     }
 
     @Test
+    fun aDriveWithOnlyPoorFixesIsATripNotAGap() {
+        // Network-grade fixes (100 m) once a minute for a 6 km drive: the trip was recorded, just roughly.
+        val pings = builder()
+            .stay(HOUR)
+            .moveBy(270.0, 6_000.0, 12.5, intervalMs = 60_000, accuracyM = 100f)
+            .stay(HOUR)
+            .build()
+        val r = run(pings, sessions = listOf(TimeRange(t0, pings.last().timeMs + 1)))
+
+        assertEquals(2, r.stays.size)
+        assertTrue(r.gaps.isEmpty())
+        assertTrue(r.trips.isNotEmpty())
+    }
+
+    @Test
     fun aFuelStopUnderFiveMinutesIsPartOfTheTrip() {
         val pings = builder()
             .stay(HOUR)

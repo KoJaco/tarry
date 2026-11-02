@@ -54,11 +54,13 @@ private fun addSilence(out: MutableList<Gap>, from: Long, to: Long, params: Segm
 }
 
 /**
- * A shorter silence is lost capture too when the phone moved during it: consecutive good fixes (accuracy within
- * [SegmentationParams.goodAccuracyM]) more than [SegmentationParams.unrecordedMoveMinMs] apart whose distance, less
- * both accuracies, exceeds [SegmentationParams.minTripDistanceM] (24 Oct 2026: a 12-minute drive with no fixes).
- * Poor fixes in between neither record the move nor break the silence. Only time inside one session [parts] piece
- * counts, and time an existing NO_FIX silence already covers is not added again.
+ * A shorter silence is lost capture too when the phone moved during it (24 Oct 2026: a 12-minute drive with no
+ * fixes). A silence is more than [SegmentationParams.unrecordedMoveMinMs] between consecutive fixes of any accuracy:
+ * a poor fix still records the trip, so a drive with only poor fixes is not a gap. The move is judged between the
+ * nearest good fixes (accuracy within [SegmentationParams.goodAccuracyM]) either side of the silence, whose distance,
+ * less both accuracies, must exceed [SegmentationParams.minTripDistanceM]. Adjacent silences of one move join into one
+ * gap. Only time inside one session [parts] piece counts, and time an existing NO_FIX silence already covers is not
+ * added again.
  */
 private fun addUnrecordedMoves(
     out: MutableList<Gap>,
@@ -68,15 +70,24 @@ private fun addUnrecordedMoves(
 ) {
     val silences = out.filter { it.cause == GapCause.NO_FIX }.map { it.range }
     for (s in parts) {
-        var prev: Ping? = null
-        for (p in fixes) {
-            if (p.timeMs !in s || p.accuracyM > params.goodAccuracyM) continue
-            val a = prev
-            prev = p
-            if (a == null || p.timeMs - a.timeMs <= params.unrecordedMoveMinMs) continue
-            val moved = haversineMeters(a.lat, a.lng, p.lat, p.lng) - a.accuracyM - p.accuracyM
+        val inPart = fixes.filter { it.timeMs in s }
+        val good = inPart.map { it.accuracyM <= params.goodAccuracyM }
+        val goodBefore = arrayOfNulls<Ping>(inPart.size)
+        for (i in inPart.indices) goodBefore[i] = if (good[i]) inPart[i] else goodBefore.getOrNull(i - 1)
+        val goodAfter = arrayOfNulls<Ping>(inPart.size)
+        for (i in inPart.indices.reversed()) goodAfter[i] = if (good[i]) inPart[i] else goodAfter.getOrNull(i + 1)
+        val moves = ArrayList<TimeRange>()
+        for (i in 1 until inPart.size) {
+            if (inPart[i].timeMs - inPart[i - 1].timeMs <= params.unrecordedMoveMinMs) continue
+            val a = goodBefore[i - 1] ?: continue
+            val b = goodAfter[i] ?: continue
+            val moved = haversineMeters(a.lat, a.lng, b.lat, b.lng) - a.accuracyM - b.accuracyM
             if (moved <= params.minTripDistanceM) continue
-            for (piece in TimeRange(a.timeMs, p.timeMs).minus(silences)) out.add(Gap(piece, GapCause.NO_FIX))
+            val silence = TimeRange(inPart[i - 1].timeMs, inPart[i].timeMs)
+            val last = moves.lastOrNull()
+            if (last != null && last.endMs == silence.startMs) moves[moves.lastIndex] = TimeRange(last.startMs, silence.endMs)
+            else moves += silence
         }
+        for (m in moves) for (piece in m.minus(silences)) out.add(Gap(piece, GapCause.NO_FIX))
     }
 }
