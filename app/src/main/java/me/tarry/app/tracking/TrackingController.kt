@@ -207,8 +207,10 @@ class TrackingController @Inject constructor(
      */
     private suspend fun rebindStop(now: Instant, zone: ZoneId) {
         val stops = trackingRepo.observeActiveOverrides().first().filter {
+            // A Stop made after "now" (the clock went backwards) is left alone: re-bounding it from an earlier now would
+            // end it before it started, and the Stop would be lost once the clock is corrected.
             it.type == ManualOverrideType.PAUSE && it.endMode == ManualOverrideEndMode.UNTIL_STOPPED &&
-                (it.end ?: return@filter false) > now.toEpochMilli()
+                it.start <= now.toEpochMilli() && (it.end ?: return@filter false) > now.toEpochMilli()
         }
         if (stops.isEmpty()) return
         val inputs = inputsProvider.inputs(now, now, zone)

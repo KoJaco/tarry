@@ -407,6 +407,24 @@ class TrackingControllerTest {
     }
 
     @Test
+    fun aClockSetBackBeforeAStopKeepsTheStop() = runBlocking {
+        clock.now = mondayAt(15).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.stop()
+
+        clock.now = mondayAt(6).toEpochMilli()
+        controller.onClockChanged()
+        clock.now = mondayAt(15, minute = 5).toEpochMilli()
+        launcher.started.clear()
+        controller.onClockChanged()
+
+        assertThat(trackingRepo.observeActiveOverrides().first().single().end).isEqualTo(mondayAt(7, day = 20).toEpochMilli())
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
     fun aClockChangeWithoutAStopOnlyRearmsInTheNewZone() = runBlocking {
         clock.now = mondayAt(20).toEpochMilli()
         controller.reconcile(ReconcileSource.ALARM)
