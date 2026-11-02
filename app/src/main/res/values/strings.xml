@@ -297,4 +297,41 @@
     <string name="schedule_copy_weekdays">Weekdays</string>
     <string name="schedule_copy_apply">Copy</string>
     <string name="schedule_clear_day">Clear day</string>
+
+    <string name="summary_title">Summary</string>
+    <string name="summary_range_today">Today</string>
+    <string name="summary_range_yesterday">Yesterday</string>
+    <string name="summary_range_this_week">This week</string>
+    <string name="summary_range_last_week">Last week</string>
+    <string name="summary_range_custom">Custom</string>
+    <string name="summary_range_from_to">%1$s – %2$s</string>
+    <string name="summary_range_chips_description">Date range</string>
+    <string name="summary_group_by_job">By job</string>
+    <string name="summary_group_by_day">By day</string>
+    <string name="summary_empty_title">No job blocks in this range.</string>
+    <string name="summary_empty_body">Add job blocks on the timeline and they add up here.</string>
+    <string name="summary_job_archived">%1$s (archived)</string>
+    <plurals name="summary_blocks">
+        <item quantity="one">%1$d block</item>
+        <item quantity="other">%1$d blocks</item>
+    </plurals>
+    <string name="summary_row_caption">%1$s · %2$s</string>
+    <string name="summary_row_description">%1$s, %2$s, total %3$s, billed %4$s</string>
+    <string name="summary_row_open_hint">Show blocks</string>
+    <string name="summary_totals">Billed %1$s · on the clock %2$s</string>
+    <string name="summary_totals_description">Billed %1$s, on the clock %2$s</string>
+    <string name="summary_unlabelled_title">Unlabelled</string>
+    <string name="summary_unlabelled_on_site">On site</string>
+    <string name="summary_unlabelled_travel">Travel</string>
+    <string name="summary_unlabelled_description">Unlabelled: on site %1$s, travel %2$s</string>
+    <string name="summary_day_billed">Billed %1$s</string>
+    <string name="summary_duration_zero">0 min</string>
+    <string name="summary_spoken_zero">0 minutes</string>
+    <string name="summary_piece_not_billable">Not billable</string>
+    <string name="summary_piece_billed_description">billed %1$s</string>
+    <string name="summary_piece_notes_description">notes: %1$s</string>
+    <string name="summary_piece_open_hint">Open this day on the timeline</string>
+    <string name="summary_piece_day_total">Billed for the day</string>
+    <string name="summary_picker_ok">OK</string>
+    <string name="summary_picker_cancel">Cancel</string>
 </resources>

@@ -57,6 +57,8 @@ import me.tarry.app.R
 import androidx.compose.ui.res.stringResource
 import me.tarry.app.ui.drawer.JobPickerSheet
 import me.tarry.app.ui.drawer.NameDialog
+import me.tarry.app.summary.SummaryViewModel
+import me.tarry.app.ui.summary.SummaryScreen
 import me.tarry.app.ui.timeline.SelectionBar
 import me.tarry.app.ui.timeline.TimelineScreen
 import me.tarry.app.ui.timeline.TimelineViewModel
@@ -71,6 +73,8 @@ fun TarryApp(
     statusViewModel: ShellStatusViewModel = hiltViewModel(),
     // Owned here, not by the Timeline entry, so the shell can swap its bottom bar while visits are selected.
     timelineViewModel: TimelineViewModel = hiltViewModel(),
+    // Also owned here, so the chosen range and grouping survive a trip to the timeline and back.
+    summaryViewModel: SummaryViewModel = hiltViewModel(),
 ) {
     val backStack = rememberNavBackStack(TimelineRoute)
     val snackbarHostState = remember { SnackbarHostState() }
@@ -118,6 +122,15 @@ fun TarryApp(
             null
         },
         timelineContent = { TimelineScreen(viewModel = timelineViewModel) },
+        summaryContent = {
+            SummaryScreen(
+                onOpenDay = { date ->
+                    timelineViewModel.selectDate(date)
+                    backStack.navigateTopLevel(TimelineRoute)
+                },
+                viewModel = summaryViewModel,
+            )
+        },
         settingsContent = {
             SettingsScreen(
                 onOpenPermissions = { openPermissions() },
