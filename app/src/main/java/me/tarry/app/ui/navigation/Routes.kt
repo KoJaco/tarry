@@ -43,3 +43,7 @@ data object PlacesRoute : NavKey
 /** One place's detail (phase 4b). Pushed on top of [PlacesRoute]. */
 @Serializable
 data class PlaceDetailRoute(val id: String) : NavKey
+
+/** Summary of job blocks over a date range (phase 7). A bottom-bar tab, like [SettingsRoute]. */
+@Serializable
+data object SummaryRoute : NavKey

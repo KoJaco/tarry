@@ -45,6 +45,7 @@ import me.tarry.app.ui.places.PlacesScreen
 import me.tarry.app.ui.navigation.PermissionsRoute
 import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
+import me.tarry.app.ui.navigation.SummaryRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.permissions.PermissionsScreen
@@ -222,6 +223,7 @@ fun TarryAppContent(
     onBack: () -> Unit,
     onToggleClick: () -> Unit,
     settingsContent: @Composable () -> Unit,
+    summaryContent: @Composable () -> Unit = {},
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
@@ -235,14 +237,16 @@ fun TarryAppContent(
     selectionBar: (@Composable () -> Unit)? = null,
     onToggleLongClick: () -> Unit = {},
 ) {
-    val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute }
+    val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute || it == SummaryRoute }
     Scaffold(
         modifier = modifier,
         snackbarHost = snackbarHost,
         bottomBar = selectionBar ?: {
             TarryBottomBar(
                 trackingState = trackingState,
-                timelineSelected = topLevel != SettingsRoute,
+                timelineSelected = topLevel != SettingsRoute && topLevel != SummaryRoute,
+                summarySelected = topLevel == SummaryRoute,
+                onSummaryClick = { onNavigate(SummaryRoute) },
                 settingsSelected = topLevel == SettingsRoute,
                 onTimelineClick = { onNavigate(TimelineRoute) },
                 onSettingsClick = { onNavigate(SettingsRoute) },
@@ -262,6 +266,7 @@ fun TarryAppContent(
             entryProvider = entryProvider {
                 entry<TimelineRoute> { timelineContent() }
                 entry<SettingsRoute> { settingsContent() }
+                entry<SummaryRoute> { summaryContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }
                 entry<ScheduleRoute> { scheduleContent() }

@@ -119,18 +119,19 @@ class ShellComponentsTest {
     }
 
     @Test
-    fun bottomBar_threeSlotsHaveEqualWidths_andAtLeast56dpTall() {
+    fun bottomBar_navSlotsHaveEqualWidths_toggleIsWider_andAtLeast56dpTall() {
         composeRule.setContent {
             TarryBottomBar(TrackingState.IDLE, true, false, {}, {}, {})
         }
-        val tags = listOf(BottomBarTags.TimelineSlot, BottomBarTags.ToggleSlot, BottomBarTags.SettingsSlot)
+        val tags = listOf(BottomBarTags.TimelineSlot, BottomBarTags.SummarySlot, BottomBarTags.SettingsSlot, BottomBarTags.ToggleSlot)
         val bounds = tags.map { composeRule.onNodeWithTag(it).getUnclippedBoundsInRoot() }
-        assertThat(bounds[1].width.value).isEqualTo(bounds[0].width.value)
-        assertThat(bounds[2].width.value).isEqualTo(bounds[0].width.value)
+        bounds.subList(1, 3).forEach { assertThat(it.width.value).isWithin(1f).of(bounds[0].width.value) } // pixel rounding
+        assertThat(bounds[3].width.value).isGreaterThan(bounds[0].width.value)
         bounds.forEach { assertThat(it.height.value).isAtLeast(56f) }
-        // Order: Timeline | toggle | Settings.
+        // Order: Timeline | Summary | Settings | toggle at the right end.
         assertThat(bounds[0].left).isLessThan(bounds[1].left)
         assertThat(bounds[1].left).isLessThan(bounds[2].left)
+        assertThat(bounds[2].left).isLessThan(bounds[3].left)
     }
 
     @Test
@@ -139,7 +140,47 @@ class ShellComponentsTest {
             TarryBottomBar(TrackingState.IDLE, timelineSelected = false, settingsSelected = true, {}, {}, {})
         }
         composeRule.onNode(hasText("Timeline") and isSelectable()).assertIsNotSelected()
+        composeRule.onNode(hasText("Summary") and isSelectable()).assertIsNotSelected()
         composeRule.onNode(hasText("Settings") and isSelectable()).assertIsSelected()
+    }
+
+    @Test
+    fun bottomBar_summarySelected_marksOnlySummary_andTapInvokesIt() {
+        var clicks = 0
+        composeRule.setContent {
+            TarryBottomBar(
+                TrackingState.IDLE, timelineSelected = false, settingsSelected = false, {}, {}, {},
+                summarySelected = true, onSummaryClick = { clicks++ },
+            )
+        }
+        composeRule.onNode(hasText("Timeline") and isSelectable()).assertIsNotSelected()
+        composeRule.onNode(hasText("Summary") and isSelectable()).assertIsSelected().assertHeightIsAtLeast(48.dp)
+        composeRule.onNode(hasText("Settings") and isSelectable()).assertIsNotSelected()
+        composeRule.onNode(hasText("Summary") and isSelectable()).performClick()
+        assertThat(clicks).isEqualTo(1)
+        composeRule.waitForIdle()
+        assertThat(slotRange(BottomBarTags.SummarySlot).contains(indicatorCentreX())).isTrue()
+    }
+
+    @Test
+    fun bottomBar_indicator_glidesThroughSummaryOnTheWayToSettings() {
+        val selected = mutableStateOf(BottomBarTags.TimelineSlot)
+        composeRule.setContent {
+            CompositionLocalProvider(LocalMotionPreferences provides MotionPreferences { false }) {
+                TarryBottomBar(
+                    TrackingState.IDLE, selected.value == BottomBarTags.TimelineSlot, selected.value == BottomBarTags.SettingsSlot,
+                    {}, {}, {}, summarySelected = selected.value == BottomBarTags.SummarySlot,
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        assertThat(slotRange(BottomBarTags.TimelineSlot).contains(indicatorCentreX())).isTrue()
+        composeRule.runOnUiThread { selected.value = BottomBarTags.SummarySlot }
+        composeRule.waitForIdle()
+        assertThat(slotRange(BottomBarTags.SummarySlot).contains(indicatorCentreX())).isTrue()
+        composeRule.runOnUiThread { selected.value = BottomBarTags.SettingsSlot }
+        composeRule.waitForIdle()
+        assertThat(slotRange(BottomBarTags.SettingsSlot).contains(indicatorCentreX())).isTrue()
     }
 
     @Test

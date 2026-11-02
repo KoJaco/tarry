@@ -47,6 +47,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.tracking.TrackingState
@@ -55,10 +56,11 @@ import me.tarry.app.ui.components.TarryPreviews
 import me.tarry.app.ui.components.rememberReducedMotion
 import me.tarry.app.ui.theme.TarryTheme
 
-/** Test tags for the three equal-width slots and the gliding icon backing. */
+/** Test tags for the four slots (three equal nav slots and a wider toggle) and the gliding icon backing. */
 object BottomBarTags {
     const val Bar = "bottomBar"
     const val TimelineSlot = "bottomBar.timeline"
+    const val SummarySlot = "bottomBar.summary"
     const val ToggleSlot = "bottomBar.toggle"
     const val SettingsSlot = "bottomBar.settings"
     const val Indicator = "bottomBar.indicator"
@@ -71,15 +73,18 @@ private val IconBackingWidth = 64.dp
 private val IconBackingHeight = 32.dp
 private val IconLabelGap = 6.dp
 private const val GlideMillis = 350
+
+/** The toggle slot is wider than a nav slot so its label still fits at large font sizes. */
+private const val ToggleSlotWeight = 1.5f
 private val EmphasizedEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
 /**
- * Stateless full-width bottom bar: Timeline (left), tracking toggle (centre), Settings (right).
+ * Stateless full-width bottom bar: Timeline, Summary, Settings, then the tracking toggle at the right end.
  * `paper` background with a 1 dp `line` top border only; nav-bar insets are applied inside.
  *
  * Nav items are an icon over a label. Only the selected icon is backed, by a single `accentSoft` indicator that glides
- * between the Timeline and Settings icons across the toggle slot (it jumps under reduced motion). When neither is
- * selected (Sessions, Permissions) the indicator is hidden.
+ * between the three nav icons (it jumps under reduced motion). When none is selected (Sessions, Permissions) the
+ * indicator is hidden.
  */
 @Composable
 fun TarryBottomBar(
@@ -91,13 +96,17 @@ fun TarryBottomBar(
     onToggleClick: () -> Unit,
     modifier: Modifier = Modifier,
     onToggleLongClick: () -> Unit = {},
+    summarySelected: Boolean = false,
+    onSummaryClick: () -> Unit = {},
 ) {
     val colors = TarryTheme.colors
     var containerOrigin by remember { mutableStateOf<Offset?>(null) }
     var timelineIcon by remember { mutableStateOf<Offset?>(null) }
+    var summaryIcon by remember { mutableStateOf<Offset?>(null) }
     var settingsIcon by remember { mutableStateOf<Offset?>(null) }
     val target = when {
         timelineSelected -> timelineIcon
+        summarySelected -> summaryIcon
         settingsSelected -> settingsIcon
         else -> null
     }
@@ -138,8 +147,14 @@ fun TarryBottomBar(
                     onIconPositioned = { timelineIcon = it },
                 )
             }
-            Slot(BottomBarTags.ToggleSlot) {
-                TrackingToggle(state = trackingState, onClick = onToggleClick, onLongClick = onToggleLongClick)
+            Slot(BottomBarTags.SummarySlot) {
+                NavItem(
+                    icon = R.drawable.ic_summary,
+                    label = stringResource(R.string.nav_summary),
+                    selected = summarySelected,
+                    onClick = onSummaryClick,
+                    onIconPositioned = { summaryIcon = it },
+                )
             }
             Slot(BottomBarTags.SettingsSlot) {
                 NavItem(
@@ -149,6 +164,9 @@ fun TarryBottomBar(
                     onClick = onSettingsClick,
                     onIconPositioned = { settingsIcon = it },
                 )
+            }
+            Slot(BottomBarTags.ToggleSlot, weight = ToggleSlotWeight, horizontalPadding = TarryTheme.space.xs) {
+                TrackingToggle(state = trackingState, onClick = onToggleClick, onLongClick = onToggleLongClick)
             }
         }
     }
@@ -178,12 +196,12 @@ private fun IconBackingIndicator(x: Float, y: Float) {
 }
 
 @Composable
-private fun RowScope.Slot(tag: String, content: @Composable () -> Unit) {
+private fun RowScope.Slot(tag: String, weight: Float = 1f, horizontalPadding: Dp = 0.dp, content: @Composable () -> Unit) {
     Box(
         modifier = Modifier
-            .weight(1f)
+            .weight(weight)
             .heightIn(min = SlotMinHeight)
-            .padding(horizontal = TarryTheme.space.xs)
+            .padding(horizontal = horizontalPadding)
             .testTag(tag),
         contentAlignment = Alignment.Center,
     ) { content() }
@@ -215,7 +233,7 @@ private fun NavItem(
                     onClick()
                 },
             )
-            .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.xs),
+            .padding(horizontal = TarryTheme.space.xs, vertical = TarryTheme.space.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

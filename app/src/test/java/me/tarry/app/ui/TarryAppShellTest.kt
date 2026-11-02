@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertIsNotSelected
+import com.google.common.truth.Truth.assertThat
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -26,6 +28,7 @@ import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.navigation.JobsRoute
 import me.tarry.app.ui.navigation.PlaceDetailRoute
 import me.tarry.app.ui.navigation.PlacesRoute
+import me.tarry.app.ui.navigation.SummaryRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.settings.SettingsContent
@@ -47,6 +50,7 @@ class TarryAppShellTest {
 
     private val timelineTab get() = composeRule.onNode(hasText("Timeline") and isSelectable())
     private val settingsTab get() = composeRule.onNode(hasText("Settings") and isSelectable())
+    private val summaryTab get() = composeRule.onNode(hasText("Summary") and isSelectable())
 
     private fun setShell(state: TrackingState = TrackingState.IDLE, onToggle: () -> Unit = {}) {
         val backStack = mutableStateListOf<NavKey>(TimelineRoute)
@@ -66,9 +70,43 @@ class TarryAppShellTest {
     @Test
     fun bottomBar_showsTimelineToggleAndSettings() {
         setShell()
+        summaryTab.assertIsDisplayed()
         timelineTab.assertIsDisplayed()
         settingsTab.assertIsDisplayed()
         composeRule.onNodeWithContentDescription("Tracking: off").assertIsDisplayed()
+    }
+
+    @Test
+    fun tappingSummary_showsSummary_selectsItsTab_andTimelineReturns() {
+        val backStack = mutableStateListOf<NavKey>(TimelineRoute)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = { backStack.navigateTopLevel(it) },
+                onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+                onToggleClick = {},
+                settingsContent = { Text("Settings screen") },
+                timelineContent = { Text("Timeline screen") },
+                summaryContent = { Text("Summary screen") },
+            )
+        }
+        summaryTab.assertIsNotSelected()
+        summaryTab.performClick()
+        composeRule.onNodeWithText("Summary screen").assertIsDisplayed()
+        composeRule.onNodeWithText("Timeline screen").assertDoesNotExist()
+        summaryTab.assertIsSelected()
+        timelineTab.assertIsNotSelected()
+        assertThat(backStack.toList()).containsExactly(TimelineRoute, SummaryRoute).inOrder()
+
+        settingsTab.performClick()
+        composeRule.onNodeWithText("Settings screen").assertIsDisplayed()
+        summaryTab.assertIsNotSelected()
+        settingsTab.assertIsSelected()
+
+        timelineTab.performClick()
+        composeRule.onNodeWithText("Timeline screen").assertIsDisplayed()
+        timelineTab.assertIsSelected()
     }
 
     @Test
