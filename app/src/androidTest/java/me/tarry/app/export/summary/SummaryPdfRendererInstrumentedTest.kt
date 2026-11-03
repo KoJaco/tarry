@@ -8,7 +8,6 @@ import me.tarry.app.summary.calculateSummary
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.settings.RoundingMode
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayOutputStream
@@ -47,8 +46,8 @@ class SummaryPdfRendererInstrumentedTest {
         val pages = SummaryPdfRenderer(context).render(snapshot, out)
         val text = String(out.toByteArray(), Charsets.ISO_8859_1)
         assertTrue(text.startsWith("%PDF"))
-        // Cover plus one page for each of the two jobs.
-        assertEquals(3, pages)
+        // Jobs flow after the cover: this small fixture fits on one page, two at most (real font metrics).
+        assertTrue("pages=$pages", pages in 1..2)
         val declared = Regex("""/Count\s+(\d+)""").find(text)?.groupValues?.get(1)?.toInt()
         val pageObjects = Regex("""/Type\s*/Page(?![s\w])""").findAll(text).count()
         assertTrue("declared=$declared objects=$pageObjects", declared == pages && pageObjects == pages)
