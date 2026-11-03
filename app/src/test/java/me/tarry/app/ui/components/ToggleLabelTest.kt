@@ -66,6 +66,12 @@ class ToggleLabelTest {
     }
 
     @Test
+    fun navLabelsNeverSplitAWordAtFontScaleTwo() {
+        show(TrackingState.TRACKING, 2f)
+        listOf("Timeline", "Summary", "Settings").forEach { assertWholeWords(it) }
+    }
+
+    @Test
     fun needsAttentionKeepsItsFullSizeAtNormalFontScale() {
         show(TrackingState.ATTENTION, 1f)
         assertWholeWords("Needs attention")

@@ -13,7 +13,19 @@
 - **Phase 6.5 leftovers:**
   - The time-zone fix passed on the phone on 3 Nov: a stop on Perth time re-bound to 07:30 Sydney.
   - The battery baseline (an untracked day off, e.g. Sat 7 Nov) is still to measure and add to `docs/specs/phase-6.5.md` § 3.
-- **UI-reviewer screenshots** of the bar, Summary and Billing were taken on 3 Nov. Their findings belong to the 7.5 list unless something is a blocker; see the session notes or re-run `ui-reviewer`.
+- **UI review on the phone (3 Nov):**
+  - **Fixed:** the one blocker. Nav labels split mid-word at font scale 2 ("Timeli/ne"); they now use the toggle's `FitLabel`, with a test.
+  - **For phase 7.5** (owner: UI/UX tweaks go there):
+    - the "Custom" chip is off-screen with no scroll cue, and clipped at 2.0;
+    - the drill-down block row wraps inside "am" at 2.0 (`SummaryScreen.kt` ~511–527);
+    - the totals card needs a "Total" label, especially in By day;
+    - the empty-state title is oversized;
+    - Billing holds retention and reminder rows, which belong in their own group, and its rows lack icons;
+    - "Round per day, per job" stays enabled when rounding and the minimum are both Off;
+    - dark-mode card and sheet edges have weak separation;
+    - unselected chips have no border in light mode;
+    - pre-existing: the Timeline's "Tracking stopped" label overlaps a trip label.
+  - **Untested:** "Needs attention" at 2.0 (it would need tracking touched).
 
 ## Owner decisions so far (phase 7)
 - **Backup:** pings are always included, as one `.json.gz`, through SAF. Restore is replace-only. Overrides active at the backup's `createdAt` end at it. Pings are streamed (never all in memory).

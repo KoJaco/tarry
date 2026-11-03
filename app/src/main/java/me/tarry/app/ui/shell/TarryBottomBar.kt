@@ -246,7 +246,7 @@ private fun NavItem(
             Icon(painter = painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.height(IconLabelGap))
-        Text(text = label, style = MaterialTheme.typography.labelMedium, color = tint)
+        FitLabel(text = label, color = tint, style = MaterialTheme.typography.labelMedium)
     }
 }
 
