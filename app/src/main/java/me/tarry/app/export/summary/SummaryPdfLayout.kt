@@ -145,10 +145,14 @@ object SummaryPdfLayout {
             PdfPage(p.runs + footer, p.rules.toList())
         }
 
-        /** Greedy word wrap to [maxWidth]; newlines kept; a word wider than the line is broken by characters. */
+        /**
+         * Greedy word wrap to [maxWidth]; newlines kept; a word wider than the line is broken by characters. Tabs and other
+         * control characters become spaces (the font has no glyph for them, they would draw as boxes).
+         */
         private fun wrap(value: String, maxWidth: Float, style: PdfTextStyle): List<String> {
             val lines = ArrayList<String>()
-            for (paragraph in value.replace("\r\n", "\n").replace('\r', '\n').split('\n')) {
+            val text = value.replace("\r\n", "\n").replace('\r', '\n').map { if (it != '\n' && it.isISOControl()) ' ' else it }.joinToString("")
+            for (paragraph in text.split('\n')) {
                 var line = ""
                 for (word in paragraph.split(' ').filter { it.isNotEmpty() }) {
                     val candidate = if (line.isEmpty()) word else "$line $word"
@@ -178,12 +182,31 @@ object SummaryPdfLayout {
             return s + text.ellipsis
         }
 
-        /** Starts a new page (with the continuation header when a table is running) unless [height] still fits. */
+        /** The continuation title as drawn: wrapped, and cut to [MAX_TITLE_LINES] so its height is bounded. Empty: no table is running. */
+        private fun continuationLines(): List<String> {
+            val title = continuationTitle ?: return emptyList()
+            val lines = wrap(title, PdfPageSpec.CONTENT_WIDTH, PdfTextStyle.HEADING)
+            if (lines.size <= MAX_TITLE_LINES) return lines
+            return lines.take(MAX_TITLE_LINES - 1) + withEllipsis(lines[MAX_TITLE_LINES - 1], PdfPageSpec.CONTENT_WIDTH, PdfTextStyle.HEADING)
+        }
+
+        /** Height of what a new page opens with while a table runs: the (wrapped) title, then the table header. */
+        private fun continuationHeight(): Float {
+            val lines = continuationLines()
+            if (lines.isEmpty()) return 0f
+            return lines.size * PdfTextStyle.HEADING.lineHeight + CONTINUATION_GAP + PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD
+        }
+
+        /**
+         * Starts a new page (with the continuation header when a table is running) unless [height] still fits. [row] cuts
+         * rows to what fits under [continuationHeight], so after the header [height] fits whenever it came from a row.
+         */
         private fun ensure(height: Float) {
             if (y + height <= PdfPageSpec.CONTENT_BOTTOM) return
             newPage()
-            val title = continuationTitle ?: return
-            for (line in wrap(title, PdfPageSpec.CONTENT_WIDTH, PdfTextStyle.HEADING)) {
+            val lines = continuationLines()
+            if (lines.isEmpty()) return
+            for (line in lines) {
                 page.runs += PdfRun(PdfPageSpec.MARGIN, y + PdfTextStyle.HEADING.size, line, PdfTextStyle.HEADING)
                 y += PdfTextStyle.HEADING.lineHeight
             }
@@ -224,10 +247,8 @@ object SummaryPdfLayout {
         private fun row(row: Row) {
             val body = PdfTextStyle.BODY
             val trailerHeight = if (row.trailer != null) PdfTextStyle.BODY_BOLD.lineHeight + ROW_PAD else 0f
-            // The most a row can take: a whole page under the longest continuation header. Taller rows are cut to it.
-            val room = PdfPageSpec.CONTENT_BOTTOM - PdfPageSpec.MARGIN -
-                (PdfTextStyle.HEADING.lineHeight + CONTINUATION_GAP + PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD) -
-                2 * ROW_PAD - trailerHeight
+            // The most a row can take: a whole page under the actual continuation header. Taller rows are cut to it.
+            val room = PdfPageSpec.CONTENT_BOTTOM - PdfPageSpec.MARGIN - continuationHeight() - 2 * ROW_PAD - trailerHeight
             val maxLines = (room / body.lineHeight).toInt().coerceAtLeast(1)
             val wrapped = columns.mapIndexed { i, c ->
                 val lines = wrap(row.cells[i], c.width - CELL_GAP, row.styles[i])
@@ -333,4 +354,5 @@ object SummaryPdfLayout {
     }
 
     private const val CONTINUATION_GAP = 6f
+    private const val MAX_TITLE_LINES = 3
 }

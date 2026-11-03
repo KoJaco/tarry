@@ -51,6 +51,6 @@ class SummaryPdfRendererInstrumentedTest {
         assertEquals(3, pages)
         val declared = Regex("""/Count\s+(\d+)""").find(text)?.groupValues?.get(1)?.toInt()
         val pageObjects = Regex("""/Type\s*/Page(?![s\w])""").findAll(text).count()
-        assertTrue("declared=$declared objects=$pageObjects", declared == pages || pageObjects == pages)
+        assertTrue("declared=$declared objects=$pageObjects", declared == pages && pageObjects == pages)
     }
 }

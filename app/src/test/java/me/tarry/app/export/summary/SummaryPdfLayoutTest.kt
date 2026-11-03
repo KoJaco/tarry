@@ -215,6 +215,76 @@ class SummaryPdfLayoutTest {
     }
 
     @Test
+    fun aLongJobName_wrapsTheContinuationHeader_andNoRunCrossesTheContentBottom() {
+        val longName = "Very long job name ".repeat(10).trim()
+        val long = Job(id = "L", name = longName, colorArgb = 1, updatedAt = 0)
+        val tall = "word ".repeat(2000).trim()
+        // Short rows first so the page is part full, then rows of the maximum height, then a normal one.
+        val blocks = listOf(
+            block("1", "L", 0, 9, 10, notes = "short"), block("2", "L", 1, 9, 10, notes = tall),
+            block("3", "L", 2, 9, 10, notes = tall), block("4", "L", 3, 9, 10, notes = "end"),
+        )
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())))
+        val pages = layout(s)
+        val continuation = pages.drop(2)
+        assertThat(continuation).isNotEmpty()
+        for (p in continuation) {
+            // The title is longer than one line, so the header is more than one HEADING run.
+            assertThat(p.runs.count { it.style == PdfTextStyle.HEADING }).isAtLeast(2)
+            assertThat(p.texts()).contains("Date")
+        }
+        assertThat(pages.flatMap { it.texts() }).containsAtLeast("short", "end")
+        for (p in pages) {
+            for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
+            for (rule in p.rules) assertThat(rule.y).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
+        }
+    }
+
+    @Test
+    fun anAbsurdlyLongJobName_cutsTheContinuationHeader_andRowsStillFit() {
+        val long = Job(id = "L", name = "Job name ".repeat(60).trim(), colorArgb = 1, updatedAt = 0)
+        val tall = "word ".repeat(2000).trim()
+        val blocks = listOf(block("1", "L", 0, 9, 10, notes = tall), block("2", "L", 1, 9, 10, notes = tall))
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())))
+        val pages = layout(s)
+        for (p in pages.drop(2)) assertThat(p.runs.count { it.style == PdfTextStyle.HEADING }).isAtMost(3)
+        for (p in pages) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
+    }
+
+    @Test
+    fun cellsWiderThanEveryColumn_stillLayOut_oneCharacterPerLine() {
+        // Every character is wider than any column, the same as a column with no width: wrapping must still end.
+        val wide = object : TextMeasurer {
+            override fun width(text: String, style: PdfTextStyle) = text.length * 1000f
+        }
+        val pages = SummaryPdfLayout.layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = "abc"))), FakeText, wide)
+        assertThat(pages).isNotEmpty()
+        assertThat(pages.flatMap { it.texts() }).containsAtLeast("a", "b", "c")
+        for (p in pages) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
+    }
+
+    @Test
+    fun emptyAndMissingNotes_addNoHeightToARow() {
+        // The fake time text wraps in its column, so the reference is a row with a one word note, not a fixed height.
+        val blocks = listOf(
+            block("1", "A", 0, 9, 10, notes = ""), block("2", "A", 1, 9, 10, notes = null),
+            block("3", "A", 2, 9, 10, notes = "   "), block("4", "A", 3, 9, 10, notes = "x"), block("5", "A", 4, 9, 10, notes = "x"),
+        )
+        val page = layout(snapshot(blocks))[1]
+        val tops = (10..14).map { d -> page.runs.single { it.text == "2025-11-$d" }.baseline }
+        val steps = tops.zipWithNext { a, b -> b - a }
+        for (step in steps) assertThat(step).isWithin(0.01f).of(steps.last())
+    }
+
+    @Test
+    fun tabsAndOtherControlCharacters_becomeSpaces_butNewlinesStay() {
+        val page = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = "one\ttwo\u0000three\u001Bfour\nfive\r\nsix"))))[1]
+        val noteLines = page.runs.filter { it.x > 400f && it.style == PdfTextStyle.BODY && it.baseline > 100f }.map { it.text }
+        assertThat(noteLines.joinToString("\n")).isEqualTo("one two three four\nfive\nsix")
+        for (p in listOf(page)) for (r in p.runs) assertThat(r.text.any { it.isISOControl() }).isFalse()
+    }
+
+    @Test
     fun theCoverTable_continuesOnAnotherPage_whenThereAreManyJobs() {
         val jobs = (0 until 120).map { Job(id = "J$it", name = "Job $it", colorArgb = 1, updatedAt = 0) }
         val blocks = jobs.map { block("b${it.id}", it.id, 0, 9, 10).copy(jobId = it.id) }

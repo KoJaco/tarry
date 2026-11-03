@@ -285,6 +285,28 @@ class SummaryCalculatorTest {
         assertThat(r.onClockMs).isEqualTo(20 * min)
     }
 
+    @Test
+    fun clippedFlag_setAtEitherRangeEdge_butNotAtTheExactEdgeOrAMidnightSplit() {
+        val day = LocalDate.of(2025, 11, 10)
+        val startEdge = calc(listOf(block("b", "A", nov(9, 22), nov(10, 2))), from = day)
+        assertThat(startEdge.byJob.single().pieces.single().clipped).isTrue()
+        val endEdge = calc(listOf(block("b", "A", nov(10, 23), nov(11, 3))), from = day)
+        assertThat(endEdge.byJob.single().pieces.single().clipped).isTrue()
+        // Starts exactly at the range start and ends exactly at the range end: nothing was cut off.
+        val exact = calc(listOf(block("b", "A", nov(10, 0), nov(11, 0))), from = day)
+        assertThat(exact.byJob.single().pieces.single().clipped).isFalse()
+        // Split at midnight inside the range: both pieces are whole parts of the block.
+        val split = calc(listOf(block("b", "A", nov(10, 22), nov(11, 3))), to = LocalDate.of(2025, 11, 11))
+        assertThat(split.byJob.single().pieces.map { it.clipped }).containsExactly(false, false)
+    }
+
+    @Test
+    fun perDayFlag_followsTheBillingRules() {
+        val blocks = listOf(block("b", "A", nov(10, 9), nov(10, 10)))
+        assertThat(calc(blocks, BillingRules(perDay = true)).perDay).isTrue()
+        assertThat(calc(blocks, BillingRules(perDay = false)).perDay).isFalse()
+    }
+
     // ---- DST ---------------------------------------------------------------------------------------------------
 
     @Test
