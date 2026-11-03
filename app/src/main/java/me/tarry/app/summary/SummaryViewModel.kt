@@ -15,11 +15,14 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import me.tarry.app.export.summary.SummaryExportFormat
 import me.tarry.app.export.summary.SummaryExporter
 import me.tarry.app.export.summary.SummarySnapshot
@@ -75,6 +78,9 @@ sealed interface SummaryExportEvent {
     data object Failed : SummaryExportEvent
 }
 
+/** How long an export waits for the first result of the range (the view model was just recreated) before it gives up. */
+internal const val EXPORT_WAIT_TIMEOUT_MS = 10_000L
+
 private data class Computed(
     val range: SummaryRange,
     val result: SummaryResult,
@@ -103,6 +109,8 @@ class SummaryViewModel internal constructor(
     private val todayProvider: () -> LocalDate,
     /** Writes the snapshot to the document and returns the number of blocks in it; throws on failure. */
     private val exportFile: suspend (SummaryExportFormat, SummarySnapshot, Uri) -> Int,
+    /** Deletes the empty document the file picker created for an export that will not happen; never throws. */
+    private val discardFile: suspend (Uri) -> Unit,
 ) : ViewModel() {
     @Inject
     constructor(
@@ -124,6 +132,7 @@ class SummaryViewModel internal constructor(
         zone = ZoneId.systemDefault(),
         todayProvider = { LocalDate.now(ZoneId.systemDefault()) },
         exportFile = exporter::export,
+        discardFile = exporter::discard,
     )
 
     private val today = MutableStateFlow(todayProvider())
@@ -171,37 +180,41 @@ class SummaryViewModel internal constructor(
 
     private val exporting = MutableStateFlow(false)
 
-    // The inputs behind the result on screen, kept for export (the PDF needs the rules, visits and places too).
-    @Volatile
-    private var shown: Computed? = null
+    // The result for the chosen range together with the inputs behind it (the PDF needs the rules, visits and places too).
+    // Null until the calculation catches up with a new range. Both the screen and export are built from this one value.
+    private val shown: StateFlow<Computed?> = combine(rangeAndPreset, computed) { (_, range), computed ->
+        computed.takeIf { it.range == range }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
 
-    val state: StateFlow<SummaryUiState?> = combine(rangeAndPreset, grouping, computed, exporting) { (preset, range), grouping, computed, busy ->
-        // The result belongs to the range it was computed for; until it catches up the new range shows as loading.
-        shown = computed.takeIf { it.range == range }
-        SummaryUiState(preset, range, grouping, zone, computed.result.takeIf { computed.range == range }, busy)
+    val state: StateFlow<SummaryUiState?> = combine(rangeAndPreset, grouping, shown, exporting) { (preset, range), grouping, shown, busy ->
+        SummaryUiState(preset, range, grouping, zone, shown?.result, busy)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
 
     private val _events = Channel<SummaryExportEvent>(Channel.BUFFERED)
     val events: Flow<SummaryExportEvent> = _events.receiveAsFlow()
 
     /**
-     * Writes the Summary as it is now (this range, this result) to [uri], the document the user picked. Ignored while
-     * another export runs or when there are no job blocks. The outcome arrives on [events].
+     * Writes the Summary as it is now (this range, this result) to [uri], the document the user picked, and the file
+     * picker has already created it empty. If the view model was recreated meanwhile (process death) the result may not
+     * be there yet: it is awaited for up to [EXPORT_WAIT_TIMEOUT_MS]. When it never comes, or has no job blocks, the
+     * document is deleted and [SummaryExportEvent.Failed] is sent. A call while another export runs is ignored (its
+     * document is deleted). The outcome arrives on [events].
      */
     fun export(format: SummaryExportFormat, uri: Uri) {
-        if (exporting.value) return
-        val current = state.value ?: return
-        val result = current.result?.takeIf { it.hasBlocks } ?: return
-        val inputs = shown?.takeIf { it.range == current.range && it.result == result }
-        val snapshot = if (inputs != null) {
-            SummarySnapshot(current.range, current.zone, result, inputs.rules, inputs.visits, inputs.places)
-        } else {
-            SummarySnapshot(current.range, current.zone, result)
+        if (!exporting.compareAndSet(expect = false, update = true)) {
+            viewModelScope.launch { discardFile(uri) }
+            return
         }
-        exporting.value = true
         viewModelScope.launch {
             try {
-                _events.send(SummaryExportEvent.Saved(format, exportFile(format, snapshot, uri)))
+                val ready = withTimeoutOrNull(EXPORT_WAIT_TIMEOUT_MS) { shown.filterNotNull().first() }
+                if (ready == null || !ready.result.hasBlocks) {
+                    discardFile(uri)
+                    _events.send(SummaryExportEvent.Failed)
+                } else {
+                    val snapshot = SummarySnapshot(ready.range, zone, ready.result, ready.rules, ready.visits, ready.places)
+                    _events.send(SummaryExportEvent.Saved(format, exportFile(format, snapshot, uri)))
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

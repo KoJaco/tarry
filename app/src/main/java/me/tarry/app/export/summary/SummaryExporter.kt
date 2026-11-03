@@ -57,14 +57,23 @@ class SummaryExporter @Inject constructor(
 ) {
     /**
      * Writes [snapshot] as [format] to [uri] and returns the number of blocks in it. Throws [SummaryExportException]:
-     * CANNOT_OPEN if the document cannot be opened, WRITE_FAILED if writing fails (the partly written document is then
-     * deleted, best effort).
+     * CANNOT_OPEN if the document cannot be opened, WRITE_FAILED if writing fails (the document is deleted in both
+     * cases, best effort, and also when the export is cancelled or fails with an Error, which are rethrown as they are).
      */
     suspend fun export(format: SummaryExportFormat, snapshot: SummarySnapshot, uri: Uri): Int = export(
         format, snapshot,
         open = { context.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Cannot open $uri for writing") },
         discard = { DocumentsContract.deleteDocument(context.contentResolver, uri) },
     )
+
+    /**
+     * Deletes the (empty) document the file picker created, for an export that never starts. Best effort: a failure is
+     * ignored.
+     */
+    suspend fun discard(uri: Uri) = withContext(Dispatchers.IO) {
+        runCatching { DocumentsContract.deleteDocument(context.contentResolver, uri) }
+        Unit
+    }
 
     suspend fun export(
         format: SummaryExportFormat,
@@ -75,8 +84,10 @@ class SummaryExporter @Inject constructor(
         val out = try {
             open()
         } catch (e: IOException) {
+            runCatching { discard() }
             throw SummaryExportException(SummaryExportError.CANNOT_OPEN, e)
         } catch (e: SecurityException) {
+            runCatching { discard() }
             throw SummaryExportException(SummaryExportError.CANNOT_OPEN, e)
         }
         try {
@@ -85,10 +96,11 @@ class SummaryExporter @Inject constructor(
                     out.bufferedWriter(Charsets.UTF_8).use { writer -> SummaryCsv.write(snapshot.result, snapshot.zone, writer) }
                 SummaryExportFormat.PDF -> out.use { pdfRenderer.render(snapshot, it) }
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Anything, an OutOfMemoryError from a large PdfDocument included, leaves a partial file that must go.
             runCatching { discard() }
-            if (e is CancellationException) throw e
-            throw SummaryExportException(SummaryExportError.WRITE_FAILED, e)
+            if (e is Exception && e !is CancellationException) throw SummaryExportException(SummaryExportError.WRITE_FAILED, e)
+            throw e
         }
         snapshot.result.byJob.sumOf { it.blockCount }
     }

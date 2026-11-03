@@ -4,10 +4,13 @@ import androidx.lifecycle.SavedStateHandle
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -47,8 +50,10 @@ class SummaryViewModelTest {
     private val places = MutableStateFlow<List<Place>>(emptyList())
     private val settings = MutableStateFlow(Settings())
 
+    private val scheduler = TestCoroutineScheduler()
+
     @Before
-    fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher())
+    fun setUp() = Dispatchers.setMain(UnconfinedTestDispatcher(scheduler))
 
     @After
     fun tearDown() = Dispatchers.resetMain()
@@ -62,9 +67,11 @@ class SummaryViewModelTest {
     private val exported = mutableListOf<Pair<SummaryExportFormat, SummarySnapshot>>()
     private var exportBehaviour: suspend () -> Int = { 1 }
 
-    private fun viewModel(saved: SavedStateHandle = SavedStateHandle()) = SummaryViewModel(
+    private val discarded = mutableListOf<android.net.Uri>()
+
+    private fun viewModel(saved: SavedStateHandle = SavedStateHandle(), blockSource: Flow<List<JobBlock>> = blocks) = SummaryViewModel(
         saved,
-        blocksOverlapping = { _, _ -> blocks },
+        blocksOverlapping = { _, _ -> blockSource },
         visitsIn = { _, _ -> visits },
         tripsIn = { _, _ -> trips },
         jobs = jobs,
@@ -76,6 +83,7 @@ class SummaryViewModelTest {
             exported += format to snapshot
             exportBehaviour()
         },
+        discardFile = { discarded += it },
     )
 
     private fun <T> await(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }
@@ -250,6 +258,8 @@ class SummaryViewModelTest {
         assertThat(vm.stateWhere { it.exporting }.exporting).isTrue()
         vm.export(SummaryExportFormat.CSV, uri)
         assertThat(exported).hasSize(1)
+        // The picker created a document for the ignored call too; it is deleted.
+        assertThat(discarded).containsExactly(uri)
         gate.complete(1)
         assertThat(await { vm.events.first() }).isInstanceOf(SummaryExportEvent.Saved::class.java)
         assertThat(vm.stateWhere { !it.exporting }.exporting).isFalse()
@@ -267,11 +277,42 @@ class SummaryViewModelTest {
     }
 
     @Test
-    fun export_withNoBlocks_doesNothing() {
+    fun export_withNoBlocks_failsAndDiscardsTheDocument() {
         val vm = viewModel()
         vm.stateWhere { it.result != null }
         vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(await { vm.events.first() }).isEqualTo(SummaryExportEvent.Failed)
         assertThat(exported).isEmpty()
+        assertThat(discarded).containsExactly(uri)
+        assertThat(vm.stateWhere { !it.exporting }.exporting).isFalse()
+    }
+
+    @Test
+    fun export_beforeTheFirstEmission_waitsForTheResult_thenSaves() {
+        val late = MutableSharedFlow<List<JobBlock>>(replay = 1)
+        // A fresh view model, as after process death: nobody has looked at the state yet.
+        val vm = viewModel(blockSource = late)
+        vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(vm.stateWhere { it.exporting }.result).isNull()
+        assertThat(exported).isEmpty()
+        runBlocking { late.emit(listOf(block("b", today, 9, 11))) }
+        assertThat(await { vm.events.first() }).isEqualTo(SummaryExportEvent.Saved(SummaryExportFormat.CSV, 1))
+        assertThat(exported.single().second.result.billedMs).isEqualTo(2 * hour)
+        assertThat(discarded).isEmpty()
+        assertThat(vm.stateWhere { !it.exporting }.exporting).isFalse()
+    }
+
+    @Test
+    fun export_whenTheResultNeverComes_timesOutFailsAndDiscardsTheDocument() {
+        val vm = viewModel(blockSource = MutableSharedFlow())
+        vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(vm.stateWhere { it.exporting }.exporting).isTrue()
+        scheduler.advanceTimeBy(EXPORT_WAIT_TIMEOUT_MS + 1)
+        scheduler.runCurrent()
+        assertThat(await { vm.events.first() }).isEqualTo(SummaryExportEvent.Failed)
+        assertThat(exported).isEmpty()
+        assertThat(discarded).containsExactly(uri)
+        assertThat(vm.stateWhere { !it.exporting }.exporting).isFalse()
     }
 
     @Test

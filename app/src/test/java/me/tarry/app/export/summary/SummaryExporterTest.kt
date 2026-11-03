@@ -71,7 +71,7 @@ class SummaryExporterTest {
     }
 
     @Test
-    fun aDocumentThatCannotBeOpened_isTyped_andNothingIsDeleted() {
+    fun aDocumentThatCannotBeOpened_isTyped_andTheEmptyDocumentIsDeleted_ignoringDeleteFailures() {
         var discarded = 0
         val e = assertThrows(SummaryExportException::class.java) {
             runBlocking {
@@ -79,7 +79,54 @@ class SummaryExporterTest {
             }
         }
         assertThat(e.error).isEqualTo(SummaryExportError.CANNOT_OPEN)
-        assertThat(discarded).isEqualTo(0)
+        assertThat(discarded).isEqualTo(1)
+        // A delete that throws must not hide the typed error.
+        val again = assertThrows(SummaryExportException::class.java) {
+            runBlocking {
+                exporter.export(
+                    SummaryExportFormat.CSV, snapshot, open = { throw SecurityException("revoked") },
+                    discard = { throw IOException("cannot delete") },
+                )
+            }
+        }
+        assertThat(again.error).isEqualTo(SummaryExportError.CANNOT_OPEN)
+    }
+
+    @Test
+    fun aPdfFailure_deletesThePartialFile_andIsTyped() {
+        // Robolectric's PdfDocument has no native backing, so rendering fails: the same path as a real failure.
+        var discarded = 0
+        val e = assertThrows(SummaryExportException::class.java) {
+            runBlocking { exporter.export(SummaryExportFormat.PDF, snapshot, open = { ByteArrayOutputStream() }, discard = { discarded++ }) }
+        }
+        assertThat(e.error).isEqualTo(SummaryExportError.WRITE_FAILED)
+        assertThat(discarded).isEqualTo(1)
+    }
+
+    @Test
+    fun aCancellation_deletesThePartialFile_andIsRethrownAsIs() {
+        var discarded = 0
+        val cancelling = object : OutputStream() {
+            override fun write(b: Int) = throw kotlinx.coroutines.CancellationException("cancelled")
+            override fun write(b: ByteArray, off: Int, len: Int) = throw kotlinx.coroutines.CancellationException("cancelled")
+        }
+        assertThrows(kotlinx.coroutines.CancellationException::class.java) {
+            runBlocking { exporter.export(SummaryExportFormat.CSV, snapshot, open = { cancelling }, discard = { discarded++ }) }
+        }
+        assertThat(discarded).isEqualTo(1)
+    }
+
+    @Test
+    fun anError_deletesThePartialFile_andIsRethrownAsIs() {
+        var discarded = 0
+        val oom = object : OutputStream() {
+            override fun write(b: Int) = throw OutOfMemoryError("big")
+            override fun write(b: ByteArray, off: Int, len: Int) = throw OutOfMemoryError("big")
+        }
+        assertThrows(OutOfMemoryError::class.java) {
+            runBlocking { exporter.export(SummaryExportFormat.CSV, snapshot, open = { oom }, discard = { discarded++ }) }
+        }
+        assertThat(discarded).isEqualTo(1)
     }
 
     @Test
