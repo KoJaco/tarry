@@ -82,10 +82,56 @@ class SummaryCalculatorTest {
     }
 
     @Test
-    fun nearest_sevenAndAHalfMinutesAtFifteen_becomesFifteen() {
+    fun nearest_sevenMinutesThirtySecondsAtFifteen_truncatesToSevenFirst() {
+        // Whole minutes (owner decision 2026-11-03): 7 min 30 s is 7 min, below half a step.
         val rules = BillingRules(incrementMin = 15)
         val r = calc(listOf(block("b", "A", nov(10, 9), nov(10, 9) + 7 * min + 30_000)), rules)
+        assertThat(r.billedMs).isEqualTo(0)
+    }
+
+    // ---- whole minutes -----------------------------------------------------------------------------------------
+
+    @Test
+    fun wholeMinutes_tenSecondsOverAnHourAtUp15_billsAnHour() {
+        val r = calc(listOf(block("b", "A", nov(10, 9), nov(10, 10) + 10_000)), BillingRules(incrementMin = 15, mode = RoundingMode.UP))
+        assertThat(r.billedMs).isEqualTo(hour)
+        assertThat(r.byJob.single().totalMs).isEqualTo(hour + 10_000) // raw figures stay exact
+    }
+
+    @Test
+    fun wholeMinutes_perBlock_roundingOff_rowsAndTotalAgree() {
+        val blocks = listOf(
+            block("b1", "A", nov(10, 9), nov(10, 9, 30) + 40_000),
+            block("b2", "A", nov(10, 11), nov(10, 11, 30) + 40_000),
+        )
+        val r = calc(blocks, BillingRules())
+        val row = r.byJob.single()
+        assertThat(row.pieces.map { it.billedMs }).containsExactly(30 * min, 30 * min)
+        assertThat(row.billedMs).isEqualTo(60 * min)
+        assertThat(r.billedMs).isEqualTo(60 * min)
+        assertThat(row.billableMs).isEqualTo(61 * min + 20_000)
+    }
+
+    @Test
+    fun wholeMinutes_perDay_sumsSecondsBeforeTruncating() {
+        val blocks = listOf(
+            block("b1", "A", nov(10, 9), nov(10, 9, 30) + 40_000),
+            block("b2", "A", nov(10, 11), nov(10, 11, 30) + 40_000),
+        )
+        val r = calc(blocks, BillingRules(perDay = true))
+        assertThat(r.billedMs).isEqualTo(61 * min) // 61 min 20 s
+    }
+
+    @Test
+    fun wholeMinutes_fortySecondsWithMinimum_isStillTheMinimum() {
+        val r = calc(listOf(block("b", "A", nov(10, 9), nov(10, 9) + 40_000)), BillingRules(minimumMin = 15))
         assertThat(r.billedMs).isEqualTo(15 * min)
+    }
+
+    @Test
+    fun wholeMinutes_fortySecondsWithoutMinimum_billsZero() {
+        val r = calc(listOf(block("b", "A", nov(10, 9), nov(10, 9) + 40_000)), BillingRules())
+        assertThat(r.billedMs).isEqualTo(0)
     }
 
     @Test

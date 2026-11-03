@@ -27,17 +27,19 @@ data class BillingRules(
     val perDay: Boolean = false,
 ) {
     /**
-     * Billed time of one billing unit with [rawMs] of billable time. Rounds to the increment first (NEAREST rounds half
+     * Billed time of one billing unit with [rawMs] of billable time. Drops the seconds first (whole minutes, owner decision
+     * 2026-11-03), then rounds to the increment (NEAREST rounds half
      * up, UP rounds up any part of a step), then applies the minimum, even when NEAREST rounded down to 0. A unit with
      * no time is not billed at all.
      */
     fun billedMs(rawMs: Long): Long {
         if (rawMs <= 0L) return 0L
+        val wholeMs = rawMs / MINUTE_MS * MINUTE_MS
         val step = incrementMin * MINUTE_MS
         val rounded = when {
-            step <= 0L -> rawMs
-            mode == RoundingMode.UP -> (rawMs + step - 1) / step * step
-            else -> (rawMs + step / 2) / step * step
+            step <= 0L -> wholeMs
+            mode == RoundingMode.UP -> (wholeMs + step - 1) / step * step
+            else -> (wholeMs + step / 2) / step * step
         }
         return maxOf(rounded, minimumMin * MINUTE_MS)
     }

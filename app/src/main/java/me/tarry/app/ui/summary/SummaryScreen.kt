@@ -322,7 +322,7 @@ private fun RangePickerDialog(initial: SummaryRange, onConfirm: (LocalDate, Loca
 /** "4 h 15 min", with a real zero ("0 min") instead of the timeline's "<1 min". */
 @Composable
 internal fun summaryDuration(ms: Long): String =
-    if (ms < 60_000L && ms <= 0L) stringResource(R.string.summary_duration_zero) else formatDuration(ms)
+    if (ms <= 0L) stringResource(R.string.summary_duration_zero) else formatDuration(ms)
 
 /** "4 hours 15 minutes" for TalkBack; zero reads as "0 minutes". */
 @Composable

@@ -195,6 +195,7 @@ The timeline shows one day of job blocks, but invoicing needs totals over a rang
 - **Where:** a bottom-bar tab. The bar becomes **Timeline · Summary · Settings · tracking toggle**, with the toggle moving from the centre to the right end.
 - **Hours only.** No rates, so no schema change.
 - From step 2: one switch applies rounding and the minimum either per block or per job per day.
+- **Whole minutes (2026-11-03):** billing counts whole minutes; seconds are dropped before rounding and the minimum.
 
 ### Calculation (pure Kotlin in `app/.../summary/`, JVM-tested)
 **Inputs:**
@@ -214,8 +215,9 @@ The timeline shows one day of job blocks, but invoicing needs totals over a rang
    - per day, per job (switch on): a job's billable pieces on one local day are added up and billed once.
    
    Each billing unit is rounded first, then the minimum is applied:
-   - **Rounding** to the increment: NEAREST rounds half up (7.5 min at a 15 min step becomes 15), UP rounds up any part of a step. An increment of 0 means no rounding.
-   - **Minimum:** `billed = max(rounded, minimum)` when the unit's raw time is above 0. This applies even if NEAREST rounded it to 0.
+   - **Whole minutes** (owner decision 2026-11-03): the unit's raw time is first truncated down to whole minutes, dropping the seconds. In per-day mode the pieces' raw times are added up before truncating (2 x 30 min 40 s = 61 min 20 s bills 61 min). Raw total, billable and on-the-clock figures stay exact.
+   - **Rounding** to the increment (of the truncated time): NEAREST rounds half up (8 min at a 15 min step becomes 15; 7 min 30 s is 7 min first, so 0), UP rounds up any part of a step. An increment of 0 means no rounding.
+   - **Minimum:** `billed = max(rounded, minimum)` when the unit's raw time is above 0. This applies even if truncation or NEAREST left it at 0 (a 40 s unit with a 15 min minimum bills 15 min).
 3. **Groups.**
    - **By job** (default): one row per job with blocks in the range, showing block count, total time (raw, clipped), billable raw time and billed time. Rows are sorted by billed time, descending.
    - **By day:** one section per local day with that day's job rows.
