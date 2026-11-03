@@ -57,4 +57,11 @@ class CoveredPlacesTest {
         assertThat(coveredPlaces(piece, visits, all)).containsExactly("Named", "2 Side St", UNNAMED_PLACE).inOrder()
         assertThat(coveredPlaces(piece, listOf(visit("4", "blank", 9, 10)), all, "Sans nom")).containsExactly("Sans nom")
     }
+
+    @Test
+    fun entities_areInTimeOrder_oncePerPlace_withoutIgnored() {
+        val all = places + place("i", name = "Home", ignored = true)
+        val visits = listOf(visit("3", "a", 11, 12), visit("2", "b", 10, 11), visit("1", "a", 9, 10), visit("4", "i", 9, 10))
+        assertThat(coveredPlaceEntities(piece, visits, all).map { it.id }).containsExactly("a", "b").inOrder()
+    }
 }

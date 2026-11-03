@@ -17,14 +17,25 @@ fun coveredPlaces(
     visits: List<Visit>,
     places: List<Place>,
     unnamedPlace: String = UNNAMED_PLACE,
-): List<String> {
+): List<String> = coveredPlaceEntities(piece, visits, places)
+    .map { place -> placeName(place, unnamedPlace) }
+    .distinct()
+
+/** A place's display name: its name, then its address, then [unnamedPlace]. */
+fun placeName(place: Place, unnamedPlace: String = UNNAMED_PLACE): String =
+    place.name?.takeIf { it.isNotBlank() } ?: place.address?.takeIf { it.isNotBlank() } ?: unnamedPlace
+
+/**
+ * The places behind [coveredPlaces] as entities (the CSV needs their addresses and centroids): time order, one entry per
+ * place, ignored places and visits with no known place left out.
+ */
+fun coveredPlaceEntities(piece: BlockPiece, visits: List<Visit>, places: List<Place>): List<Place> {
     val byId = places.associateBy { it.id }
     return visits.asSequence()
         .filter { !it.deleted && it.start < piece.end && it.end > piece.start }
         .sortedWith(compareBy({ it.start }, { it.id }))
         .mapNotNull { visit -> visit.placeId?.let { byId[it] } }
         .filter { !it.ignored }
-        .map { place -> place.name?.takeIf { it.isNotBlank() } ?: place.address?.takeIf { it.isNotBlank() } ?: unnamedPlace }
-        .distinct()
+        .distinctBy { it.id }
         .toList()
 }

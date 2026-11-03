@@ -8,6 +8,9 @@ import me.tarry.app.summary.SummaryResult
 import me.tarry.app.summary.calculateSummary
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.JobBlock
+import me.tarry.core.data.db.entity.Place
+import me.tarry.core.data.db.entity.Visit
+import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.settings.RoundingMode
 import org.junit.Test
 import java.time.LocalDate
@@ -52,7 +55,7 @@ class SummaryCsvTest {
     @Test
     fun header_isFrozen() {
         assertThat(SummaryCsv.HEADER)
-            .isEqualTo("row_type,job_block_id,job_id,job_name,date,start,end,duration_min,billable,billed_min,clipped,notes")
+            .isEqualTo("row_type,job_block_id,job_id,job_name,date,start,end,duration_min,billable,billed_min,clipped,notes,place_names,place_addresses,place_coords")
         assertThat(csv(SummaryResult.Empty)).isEqualTo(SummaryCsv.HEADER + "\r\n")
     }
 
@@ -61,7 +64,7 @@ class SummaryCsvTest {
         val result = calc(listOf(block("b1", "job-a", nov(10, 9), nov(10, 11, 30), notes = "Rewired")))
         assertThat(csv(result)).isEqualTo(
             SummaryCsv.HEADER + "\r\n" +
-                "block,b1,job-a,Alpha,2025-11-10,2025-11-10T09:00:00+11:00,2025-11-10T11:30:00+11:00,150,true,150,false,Rewired\r\n",
+                "block,b1,job-a,Alpha,2025-11-10,2025-11-10T09:00:00+11:00,2025-11-10T11:30:00+11:00,150,true,150,false,Rewired,,,\r\n",
         )
         assertThat(csv(result).startsWith("﻿")).isFalse()
     }
@@ -80,10 +83,10 @@ class SummaryCsvTest {
         )
         val name = "\"Smith, \"\"Jones\"\" & Co\""
         val r = rows(result)
-        assertThat(r[0]).isEqualTo("block,b1,job-t,$name,2025-11-10,2025-11-10T09:00:00+11:00,2025-11-10T10:00:00+11:00,60,true,60,false,\"a,b\"")
-        assertThat(r[1]).endsWith(",false,\"say \"\"hi\"\"\"")
-        assertThat(r[2]).endsWith(",false,\"line1\r\nline2\"")
-        assertThat(r[3]).endsWith(",false,\"cr\rlf\n\"")
+        assertThat(r[0]).isEqualTo("block,b1,job-t,$name,2025-11-10,2025-11-10T09:00:00+11:00,2025-11-10T10:00:00+11:00,60,true,60,false,\"a,b\",,,")
+        assertThat(r[1]).endsWith(",false,\"say \"\"hi\"\"\",,,")
+        assertThat(r[2]).endsWith(",false,\"line1\r\nline2\",,,")
+        assertThat(r[3]).endsWith(",false,\"cr\rlf\n\",,,")
     }
 
     @Test
@@ -100,13 +103,13 @@ class SummaryCsvTest {
             ),
         )
         val r = rows(result)
-        assertThat(r[0]).endsWith(",false,'=SUM(A1)")
-        assertThat(r[1]).endsWith(",false,'+1")
-        assertThat(r[2]).endsWith(",false,'-2")
-        assertThat(r[3]).endsWith(",false,'@home")
-        assertThat(r[4]).endsWith(",false, =x")
-        assertThat(r[5]).endsWith(",false,\"'=a,b\"")
-        assertThat(r[6]).endsWith(",false,a=b")
+        assertThat(r[0]).endsWith(",false,'=SUM(A1),,,")
+        assertThat(r[1]).endsWith(",false,'+1,,,")
+        assertThat(r[2]).endsWith(",false,'-2,,,")
+        assertThat(r[3]).endsWith(",false,'@home,,,")
+        assertThat(r[4]).endsWith(",false, =x,,,")
+        assertThat(r[5]).endsWith(",false,\"'=a,b\",,,")
+        assertThat(r[6]).endsWith(",false,a=b,,,")
     }
 
     @Test
@@ -122,7 +125,7 @@ class SummaryCsvTest {
         val d = LocalDate.of(2026, 4, 5)
         val result = calc(listOf(block("b1", "job-a", at(2026, 4, 5, 1), at(2026, 4, 5, 4))), from = d)
         assertThat(rows(result).single())
-            .isEqualTo("block,b1,job-a,Alpha,2026-04-05,2026-04-05T01:00:00+11:00,2026-04-05T04:00:00+10:00,240,true,240,false,")
+            .isEqualTo("block,b1,job-a,Alpha,2026-04-05,2026-04-05T01:00:00+11:00,2026-04-05T04:00:00+10:00,240,true,240,false,,,,")
     }
 
     @Test
@@ -131,7 +134,7 @@ class SummaryCsvTest {
         val d = LocalDate.of(2026, 10, 4)
         val result = calc(listOf(block("b1", "job-a", at(2026, 10, 4, 1), at(2026, 10, 4, 4))), from = d)
         assertThat(rows(result).single())
-            .isEqualTo("block,b1,job-a,Alpha,2026-10-04,2026-10-04T01:00:00+10:00,2026-10-04T04:00:00+11:00,120,true,120,false,")
+            .isEqualTo("block,b1,job-a,Alpha,2026-10-04,2026-10-04T01:00:00+10:00,2026-10-04T04:00:00+11:00,120,true,120,false,,,,")
     }
 
     @Test
@@ -201,7 +204,7 @@ class SummaryCsvTest {
         assertThat(r.filter { it[0] == "block" }.map { it[9] }).containsExactly("", "", "")
         val totals = r.filter { it[0] == "day_total" }
         assertThat(totals).hasSize(2)
-        assertThat(totals[0]).containsExactly("day_total", "", "job-a", "Alpha", "2025-11-10", "", "", "80", "", "75", "", "").inOrder()
+        assertThat(totals[0]).containsExactly("day_total", "", "job-a", "Alpha", "2025-11-10", "", "", "80", "", "75", "", "", "", "", "").inOrder()
         assertThat(totals.sumOf { it[9].toLong() } * min).isEqualTo(result.billedMs)
     }
 
@@ -258,9 +261,109 @@ class SummaryCsvTest {
             java.util.Locale.setDefault(java.util.Locale.forLanguageTag("ar-EG"))
             val result = calc(listOf(block("b1", "job-a", nov(10, 9), nov(10, 10))))
             assertThat(rows(result).single())
-                .isEqualTo("block,b1,job-a,Alpha,2025-11-10,2025-11-10T09:00:00+11:00,2025-11-10T10:00:00+11:00,60,true,60,false,")
+                .isEqualTo("block,b1,job-a,Alpha,2025-11-10,2025-11-10T09:00:00+11:00,2025-11-10T10:00:00+11:00,60,true,60,false,,,,")
         } finally {
             java.util.Locale.setDefault(old)
         }
+    }
+
+    // ---- place columns (synthetic places only) ----
+
+    private fun place(
+        id: String, name: String? = null, address: String? = null, lat: Double = 0.0, lng: Double = 0.0, ignored: Boolean = false,
+    ) = Place(id = id, centroidLat = lat, centroidLng = lng, name = name, address = address, ignored = ignored, updatedAt = 0)
+
+    private fun visit(id: String, placeId: String?, startH: Int, endH: Int) = Visit(
+        id = id, placeId = placeId, start = nov(10, startH), end = nov(10, endH), zoneId = sydney.id,
+        origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0,
+    )
+
+    /** The row of one block 09:00 to 12:00 on the 10th, with the three place fields appended after `notes`. */
+    private fun placeRow(visits: List<Visit>, places: List<Place>, rules: BillingRules = BillingRules()): String =
+        SummaryCsv.rows(calc(listOf(block("b1", "job-a", nov(10, 9), nov(10, 12))), rules), sydney, visits, places).first()
+
+    private val rowPrefix = "block,b1,job-a,Alpha,2025-11-10,2025-11-10T09:00:00+11:00,2025-11-10T12:00:00+11:00,180,true,180,false,,"
+
+    @Test
+    fun places_twoPlaces_sameOrderInAllThreeColumns() {
+        val places = listOf(
+            place("a", name = "Site A", address = "1 Main St", lat = -33.89812, lng = 151.17899),
+            place("b", name = "Site B", address = "2 Side St", lat = 12.5, lng = -0.00004),
+        )
+        // Given out of order: sorted by visit start.
+        val row = placeRow(listOf(visit("2", "b", 10, 11), visit("1", "a", 9, 10)), places)
+        assertThat(row).isEqualTo("${rowPrefix}Site A; Site B,1 Main St; 2 Side St,\"-33.8981,151.1790; 12.5000,-0.0000\"")
+    }
+
+    @Test
+    fun places_withoutAnAddress_keepsAnEmptyEntrySoPositionsLineUp() {
+        val places = listOf(place("a", name = "Site A"), place("b", name = "Site B", address = "2 Side St"))
+        val row = placeRow(listOf(visit("1", "a", 9, 10), visit("2", "b", 10, 11)), places)
+        assertThat(row).startsWith("${rowPrefix}Site A; Site B,; 2 Side St,")
+    }
+
+    @Test
+    fun places_withoutAName_fallBackToTheAddress_thenToUnnamedPlace() {
+        val places = listOf(place("a", address = "2 Side St"), place("u"))
+        val row = placeRow(listOf(visit("1", "a", 9, 10), visit("2", "u", 10, 11)), places)
+        assertThat(row).startsWith("${rowPrefix}2 Side St; Unnamed place,2 Side St; ,")
+    }
+
+    @Test
+    fun places_ignoredPlaceAndDeletedVisit_areLeftOut() {
+        val places = listOf(place("a", name = "Site A"), place("home", name = "Home", ignored = true), place("c", name = "Site C"))
+        val deleted = visit("3", "c", 10, 11).copy(deleted = true)
+        val row = placeRow(listOf(visit("1", "home", 9, 10), visit("2", "a", 10, 11), deleted), places)
+        assertThat(row).startsWith("${rowPrefix}Site A,,")
+        assertThat(row).doesNotContain("Home")
+        assertThat(row).doesNotContain("Site C")
+    }
+
+    @Test
+    fun places_blockWithNoVisits_hasThreeEmptyFields() {
+        assertThat(placeRow(emptyList(), listOf(place("a", name = "Site A")))).isEqualTo("$rowPrefix,,")
+        assertThat(placeRow(listOf(visit("1", null, 9, 10)), emptyList())).isEqualTo("$rowPrefix,,")
+    }
+
+    @Test
+    fun places_coordinatesUseRootLocale_underArabicDefault() {
+        val old = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.forLanguageTag("ar-EG"))
+            val row = placeRow(listOf(visit("1", "a", 9, 10)), listOf(place("a", name = "Site A", lat = 33.89812, lng = 151.17899)))
+            assertThat(row).isEqualTo("${rowPrefix}Site A,,\"33.8981,151.1790\"")
+        } finally {
+            java.util.Locale.setDefault(old)
+        }
+    }
+
+    @Test
+    fun places_negativeLatitude_isNotFormulaGuarded() {
+        val row = placeRow(listOf(visit("1", "a", 9, 10)), listOf(place("a", name = "Site A", lat = -33.8981, lng = 151.179)))
+        assertThat(row).endsWith(",\"-33.8981,151.1790\"")
+        assertThat(row).doesNotContain("'-33")
+    }
+
+    @Test
+    fun places_namesAndAddressesStartingWithAFormulaCharacter_areGuarded() {
+        val places = listOf(
+            place("a", name = "=cmd", address = "@here"),
+            place("b", address = "+1 Main St"),
+            place("c", name = "-Dash"),
+        )
+        val row = placeRow(listOf(visit("1", "a", 9, 10), visit("2", "b", 10, 11), visit("3", "c", 11, 12)), places)
+        assertThat(row).startsWith("${rowPrefix}'=cmd; '+1 Main St; '-Dash,'@here; '+1 Main St; ,")
+    }
+
+    @Test
+    fun places_dayTotalRows_leaveThemEmpty() {
+        val result = calc(listOf(block("b1", "job-a", nov(10, 9), nov(10, 12))), BillingRules(perDay = true))
+        val r = SummaryCsv.rows(result, sydney, listOf(visit("1", "a", 9, 10)), listOf(place("a", name = "Site A", address = "1 Main St")))
+        assertThat(r).hasSize(2)
+        assertThat(r[0]).endsWith(",Site A,1 Main St,\"0.0000,0.0000\"")
+        assertThat(r[1]).startsWith("day_total,")
+        assertThat(r[1]).endsWith(",,,,")
+        assertThat(fields(r[1])).hasSize(15)
+        assertThat(fields(r[1]).takeLast(3)).containsExactly("", "", "")
     }
 }

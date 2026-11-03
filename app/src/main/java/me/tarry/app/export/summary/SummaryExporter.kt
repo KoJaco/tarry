@@ -26,7 +26,7 @@ enum class SummaryExportFormat(val mimeType: String, val extension: String) {
 
 /**
  * The Summary as it was when the user asked to export it: one range, one result, one zone. The PDF also needs the billing
- * [rules] (to say them in words) and the [visits] and [places] behind its "places visited" column; the CSV ignores them.
+ * [rules] (to say them in words) and the [visits] and [places] behind its "places visited" column and the CSV's place columns.
  */
 data class SummarySnapshot(
     val range: SummaryRange,
@@ -93,7 +93,7 @@ class SummaryExporter @Inject constructor(
         try {
             when (format) {
                 SummaryExportFormat.CSV ->
-                    out.bufferedWriter(Charsets.UTF_8).use { writer -> SummaryCsv.write(snapshot.result, snapshot.zone, writer) }
+                    out.bufferedWriter(Charsets.UTF_8).use { writer -> SummaryCsv.write(snapshot.result, snapshot.zone, writer, snapshot.visits, snapshot.places) }
                 SummaryExportFormat.PDF -> out.use { pdfRenderer.render(snapshot, it) }
             }
         } catch (e: Throwable) {
