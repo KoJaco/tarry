@@ -30,6 +30,7 @@ object SummaryCsv {
     private const val MINUTE_MS = 60_000L
     private const val BLOCK = "block"
     private const val DAY_TOTAL = "day_total"
+    private val FORMULA_STARTS = setOf('=', '+', '-', '@')
 
     // Locale.ROOT: ASCII digits whatever the phone's language. The offset is the zone's at that instant.
     private val TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx", Locale.ROOT)
@@ -70,8 +71,11 @@ object SummaryCsv {
         BLOCK, p.blockId, job.jobId, job.name, p.date.toString(), time(p.start, zone), time(p.end, zone),
         (p.durationMs / MINUTE_MS).toString(), p.billable.toString(),
         if (perDay) "" else ((p.billedMs ?: 0L) / MINUTE_MS).toString(),
-        p.clipped.toString(), p.notes.orEmpty(),
+        p.clipped.toString(), guard(p.notes.orEmpty()),
     )
+
+    /** Spreadsheet formula guard (spec 4): a note starting with `=`, `+`, `-` or `@` gets a leading `'`. Notes only. */
+    private fun guard(note: String): String = if (note.firstOrNull() in FORMULA_STARTS) "'$note" else note
 
     private fun time(epochMs: Long, zone: ZoneId): String = TIME.format(Instant.ofEpochMilli(epochMs).atZone(zone))
 

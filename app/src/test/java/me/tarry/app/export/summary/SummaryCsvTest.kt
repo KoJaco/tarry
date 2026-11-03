@@ -87,6 +87,36 @@ class SummaryCsvTest {
     }
 
     @Test
+    fun formulaGuard_prefixesAnApostropheOnNotesStartingWithAFormulaCharacter() {
+        val result = calc(
+            listOf(
+                block("b1", "job-a", nov(10, 9), nov(10, 10), notes = "=SUM(A1)"),
+                block("b2", "job-a", nov(10, 10), nov(10, 11), notes = "+1"),
+                block("b3", "job-a", nov(10, 11), nov(10, 12), notes = "-2"),
+                block("b4", "job-a", nov(10, 12), nov(10, 13), notes = "@home"),
+                block("b5", "job-a", nov(10, 13), nov(10, 14), notes = " =x"),
+                block("b6", "job-a", nov(10, 14), nov(10, 15), notes = "=a,b"),
+                block("b7", "job-a", nov(10, 15), nov(10, 16), notes = "a=b"),
+            ),
+        )
+        val r = rows(result)
+        assertThat(r[0]).endsWith(",false,'=SUM(A1)")
+        assertThat(r[1]).endsWith(",false,'+1")
+        assertThat(r[2]).endsWith(",false,'-2")
+        assertThat(r[3]).endsWith(",false,'@home")
+        assertThat(r[4]).endsWith(",false, =x")
+        assertThat(r[5]).endsWith(",false,\"'=a,b\"")
+        assertThat(r[6]).endsWith(",false,a=b")
+    }
+
+    @Test
+    fun formulaGuard_leavesJobNamesAlone() {
+        val job = Job(id = "job-f", name = "=Job", colorArgb = 1, updatedAt = 0)
+        val r = rows(calc(listOf(block("b1", "job-f", nov(10, 9), nov(10, 10))), jobs = listOf(job)))
+        assertThat(r[0]).startsWith("block,b1,job-f,=Job,")
+    }
+
+    @Test
     fun offsets_onTheSydneyDstEndDay() {
         // 2026-04-05: clocks go back at 03:00 AEDT (+11:00) to 02:00 AEST (+10:00). 01:00 to 04:00 is four real hours.
         val d = LocalDate.of(2026, 4, 5)
