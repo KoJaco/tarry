@@ -128,6 +128,7 @@ fun TarryApp(
                     timelineViewModel.selectDate(date)
                     backStack.navigateTopLevel(TimelineRoute)
                 },
+                snackbarHostState = snackbarHostState,
                 viewModel = summaryViewModel,
             )
         },

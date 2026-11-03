@@ -2,7 +2,12 @@ package me.tarry.app.ui.summary
 
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasProgressBarRangeInfo
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.hasText
@@ -15,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
+import me.tarry.app.export.summary.SummaryExportFormat
 import me.tarry.app.summary.BillingRules
 import me.tarry.app.summary.RangePreset
 import me.tarry.app.summary.SummaryGrouping
@@ -83,10 +89,11 @@ class SummaryContentTest {
         onGrouping: (SummaryGrouping) -> Unit = {},
         onOpenDay: (LocalDate) -> Unit = {},
         onCustomRange: (LocalDate, LocalDate) -> Unit = { _, _ -> },
+        onExport: (SummaryExportFormat) -> Unit = {},
     ) {
         composeRule.setContent {
             TarryTheme {
-                SummaryContent(state, onPreset, onCustomRange, onGrouping, onOpenDay)
+                SummaryContent(state, onPreset, onCustomRange, onGrouping, onOpenDay, onExport = onExport)
             }
         }
     }
@@ -322,5 +329,39 @@ class SummaryContentTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(SummaryTags.piece("a2", day.plusDays(1))).assertDoesNotExist()
         composeRule.onNodeWithTag(SummaryTags.piece("a1", day)).assertExists()
+    }
+
+    // ---- export ------------------------------------------------------------------------------------------------
+
+    @Test
+    fun exportButton_isDisabledButPresent_withNoBlocks() {
+        show(state(result(blocks = emptyList())))
+        composeRule.onNodeWithTag(SummaryTags.Export).assertIsDisplayed().assertIsNotEnabled().assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithContentDescription("Export, no job blocks in this range").assertExists()
+        composeRule.onNodeWithTag(SummaryTags.Export).performClick()
+        composeRule.onNodeWithText("CSV (spreadsheet)").assertDoesNotExist()
+    }
+
+    @Test
+    fun exportButton_opensAMenuOfTheAvailableFormats_andReportsTheChoice() {
+        val chosen = mutableListOf<SummaryExportFormat>()
+        show(state(), onExport = { chosen += it })
+        composeRule.onNodeWithTag(SummaryTags.Export).assertIsEnabled().assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithContentDescription("Export").assertExists()
+        composeRule.onNodeWithTag(SummaryTags.Export).performClick()
+        composeRule.onNodeWithText("CSV (spreadsheet)").assertIsDisplayed()
+        composeRule.onNodeWithText("PDF (report)").assertDoesNotExist() // PDF arrives with step 5
+        composeRule.onNodeWithTag(SummaryTags.exportFormat(SummaryExportFormat.CSV)).performClick()
+        assertThat(chosen).containsExactly(SummaryExportFormat.CSV)
+        composeRule.onNodeWithText("CSV (spreadsheet)").assertDoesNotExist()
+    }
+
+    @Test
+    fun exporting_showsProgress_andDisablesTheButton() {
+        show(state().copy(exporting = true))
+        composeRule.onNodeWithTag(SummaryTags.Export).assertIsNotEnabled()
+        composeRule.onNodeWithContentDescription("Exporting").assertExists()
+        composeRule.onNode(hasProgressBarRangeInfo(ProgressBarRangeInfo.Indeterminate)).assertExists()
+        composeRule.onNodeWithText("CSV (spreadsheet)").assertDoesNotExist()
     }
 }

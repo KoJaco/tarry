@@ -1,11 +1,15 @@
 package me.tarry.app.ui.summary
 
+import android.content.res.Resources
 import android.text.format.DateFormat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -19,11 +23,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDateRangePickerState
@@ -37,12 +45,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -53,11 +64,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.R
+import me.tarry.app.export.summary.SummaryExportFormat
+import me.tarry.app.export.summary.suggestedFileName
 import me.tarry.app.summary.DayBilled
 import me.tarry.app.summary.BlockPiece
 import me.tarry.app.summary.DaySection
 import me.tarry.app.summary.JobSummary
 import me.tarry.app.summary.RangePreset
+import me.tarry.app.summary.SummaryExportEvent
 import me.tarry.app.summary.SummaryGrouping
 import me.tarry.app.summary.SummaryRange
 import me.tarry.app.summary.SummaryResult
@@ -65,6 +79,7 @@ import me.tarry.app.summary.SummaryUiState
 import me.tarry.app.summary.SummaryViewModel
 import me.tarry.app.ui.catalog.SheetFrame
 import me.tarry.app.ui.components.EmptyState
+import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SegmentedControl
@@ -90,6 +105,8 @@ object SummaryTags {
     const val Totals = "summary_totals"
     const val Unlabelled = "summary_unlabelled"
     const val Sheet = "summary_job_sheet"
+    const val Export = "summary_export"
+    fun exportFormat(format: SummaryExportFormat) = "summary_export_${format.name}"
     fun row(jobId: String) = "summary_row_$jobId"
     fun piece(blockId: String, date: LocalDate) = "summary_piece_${blockId}_$date"
 }
@@ -98,10 +115,23 @@ private val DotSize = 16.dp
 
 /** Hilt-wired Summary tab. [onOpenDay] opens that local day on the timeline. */
 @Composable
-fun SummaryScreen(onOpenDay: (LocalDate) -> Unit, modifier: Modifier = Modifier, viewModel: SummaryViewModel = hiltViewModel()) {
+fun SummaryScreen(
+    onOpenDay: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier,
+    snackbarHostState: SnackbarHostState? = null,
+    viewModel: SummaryViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     // After midnight "Today" and "This week" move on; re-derive them when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
+    // The file goes only where the user picks it (SAF); cancelling the picker does nothing.
+    val createCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(SummaryExportFormat.CSV.mimeType)) { uri ->
+        if (uri != null) viewModel.export(SummaryExportFormat.CSV, uri)
+    }
+    LaunchedEffect(viewModel, snackbarHostState) {
+        viewModel.events.collect { event -> snackbarHostState?.showSnackbar(summaryExportMessage(context.resources, event)) }
+    }
     SummaryContent(
         state = state,
         onPreset = viewModel::selectPreset,
@@ -109,7 +139,74 @@ fun SummaryScreen(onOpenDay: (LocalDate) -> Unit, modifier: Modifier = Modifier,
         onGrouping = viewModel::setGrouping,
         onOpenDay = onOpenDay,
         modifier = modifier,
+        onExport = { format ->
+            val range = state?.range ?: return@SummaryContent
+            when (format) {
+                SummaryExportFormat.CSV -> createCsv.launch(format.suggestedFileName(range))
+            }
+        },
     )
+}
+
+internal fun summaryExportMessage(resources: Resources, event: SummaryExportEvent): String = when (event) {
+    is SummaryExportEvent.Saved -> resources.getQuantityString(
+        R.plurals.summary_export_saved, event.blocks, event.blocks, resources.getString(event.format.labelRes()),
+    )
+    SummaryExportEvent.Failed -> resources.getString(R.string.summary_export_failed)
+}
+
+private fun SummaryExportFormat.labelRes(): Int = when (this) {
+    SummaryExportFormat.CSV -> R.string.summary_export_format_csv
+}
+
+/**
+ * The Export icon at the right of the title. Disabled (but in place) with no job blocks; shows progress while a file is
+ * being written. [hasBlocks] is null until the first calculation finishes.
+ */
+@Composable
+private fun ExportButton(hasBlocks: Boolean?, exporting: Boolean, onExport: (SummaryExportFormat) -> Unit) {
+    var menuOpen by rememberSaveable { mutableStateOf(false) }
+    if (exporting) {
+        val label = stringResource(R.string.summary_exporting)
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .semantics { contentDescription = label; disabled() }
+                .testTag(SummaryTags.Export),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = TarryTheme.colors.ink)
+        }
+        return
+    }
+    val enabled = hasBlocks == true
+    val description = stringResource(if (hasBlocks == false) R.string.summary_export_disabled else R.string.summary_export)
+    Box {
+        IconCircleButton(
+            icon = R.drawable.ic_export,
+            contentDescription = description,
+            onClick = { menuOpen = true },
+            enabled = enabled,
+            containerColor = Color.Transparent,
+            modifier = Modifier.testTag(SummaryTags.Export),
+        )
+        DropdownMenu(expanded = menuOpen && enabled, onDismissRequest = { menuOpen = false }) {
+            for (format in SummaryExportFormat.entries) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(format.menuLabelRes())) },
+                    onClick = {
+                        menuOpen = false
+                        onExport(format)
+                    },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag(SummaryTags.exportFormat(format)),
+                )
+            }
+        }
+    }
+}
+
+private fun SummaryExportFormat.menuLabelRes(): Int = when (this) {
+    SummaryExportFormat.CSV -> R.string.summary_export_menu_csv
 }
 
 /** Stateless Summary: range chips, grouping, job rows or day sections, then the totals and unlabelled cards. */
@@ -121,6 +218,8 @@ fun SummaryContent(
     onGrouping: (SummaryGrouping) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
+    /** The user chose a format in the export menu; the caller opens the file picker. */
+    onExport: (SummaryExportFormat) -> Unit = {},
 ) {
     val space = TarryTheme.space
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
@@ -134,12 +233,19 @@ fun SummaryContent(
         verticalArrangement = Arrangement.spacedBy(space.s),
     ) {
         item {
-            Text(
-                text = stringResource(R.string.summary_title),
-                style = MaterialTheme.typography.headlineMedium,
-                color = TarryTheme.colors.ink,
-                modifier = Modifier.semantics { heading() },
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(R.string.summary_title),
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = TarryTheme.colors.ink,
+                    modifier = Modifier.weight(1f).semantics { heading() },
+                )
+                ExportButton(
+                    hasBlocks = state?.result?.hasBlocks,
+                    exporting = state?.exporting == true,
+                    onExport = onExport,
+                )
+            }
         }
         item {
             RangeChips(
