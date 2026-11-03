@@ -146,7 +146,7 @@ class BackupManager @Inject constructor(
         var written = 0
         try {
             out.use { raw ->
-                val writer = BackupCodec.writer(raw)
+                BackupCodec.writer(raw).use { writer ->
                 writer.writeHead(file)
                 // Keyset pages outside any transaction: tracking writes are never blocked by a slow provider, and rows
                 // added after the head read (id > maxPingId) are not in this backup.
@@ -159,6 +159,7 @@ class BackupManager @Inject constructor(
                     after = page.last().id
                 }
                 writer.finish()
+                }
             }
         } catch (e: Exception) {
             runCatching { discard() }
@@ -177,16 +178,21 @@ class BackupManager @Inject constructor(
     suspend fun preview(open: () -> InputStream): RestorePreview = withContext(Dispatchers.IO) {
         var snapshot = BackupSnapshot()
         var sessionIds = emptySet<Long>()
-        val seen = HashSet<Long>()
+        var checker = BackupCodec.PingChecker(sessionIds)
         var count = 0
         val file = BackupCodec.read(
             open,
             onHeader = {
                 snapshot = BackupCodec.validate(it)
                 sessionIds = snapshot.sessions.mapTo(HashSet()) { s -> s.id }
+                checker = BackupCodec.PingChecker(sessionIds)
+            },
+            onInline = { chunk ->
+                checker.inline(chunk)
+                count += chunk.size
             },
         ) { chunk ->
-            BackupCodec.checkPings(chunk, sessionIds, seen)
+            checker.streamed(chunk)
             count += chunk.size
         }
         RestorePreview(
@@ -225,7 +231,17 @@ class BackupManager @Inject constructor(
                     // Pass 2: the file is streamed again straight into the transaction.
                     store.replaceAllStreaming(preview.snapshot, preview.createdAt) { insert ->
                         var n = 0
-                        BackupCodec.read(preview.open) { chunk ->
+                        // The same ping checks as pass 1, with fresh state: a swapped file with the same count is rejected.
+                        val checker = BackupCodec.PingChecker(preview.snapshot.sessions.mapTo(HashSet()) { s -> s.id })
+                        BackupCodec.read(
+                            preview.open,
+                            onInline = { chunk ->
+                                checker.inline(chunk)
+                                insert(chunk.map { it.toEntity() })
+                                n += chunk.size
+                            },
+                        ) { chunk ->
+                            checker.streamed(chunk)
                             insert(chunk.map { it.toEntity() })
                             n += chunk.size
                         }

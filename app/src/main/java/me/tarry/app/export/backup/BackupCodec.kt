@@ -47,10 +47,13 @@ object BackupCodec {
     /**
      * Writes a file as a gzip stream of newline-separated JSON values: [writeHead] once (the [BackupFile] with no pings),
      * then [writePing] per ping, then [finish]. Nothing is accumulated, so memory stays flat. [out] stays open for the
-     * caller to close.
+     * caller to close; call [Writer.close] (or use it) so the deflater is freed on failure paths.
      */
-    class Writer internal constructor(out: OutputStream) {
-        private val gzip = GZIPOutputStream(out.buffered())
+    class Writer internal constructor(out: OutputStream) : java.io.Closeable {
+        private val gzip = object : GZIPOutputStream(out.buffered()) {
+            /** Frees the native Deflater without touching the stream (safe to call twice). */
+            fun endDeflater() = def.end()
+        }
         private val sink = gzip.buffered(32 * 1024)
         private var headWritten = false
 
@@ -66,12 +69,19 @@ object BackupCodec {
             line(json.encodeToString(PingDto.serializer(), ping))
         }
 
-        /** Flushes and finishes the gzip stream (writes the trailer that detects truncation). */
+        /** Flushes and finishes the gzip stream (writes the trailer that detects truncation), then frees the deflater. */
         fun finish() {
-            sink.flush()
-            gzip.finish()
-            gzip.flush()
+            try {
+                sink.flush()
+                gzip.finish()
+                gzip.flush()
+            } finally {
+                gzip.endDeflater()
+            }
         }
+
+        /** Frees the deflater on a failure path, where [finish] was not reached. Does not close the underlying stream. */
+        override fun close() = gzip.endDeflater()
 
         private fun line(text: String) {
             sink.write(text.toByteArray(Charsets.UTF_8))
@@ -95,7 +105,8 @@ object BackupCodec {
     /**
      * Streams a backup once: reads, upgrades and checks the header, calls [onHeader] with it (pings emptied), then hands
      * every ping to [onPings] in chunks of at most [PING_CHUNK], and returns the header. A file whose header still
-     * carries inline `tables.pings` (the earlier single-object layout) feeds them through [onPings] first.
+     * carries inline `tables.pings` (the earlier single-object layout) feeds them first, through [onInline] when given
+     * (their ids are in no particular order), else through [onPings].
      * [open] is called once, or twice when the first value fails to decode and the header is re-read to say why.
      * Throws [BackupException]: [BackupError.NOT_A_BACKUP] (not gzip, not JSON, wrong `format`), [BackupError.TOO_NEW],
      * [BackupError.DAMAGED] (truncated, corrupt or inconsistent), [BackupError.CANNOT_OPEN]. What [onHeader] or
@@ -104,6 +115,7 @@ object BackupCodec {
     suspend fun read(
         open: () -> InputStream,
         onHeader: suspend (BackupFile) -> Unit = {},
+        onInline: (suspend (List<PingDto>) -> Unit)? = null,
         onPings: suspend (List<PingDto>) -> Unit,
     ): BackupFile {
         var headerRead = false
@@ -131,7 +143,11 @@ object BackupCodec {
                         chunk.clear()
                     }
                 }
-                for (p in inline) add(p)
+                if (inline.isNotEmpty() && onInline != null) {
+                    for (part in inline.chunked(PING_CHUNK)) callback { onInline(part) }
+                } else {
+                    for (p in inline) add(p)
+                }
                 while (values.hasNext()) add(json.decodeFromJsonElement<PingDto>(values.next()))
                 if (chunk.isNotEmpty()) callback { onPings(chunk.toList()) }
                 return header
@@ -247,12 +263,32 @@ object BackupCodec {
     }
 
     /**
-     * Per-chunk ping checks for the preview pass: unique id (across chunks, via [seen]), session in [sessionIds], and it
-     * converts to an entity. Throws [BackupError.DAMAGED]. Nothing has been written when this throws.
+     * Per-chunk ping checks, run in the preview pass and again in the apply pass: the session exists, the ping converts to
+     * an entity, and the id is unique. Streamed pings are written in ascending id order, so for them a strictly increasing
+     * id is the uniqueness check and no set of all ids is kept; only the ids of inline pings (the earlier layout, in any
+     * order) are held in a set, and a streamed id may not repeat one. Throws [BackupError.DAMAGED]. Use a fresh instance
+     * per pass.
      */
-    fun checkPings(chunk: List<PingDto>, sessionIds: Set<Long>, seen: MutableSet<Long>) {
-        for (p in chunk) {
-            if (!seen.add(p.id)) throw BackupException(BackupError.DAMAGED)
+    class PingChecker(private val sessionIds: Set<Long>) {
+        private val inlineIds = HashSet<Long>()
+        private var lastStreamed = Long.MIN_VALUE
+
+        fun inline(chunk: List<PingDto>) {
+            for (p in chunk) {
+                if (!inlineIds.add(p.id)) throw BackupException(BackupError.DAMAGED)
+                common(p)
+            }
+        }
+
+        fun streamed(chunk: List<PingDto>) {
+            for (p in chunk) {
+                if (p.id <= lastStreamed || p.id in inlineIds) throw BackupException(BackupError.DAMAGED)
+                lastStreamed = p.id
+                common(p)
+            }
+        }
+
+        private fun common(p: PingDto) {
             if (p.sessionId !in sessionIds) throw BackupException(BackupError.DAMAGED)
             try {
                 p.toEntity()

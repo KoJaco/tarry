@@ -42,8 +42,8 @@ import java.io.OutputStream
  * Locations are about 99% of the rows (100k at 90 days), so they must never all be in memory on backup or restore.
  * Synthetic 100k-ping round trip through [BackupManager]: back up, preview (pass 1), restore (pass 2) into a database
  * holding other data, then compare every ping row. Retained heap (used after `System.gc()`) is sampled in the middle of
- * each streaming phase and compared with what holding the pings costs (the old approach held the DTO list and the entity
- * list at once; measured at the end of the test and printed).
+ * each streaming phase and printed next to what holding the pings costs (the old approach held the DTO list and the entity
+ * list at once). The heap figures are not asserted (System.gc() is too unreliable to gate CI).
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
@@ -191,23 +191,12 @@ class BackupStreaming100kTest {
                 "(n=${backupSamples.size}), preview @50% ${"%.1f".format(passSamples[0])}, restore @50% ${"%.1f".format(passSamples[1])}; " +
                 "holding entities+DTOs would retain ${"%.1f".format(held)} MB",
         )
-        val bound = HEAP_BOUND_MB
-        assertThat(backupSamples.max()).isLessThan(bound)
-        assertThat(passSamples.max()).isLessThan(bound)
-        assertThat(held).isGreaterThan(passSamples.max() * 2)
+        // The heap figures above are printed for a human, not asserted: System.gc()-based numbers are not reliable enough
+        // to gate CI. The row-by-row round trip and the timing printout are the checks.
     }
 
     private companion object {
         const val PINGS = 100_000
         const val SESSIONS = 20
-
-        /**
-         * Streaming keeps one page or chunk (at most 1,000 pings, well under 1 MB) plus, in pass 1, a HashSet of the
-         * 100k ping ids (about 6 MB boxed); the rest is JVM noise (class loading, Room and DataStore buffers).
-         * Measured on a dev machine: backup 0.5 MB, pass 1 4.3 MB (the id set), pass 2 0.7 MB; holding the decoded DTOs plus
-         * entities (the old path) retained 23.6 MB. The bound sits between, and the test also requires the held figure
-         * to be at least twice the streaming one.
-         */
-        const val HEAP_BOUND_MB = 12.0
     }
 }

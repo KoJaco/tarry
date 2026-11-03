@@ -128,8 +128,8 @@ Locations are ~99% of the rows (about 100k at 90 days). They are never all in me
   - the 90-day purge running mid-backup only drops leaf pings, so the file stays referentially valid;
   - the snackbar count is the number of pings actually written.
 - **Restore, two passes over the file:**
-  1. **preview:** stream the whole file once; validate the header and small tables as now, and every ping (unique id, its session exists, it converts to an entity); keep only the count and the small tables.
-  2. **apply:** inside the one Room transaction, delete everything, insert the small tables, then stream the file again and insert pings in chunks of 500. If the second pass's ping count differs from the preview's, or anything throws, the transaction rolls back and the restore fails with nothing changed (the file was changed or became unreadable between passes).
+  1. **preview:** stream the whole file once; validate the header and small tables as now, and every ping (its session exists, it converts to an entity, and its id is greater than the previous streamed ping's, which also makes ids unique with no set of all ids; ids of inline pings from the earlier layout are held in a set instead, and a streamed id may not repeat one); keep only the count and the small tables.
+  2. **apply:** inside the one Room transaction, delete everything, insert the small tables, then stream the file again and insert pings in chunks of 500. The second pass runs the same ping checks with fresh state. If a check fails, the second pass's ping count differs from the preview's, or anything throws, the transaction rolls back and the restore fails with nothing changed (the file was changed or became unreadable between passes).
   - Open sessions from the backup are closed after the pings are in, with one SQL update (`end` = the session's last ping, or its start), `KILLED`, no Gap.
 - **Memory bound:** at most one page or chunk of pings (500–1,000) plus the small tables is held at a time.
 

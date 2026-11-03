@@ -215,7 +215,27 @@ class BackupManagerTest {
     }
 
     @Test
-    fun aPingWithAnUnknownSessionOrADuplicateIdIsDamagedAtPreview() = runBlocking<Unit> {
+    fun aFileSwappedForOneWithTheSameCountButOutOfOrderPingsIsRejectedAtRestoreAndChangesNothing() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("a"))
+        val full = backupBytes()
+        store.replaceAll(BackupSnapshot(jobs = listOf(Job("other", "Other", 1, updatedAt = 1L))))
+        val dbBefore = store.snapshot()
+        val settingsBefore = settingsStore.data.first()
+
+        val swapped = encodeFile(fileOf(everythingSnapshot("a").let { it.copy(pings = it.pings.reversed()) }))
+        var opens = 0
+        val preview = manager.preview { ByteArrayInputStream(if (opens++ == 0) full else swapped) }
+
+        val e = assertThrows(BackupException::class.java) { runBlocking { manager.restore(preview) } }
+
+        assertThat(e.error).isEqualTo(BackupError.RESTORE_FAILED)
+        assertThat((e.cause as BackupException).error).isEqualTo(BackupError.DAMAGED)
+        assertThat(store.snapshot()).isEqualTo(dbBefore)
+        assertThat(settingsStore.data.first()).isEqualTo(settingsBefore)
+    }
+
+    @Test
+    fun aPingWithAnUnknownSessionOrADuplicateIdIsDamagedAtPreview()= runBlocking<Unit> {
         val s = everythingSnapshot()
         val unknownSession = encodeFile(fileOf(s.copy(pings = s.pings + s.pings.first().copy(id = 99, sessionId = 404))))
         val duplicateId = encodeFile(fileOf(s.copy(pings = s.pings + s.pings.first().copy(timestamp = 7L))))

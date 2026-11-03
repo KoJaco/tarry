@@ -290,17 +290,53 @@ class BackupCodecTest {
         assertThat(chunks.flatten().map { it.id }).isEqualTo((1L..1234L).toList())
     }
 
-    @Test
-    fun checkPingsRejectsAnUnknownSessionADuplicateIdAcrossChunksAndAcceptsGoodOnes() {
-        val ok = manyPings(3, 1)
-        val seen = HashSet<Long>()
-        BackupCodec.checkPings(ok, setOf(1L), seen)
-        assertThat(seen).containsExactly(1L, 2L, 3L)
+    private fun fileWith(inline: List<PingDto>, streamed: List<PingDto>): ByteArray {
+        val s = everythingSnapshot()
+        val head = inlineJson.encodeToString(
+            BackupFile.serializer(),
+            fileOf(s.copy(pings = emptyList())).let { it.copy(tables = it.tables.copy(pings = inline)) },
+        )
+        return gzip((listOf(head) + streamed.map { inlineJson.encodeToString(PingDto.serializer(), it) }).joinToString("\n", postfix = "\n"))
+    }
 
-        val unknown = assertThrows(BackupException::class.java) { BackupCodec.checkPings(manyPings(1, 404), setOf(1L), HashSet()) }
-        assertThat(unknown.error).isEqualTo(BackupError.DAMAGED)
-        val dup = assertThrows(BackupException::class.java) { BackupCodec.checkPings(listOf(ok[0]), setOf(1L), seen) }
-        assertThat(dup.error).isEqualTo(BackupError.DAMAGED)
+    /** Reads [bytes] with the same checks the backup manager runs. */
+    private fun checked(bytes: ByteArray) = runBlocking {
+        val ids = everythingSnapshot().sessions.map { it.id }.toSet()
+        val checker = BackupCodec.PingChecker(ids)
+        BackupCodec.read({ ByteArrayInputStream(bytes) }, onInline = { checker.inline(it) }) { checker.streamed(it) }
+    }
+
+    private fun sid() = everythingSnapshot().sessions.first().id
+
+    private fun pingsWithIds(vararg ids: Long) = ids.map { manyPings(1, sid()).single().copy(id = it) }
+
+    @Test
+    fun streamedPingsInAscendingIdOrderPass() {
+        checked(fileWith(emptyList(), pingsWithIds(1, 5, 9)))
+    }
+
+    @Test
+    fun streamedPingsOutOfOrderOrDuplicatedAreDamaged() {
+        for (ids in listOf(longArrayOf(5, 1), longArrayOf(1, 1), longArrayOf(1, 3, 2))) {
+            val e = assertThrows(BackupException::class.java) { checked(fileWith(emptyList(), pingsWithIds(*ids))) }
+            assertThat(e.error).isEqualTo(BackupError.DAMAGED)
+        }
+    }
+
+    @Test
+    fun inlinePingsMayBeInAnyOrderButNotDuplicatedNorRepeatedByAStreamedOne() {
+        checked(fileWith(pingsWithIds(9, 2, 5), pingsWithIds(10)))
+        for ((inline, streamed) in listOf(pingsWithIds(2, 2) to emptyList(), pingsWithIds(2, 5) to pingsWithIds(5))) {
+            val e = assertThrows(BackupException::class.java) { checked(fileWith(inline, streamed)) }
+            assertThat(e.error).isEqualTo(BackupError.DAMAGED)
+        }
+    }
+
+    @Test
+    fun aStreamedPingWithAnUnknownSessionIsDamaged() {
+        val bad = manyPings(1, 404)
+        val e = assertThrows(BackupException::class.java) { checked(fileWith(emptyList(), bad)) }
+        assertThat(e.error).isEqualTo(BackupError.DAMAGED)
     }
 
     @Test
