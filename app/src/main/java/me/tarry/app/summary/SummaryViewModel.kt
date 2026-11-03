@@ -1,11 +1,14 @@
 package me.tarry.app.summary
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -14,7 +17,12 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import me.tarry.app.export.summary.SummaryExportFormat
+import me.tarry.app.export.summary.SummaryExporter
+import me.tarry.app.export.summary.SummarySnapshot
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.Place
@@ -57,7 +65,15 @@ data class SummaryUiState(
     val grouping: SummaryGrouping,
     val zone: ZoneId,
     val result: SummaryResult?,
+    /** A file is being written; the export button shows progress and is disabled. */
+    val exporting: Boolean = false,
 )
+
+/** One-shot outcome of an export, shown as a snackbar. */
+sealed interface SummaryExportEvent {
+    data class Saved(val format: SummaryExportFormat, val blocks: Int) : SummaryExportEvent
+    data object Failed : SummaryExportEvent
+}
 
 private data class Computed(val range: SummaryRange, val result: SummaryResult)
 
@@ -78,6 +94,8 @@ class SummaryViewModel internal constructor(
     private val settings: Flow<Settings>,
     private val zone: ZoneId,
     private val todayProvider: () -> LocalDate,
+    /** Writes the snapshot to the document and returns the number of blocks in it; throws on failure. */
+    private val exportFile: suspend (SummaryExportFormat, SummarySnapshot, Uri) -> Int,
 ) : ViewModel() {
     @Inject
     constructor(
@@ -87,6 +105,7 @@ class SummaryViewModel internal constructor(
         jobs: JobRepository,
         places: PlaceRepository,
         settings: SettingsRepository,
+        exporter: SummaryExporter,
     ) : this(
         savedState,
         blocksOverlapping = blocks::observeOverlapping,
@@ -97,6 +116,7 @@ class SummaryViewModel internal constructor(
         settings = settings.settings,
         zone = ZoneId.systemDefault(),
         todayProvider = { LocalDate.now(ZoneId.systemDefault()) },
+        exportFile = exporter::export,
     )
 
     private val today = MutableStateFlow(todayProvider())
@@ -140,10 +160,38 @@ class SummaryViewModel internal constructor(
         }
     }
 
-    val state: StateFlow<SummaryUiState?> = combine(rangeAndPreset, grouping, computed) { (preset, range), grouping, computed ->
+    private val exporting = MutableStateFlow(false)
+
+    val state: StateFlow<SummaryUiState?> = combine(rangeAndPreset, grouping, computed, exporting) { (preset, range), grouping, computed, busy ->
         // The result belongs to the range it was computed for; until it catches up the new range shows as loading.
-        SummaryUiState(preset, range, grouping, zone, computed.result.takeIf { computed.range == range })
+        SummaryUiState(preset, range, grouping, zone, computed.result.takeIf { computed.range == range }, busy)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
+
+    private val _events = Channel<SummaryExportEvent>(Channel.BUFFERED)
+    val events: Flow<SummaryExportEvent> = _events.receiveAsFlow()
+
+    /**
+     * Writes the Summary as it is now (this range, this result) to [uri], the document the user picked. Ignored while
+     * another export runs or when there are no job blocks. The outcome arrives on [events].
+     */
+    fun export(format: SummaryExportFormat, uri: Uri) {
+        if (exporting.value) return
+        val current = state.value ?: return
+        val result = current.result?.takeIf { it.hasBlocks } ?: return
+        val snapshot = SummarySnapshot(current.range, current.zone, result)
+        exporting.value = true
+        viewModelScope.launch {
+            try {
+                _events.send(SummaryExportEvent.Saved(format, exportFile(format, snapshot, uri)))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _events.send(SummaryExportEvent.Failed)
+            } finally {
+                exporting.value = false
+            }
+        }
+    }
 
     fun selectPreset(preset: RangePreset) {
         // CUSTOM needs dates: use setCustomRange. Selecting it again without a stored range is a no-op.

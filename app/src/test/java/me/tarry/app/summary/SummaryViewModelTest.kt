@@ -12,6 +12,8 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import me.tarry.app.export.summary.SummaryExportFormat
+import me.tarry.app.export.summary.SummarySnapshot
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.JobBlock
 import me.tarry.core.data.db.entity.Place
@@ -57,6 +59,9 @@ class SummaryViewModelTest {
         id = id, jobId = "A", start = at(date, fromHour), end = at(date, toHour), zoneId = zone.id, billable = true, updatedAt = 0,
     )
 
+    private val exported = mutableListOf<Pair<SummaryExportFormat, SummarySnapshot>>()
+    private var exportBehaviour: suspend () -> Int = { 1 }
+
     private fun viewModel(saved: SavedStateHandle = SavedStateHandle()) = SummaryViewModel(
         saved,
         blocksOverlapping = { _, _ -> blocks },
@@ -67,6 +72,10 @@ class SummaryViewModelTest {
         settings = settings,
         zone = zone,
         todayProvider = { today },
+        exportFile = { format, snapshot, _ ->
+            exported += format to snapshot
+            exportBehaviour()
+        },
     )
 
     private fun <T> await(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }
@@ -189,6 +198,58 @@ class SummaryViewModelTest {
         )
         val s = viewModel().stateWhere { it.result != null }
         assertThat(s.result!!.unlabelledOnSiteMs).isEqualTo(0)
+    }
+
+    private val uri: android.net.Uri = android.net.Uri.parse("content://test/doc")
+
+    @Test
+    fun export_writesTheCurrentSnapshot_reportsSaved_andClearsExporting() {
+        blocks.value = listOf(block("b", today, 9, 11))
+        val vm = viewModel()
+        val before = vm.stateWhere { it.result != null }
+        assertThat(before.exporting).isFalse()
+        exportBehaviour = { 7 }
+        vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(await { vm.events.first() }).isEqualTo(SummaryExportEvent.Saved(SummaryExportFormat.CSV, 7))
+        assertThat(exported).hasSize(1)
+        assertThat(exported.single().second.range).isEqualTo(before.range)
+        assertThat(exported.single().second.result.billedMs).isEqualTo(2 * hour)
+        assertThat(vm.stateWhere { !it.exporting }.exporting).isFalse()
+    }
+
+    @Test
+    fun export_showsExportingWhileItRuns_andIgnoresASecondRequest() {
+        blocks.value = listOf(block("b", today, 9, 11))
+        val vm = viewModel()
+        vm.stateWhere { it.result != null }
+        val gate = kotlinx.coroutines.CompletableDeferred<Int>()
+        exportBehaviour = { gate.await() }
+        vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(vm.stateWhere { it.exporting }.exporting).isTrue()
+        vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(exported).hasSize(1)
+        gate.complete(1)
+        assertThat(await { vm.events.first() }).isInstanceOf(SummaryExportEvent.Saved::class.java)
+        assertThat(vm.stateWhere { !it.exporting }.exporting).isFalse()
+    }
+
+    @Test
+    fun export_failure_reportsFailed_andClearsExporting() {
+        blocks.value = listOf(block("b", today, 9, 11))
+        val vm = viewModel()
+        vm.stateWhere { it.result != null }
+        exportBehaviour = { throw java.io.IOException("disk full") }
+        vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(await { vm.events.first() }).isEqualTo(SummaryExportEvent.Failed)
+        assertThat(vm.stateWhere { !it.exporting }.exporting).isFalse()
+    }
+
+    @Test
+    fun export_withNoBlocks_doesNothing() {
+        val vm = viewModel()
+        vm.stateWhere { it.result != null }
+        vm.export(SummaryExportFormat.CSV, uri)
+        assertThat(exported).isEmpty()
     }
 
     @Test
