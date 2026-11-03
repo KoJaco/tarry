@@ -94,7 +94,6 @@ object SummaryTags {
     fun piece(blockId: String, date: LocalDate) = "summary_piece_${blockId}_$date"
 }
 
-private val RowMinHeight = 56.dp
 private val DotSize = 16.dp
 
 /** Hilt-wired Summary tab. [onOpenDay] opens that local day on the timeline. */
@@ -306,11 +305,11 @@ private fun RangePickerDialog(initial: SummaryRange, onConfirm: (LocalDate, Loca
                     fun Long.date() = Instant.ofEpochMilli(this).atZone(ZoneOffset.UTC).toLocalDate()
                     onConfirm(start.date(), end.date())
                 },
-                modifier = Modifier.heightIn(min = 48.dp),
+                modifier = Modifier.heightIn(min = TarryTheme.space.huge),
             ) { Text(stringResource(R.string.summary_picker_ok)) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = 48.dp)) {
+            TextButton(onClick = onDismiss, modifier = Modifier.heightIn(min = TarryTheme.space.huge)) {
                 Text(stringResource(R.string.summary_picker_cancel))
             }
         },
@@ -337,7 +336,7 @@ private fun JobDot(job: JobSummary) {
             .size(DotSize)
             .clip(CircleShape)
             .background(colors.container)
-            .border(1.5.dp, colors.border, CircleShape),
+            .border(JobPalette.BorderWidth, colors.border, CircleShape),
     )
 }
 
@@ -356,7 +355,7 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(role = Role.Button, onClick = onClick)
-            .heightIn(min = RowMinHeight)
+            .heightIn(min = TarryTheme.space.huge)
             .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.m)
             .semantics(mergeDescendants = true) { contentDescription = description }
             .testTag(SummaryTags.row(row.jobId)),
@@ -510,7 +509,7 @@ private fun PieceRow(piece: BlockPiece, dateText: String, zone: ZoneId, onClick:
         modifier = Modifier
             .fillMaxWidth()
             .clickable(role = Role.Button, onClickLabel = hint, onClick = onClick)
-            .heightIn(min = RowMinHeight)
+            .heightIn(min = TarryTheme.space.huge)
             .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.m)
             .semantics(mergeDescendants = true) { contentDescription = description }
             .testTag(SummaryTags.piece(piece.blockId, piece.date)),
@@ -548,7 +547,6 @@ private fun DayTotalRow(day: DayBilled) {
         modifier = Modifier
             .fillMaxWidth()
             .background(TarryTheme.colors.inset)
-            .heightIn(min = 48.dp)
             .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.s)
             .semantics(mergeDescendants = true) { contentDescription = "$label, $spoken" },
         horizontalArrangement = Arrangement.SpaceBetween,

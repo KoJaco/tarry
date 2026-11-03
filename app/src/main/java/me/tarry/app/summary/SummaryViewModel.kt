@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -106,8 +107,8 @@ class SummaryViewModel internal constructor(
     }
 
     private val presetFlow = savedState.getStateFlow(KEY_PRESET, RangePreset.TODAY.name)
-    private val customFrom = savedState.getStateFlow<Long?>(KEY_CUSTOM_FROM, null)
-    private val customTo = savedState.getStateFlow<Long?>(KEY_CUSTOM_TO, null)
+    // One entry ("fromEpochDay,toEpochDay"), so a new custom range is never seen half written.
+    private val customRange = savedState.getStateFlow<String?>(KEY_CUSTOM_RANGE, null)
     private val groupingFlow = savedState.getStateFlow(KEY_GROUPING, SummaryGrouping.BY_JOB.name)
 
     private val preset: Flow<RangePreset> = presetFlow.map { name -> RangePreset.entries.firstOrNull { it.name == name } ?: RangePreset.TODAY }
@@ -115,13 +116,13 @@ class SummaryViewModel internal constructor(
         groupingFlow.map { name -> SummaryGrouping.entries.firstOrNull { it.name == name } ?: SummaryGrouping.BY_JOB }
 
     private val rangeAndPreset: Flow<Pair<RangePreset, SummaryRange>> =
-        combine(preset, customFrom, customTo, today) { preset, from, to, today ->
-            val custom = if (from != null && to != null && from <= to) SummaryRange(LocalDate.ofEpochDay(from), LocalDate.ofEpochDay(to)) else null
+        combine(preset, customRange, today) { preset, stored, today ->
+            val custom = parseCustom(stored)
             // A custom preset without (valid) dates falls back to today rather than showing nothing.
             if (preset == RangePreset.CUSTOM && custom != null) preset to custom else preset.rangeFor(today)?.let { preset to it } ?: (RangePreset.TODAY to SummaryRange(today, today))
-        }
+        }.distinctUntilChanged()
 
-    private val computed: Flow<Computed> = rangeAndPreset.flatMapLatest { (_, range) ->
+    private val computed: Flow<Computed> = rangeAndPreset.map { it.second }.distinctUntilChanged().flatMapLatest { range ->
         val (from, to) = range.bounds(zone)
         // combine() takes five flows at most: jobs, places and settings travel together.
         val catalog = combine(jobs, places, settings, ::Triple)
@@ -146,15 +147,14 @@ class SummaryViewModel internal constructor(
 
     fun selectPreset(preset: RangePreset) {
         // CUSTOM needs dates: use setCustomRange. Selecting it again without a stored range is a no-op.
-        if (preset == RangePreset.CUSTOM && (savedState.get<Long?>(KEY_CUSTOM_FROM) == null)) return
+        if (preset == RangePreset.CUSTOM && savedState.get<String?>(KEY_CUSTOM_RANGE) == null) return
         savedState[KEY_PRESET] = preset.name
     }
 
     /** Sets and selects a custom range; the dates are swapped if given the wrong way round. */
     fun setCustomRange(from: LocalDate, to: LocalDate) {
         val (a, b) = if (to.isBefore(from)) to to from else from to to
-        savedState[KEY_CUSTOM_FROM] = a.toEpochDay()
-        savedState[KEY_CUSTOM_TO] = b.toEpochDay()
+        savedState[KEY_CUSTOM_RANGE] = "${a.toEpochDay()},${b.toEpochDay()}"
         savedState[KEY_PRESET] = RangePreset.CUSTOM.name
     }
 
@@ -162,10 +162,15 @@ class SummaryViewModel internal constructor(
         savedState[KEY_GROUPING] = grouping.name
     }
 
+    private fun parseCustom(stored: String?): SummaryRange? {
+        val parts = stored?.split(",")?.map { it.toLongOrNull() ?: return null } ?: return null
+        if (parts.size != 2 || parts[0] > parts[1]) return null
+        return SummaryRange(LocalDate.ofEpochDay(parts[0]), LocalDate.ofEpochDay(parts[1]))
+    }
+
     private companion object {
         const val KEY_PRESET = "summary.preset"
-        const val KEY_CUSTOM_FROM = "summary.customFrom"
-        const val KEY_CUSTOM_TO = "summary.customTo"
+        const val KEY_CUSTOM_RANGE = "summary.customRange"
         const val KEY_GROUPING = "summary.grouping"
         const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
     }

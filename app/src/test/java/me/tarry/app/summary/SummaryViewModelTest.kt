@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -108,6 +109,23 @@ class SummaryViewModelTest {
         val s = vm.stateWhere { it.preset == RangePreset.CUSTOM && it.result != null }
         assertThat(s.range).isEqualTo(SummaryRange(LocalDate.of(2025, 11, 3), LocalDate.of(2025, 11, 5)))
         assertThat(s.result!!.billedMs).isEqualTo(2 * hour)
+    }
+
+    @Test
+    fun settingACustomRange_neverFlickersThroughTodayOrAnInvalidRange() {
+        val vm = viewModel()
+        vm.setCustomRange(LocalDate.of(2025, 11, 3), LocalDate.of(2025, 11, 5))
+        val seen = mutableListOf<SummaryUiState?>()
+        runBlocking {
+            val job = launch(Dispatchers.Unconfined) { vm.state.collect { seen += it } }
+            // New range that starts after the old end: a two-entry store would pass through from > to here.
+            vm.setCustomRange(LocalDate.of(2025, 11, 20), LocalDate.of(2025, 11, 22))
+            job.cancel()
+        }
+        val ranges = seen.filterNotNull().map { it.range }
+        assertThat(ranges).contains(SummaryRange(LocalDate.of(2025, 11, 20), LocalDate.of(2025, 11, 22)))
+        assertThat(ranges).doesNotContain(SummaryRange(today, today))
+        assertThat(seen.filterNotNull().map { it.preset }.toSet()).containsExactly(RangePreset.CUSTOM)
     }
 
     @Test

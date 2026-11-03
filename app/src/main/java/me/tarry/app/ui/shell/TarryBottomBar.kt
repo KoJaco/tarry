@@ -256,5 +256,6 @@ private fun TarryBottomBarPreview() = PreviewSurface {
     Column {
         TarryBottomBar(TrackingState.TRACKING, true, false, {}, {}, {})
         TarryBottomBar(TrackingState.ATTENTION, false, true, {}, {}, {})
+        TarryBottomBar(TrackingState.IDLE, false, false, {}, {}, {}, summarySelected = true)
     }
 }
