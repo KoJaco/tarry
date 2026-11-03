@@ -304,7 +304,7 @@ Walkflow invoices from Tarry's hours, but the numbers are trapped on the Summary
 | `billable` | `true`/`false` | empty |
 | `billed_min` | per-block mode: billed minutes (`0` when not billable); per-day mode: empty | the day's billed minutes |
 | `clipped` | `true` when the range edge cut the piece (a midnight split alone does not count) | empty |
-| `notes` | the block's notes, as typed | empty |
+| `notes` | the block's notes, as typed, except a note starting with `=`, `+`, `-` or `@` gets a leading `'` (formula guard, owner 2026-11-04) | empty |
 
 - **Order:** by date, then by start, then by job name; in per-day mode each `day_total` row follows its job's last block row that day.
 - **Offsets** come from the Summary's zone at each instant, so DST days carry the right offset on each side of the change.
@@ -353,7 +353,9 @@ A client or an accountant wants a readable hours report, not a spreadsheet.
 
 ### Owner decisions (2026-11-03)
 - A4, one file `tarry-summary-<from>_<to>.pdf`, saved through SAF from the same Export menu (§ 4).
-- A **cover page** with the totals, then **one page per job** (continuing onto more pages if needed).
+- A **cover page** with the totals, then the jobs. **Revised 2026-11-04** after the phone review: jobs flow one after another instead of one page each. Each job section starts on the cover page below the totals, or below the previous job, and a page breaks only when it fills. A job header never sits alone at a page bottom: it needs room for itself, the table header and its first row.
+- **Revised 2026-11-04:** text sizes are body 10.5 pt, the totals line 13 pt, the title 18 pt and the footer 8 pt.
+- **Billed versus total stays as it is (owner 2026-11-04).** "Billed 55 min · total 56 min" is correct: billing drops seconds per unit, and the total is exact.
 - Job pages list the **places visited** during each block.
 - **Unlabelled time** (on site, travel) is included.
 
@@ -366,7 +368,7 @@ A client or an accountant wants a readable hours report, not a spreadsheet.
   - a table with one row per job: name (plus "(archived)"), blocks, total, billed;
   - "Billed X · on the clock Y";
   - "Unlabelled: on site A · travel B", left out when both are 0.
-- **Job page** (jobs in the cover's order):
+- **Job section** (jobs in the cover's order; it flows, as revised above):
   - header with the job name, the range, and "Billed X · total Y · billable Z";
   - a table with the columns Date · Time · Duration · Billed · Places · Notes. Time is local "7:30 am – 12:05 pm", as on the Summary, and Billed is empty in per-day mode;
   - per-day mode: a "Day total, billed X" line after each day's rows;
