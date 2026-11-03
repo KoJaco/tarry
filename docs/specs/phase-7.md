@@ -291,7 +291,7 @@ Walkflow invoices from Tarry's hours, but the numbers are trapped on the Summary
 ### Format
 - RFC 4180: UTF-8 without a BOM, CRLF line ends, and a field is quoted only when it holds a comma, quote, CR or LF (quotes doubled). This matches `PingCsvFormat` in `export/RawPingFormats.kt`.
 - The output is locale-independent: ASCII digits, `true`/`false`, and no thousands separators.
-- **Header (frozen):** `row_type,job_block_id,job_id,job_name,date,start,end,duration_min,billable,billed_min,clipped,notes`
+- **Header (frozen):** `row_type,job_block_id,job_id,job_name,date,start,end,duration_min,billable,billed_min,clipped,notes,place_names,place_addresses,place_coords` (the last three were added 2026-11-04, appended at the end so existing columns keep their positions)
 
 | Column | `block` row | `day_total` row (per-day mode only) |
 |---|---|---|
@@ -305,6 +305,11 @@ Walkflow invoices from Tarry's hours, but the numbers are trapped on the Summary
 | `billed_min` | per-block mode: billed minutes (`0` when not billable); per-day mode: empty | the day's billed minutes |
 | `clipped` | `true` when the range edge cut the piece (a midnight split alone does not count) | empty |
 | `notes` | the block's notes, as typed, except a note starting with `=`, `+`, `-` or `@` gets a leading `'` (formula guard, owner 2026-11-04) | empty |
+| `place_names` | the places visited during the piece (same list as the PDF's Places, from `coveredPlaces`: time order, no repeats, ignored places left out), joined with `; `. A place with no name uses its address, then "Unnamed place". Formula guard as for notes | empty |
+| `place_addresses` | the same places' addresses, joined with `; `, one entry per place in the same order; a place without an address gives an empty entry. Formula guard | empty |
+| `place_coords` | the same places' centroids as `lat,lng` with 4 decimals (about 11 m), `Locale.ROOT`, joined with `; `. Never raw pings | empty |
+
+**Why location (owner, 2026-11-04):** Walkflow will match a block to its own project by time overlap **and** location. Walkflow stores the coordinates where a project's videos and snapshots were taken, so `place_coords` is the main location key.
 
 - **Order:** by date, then by start, then by job name; in per-day mode each `day_total` row follows its job's last block row that day.
 - **Offsets** come from the Summary's zone at each instant, so DST days carry the right offset on each side of the change.
@@ -323,7 +328,7 @@ Walkflow invoices from Tarry's hours, but the numbers are trapped on the Summary
 - **No entitlement checks** here: phase 8 gates exports in one place.
 
 ### Privacy (rule 2)
-No network. The file goes only to the location the user picks. The CSV holds no coordinates and no place names.
+No network. The file goes only to the location the user picks. Since 2026-11-04 the CSV holds place names, addresses and place centroids, so a shared file reveals client sites. Raw pings are never included. An "include locations" switch can be added if the CSV is ever given to anyone but Walkflow.
 
 ### Tasks
 | # | Task | Size | Executor |
