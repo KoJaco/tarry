@@ -75,7 +75,14 @@ sealed interface SummaryExportEvent {
     data object Failed : SummaryExportEvent
 }
 
-private data class Computed(val range: SummaryRange, val result: SummaryResult)
+private data class Computed(
+    val range: SummaryRange,
+    val result: SummaryResult,
+    // What the PDF needs beyond the result: the rules in words, and the visits behind "places visited".
+    val rules: BillingRules,
+    val visits: List<Visit>,
+    val places: List<Place>,
+)
 
 /**
  * Backs the Summary tab: the chosen range and grouping (kept in [SavedStateHandle], so they survive rotation and process
@@ -147,23 +154,30 @@ class SummaryViewModel internal constructor(
         // combine() takes five flows at most: jobs, places and settings travel together.
         val catalog = combine(jobs, places, settings, ::Triple)
         combine(blocksOverlapping(from, to), visitsIn(from, to), tripsIn(from, to), catalog) { blocks, visits, trips, (allJobs, allPlaces, s) ->
+            val rules = s.billingRules()
             Computed(
                 range,
                 calculateSummary(
                     SummaryInput(
                         range, zone, blocks, allJobs, visits, trips,
                         ignoredPlaceIds = allPlaces.filter { it.ignored }.map { it.id }.toSet(),
-                        rules = s.billingRules(),
+                        rules = rules,
                     ),
                 ),
+                rules, visits, allPlaces,
             )
         }
     }
 
     private val exporting = MutableStateFlow(false)
 
+    // The inputs behind the result on screen, kept for export (the PDF needs the rules, visits and places too).
+    @Volatile
+    private var shown: Computed? = null
+
     val state: StateFlow<SummaryUiState?> = combine(rangeAndPreset, grouping, computed, exporting) { (preset, range), grouping, computed, busy ->
         // The result belongs to the range it was computed for; until it catches up the new range shows as loading.
+        shown = computed.takeIf { it.range == range }
         SummaryUiState(preset, range, grouping, zone, computed.result.takeIf { computed.range == range }, busy)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
 
@@ -178,7 +192,12 @@ class SummaryViewModel internal constructor(
         if (exporting.value) return
         val current = state.value ?: return
         val result = current.result?.takeIf { it.hasBlocks } ?: return
-        val snapshot = SummarySnapshot(current.range, current.zone, result)
+        val inputs = shown?.takeIf { it.range == current.range && it.result == result }
+        val snapshot = if (inputs != null) {
+            SummarySnapshot(current.range, current.zone, result, inputs.rules, inputs.visits, inputs.places)
+        } else {
+            SummarySnapshot(current.range, current.zone, result)
+        }
         exporting.value = true
         viewModelScope.launch {
             try {

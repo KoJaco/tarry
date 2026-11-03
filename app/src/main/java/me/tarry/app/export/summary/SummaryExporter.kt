@@ -7,21 +7,36 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import me.tarry.app.summary.BillingRules
 import me.tarry.app.summary.SummaryRange
 import me.tarry.app.summary.SummaryResult
+import me.tarry.core.data.db.entity.Place
+import me.tarry.core.data.db.entity.Visit
 import java.io.IOException
 import java.io.OutputStream
 import java.time.ZoneId
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** What the Summary can be exported as. Step 5 adds PDF here. */
+/** What the Summary can be exported as. */
 enum class SummaryExportFormat(val mimeType: String, val extension: String) {
     CSV("text/csv", "csv"),
 }
 
-/** The Summary as it was when the user asked to export it: one range, one result, one zone. */
-data class SummarySnapshot(val range: SummaryRange, val zone: ZoneId, val result: SummaryResult)
+/**
+ * The Summary as it was when the user asked to export it: one range, one result, one zone. The PDF also needs the billing
+ * [rules] (to say them in words) and the [visits] and [places] behind its "places visited" column; the CSV ignores them.
+ */
+data class SummarySnapshot(
+    val range: SummaryRange,
+    val zone: ZoneId,
+    val result: SummaryResult,
+    val rules: BillingRules = BillingRules(),
+    /** Visits overlapping the range; deleted ones are filtered where they are used. */
+    val visits: List<Visit> = emptyList(),
+    /** All places, ignored ones included (visits there are left out of "places visited"). */
+    val places: List<Place> = emptyList(),
+)
 
 /** File name offered to the system file picker: `tarry-summary-<from>_<to>.csv`, ISO dates, both always present. */
 fun SummaryExportFormat.suggestedFileName(range: SummaryRange): String = "tarry-summary-${range.from}_${range.to}.$extension"

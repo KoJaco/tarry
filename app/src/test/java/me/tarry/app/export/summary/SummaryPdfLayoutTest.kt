@@ -1,0 +1,226 @@
+package me.tarry.app.export.summary
+
+import com.google.common.truth.Truth.assertThat
+import me.tarry.app.summary.BillingRules
+import me.tarry.app.summary.SummaryInput
+import me.tarry.app.summary.SummaryRange
+import me.tarry.app.summary.calculateSummary
+import me.tarry.core.data.db.entity.Job
+import me.tarry.core.data.db.entity.JobBlock
+import me.tarry.core.data.db.entity.Place
+import me.tarry.core.data.db.entity.Trip
+import me.tarry.core.data.db.entity.Visit
+import me.tarry.core.data.model.TripMode
+import me.tarry.core.data.model.VisitOrigin
+import me.tarry.core.data.settings.RoundingMode
+import org.junit.Test
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZonedDateTime
+
+/** Fixed-width text (half the font size per character) and English words, so every number below can be reasoned about. */
+private object FakeMeasurer : TextMeasurer {
+    override fun width(text: String, style: PdfTextStyle) = text.length * style.size * 0.5f
+}
+
+private object FakeText : SummaryPdfText {
+    override val title = "Hours summary"
+    override val unnamedPlace = "Unnamed place"
+    override val coverJob = "Job"
+    override val coverBlocks = "Blocks"
+    override val coverTotal = "Total"
+    override val coverBilled = "Billed"
+    override val colDate = "Date"
+    override val colTime = "Time"
+    override val colDuration = "Duration"
+    override val colBilled = "Billed"
+    override val colPlaces = "Places"
+    override val colNotes = "Notes"
+    override fun rangeLong(range: SummaryRange) = "${range.from} to ${range.to}"
+    override fun rangeShort(range: SummaryRange) = "${range.from} - ${range.to}"
+    override fun rules(rules: BillingRules) = "rules ${rules.incrementMin}/${rules.minimumMin}/${rules.perDay}"
+    override fun jobName(name: String, archived: Boolean) = if (archived) "$name (archived)" else name
+    override fun continued(name: String) = "$name (continued)"
+    override fun blocks(count: Int) = "$count blocks"
+    override fun duration(ms: Long) = "${ms / 60_000L}m"
+    override fun date(date: LocalDate) = date.toString()
+    override fun timeRange(start: Long, end: Long, zone: ZoneId) = "t$start-$end"
+    override fun totals(billedMs: Long, onClockMs: Long) = "Billed ${duration(billedMs)} · on the clock ${duration(onClockMs)}"
+    override fun unlabelled(onSiteMs: Long, travelMs: Long) = "Unlabelled: on site ${duration(onSiteMs)} · travel ${duration(travelMs)}"
+    override fun jobTotals(billedMs: Long, totalMs: Long, billableMs: Long) =
+        "Billed ${duration(billedMs)} · total ${duration(totalMs)} · billable ${duration(billableMs)}"
+    override fun dayTotal(billedMs: Long) = "Day total, billed ${duration(billedMs)}"
+    override fun notBillable() = "Not billable"
+    override fun footer(range: SummaryRange, page: Int, pages: Int) = "Tarry · ${rangeShort(range)} · Page $page of $pages"
+}
+
+class SummaryPdfLayoutTest {
+    private val zone = ZoneId.of("Australia/Sydney")
+    private val first = LocalDate.of(2025, 11, 10)
+    private val range = SummaryRange(first, first.plusDays(6))
+    private val hour = 3_600_000L
+
+    private fun at(day: Int, h: Int, m: Int = 0) =
+        ZonedDateTime.of(first.plusDays(day.toLong()), LocalTime.of(h, m), zone).toInstant().toEpochMilli()
+
+    private fun block(id: String, job: String, day: Int, fromH: Int, toH: Int, notes: String? = null, billable: Boolean = true) = JobBlock(
+        id = id, jobId = job, start = at(day, fromH), end = at(day, toH), zoneId = zone.id, billable = billable, notes = notes, updatedAt = 0,
+    )
+
+    private val alpha = Job(id = "A", name = "Alpha", colorArgb = 1, updatedAt = 0)
+    private val bravo = Job(id = "B", name = "Bravo", colorArgb = 2, updatedAt = 0, archived = true)
+
+    private fun snapshot(
+        blocks: List<JobBlock>,
+        rules: BillingRules = BillingRules(),
+        visits: List<Visit> = emptyList(),
+        trips: List<Trip> = emptyList(),
+        places: List<Place> = emptyList(),
+    ) = SummarySnapshot(
+        range, zone,
+        calculateSummary(
+            SummaryInput(
+                range, zone, blocks, listOf(alpha, bravo), visits, trips,
+                ignoredPlaceIds = places.filter { it.ignored }.map { it.id }.toSet(), rules = rules,
+            ),
+        ),
+        rules, visits, places,
+    )
+
+    private fun layout(s: SummarySnapshot) = SummaryPdfLayout.layout(s, FakeText, FakeMeasurer)
+
+    private fun PdfPage.texts() = runs.map { it.text }
+
+    private val twoJobs = listOf(block("a1", "A", 0, 9, 12), block("a2", "A", 1, 9, 10), block("b1", "B", 0, 13, 15))
+
+    @Test
+    fun aCoverThenOnePagePerJob_inByJobOrder() {
+        val pages = layout(snapshot(twoJobs))
+        assertThat(pages).hasSize(3)
+        assertThat(pages[1].texts()).contains("Alpha")
+        assertThat(pages[2].texts()).contains("Bravo (archived)")
+    }
+
+    @Test
+    fun theCover_holdsTheTitleRangeRulesJobTableAndTotals() {
+        val rules = BillingRules(15, RoundingMode.NEAREST, 30, perDay = true)
+        val cover = layout(snapshot(twoJobs, rules)).first().texts()
+        assertThat(cover).containsAtLeast("Hours summary", "2025-11-10 to 2025-11-16", "rules 15/30/true")
+        assertThat(cover).containsAtLeast("Job", "Blocks", "Total", "Billed")
+        assertThat(cover).containsAtLeast("Alpha", "2 blocks", "240m", "Bravo (archived)", "1 blocks", "120m")
+        assertThat(cover).contains("Billed 360m · on the clock 360m")
+    }
+
+    @Test
+    fun theUnlabelledLine_showsOnTheCover_andIsLeftOutAtZero() {
+        val place = Place(id = "p", centroidLat = 0.0, centroidLng = 0.0, name = "Cafe", updatedAt = 0)
+        val visit = Visit(
+            id = "v", placeId = "p", start = at(2, 9), end = at(2, 10), zoneId = zone.id, origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0,
+        )
+        val trip = Trip(id = "t", start = at(2, 10), end = at(2, 11), zoneId = zone.id, distanceM = 1f, mode = TripMode.VEHICLE, updatedAt = 0)
+        val with = layout(snapshot(twoJobs, visits = listOf(visit), trips = listOf(trip), places = listOf(place))).first().texts()
+        assertThat(with).contains("Unlabelled: on site 60m · travel 60m")
+        val without = layout(snapshot(twoJobs)).first().texts()
+        assertThat(without.none { it.startsWith("Unlabelled") }).isTrue()
+    }
+
+    @Test
+    fun aJobPage_hasItsHeaderTableHeaderAndRows() {
+        val place = Place(id = "p", centroidLat = 0.0, centroidLng = 0.0, name = "Site", updatedAt = 0)
+        val visit = Visit(
+            id = "v", placeId = "p", start = at(0, 9), end = at(0, 12), zoneId = zone.id, origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0,
+        )
+        val rules = BillingRules(60, RoundingMode.UP, 0, perDay = false)
+        val page = layout(snapshot(listOf(block("a1", "A", 0, 9, 12, notes = "Hello"), block("n", "A", 1, 9, 10, billable = false)), rules, listOf(visit), places = listOf(place)))[1]
+        val t = page.texts()
+        assertThat(t).containsAtLeast("Alpha", "2025-11-10 to 2025-11-16", "Billed 180m · total 240m · billable 180m")
+        assertThat(t).containsAtLeast("Date", "Time", "Duration", "Billed", "Places", "Notes")
+        assertThat(t).containsAtLeast("2025-11-10", "180m", "Site", "Hello", "2025-11-11", "Not billable")
+        assertThat(t.none { it.startsWith("Day total") }).isTrue()
+    }
+
+    @Test
+    fun perDayMode_leavesBilledEmpty_andAddsADayTotalLineAfterEachDay() {
+        val rules = BillingRules(0, RoundingMode.NEAREST, 0, perDay = true)
+        val blocks = listOf(block("1", "A", 0, 9, 10), block("2", "A", 0, 11, 13), block("3", "A", 2, 9, 10))
+        val page = layout(snapshot(blocks, rules))[1]
+        assertThat(page.texts().filter { it.startsWith("Day total") }).containsExactly("Day total, billed 180m", "Day total, billed 60m").inOrder()
+        // Billed column text appears only in the header: no per-row billed cells.
+        assertThat(page.runs.count { it.text == "Billed" }).isEqualTo(1)
+        // The first day's total sits under both of its rows.
+        val firstTotal = page.runs.first { it.text == "Day total, billed 180m" }
+        val lastRow = page.runs.filter { it.text == "2025-11-10" }.maxOf { it.baseline }
+        assertThat(firstTotal.baseline).isGreaterThan(lastRow)
+    }
+
+    @Test
+    fun placesAndNotes_wrapWithinTheirColumns() {
+        val notes = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen"
+        val page = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = notes))))[1]
+        val noteLines = page.runs.filter { it.x > 400f && it.text != "Notes" && it.style == PdfTextStyle.BODY && it.baseline > 100f }
+        assertThat(noteLines.size).isAtLeast(3)
+        assertThat(noteLines.joinToString(" ") { it.text }).isEqualTo(notes)
+        for (line in noteLines) assertThat(line.x + FakeMeasurer.width(line.text, line.style)).isAtMost(PdfPageSpec.WIDTH - PdfPageSpec.MARGIN)
+    }
+
+    private fun longJob(): SummarySnapshot {
+        // 24 rows, each with a long note that wraps to a few lines: well over two pages.
+        val notes = "note ".repeat(30).trim()
+        val blocks = (0 until 60).map { i -> block("b$i", "A", i % 7, 8 + (i / 7) % 6, 9 + (i / 7) % 6, notes = notes) }
+            .distinctBy { it.start }.take(24)
+        return snapshot(blocks)
+    }
+
+    @Test
+    fun aLongJob_continuesOverThreePages_repeatingTheHeaders_andNoRowSplits() {
+        val s = longJob()
+        val pages = layout(s)
+        // cover + 3 pages for Alpha
+        assertThat(pages).hasSize(4)
+        val job = pages.drop(1)
+        assertThat(job[0].texts()).doesNotContain("Alpha (continued)")
+        for (continuation in job.drop(1)) {
+            assertThat(continuation.texts()).containsAtLeast("Alpha (continued)", "Date", "Time", "Duration", "Billed", "Places", "Notes")
+        }
+        // Every row of every page is whole: each note shows all of its lines, never part of them.
+        val noteWords = job.sumOf { p -> p.runs.filter { it.x > 400f && it.text.startsWith("note") }.sumOf { it.text.split(' ').size } }
+        assertThat(noteWords).isEqualTo(30 * s.result.byJob.single().pieces.size)
+        for (p in pages) for (r in p.runs) assertThat(r.baseline).isAtMost(PdfPageSpec.HEIGHT - PdfPageSpec.MARGIN)
+        for (p in job) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
+    }
+
+    @Test
+    fun everyPage_hasTheFooter_withPageNOfM() {
+        val pages = layout(longJob())
+        pages.forEachIndexed { i, p ->
+            val footer = p.runs.single { it.style == PdfTextStyle.FOOTER }
+            assertThat(footer.text).isEqualTo("Tarry · 2025-11-10 - 2025-11-16 · Page ${i + 1} of ${pages.size}")
+            assertThat(footer.x).isEqualTo(PdfPageSpec.MARGIN)
+            assertThat(footer.baseline).isEqualTo(PdfPageSpec.HEIGHT - PdfPageSpec.MARGIN)
+        }
+    }
+
+    @Test
+    fun aRowTallerThanAPage_isTruncatedWithAnEllipsis_onOnePage() {
+        val notes = "word ".repeat(2000).trim()
+        val pages = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = notes), block("b", "A", 1, 9, 10, notes = "short"))))
+        val job = pages.drop(1)
+        val cut = job.flatMap { it.runs }.filter { it.text.endsWith("…") }
+        assertThat(cut).hasSize(1)
+        assertThat(cut.single().baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
+        // The row after it is still there, and nothing ran off the page.
+        assertThat(job.flatMap { it.texts() }).contains("short")
+        for (p in job) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
+    }
+
+    @Test
+    fun theCoverTable_continuesOnAnotherPage_whenThereAreManyJobs() {
+        val jobs = (0 until 120).map { Job(id = "J$it", name = "Job $it", colorArgb = 1, updatedAt = 0) }
+        val blocks = jobs.map { block("b${it.id}", it.id, 0, 9, 10).copy(jobId = it.id) }
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, jobs, emptyList(), emptyList(), emptySet(), BillingRules())))
+        val pages = layout(s)
+        assertThat(pages[1].texts()).contains("Hours summary (continued)")
+        assertThat(pages.flatMap { it.texts() }).contains("Billed 7200m · on the clock 60m")
+    }
+}

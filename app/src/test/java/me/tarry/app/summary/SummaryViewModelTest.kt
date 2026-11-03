@@ -218,6 +218,28 @@ class SummaryViewModelTest {
     }
 
     @Test
+    fun export_snapshotCarriesTheRulesVisitsAndPlacesBehindTheResult() {
+        blocks.value = listOf(block("b", today, 9, 11))
+        val place = Place(id = "p", centroidLat = 0.0, centroidLng = 0.0, name = "Site", updatedAt = 0)
+        val visit = Visit(
+            id = "v", placeId = "p", start = at(today, 9), end = at(today, 10), zoneId = zone.id,
+            origin = me.tarry.core.data.model.VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0,
+        )
+        places.value = listOf(place)
+        visits.value = listOf(visit)
+        settings.value = Settings(roundingIncrementMin = 15, minBillableMinutes = 30)
+        val vm = viewModel()
+        vm.stateWhere { it.result != null }
+        vm.export(SummaryExportFormat.CSV, uri)
+        await { vm.events.first() }
+        val snapshot = exported.single().second
+        assertThat(snapshot.rules.incrementMin).isEqualTo(15)
+        assertThat(snapshot.rules.minimumMin).isEqualTo(30)
+        assertThat(snapshot.visits).containsExactly(visit)
+        assertThat(snapshot.places).containsExactly(place)
+    }
+
+    @Test
     fun export_showsExportingWhileItRuns_andIgnoresASecondRequest() {
         blocks.value = listOf(block("b", today, 9, 11))
         val vm = viewModel()
