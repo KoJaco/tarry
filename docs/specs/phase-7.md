@@ -275,3 +275,131 @@ The timeline shows one day of job blocks, but invoicing needs totals over a rang
   - the empty state;
   - the unlabelled card hides at zero.
 - Commands: `gradlew.bat :app:testDebugUnitTest`, `gradlew.bat assembleDebug lintDebug`.
+
+## 4. CSV export
+
+### Problem
+Walkflow invoices from Tarry's hours, but the numbers are trapped on the Summary screen. Until there is a real integration, a CSV with stable ids is the stopgap.
+
+### Owner decisions (2026-11-03)
+- **Blocks only.** No visit or trip rows.
+- **Per-day mode:** block rows leave `billed_min` empty, and one `day_total` row per job per day carries it.
+- **Clipping:** like the Summary. A block crossing the range edge is clipped, and the row says so (`clipped`).
+- **Headers:** our snake_case names in a fixed order. The header row is frozen by a test.
+- **File:** one file, `tarry-summary-<from>_<to>.csv` (ISO dates, both always present), saved through SAF.
+
+### Format
+- RFC 4180: UTF-8 without a BOM, CRLF line ends, and a field is quoted only when it holds a comma, quote, CR or LF (quotes doubled). This matches `PingCsvFormat` in `export/RawPingFormats.kt`.
+- The output is locale-independent: ASCII digits, `true`/`false`, and no thousands separators.
+- **Header (frozen):** `row_type,job_block_id,job_id,job_name,date,start,end,duration_min,billable,billed_min,clipped,notes`
+
+| Column | `block` row | `day_total` row (per-day mode only) |
+|---|---|---|
+| `row_type` | `block` | `day_total` |
+| `job_block_id` | the block's UUID; a block split at midnight gives two rows with the same id | empty |
+| `job_id`, `job_name` | the job's UUID and current name | same |
+| `date` | the local date of the piece, `2026-11-03` | the day |
+| `start`, `end` | the piece's local time with offset, `2026-11-03T07:30:00+11:00` (seconds, no millis) | empty |
+| `duration_min` | the piece's raw clipped time in whole minutes, truncated (the basis billing uses) | the job's billable raw time that day, truncated |
+| `billable` | `true`/`false` | empty |
+| `billed_min` | per-block mode: billed minutes (`0` when not billable); per-day mode: empty | the day's billed minutes |
+| `clipped` | `true` when the range edge cut the piece (a midnight split alone does not count) | empty |
+| `notes` | the block's notes, as typed | empty |
+
+- **Order:** by date, then by start, then by job name; in per-day mode each `day_total` row follows its job's last block row that day.
+- **Offsets** come from the Summary's zone at each instant, so DST days carry the right offset on each side of the change.
+- **Totals** are not written as rows. In per-block mode `billed_min` over the block rows adds up to the Summary's Billed; in per-day mode the `day_total` rows do. That is a test.
+
+### Flow and UI (shared with § 5)
+- **Export button:** an icon button ("Export", 48 dp) at the right of the Summary title opens a menu: "CSV (spreadsheet)" and "PDF (report)".
+- **Enabled** only when the range has job blocks (`result.hasBlocks`). The button stays in place when disabled, with the content description "Export, no job blocks in this range".
+- **On a choice,** SAF `CreateDocument` opens with the suggested filename. When the user cancels, nothing happens.
+- **Writing:**
+  - runs on `Dispatchers.IO` from the current result for that range and grouping;
+  - while it runs, the button shows a progress indicator and is disabled;
+  - on success, a snackbar says "Saved 14 blocks to CSV" (or "to PDF");
+  - on failure, the partial file is deleted (as `BackupManager` does) and a snackbar says "Couldn't save the export. Try again."
+- **Snackbars** go through the app Scaffold's `SnackbarHostState` via a view model event Channel, the pattern Settings uses.
+- **No entitlement checks** here: phase 8 gates exports in one place.
+
+### Privacy (rule 2)
+No network. The file goes only to the location the user picks. The CSV holds no coordinates and no place names.
+
+### Tasks
+| # | Task | Size | Executor |
+|---|---|---|---|
+| C1 | `SummaryCsv` (pure, `app/.../export/summary/`): `SummaryResult` + zone + rules → rows → `Appendable`. Golden tests. | M | implementer |
+| C2 | `SummaryExporter`: SAF write on IO, partial-file delete, typed failure; `SummaryViewModel.export(format, uri)` and an event Channel | M | implementer |
+| C3 | Export button and menu, the `CreateDocument` launcher, progress/disabled states, snackbar wiring in `TarryApp`; Compose tests | S | implementer |
+
+### Acceptance criteria
+- Golden CSV tests (C1) on synthetic data:
+  - the header line is exactly the frozen string;
+  - escaping: commas, double quotes, CR and LF in notes and job names;
+  - offsets on the Sydney DST start and end days;
+  - clipping at both range edges (`clipped=true`) and a midnight split (`clipped=false`, same id on two rows);
+  - per-block mode: `billed_min` sums to `SummaryResult.billedMs`;
+  - per-day mode: block rows have empty `billed_min`, and the `day_total` rows sum to `billedMs`;
+  - a non-billable block bills `0` in per-block mode and is left out of `day_total`;
+  - the row order.
+- Exporter (C2): it writes through a fake `ContentResolver` stream; a write failure deletes the partial file and reports a failure event.
+- Compose (C3): the button is disabled with no blocks; the menu shows both formats; the exporting state shows progress.
+- Commands: `gradlew.bat :app:testDebugUnitTest`, `gradlew.bat assembleDebug lintDebug`.
+
+## 5. PDF export
+
+### Problem
+A client or an accountant wants a readable hours report, not a spreadsheet.
+
+### Owner decisions (2026-11-03)
+- A4, one file `tarry-summary-<from>_<to>.pdf`, saved through SAF from the same Export menu (§ 4).
+- A **cover page** with the totals, then **one page per job** (continuing onto more pages if needed).
+- Job pages list the **places visited** during each block.
+- **Unlabelled time** (on site, travel) is included.
+
+### Pages
+- **A4 portrait** is 595 × 842 pt with 40 pt margins. It uses the system sans font (no bundled font, no new dependency). Text is black on white, whatever the app theme.
+- **Footer** on every page: "Tarry · <from> – <to> · Page n of m".
+- **Cover:**
+  - title "Hours summary" and the range, e.g. "Mon 2 Nov – Sun 8 Nov 2026";
+  - the billing rules in words, e.g. "Rounded to the nearest 15 min, minimum 30 min, per day per job";
+  - a table with one row per job: name (plus "(archived)"), blocks, total, billed;
+  - "Billed X · on the clock Y";
+  - "Unlabelled: on site A · travel B", left out when both are 0.
+- **Job page** (jobs in the cover's order):
+  - header with the job name, the range, and "Billed X · total Y · billable Z";
+  - a table with the columns Date · Time · Duration · Billed · Places · Notes. Time is local "7:30 am – 12:05 pm", as on the Summary, and Billed is empty in per-day mode;
+  - per-day mode: a "Day total, billed X" line after each day's rows;
+  - Places and Notes wrap within their columns, and a row never splits across pages. A row taller than a page is truncated with "…";
+  - the next page repeats the header line as "<Job> (continued)" and the table header.
+- **Durations** read like the app: "2 h 15 min".
+- **The grouping toggle does not change the PDF.** By job is its natural shape, and the cover already gives per-job totals. (Assumption; a by-day variant is cheap to add later.)
+
+### Places visited
+- New pure function `coveredPlaces(piece, visits, places)`: the names of non-deleted visits that overlap the piece, in time order, without duplicates.
+- Visits at ignored places are left out.
+- The name is the place name, then its address, then "Unnamed place". A visit with no place is skipped.
+- This feeds only the PDF. The calculator and the CSV stay as they are.
+
+### Design
+- **Layout is separate from drawing.** `SummaryPdfLayout` (pure Kotlin) turns the result into a list of pages, each holding positioned text runs and rules. It measures text through a small `TextMeasurer` interface, so tests run on the JVM with a fixed-width fake.
+- `SummaryPdfRenderer` draws those pages with `android.graphics.pdf.PdfDocument`, using `Paint`/`StaticLayout` behind `TextMeasurer`, and writes to the SAF stream. It holds no logic of its own.
+
+### Tasks
+| # | Task | Size | Executor |
+|---|---|---|---|
+| P1 | `coveredPlaces` and tests (overlap, ignored, fallback names, dedupe) | S | implementer |
+| P2 | `SummaryPdfLayout` + `TextMeasurer` and JVM tests: page count, cover contents, continuation pages, per-day lines, unlabelled hidden at 0, "Page n of m" | L | implementer |
+| P3 | `SummaryPdfRenderer` with `PdfDocument`, wired into `SummaryExporter` and the menu | M | implementer |
+| P4 | A device check: export a real week on the phone, open it in a PDF viewer, and have `ui-reviewer` check readability | S | owner + ui-reviewer |
+
+### Acceptance criteria
+- The layout tests (P2) cover each item in the P2 row on synthetic data, including a job with enough blocks to need three pages.
+- Renderer (P3): a Robolectric test, if its shadow supports `PdfDocument`, checks that the file starts with `%PDF` and has as many pages as the layout. Otherwise, an instrumented test under `connectedDebugAndroidTest` checks the same.
+- The PDF totals match the Summary screen for the same range on the phone (P4).
+- Commands: as in § 4, plus `gradlew.bat connectedDebugAndroidTest` if P3 needs the device.
+
+### Risks and open questions
+- **Robolectric and `PdfDocument`:** unverified. The fallback is an instrumented test; the layout tests carry most of the coverage either way.
+- **Zone:** both exports use the Summary's zone (the device zone), not each block's capture zone, so they match the screen. A block captured in Perth exports in Sydney time.
+- **`duration_min` truncates to whole minutes.** If Walkflow wants exact time, add a `duration_s` column at the end, which keeps the header stable for anything reading by name.
