@@ -83,6 +83,8 @@ data class BlockPiece(
     val billable: Boolean,
     val notes: String?,
     val billedMs: Long?,
+    /** True when the range edge cut this piece (its block runs past the range). A midnight split alone does not count. */
+    val clipped: Boolean = false,
 ) {
     val durationMs: Long get() = end - start
 }
@@ -122,6 +124,8 @@ data class SummaryResult(
     val unlabelledOnSiteMs: Long,
     /** Trip time that no block covers. */
     val unlabelledTravelMs: Long,
+    /** The rules' per-day switch the result was billed with: exports need it to know where billed time lives. */
+    val perDay: Boolean = false,
 ) {
     val hasBlocks: Boolean get() = byJob.isNotEmpty()
     val hasUnlabelled: Boolean get() = unlabelledOnSiteMs > 0 || unlabelledTravelMs > 0
@@ -176,7 +180,8 @@ fun calculateSummary(input: SummaryInput): SummaryResult {
             val date = Instant.ofEpochMilli(cursor).atZone(input.zone).toLocalDate()
             val midnight = date.plusDays(1).atStartOfDay(input.zone).toInstant().toEpochMilli()
             val pieceEnd = minOf(end, midnight)
-            pieces.add(Piece(b.jobId, BlockPiece(b.id, date, cursor, pieceEnd, b.billable, b.notes, billedMs = null)))
+            val clipped = (cursor == rangeStart && b.start < rangeStart) || (pieceEnd == rangeEnd && b.end > rangeEnd)
+            pieces.add(Piece(b.jobId, BlockPiece(b.id, date, cursor, pieceEnd, b.billable, b.notes, billedMs = null, clipped = clipped)))
             cursor = pieceEnd
         }
     }
@@ -232,5 +237,6 @@ fun calculateSummary(input: SummaryInput): SummaryResult {
             .filter { !it.deleted && (it.placeId == null || it.placeId !in input.ignoredPlaceIds) }
             .sumOf { uncovered(it.start, it.end) },
         unlabelledTravelMs = input.trips.filter { !it.deleted }.sumOf { uncovered(it.start, it.end) },
+        perDay = rules.perDay,
     )
 }
