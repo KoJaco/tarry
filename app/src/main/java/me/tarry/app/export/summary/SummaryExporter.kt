@@ -21,6 +21,7 @@ import javax.inject.Singleton
 /** What the Summary can be exported as. */
 enum class SummaryExportFormat(val mimeType: String, val extension: String) {
     CSV("text/csv", "csv"),
+    PDF("application/pdf", "pdf"),
 }
 
 /**
@@ -52,6 +53,7 @@ class SummaryExportException(val error: SummaryExportError, cause: Throwable? = 
 @Singleton
 class SummaryExporter @Inject constructor(
     @param:ApplicationContext private val context: Context,
+    private val pdfRenderer: SummaryPdfRenderer,
 ) {
     /**
      * Writes [snapshot] as [format] to [uri] and returns the number of blocks in it. Throws [SummaryExportException]:
@@ -78,10 +80,10 @@ class SummaryExporter @Inject constructor(
             throw SummaryExportException(SummaryExportError.CANNOT_OPEN, e)
         }
         try {
-            out.bufferedWriter(Charsets.UTF_8).use { writer ->
-                when (format) {
-                    SummaryExportFormat.CSV -> SummaryCsv.write(snapshot.result, snapshot.zone, writer)
-                }
+            when (format) {
+                SummaryExportFormat.CSV ->
+                    out.bufferedWriter(Charsets.UTF_8).use { writer -> SummaryCsv.write(snapshot.result, snapshot.zone, writer) }
+                SummaryExportFormat.PDF -> out.use { pdfRenderer.render(snapshot, it) }
             }
         } catch (e: Exception) {
             runCatching { discard() }

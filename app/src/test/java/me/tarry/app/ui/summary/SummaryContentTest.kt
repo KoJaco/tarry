@@ -350,10 +350,14 @@ class SummaryContentTest {
         composeRule.onNodeWithContentDescription("Export").assertExists()
         composeRule.onNodeWithTag(SummaryTags.Export).performClick()
         composeRule.onNodeWithText("CSV (spreadsheet)").assertIsDisplayed()
-        composeRule.onNodeWithText("PDF (report)").assertDoesNotExist() // PDF arrives with step 5
+        composeRule.onNodeWithText("PDF (report)").assertIsDisplayed()
         composeRule.onNodeWithTag(SummaryTags.exportFormat(SummaryExportFormat.CSV)).performClick()
         assertThat(chosen).containsExactly(SummaryExportFormat.CSV)
         composeRule.onNodeWithText("CSV (spreadsheet)").assertDoesNotExist()
+
+        composeRule.onNodeWithTag(SummaryTags.Export).performClick()
+        composeRule.onNodeWithTag(SummaryTags.exportFormat(SummaryExportFormat.PDF)).performClick()
+        assertThat(chosen).containsExactly(SummaryExportFormat.CSV, SummaryExportFormat.PDF).inOrder()
     }
 
     @Test

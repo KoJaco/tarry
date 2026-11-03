@@ -27,7 +27,7 @@ import java.time.ZonedDateTime
 class SummaryExporterTest {
     private val zone = ZoneId.of("Australia/Sydney")
     private val day = LocalDate.of(2025, 11, 10)
-    private val exporter = SummaryExporter(ApplicationProvider.getApplicationContext<Context>())
+    private val exporter = SummaryExporter(ApplicationProvider.getApplicationContext<Context>(), SummaryPdfRenderer(ApplicationProvider.getApplicationContext<Context>()))
 
     private fun at(h: Int) = ZonedDateTime.of(day, java.time.LocalTime.of(h, 0), zone).toInstant().toEpochMilli()
 
@@ -88,5 +88,8 @@ class SummaryExporterTest {
             .isEqualTo("tarry-summary-2025-11-10_2025-11-10.csv")
         assertThat(SummaryExportFormat.CSV.suggestedFileName(SummaryRange(day, day.plusDays(6))))
             .isEqualTo("tarry-summary-2025-11-10_2025-11-16.csv")
+        assertThat(SummaryExportFormat.PDF.suggestedFileName(SummaryRange(day, day.plusDays(6))))
+            .isEqualTo("tarry-summary-2025-11-10_2025-11-16.pdf")
+        assertThat(SummaryExportFormat.PDF.mimeType).isEqualTo("application/pdf")
     }
 }

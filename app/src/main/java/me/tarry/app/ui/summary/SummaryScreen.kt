@@ -129,6 +129,9 @@ fun SummaryScreen(
     val createCsv = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(SummaryExportFormat.CSV.mimeType)) { uri ->
         if (uri != null) viewModel.export(SummaryExportFormat.CSV, uri)
     }
+    val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(SummaryExportFormat.PDF.mimeType)) { uri ->
+        if (uri != null) viewModel.export(SummaryExportFormat.PDF, uri)
+    }
     LaunchedEffect(viewModel, snackbarHostState) {
         viewModel.events.collect { event -> snackbarHostState?.showSnackbar(summaryExportMessage(context.resources, event)) }
     }
@@ -143,6 +146,7 @@ fun SummaryScreen(
             val range = state?.range ?: return@SummaryContent
             when (format) {
                 SummaryExportFormat.CSV -> createCsv.launch(format.suggestedFileName(range))
+                SummaryExportFormat.PDF -> createPdf.launch(format.suggestedFileName(range))
             }
         },
     )
@@ -157,6 +161,7 @@ internal fun summaryExportMessage(resources: Resources, event: SummaryExportEven
 
 private fun SummaryExportFormat.labelRes(): Int = when (this) {
     SummaryExportFormat.CSV -> R.string.summary_export_format_csv
+    SummaryExportFormat.PDF -> R.string.summary_export_format_pdf
 }
 
 /**
@@ -207,6 +212,7 @@ private fun ExportButton(hasBlocks: Boolean?, exporting: Boolean, onExport: (Sum
 
 private fun SummaryExportFormat.menuLabelRes(): Int = when (this) {
     SummaryExportFormat.CSV -> R.string.summary_export_menu_csv
+    SummaryExportFormat.PDF -> R.string.summary_export_menu_pdf
 }
 
 /** Stateless Summary: range chips, grouping, job rows or day sections, then the totals and unlabelled cards. */
