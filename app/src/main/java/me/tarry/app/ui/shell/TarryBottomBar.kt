@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -73,6 +74,9 @@ private val IconBackingWidth = 64.dp
 private val IconBackingHeight = 32.dp
 private val IconLabelGap = 6.dp
 private const val GlideMillis = 350
+
+/** Nav labels grow with the system font size only up to this scale; the icon over them and the bar stay compact. */
+internal const val NavLabelMaxFontScale = 1.3f
 
 /** The toggle slot is wider than a nav slot so its label still fits at large font sizes. */
 private const val ToggleSlotWeight = 1.5f
@@ -246,7 +250,11 @@ private fun NavItem(
             Icon(painter = painterResource(icon), contentDescription = null, tint = tint, modifier = Modifier.size(24.dp))
         }
         Spacer(Modifier.height(IconLabelGap))
-        FitLabel(text = label, color = tint, style = MaterialTheme.typography.labelMedium)
+        FitLabel(
+            text = label,
+            color = tint,
+            style = MaterialTheme.typography.labelMedium.cappedAtFontScale(NavLabelMaxFontScale, LocalDensity.current.fontScale),
+        )
     }
 }
 
@@ -258,4 +266,14 @@ private fun TarryBottomBarPreview() = PreviewSurface {
         TarryBottomBar(TrackingState.ATTENTION, false, true, {}, {}, {})
         TarryBottomBar(TrackingState.IDLE, false, false, {}, {}, {}, summarySelected = true)
     }
+}
+
+/**
+ * [this] with its size and line height shrunk so that, once the system multiplies them by [fontScale], they come to at
+ * most [maxScale] times the declared size: size x min(fontScale, maxScale) / fontScale.
+ */
+internal fun TextStyle.cappedAtFontScale(maxScale: Float, fontScale: Float): TextStyle {
+    if (fontScale <= maxScale) return this
+    val factor = maxScale / fontScale
+    return copy(fontSize = fontSize * factor, lineHeight = lineHeight * factor)
 }
