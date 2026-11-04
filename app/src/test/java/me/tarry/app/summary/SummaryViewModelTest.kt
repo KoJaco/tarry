@@ -42,6 +42,7 @@ class SummaryViewModelTest {
 
     // Wednesday 12 November 2025.
     private val today = LocalDate.of(2025, 11, 12)
+    private val now = 1_762_900_000_000L
 
     private val blocks = MutableStateFlow<List<JobBlock>>(emptyList())
     private val jobs = MutableStateFlow(listOf(Job(id = "A", name = "Alpha", colorArgb = 1, updatedAt = 0)))
@@ -79,6 +80,7 @@ class SummaryViewModelTest {
         settings = settings,
         zone = zone,
         todayProvider = { today },
+        nowProvider = { now },
         exportFile = { format, snapshot, _ ->
             exported += format to snapshot
             exportBehaviour()
@@ -245,6 +247,7 @@ class SummaryViewModelTest {
         assertThat(snapshot.rules.minimumMin).isEqualTo(30)
         assertThat(snapshot.visits).containsExactly(visit)
         assertThat(snapshot.places).containsExactly(place)
+        assertThat(snapshot.generatedAt).isEqualTo(now)
     }
 
     @Test

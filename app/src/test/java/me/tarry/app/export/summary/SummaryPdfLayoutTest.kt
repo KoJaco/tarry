@@ -52,7 +52,9 @@ private object FakeText : SummaryPdfText {
         "Billed ${duration(billedMs)} · total ${duration(totalMs)} · billable ${duration(billableMs)}"
     override fun dayTotal(billedMs: Long) = "Day total, billed ${duration(billedMs)}"
     override fun notBillable() = "Not billable"
-    override fun footer(range: SummaryRange, page: Int, pages: Int) = "Tarry · ${rangeShort(range)} · Page $page of $pages"
+    override fun generatedDate(date: LocalDate) = "gen $date"
+    override fun footer(range: SummaryRange, generated: LocalDate, page: Int, pages: Int) =
+        "Tarry · ${rangeShort(range)} · Generated ${generatedDate(generated)} · Page $page of $pages"
 }
 
 class SummaryPdfLayoutTest {
@@ -60,6 +62,9 @@ class SummaryPdfLayoutTest {
     private val first = LocalDate.of(2025, 11, 10)
     private val range = SummaryRange(first, first.plusDays(6))
     private val hour = 3_600_000L
+
+    // 00:30 on 4 Nov 2025 in Sydney is still the 3rd in UTC: the footer shows the date in the snapshot zone.
+    private val generatedAt = ZonedDateTime.of(LocalDate.of(2025, 11, 4), LocalTime.of(0, 30), zone).toInstant().toEpochMilli()
 
     private fun at(day: Int, h: Int, m: Int = 0) =
         ZonedDateTime.of(first.plusDays(day.toLong()), LocalTime.of(h, m), zone).toInstant().toEpochMilli()
@@ -85,7 +90,7 @@ class SummaryPdfLayoutTest {
                 ignoredPlaceIds = places.filter { it.ignored }.map { it.id }.toSet(), rules = rules,
             ),
         ),
-        rules, visits, places,
+        rules, visits, places, generatedAt,
     )
 
     private fun layout(s: SummarySnapshot) = SummaryPdfLayout.layout(s, FakeText, FakeMeasurer)
@@ -210,6 +215,38 @@ class SummaryPdfLayoutTest {
     }
 
     @Test
+    fun perDayMode_saysNotBillable_forANonBillableBlock_andLeavesBillableBlocksBlank() {
+        val rules = BillingRules(0, RoundingMode.NEAREST, 0, perDay = true)
+        val blocks = listOf(block("1", "A", 0, 9, 10, billable = false), block("2", "A", 1, 9, 10))
+        val page = layout(snapshot(blocks, rules)).jobPart("Alpha")
+        assertThat(page.runs.count { it.text == "Not billable" }).isEqualTo(1)
+        // The billable day still carries its figure on the day-total line only.
+        assertThat(page.texts()).contains("Day total, billed 60m")
+    }
+
+    @Test
+    fun theCoverTableHeader_isDrawnOnce_wherever_theTableStarts() {
+        var startedOnLaterPage = false
+        for (n in 1..60) {
+            val longRules = object : SummaryPdfText by FakeText {
+                override fun rules(rules: BillingRules) = "word ".repeat(n * 20)
+            }
+            val pages = SummaryPdfLayout.layout(snapshot(listOf(block("a", "A", 0, 9, 10))), longRules, FakeMeasurer)
+            // At most once per page: a page break before the header never draws it twice (a header at the very bottom
+            // with its row on the next page repeats it there, which is the continuation header and fine).
+            for (p in pages) assertThat(p.runs.count { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER }).isAtMost(1)
+            assertThat(pages.flatMap { it.runs }.count { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER }).isAtLeast(1)
+            val tablePage = pages.indexOfFirst { p -> p.runs.any { it.text == "Job" } }
+            if (tablePage > 0) {
+                startedOnLaterPage = true
+                // The table moved to a page that does not already hold anything of the cover's heading.
+                assertThat(pages[tablePage].texts()).doesNotContain("Hours summary (continued)")
+            }
+        }
+        assertThat(startedOnLaterPage).isTrue()
+    }
+
+    @Test
     fun placesAndNotes_wrapWithinTheirColumns() {
         val notes = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen"
         val page = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = notes)))).jobPart("Alpha")
@@ -251,7 +288,7 @@ class SummaryPdfLayoutTest {
         val pages = layout(longJob())
         pages.forEachIndexed { i, p ->
             val footer = p.runs.single { it.style == PdfTextStyle.FOOTER }
-            assertThat(footer.text).isEqualTo("Tarry · 2025-11-10 - 2025-11-16 · Page ${i + 1} of ${pages.size}")
+            assertThat(footer.text).isEqualTo("Tarry · 2025-11-10 - 2025-11-16 · Generated gen 2025-11-04 · Page ${i + 1} of ${pages.size}")
             assertThat(footer.x).isEqualTo(PdfPageSpec.MARGIN)
             assertThat(footer.baseline).isEqualTo(PdfPageSpec.HEIGHT - PdfPageSpec.MARGIN)
         }
@@ -280,7 +317,7 @@ class SummaryPdfLayoutTest {
             block("1", "L", 0, 9, 10, notes = "short"), block("2", "L", 1, 9, 10, notes = tall),
             block("3", "L", 2, 9, 10, notes = tall), block("4", "L", 3, 9, 10, notes = "end"),
         )
-        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())))
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())), generatedAt = generatedAt)
         val pages = layout(s)
         val continuation = pages.drop(2)
         assertThat(continuation).isNotEmpty()
@@ -301,7 +338,7 @@ class SummaryPdfLayoutTest {
         val long = Job(id = "L", name = "Job name ".repeat(60).trim(), colorArgb = 1, updatedAt = 0)
         val tall = "word ".repeat(2000).trim()
         val blocks = listOf(block("1", "L", 0, 9, 10, notes = tall), block("2", "L", 1, 9, 10, notes = tall))
-        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())))
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())), generatedAt = generatedAt)
         val pages = layout(s)
         for (p in pages.drop(2)) assertThat(p.runs.count { it.style == PdfTextStyle.HEADING }).isAtMost(3)
         for (p in pages) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
@@ -344,7 +381,7 @@ class SummaryPdfLayoutTest {
     fun theCoverTable_continuesOnAnotherPage_whenThereAreManyJobs() {
         val jobs = (0 until 120).map { Job(id = "J$it", name = "Job $it", colorArgb = 1, updatedAt = 0) }
         val blocks = jobs.map { block("b${it.id}", it.id, 0, 9, 10).copy(jobId = it.id) }
-        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, jobs, emptyList(), emptyList(), emptySet(), BillingRules())))
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, jobs, emptyList(), emptyList(), emptySet(), BillingRules())), generatedAt = generatedAt)
         val pages = layout(s)
         assertThat(pages[1].texts()).contains("Hours summary (continued)")
         assertThat(pages.flatMap { it.texts() }).contains("Billed 7200m · on the clock 60m")

@@ -102,6 +102,8 @@ internal class AndroidSummaryPdfText(context: Context) : SummaryPdfText {
 
     override fun notBillable(): String = res.getString(R.string.summary_piece_not_billable)
 
-    override fun footer(range: SummaryRange, page: Int, pages: Int): String =
-        res.getString(R.string.summary_pdf_footer, rangeShort(range), page, pages)
+    override fun generatedDate(date: LocalDate): String = dateYear.format(date)
+
+    override fun footer(range: SummaryRange, generated: LocalDate, page: Int, pages: Int): String =
+        res.getString(R.string.summary_pdf_footer, rangeShort(range), generatedDate(generated), page, pages)
 }

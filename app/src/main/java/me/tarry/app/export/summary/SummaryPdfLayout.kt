@@ -4,6 +4,7 @@ import me.tarry.app.summary.BillingRules
 import me.tarry.app.summary.BlockPiece
 import me.tarry.app.summary.JobSummary
 import me.tarry.app.summary.SummaryRange
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -106,8 +107,11 @@ interface SummaryPdfText {
     fun dayTotal(billedMs: Long): String
     fun notBillable(): String
 
-    /** "Tarry · <from> – <to> · Page n of m". */
-    fun footer(range: SummaryRange, page: Int, pages: Int): String
+    /** The date the PDF was generated, short and with the year ("4 Nov 2026"). */
+    fun generatedDate(date: LocalDate): String
+
+    /** "Tarry · <from> – <to> · Generated <date> · Page n of m". */
+    fun footer(range: SummaryRange, generated: LocalDate, page: Int, pages: Int): String
 }
 
 object SummaryPdfLayout {
@@ -127,7 +131,7 @@ object SummaryPdfLayout {
         val builder = Builder(text, measurer)
         builder.cover(snapshot)
         for (job in snapshot.result.byJob) builder.job(snapshot, job)
-        return builder.finish(snapshot.range)
+        return builder.finish(snapshot.range, Instant.ofEpochMilli(snapshot.generatedAt).atZone(snapshot.zone).toLocalDate())
     }
 
     private class Builder(val text: SummaryPdfText, val measurer: TextMeasurer) {
@@ -149,9 +153,9 @@ object SummaryPdfLayout {
             y = PdfPageSpec.MARGIN
         }
 
-        fun finish(range: SummaryRange): List<PdfPage> = pages.mapIndexed { index, p ->
+        fun finish(range: SummaryRange, generated: LocalDate): List<PdfPage> = pages.mapIndexed { index, p ->
             val footer = PdfRun(
-                PdfPageSpec.MARGIN, PdfPageSpec.HEIGHT - PdfPageSpec.MARGIN, text.footer(range, index + 1, pages.size), PdfTextStyle.FOOTER,
+                PdfPageSpec.MARGIN, PdfPageSpec.HEIGHT - PdfPageSpec.MARGIN, text.footer(range, generated, index + 1, pages.size), PdfTextStyle.FOOTER,
             )
             PdfPage(p.runs + footer, p.rules.toList())
         }
@@ -250,8 +254,10 @@ object SummaryPdfLayout {
         /** Starts a table: its header now, and again under [continued] on every page it spills onto. */
         private fun startTable(cols: List<Column>, continued: String) {
             columns = cols
-            continuationTitle = continued
+            // No table is running yet while the header is made to fit, so a page break here does not draw a header of its own.
+            continuationTitle = null
             ensure(PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD)
+            continuationTitle = continued
             tableHeader()
         }
 
@@ -363,8 +369,8 @@ object SummaryPdfLayout {
 
         private fun pieceCells(snapshot: SummarySnapshot, p: BlockPiece, perDay: Boolean): List<String> {
             val billed = when {
-                perDay -> ""
                 !p.billable -> text.notBillable()
+                perDay -> ""
                 else -> text.duration(p.billedMs ?: 0L)
             }
             return listOf(

@@ -368,5 +368,5 @@
     <string name="summary_pdf_unlabelled">Unlabelled: on site %1$s · travel %2$s</string>
     <string name="summary_pdf_job_totals">Billed %1$s · total %2$s · billable %3$s</string>
     <string name="summary_pdf_day_total">Day total, billed %1$s</string>
-    <string name="summary_pdf_footer">Tarry · %1$s · Page %2$d of %3$d</string>
+    <string name="summary_pdf_footer">Tarry · %1$s · Generated %2$s · Page %3$d of %4$d</string>
 </resources>

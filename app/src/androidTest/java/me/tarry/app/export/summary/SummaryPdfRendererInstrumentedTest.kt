@@ -36,7 +36,7 @@ class SummaryPdfRendererInstrumentedTest {
         val blocks = (0 until 5).map { d ->
             JobBlock(id = "a$d", jobId = "A", start = at(d, 9), end = at(d, 12), zoneId = zone.id, billable = true, notes = "Day $d, on site", updatedAt = 0)
         } + JobBlock(id = "b", jobId = "B", start = at(1, 13), end = at(1, 15), zoneId = zone.id, billable = true, updatedAt = 0)
-        SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, jobs, emptyList(), emptyList(), emptySet(), rules)), rules)
+        SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, jobs, emptyList(), emptyList(), emptySet(), rules)), rules, generatedAt = at(0, 9))
     }
 
     @Test
