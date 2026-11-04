@@ -124,7 +124,7 @@ class SettingsBillingUiTest {
     fun perDaySwitchCallsBack() {
         show(Settings(roundDailyTotalPerJob = false, roundingIncrementMin = 15))
 
-        composeRule.onNodeWithText("Add up each job's blocks for the day before rounding and the minimum.", substring = true)
+        composeRule.onNodeWithText("Add up each job's blocks for the day before dropping seconds, rounding and the minimum.", substring = true)
             .performScrollTo().assertHeightIsAtLeast(48.dp)
         composeRule.onNodeWithText("Round per day, per job").performScrollTo().performClick()
 
@@ -132,11 +132,11 @@ class SettingsBillingUiTest {
     }
 
     @Test
-    fun perDaySwitchIsDisabled_whenRoundingAndMinimumAreBothOff_andKeepsItsValue() {
-        show(Settings(roundDailyTotalPerJob = true, roundingIncrementMin = 0, minBillableMinutes = 0))
+    fun perDaySwitchStaysEnabled_evenWhenRoundingAndMinimumAreBothOff() {
+        show(Settings(roundDailyTotalPerJob = false, roundingIncrementMin = 0, minBillableMinutes = 0))
 
-        composeRule.onNodeWithText("Round per day, per job").performScrollTo().assertIsNotEnabled().performClick()
-        assertThat(perDay).isEmpty()
+        composeRule.onNodeWithText("Round per day, per job").performScrollTo().assertIsEnabled().performClick()
+        assertThat(perDay).containsExactly(true)
     }
 
     @Test

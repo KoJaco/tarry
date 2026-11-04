@@ -207,7 +207,7 @@
     <string name="settings_min_billable">Minimum billable time</string>
     <string name="settings_min_billable_explanation">Shorter jobs are billed as at least this long.</string>
     <string name="settings_round_daily_total">Round per day, per job</string>
-    <string name="settings_round_daily_total_subtitle">Add up each job\'s blocks for the day before rounding and the minimum.</string>
+    <string name="settings_round_daily_total_subtitle">Add up each job\'s blocks for the day before dropping seconds, rounding and the minimum.</string>
     <string name="settings_ping_retention">Raw location retention</string>
     <string name="settings_review_reminder">Review reminder</string>
     <string name="settings_review_reminder_time">Review reminder time</string>
