@@ -51,6 +51,7 @@ import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.theme.surfaceEdge
+import me.tarry.app.ui.theme.surfaceEdgeStroke
 import me.tarry.app.ui.components.TarrySheet
 import java.time.Instant
 import java.time.ZoneId
@@ -284,7 +285,8 @@ internal fun TimePickerDialog(
         Surface(
             shape = TarryTheme.shapes.container,
             color = TarryTheme.colors.card,
-            modifier = Modifier.width(IntrinsicSize.Min).surfaceEdge(TarryTheme.shapes.container),
+            modifier = Modifier.width(IntrinsicSize.Min),
+            border = surfaceEdgeStroke(),
         ) {
             Column(
                 modifier = Modifier

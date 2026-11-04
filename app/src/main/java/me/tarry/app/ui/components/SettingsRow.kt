@@ -65,7 +65,7 @@ fun SettingsValueRow(
     val frameModifier = if (onClick != null) {
         modifier.clip(TarryTheme.shapes.card).clickable(role = Role.Button, onClick = onClick)
     } else {
-        modifier.semantics(mergeDescendants = true) {}
+        modifier.clip(TarryTheme.shapes.card).semantics(mergeDescendants = true) {}
     }
     RowFrame(frameModifier, title, subtitle = null, icon = icon) {
         Text(
