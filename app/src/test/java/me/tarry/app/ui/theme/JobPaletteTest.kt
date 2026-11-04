@@ -37,4 +37,25 @@ class JobPaletteTest {
         // "polygenelubricants".hashCode() == Int.MIN_VALUE: floorMod must not go negative.
         assertThat(JobPalette.slots).contains(JobPalette.fallbackFor("polygenelubricants"))
     }
+
+    @Test
+    fun doneKeyMapsToTheNeutralDoneStyleAndIsNotASlotKey() {
+        assertThat(JobPalette.lookup(JobPalette.DONE_KEY, "any")).isSameInstanceAs(JobPalette.DONE)
+        assertThat(JobPalette.slots.map { it.key }).doesNotContain(JobPalette.DONE_KEY)
+        assertThat(JobPalette.displayKey(0xFFE2F2E6.toInt(), done = true)).isEqualTo(JobPalette.DONE_KEY)
+        assertThat(JobPalette.displayKey(0xFFE2F2E6.toInt(), done = false)).isEqualTo(0xFFE2F2E6.toInt())
+        assertThat(JobPalette.slots).doesNotContain(JobPalette.DONE)
+    }
+
+    @Test
+    fun doneStyleIsInsetContainerOutlineBorderInkText() {
+        val light = JobPalette.DONE.colors(dark = false)
+        assertThat(light.container).isEqualTo(LightTarryColors.inset)
+        assertThat(light.border).isEqualTo(LightTarryColors.outline)
+        assertThat(light.text).isEqualTo(LightTarryColors.ink)
+        val dark = JobPalette.DONE.colors(dark = true)
+        assertThat(dark.container).isEqualTo(DarkTarryColors.inset)
+        assertThat(dark.border).isEqualTo(DarkTarryColors.outline)
+        assertThat(dark.text).isEqualTo(DarkTarryColors.ink)
+    }
 }

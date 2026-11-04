@@ -6,11 +6,11 @@
 
     <string name="catalog_action_rename">Rename</string>
     <string name="catalog_action_colour">Colour</string>
-    <string name="catalog_action_archive">Archive</string>
-    <string name="catalog_action_unarchive">Unarchive</string>
+    <string name="catalog_action_archive">Mark as done</string>
+    <string name="catalog_action_unarchive">Reopen</string>
     <string name="catalog_action_delete">Delete</string>
     <string name="catalog_colour_none">No colour</string>
-    <string name="catalog_archived_section">Archived</string>
+    <string name="catalog_archived_section">Done</string>
     <string name="catalog_checking_use">Checking where it is used…</string>
 
     <string name="jobs_title">Jobs</string>
@@ -19,7 +19,7 @@
     <string name="jobs_empty_body">Create a job to label visits and trips for invoicing.</string>
     <string name="jobs_rename_title">Rename job</string>
     <string name="jobs_colour_title">Colour for %1$s</string>
-    <string name="jobs_archive_title">Archive %1$s?</string>
+    <string name="jobs_archive_title">Mark %1$s as done?</string>
     <string name="jobs_archive_body">It will be hidden from pickers and stay on past visits.</string>
     <plurals name="jobs_archive_clears_places">
         <item quantity="one">It will be hidden from pickers and stay on past visits. Its default will be cleared on %1$d place.</item>
@@ -28,10 +28,10 @@
     <string name="jobs_delete_title">Delete %1$s?</string>
     <string name="jobs_delete_body">The job is removed from your list. This cannot be undone.</string>
     <plurals name="jobs_delete_blocked">
-        <item quantity="one">Cannot delete: used by %1$d visit, trip or place. Archive it instead.</item>
-        <item quantity="other">Cannot delete: used by %1$d visits, trips or places. Archive it instead.</item>
+        <item quantity="one">Cannot delete: used by %1$d visit, trip or place. Mark it as done instead.</item>
+        <item quantity="other">Cannot delete: used by %1$d visits, trips or places. Mark it as done instead.</item>
     </plurals>
-    <string name="jobs_undo_archived">Job archived</string>
+    <string name="jobs_undo_archived">Job marked as done</string>
     <string name="jobs_billable_default">Billable by default</string>
     <string name="jobs_billable_default_hint">New job blocks of this job start billable. Existing blocks keep their own setting.</string>
 

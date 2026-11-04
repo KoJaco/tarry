@@ -40,7 +40,7 @@ private object FakeText : SummaryPdfText {
     override fun rangeLong(range: SummaryRange) = "${range.from} to ${range.to}"
     override fun rangeShort(range: SummaryRange) = "${range.from} - ${range.to}"
     override fun rules(rules: BillingRules) = "rules ${rules.incrementMin}/${rules.minimumMin}/${rules.perDay}"
-    override fun jobName(name: String, archived: Boolean) = if (archived) "$name (archived)" else name
+    override fun jobName(name: String, archived: Boolean) = if (archived) "$name (done)" else name
     override fun continued(name: String) = "$name (continued)"
     override fun blocks(count: Int) = "$count blocks"
     override fun duration(ms: Long) = "${ms / 60_000L}m"
@@ -111,7 +111,7 @@ class SummaryPdfLayoutTest {
         assertThat(pages).hasSize(1)
         val runs = pages[0].runs
         val alpha = runs.first { it.style == PdfTextStyle.HEADING && it.text == "Alpha" }
-        val bravo = runs.first { it.style == PdfTextStyle.HEADING && it.text == "Bravo (archived)" }
+        val bravo = runs.first { it.style == PdfTextStyle.HEADING && it.text == "Bravo (done)" }
         val unlabelledOrTotals = runs.last { it.style == PdfTextStyle.TOTALS }
         assertThat(alpha.baseline).isGreaterThan(unlabelledOrTotals.baseline + 15f)
         assertThat(bravo.baseline).isGreaterThan(alpha.baseline)
@@ -126,8 +126,8 @@ class SummaryPdfLayoutTest {
         for (n in 1..60) {
             val alphaBlocks = (0 until n).map { i -> block("a$i", "A", i % 7, 5 + i / 7, 6 + i / 7) }
             val pages = layout(snapshot(alphaBlocks + block("b", "B", 0, 13, 15)))
-            val bravoPage = pages.indexOfFirst { p -> p.runs.any { it.style == PdfTextStyle.HEADING && it.text == "Bravo (archived)" } }
-            val part = pages.jobPart("Bravo (archived)")
+            val bravoPage = pages.indexOfFirst { p -> p.runs.any { it.style == PdfTextStyle.HEADING && it.text == "Bravo (done)" } }
+            val part = pages.jobPart("Bravo (done)")
             // Never a header alone: the table header and the row follow it on the same page.
             assertThat(part.texts()).containsAtLeast("Date", "2025-11-10")
             val header = part.runs.first()
@@ -168,7 +168,7 @@ class SummaryPdfLayoutTest {
         val cover = layout(snapshot(twoJobs, rules)).first().texts()
         assertThat(cover).containsAtLeast("Hours summary", "2025-11-10 to 2025-11-16", "rules 15/30/true")
         assertThat(cover).containsAtLeast("Job", "Blocks", "Total", "Billed")
-        assertThat(cover).containsAtLeast("Alpha", "2 blocks", "240m", "Bravo (archived)", "1 blocks", "120m")
+        assertThat(cover).containsAtLeast("Alpha", "2 blocks", "240m", "Bravo (done)", "1 blocks", "120m")
         assertThat(cover).contains("Billed 360m · on the clock 360m")
     }
 
@@ -486,7 +486,7 @@ class SummaryPdfLayoutTest {
             for (p in pages) {
                 val header = p.runs.firstOrNull { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER } ?: continue
                 // A cover row sits on the same page, below the header (a continuation page starts with the next job).
-                assertWithMessage("n=$n").that(p.runs.any { (it.text == "Alpha" || it.text == "Bravo (archived)") && it.style == PdfTextStyle.BODY && it.baseline > header.baseline }).isTrue()
+                assertWithMessage("n=$n").that(p.runs.any { (it.text == "Alpha" || it.text == "Bravo (done)") && it.style == PdfTextStyle.BODY && it.baseline > header.baseline }).isTrue()
             }
         }
     }

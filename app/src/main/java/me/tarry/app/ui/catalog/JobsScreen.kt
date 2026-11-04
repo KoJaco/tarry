@@ -40,6 +40,7 @@ import me.tarry.app.ui.drawer.ConfirmDialog
 import me.tarry.app.ui.drawer.JobOption
 import me.tarry.app.ui.drawer.JobSwatch
 import me.tarry.app.ui.drawer.NameDialog
+import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import androidx.compose.foundation.layout.PaddingValues
 
@@ -218,7 +219,7 @@ private fun JobCard(rows: List<JobRow>, onClick: (String) -> Unit) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
             ) {
-                JobSwatch(JobOption(job.id, job.name, job.colorArgb))
+                JobSwatch(JobOption(job.id, job.name, JobPalette.displayKey(job.colorArgb, job.archived)))
                 Text(
                     job.name,
                     style = MaterialTheme.typography.bodyLarge,

@@ -70,4 +70,19 @@ class ContrastGuardTest {
         }
         assertThat(failures).isEmpty()
     }
+
+    @Test
+    fun doneJobStyleTextAndBorderMeetContrastInBothThemesOnEverySurface() {
+        val failures = mutableListOf<String>()
+        for ((themeName, colors) in listOf("light" to LightTarryColors, "dark" to DarkTarryColors)) {
+            val done = JobPalette.DONE.colors(themeName == "dark")
+            val r = ratio(done.text, done.container)
+            if (r < 4.5) failures += "$themeName text on container: $r"
+            for ((surface, bg) in listOf("paper" to colors.paper, "card" to colors.card)) {
+                val b = ratio(done.border, bg)
+                if (b < 3.0) failures += "$themeName border on $surface: $b"
+            }
+        }
+        assertThat(failures).isEmpty()
+    }
 }

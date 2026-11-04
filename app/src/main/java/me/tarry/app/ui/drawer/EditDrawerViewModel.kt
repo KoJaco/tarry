@@ -58,7 +58,7 @@ sealed interface EditDrawerEvent {
 }
 
 private class Catalog(val places: List<PlaceOption>, val jobs: List<JobEntity>) {
-    private fun JobEntity.option() = JobOption(id, name, colorArgb, defaultBillable)
+    private fun JobEntity.option() = JobOption(id, name, JobPalette.displayKey(colorArgb, archived), defaultBillable)
 
     /** Archived jobs are not offered, unless the open item already uses one ([keep]). */
     fun pickable(keep: Set<String?>): List<JobOption> = jobs.filter { !it.archived || it.id in keep }.map { it.option() }

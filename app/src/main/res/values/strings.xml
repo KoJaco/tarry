@@ -320,7 +320,7 @@
     <string name="summary_group_by_day">By day</string>
     <string name="summary_empty_title">No job blocks in this range</string>
     <string name="summary_empty_body">Add job blocks on the timeline and they add up here.</string>
-    <string name="summary_job_archived">%1$s (archived)</string>
+    <string name="summary_job_archived">%1$s (done)</string>
     <plurals name="summary_blocks">
         <item quantity="one">%1$d block</item>
         <item quantity="other">%1$d blocks</item>

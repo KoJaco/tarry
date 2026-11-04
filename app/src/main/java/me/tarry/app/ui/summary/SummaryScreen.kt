@@ -491,7 +491,7 @@ internal fun summarySpoken(ms: Long): String =
 
 @Composable
 private fun JobDot(job: JobSummary) {
-    val colors = JobPalette.lookup(job.colorArgb, job.jobId).colors(TarryTheme.isDark)
+    val colors = JobPalette.lookup(JobPalette.displayKey(job.colorArgb, job.archived), job.jobId).colors(TarryTheme.isDark)
     androidx.compose.foundation.layout.Box(
         Modifier
             .size(DotSize)

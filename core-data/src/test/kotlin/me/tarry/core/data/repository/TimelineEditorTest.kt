@@ -159,14 +159,41 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
-    fun createJobCyclesWhenThePaletteIsExhausted() = runTest {
+    fun createJobTakesTheColourOfAJobMarkedDone() = runTest {
+        val palette = listOf(10, 20, 30)
+        val a = (editor.createJob("a", palette) as EditResult.Ok).id!!
+        editor.createJob("b", palette)
+        editor.createJob("c", palette)
+        db.jobDao().upsert(db.jobDao().getById(a)!!.copy(archived = true))
+
+        val id = (editor.createJob("d", palette) as EditResult.Ok).id!!
+
+        assertThat(db.jobDao().getById(id)!!.colorArgb).isEqualTo(10)
+        // The done job keeps its stored colour.
+        assertThat(db.jobDao().getById(a)!!.colorArgb).isEqualTo(10)
+    }
+
+    @Test
+    fun createJobTakesTheLeastUsedColourWhenThePaletteIsFull() = runTest {
+        val palette = listOf(10, 20, 30)
+        // Open: 10 x2, 20 x1, 30 x2. Done and deleted jobs do not count.
+        listOf(10, 10, 20, 30, 30).forEachIndexed { i, c -> db.jobDao().upsert(Job(id = "j$i", name = "j$i", colorArgb = c, updatedAt = 1)) }
+        db.jobDao().upsert(Job(id = "done", name = "done", colorArgb = 20, archived = true, updatedAt = 1))
+        db.jobDao().upsert(Job(id = "gone", name = "gone", colorArgb = 20, deleted = true, updatedAt = 1))
+
+        val id = (editor.createJob("new", palette) as EditResult.Ok).id!!
+
+        assertThat(db.jobDao().getById(id)!!.colorArgb).isEqualTo(20)
+    }
+
+    @Test
+    fun createJobBreaksLeastUsedTiesByPaletteOrder() = runTest {
         val palette = listOf(10, 20)
         editor.createJob("a", palette)
         editor.createJob("b", palette)
 
         val id = (editor.createJob("c", palette) as EditResult.Ok).id!!
 
-        // Two live jobs, so index 2 % 2 = 0.
         assertThat(db.jobDao().getById(id)!!.colorArgb).isEqualTo(10)
     }
 

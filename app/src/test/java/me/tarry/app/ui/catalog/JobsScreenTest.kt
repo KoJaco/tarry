@@ -67,12 +67,12 @@ class JobsScreenTest {
     private fun state(vararg rows: JobRow) = JobsUiState(rows.filterNot { it.archived }, rows.filter { it.archived })
 
     @Test
-    fun listsActiveJobsAndAnArchivedSection() {
+    fun listsOpenJobsAndADoneSection() {
         show(state(acme, old))
 
         composeRule.onNodeWithText("Acme").assertExists()
         composeRule.onNodeWithText("Old site").assertExists()
-        composeRule.onNodeWithText("Archived", ignoreCase = true).assertExists()
+        composeRule.onNodeWithText("Done", ignoreCase = true).assertExists()
         composeRule.onNodeWithText("Acme").assertHeightIsAtLeast(48.dp)
     }
 
@@ -101,8 +101,8 @@ class JobsScreenTest {
 
         composeRule.onNodeWithText("Acme").performClick()
 
-        for (label in listOf("Rename", "Colour", "Archive", "Delete")) composeRule.onNodeWithText(label).assertExists()
-        composeRule.onNodeWithText("Unarchive").assertDoesNotExist()
+        for (label in listOf("Rename", "Colour", "Mark as done", "Delete")) composeRule.onNodeWithText(label).assertExists()
+        composeRule.onNodeWithText("Reopen").assertDoesNotExist()
     }
 
     @Test
@@ -110,7 +110,7 @@ class JobsScreenTest {
         show(state(acme, old))
 
         composeRule.onNodeWithText("Old site").performClick()
-        composeRule.onNodeWithText("Unarchive").performClick()
+        composeRule.onNodeWithText("Reopen").performClick()
 
         assertThat(unarchived).containsExactly("o")
     }
@@ -146,11 +146,11 @@ class JobsScreenTest {
         show(state(acme.copy(placeDefaults = 2)))
 
         composeRule.onNodeWithText("Acme").performClick()
-        composeRule.onNodeWithText("Archive").performClick()
-        composeRule.onNodeWithText("Archive Acme?").assertExists()
+        composeRule.onNodeWithText("Mark as done").performClick()
+        composeRule.onNodeWithText("Mark Acme as done?").assertExists()
         composeRule.onNodeWithText("cleared on 2 places", substring = true).assertExists()
         assertThat(archived).isEmpty()
-        composeRule.onNode(hasText("Archive") and hasClickAction()).performClick()
+        composeRule.onNode(hasText("Mark as done") and hasClickAction()).performClick()
 
         assertThat(archived).containsExactly("a")
     }
@@ -160,11 +160,11 @@ class JobsScreenTest {
         show(state(acme))
 
         composeRule.onNodeWithText("Acme").performClick()
-        composeRule.onNodeWithText("Archive").performClick()
+        composeRule.onNodeWithText("Mark as done").performClick()
         composeRule.onNodeWithText("Cancel").performClick()
 
         assertThat(archived).isEmpty()
-        composeRule.onNodeWithText("Archive Acme?").assertDoesNotExist()
+        composeRule.onNodeWithText("Mark Acme as done?").assertDoesNotExist()
     }
 
     @Test
