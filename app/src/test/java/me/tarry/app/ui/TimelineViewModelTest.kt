@@ -557,6 +557,20 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun aDoneJobsBlocksCarryTheDoneStyleKeyAndKeepTheirName() = runBlocking {
+        jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), archived = true, updatedAt = 0))
+        val vm = TimelineViewModel(
+            timeline, places, jobs, zone, { day },
+            blocksOverlapping = { _, _ -> flowOf(listOf(block("b1", "j", at(day, 9), at(day, 12)))) },
+        ).managed()
+
+        val blocks = withTimeout(10_000) { vm.jobBlocks.first { it.isNotEmpty() } }
+
+        assertThat(blocks.single().jobName).isEqualTo("Acme")
+        assertThat(blocks.single().jobColorArgb).isEqualTo(me.tarry.app.ui.theme.JobPalette.DONE_KEY)
+    }
+
+    @Test
     fun suggestionsOfferTheDetectedVisitsPlaceDefaultJobUntilABlockCoversIt() = runBlocking<Unit> {
         jobs.save(Job(id = "j", name = "Acme", colorArgb = 0xFF112233.toInt(), updatedAt = 0))
         places.save(place("p", name = "Yard").copy(defaultJobId = "j"))

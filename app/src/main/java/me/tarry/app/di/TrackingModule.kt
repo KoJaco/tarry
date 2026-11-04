@@ -29,8 +29,12 @@ import me.tarry.segmentation.SegmentationParams
 import me.tarry.app.tracking.AndroidScheduleAlarmScheduler
 import me.tarry.app.tracking.ScheduleAlarmScheduler
 import me.tarry.app.tracking.SegmentationTrigger
+import me.tarry.app.tracking.ControllerReconcileTrigger
+import me.tarry.app.tracking.ReconcileTrigger
 import me.tarry.app.tracking.SettingsStayRadiusSource
+import me.tarry.app.tracking.SettingsWindowEndGraceSource
 import me.tarry.app.tracking.StayRadiusSource
+import me.tarry.app.tracking.WindowEndGraceSource
 import me.tarry.app.tracking.ScheduleWindowChecker
 import me.tarry.app.tracking.ServiceLauncher
 import me.tarry.app.tracking.SystemTrackingClock
@@ -72,6 +76,12 @@ abstract class TrackingModule {
 
     @Binds
     abstract fun bindStayRadiusSource(impl: SettingsStayRadiusSource): StayRadiusSource
+
+    @Binds
+    abstract fun bindWindowEndGraceSource(impl: SettingsWindowEndGraceSource): WindowEndGraceSource
+
+    @Binds
+    abstract fun bindReconcileTrigger(impl: ControllerReconcileTrigger): ReconcileTrigger
 
     @Binds
     abstract fun bindSegmentationTrigger(impl: WorkManagerSegmentationTrigger): SegmentationTrigger

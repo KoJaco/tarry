@@ -57,9 +57,16 @@ class CatalogEditor @Inject constructor(
         EditResult.Ok(emptySnapshot().copy(archivedJobIds = listOf(jobId), placeDefaultJobs = affected.associate { it.id to jobId }))
     }
 
-    suspend fun unarchiveJob(jobId: String): EditResult = db.withTransaction {
+    /**
+     * Reopens a done job. It keeps its stored colour if no other open job uses it now, else takes one by the same rule as a
+     * new job ([pickJobColour] over [paletteArgb]). Marking done never changes the colour, so this is where it is settled.
+     */
+    suspend fun unarchiveJob(jobId: String, paletteArgb: List<Int>): EditResult = db.withTransaction {
         val job = liveJob(jobId) ?: return@withTransaction EditResult.NotFound
-        jobs.upsert(job.copy(archived = false, updatedAt = clock.nowMs()))
+        val others = jobs.getAllActive().filter { it.id != jobId }
+        val taken = others.any { !it.archived && it.colorArgb == job.colorArgb }
+        val color = if (taken) pickJobColour(others, paletteArgb) else job.colorArgb
+        jobs.upsert(job.copy(archived = false, colorArgb = color, updatedAt = clock.nowMs()))
         EditResult.Ok()
     }
 

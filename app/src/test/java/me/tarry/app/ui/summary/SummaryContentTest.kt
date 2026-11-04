@@ -170,12 +170,12 @@ class SummaryContentTest {
     @Test
     fun jobRows_showNameBlocksTotalAndBilled() {
         show(state())
-        // Alpha: 2 blocks, 2 h + 1 h = 3 h, all billable. Bravo (archived): 1 block, 1 h not billable, billed 0.
+        // Alpha: 2 blocks, 2 h + 1 h = 3 h, all billable. Bravo (done): 1 block, 1 h not billable, billed 0.
         val alphaRow = composeRule.onNodeWithTag(SummaryTags.row("A"))
         alphaRow.assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         composeRule.onNode(hasText("Alpha") and hasText("2 blocks · 3 h") and hasText("3 h")).assertExists()
         composeRule.onNodeWithTag(SummaryTags.row("B")).assertIsDisplayed()
-        composeRule.onNode(hasText("Bravo (archived)") and hasText("1 block · 1 h") and hasText("0 min")).assertExists()
+        composeRule.onNode(hasText("Bravo (done)") and hasText("1 block · 1 h") and hasText("0 min")).assertExists()
     }
 
     @Test

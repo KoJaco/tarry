@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -223,9 +222,3 @@ fun <K : Any> Modifier.reorderHandle(
             onDragCancel = { state.cancelDrag() },
         )
     }
-
-/** Archived and other receded rows. */
-fun Modifier.receded(): Modifier = alpha(RECEDED_ALPHA)
-
-/** Opacity of receded (archived) rows. 70% keeps `ink` text above 4.5:1 on `card` in both themes. */
-const val RECEDED_ALPHA = 0.7f

@@ -280,7 +280,7 @@ class TimelineViewModel internal constructor(
                 blocks.mapNotNull { b ->
                     val job = jobsById[b.jobId] ?: return@mapNotNull null
                     JobBlockItem(
-                        b.id, b.jobId, job.name, job.colorArgb, b.start, b.end, b.billable, b.notes,
+                        b.id, b.jobId, job.name, JobPalette.displayKey(job.colorArgb, job.archived), b.start, b.end, b.billable, b.notes,
                     )
                 }
             }
@@ -296,7 +296,7 @@ class TimelineViewModel internal constructor(
             ) { visits, allPlaces, blocks, allJobs, declined ->
                 val jobsById = allJobs.associateBy { it.id }
                 suggestions(visits, allPlaces.associateBy { it.id }, blocks, declined).mapNotNull { s ->
-                    jobsById[s.jobId]?.let { JobSuggestionItem(s, it.name, it.colorArgb) }
+                    jobsById[s.jobId]?.let { JobSuggestionItem(s, it.name, JobPalette.displayKey(it.colorArgb, it.archived)) }
                 }
             }
         }

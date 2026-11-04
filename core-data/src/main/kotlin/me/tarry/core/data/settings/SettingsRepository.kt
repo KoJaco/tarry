@@ -76,6 +76,11 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.STAY_GEOFENCE_RADIUS_M] = meters }
     }
 
+    suspend fun setWindowEndGraceMaxMin(minutes: Int) {
+        require(minutes in Settings.ALLOWED_WINDOW_END_GRACE_MIN) { "Invalid window-end grace: $minutes" }
+        dataStore.edit { it[Keys.WINDOW_END_GRACE_MAX_MIN] = minutes }
+    }
+
     /** The segmentation algorithm version that last processed the stored data; 0 if never recorded. */
     suspend fun segmentationVersion(): Int =
         dataStore.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -101,6 +106,7 @@ class SettingsRepository @Inject constructor(
         val REVIEW_REMINDER_MINUTE = intPreferencesKey("review_reminder_minute_of_day")
         val THEME = stringPreferencesKey("theme")
         val STAY_GEOFENCE_RADIUS_M = intPreferencesKey("stay_geofence_radius_m")
+        val WINDOW_END_GRACE_MAX_MIN = intPreferencesKey("window_end_grace_max_min")
         val SEGMENTATION_VERSION = intPreferencesKey("segmentation_version")
         val LAST_BACKUP_MS = longPreferencesKey(Settings.LAST_BACKUP_KEY)
     }
@@ -126,6 +132,8 @@ class SettingsRepository @Inject constructor(
             stayGeofenceRadiusM = this[Keys.STAY_GEOFENCE_RADIUS_M]
                 ?.let { if (it == Settings.LEGACY_STAY_RADIUS_M) Settings.MAX_STAY_RADIUS_M else it }
                 ?.takeIf { it in Settings.ALLOWED_STAY_RADII_M } ?: d.stayGeofenceRadiusM,
+            windowEndGraceMaxMin = this[Keys.WINDOW_END_GRACE_MAX_MIN]
+                ?.takeIf { it in Settings.ALLOWED_WINDOW_END_GRACE_MIN } ?: d.windowEndGraceMaxMin,
             lastBackupMs = this[Keys.LAST_BACKUP_MS],
         )
     }

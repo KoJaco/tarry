@@ -23,6 +23,7 @@ import me.tarry.app.export.backup.BackupError
 import me.tarry.app.export.backup.BackupException
 import me.tarry.app.export.backup.DataBackup
 import me.tarry.app.export.backup.RestorePreview
+import me.tarry.app.tracking.ReconcileTrigger
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.mondayOf
@@ -42,6 +43,7 @@ class SettingsViewModel @Inject constructor(
     schedules: ScheduleRepository,
     private val clock: TrackingClock,
     private val backup: DataBackup,
+    private val reconcile: ReconcileTrigger,
 ) : ViewModel() {
     /** Null until the first DataStore read completes. */
     val settings: StateFlow<Settings?> = repository.settings
@@ -60,6 +62,14 @@ class SettingsViewModel @Inject constructor(
     /** Applies from the next stop; a stop already being tracked keeps its radius. */
     fun setStayGeofenceRadiusM(meters: Int) {
         viewModelScope.launch { repository.setStayGeofenceRadiusM(meters) }
+    }
+
+    /** Saves the cap, then reconciles at once so a running grace and its cap alarm follow the new value. */
+    fun setWindowEndGraceMaxMin(minutes: Int) {
+        viewModelScope.launch {
+            repository.setWindowEndGraceMaxMin(minutes)
+            reconcile.reconcileNow()
+        }
     }
 
     fun setTheme(mode: ThemeMode) {

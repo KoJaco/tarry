@@ -214,6 +214,15 @@
     <string name="settings_stay_radius">Stop radius</string>
     <string name="settings_stay_radius_value">%1$d m</string>
     <string name="settings_stay_radius_explanation">How far you must move from a stop before Tarry starts tracking closely again. Smaller catches short trips sooner but can be triggered by GPS drift indoors.</string>
+    <string name="settings_grace">After the window ends</string>
+    <string name="settings_grace_explanation">If you\'re still on the move when your schedule ends, Tarry can keep recording until you\'ve stopped, so the last trip isn\'t cut off. It never records longer than this.</string>
+    <string name="settings_grace_0">Stop on time</string>
+    <string name="settings_grace_15">Up to 15 min</string>
+    <string name="settings_grace_30">Up to 30 min</string>
+    <string name="settings_grace_60">Up to 1 hour</string>
+    <string name="settings_grace_use_0">Tracking stops exactly when your window ends. A trip you\'re on is cut off there.</string>
+    <string name="settings_grace_use_keep">Keeps recording while you\'re on the move, until you\'ve stopped for 10 minutes.</string>
+    <string name="settings_grace_use_60">Keeps recording while you\'re on the move, until you\'ve stopped for 10 minutes. Good for a drive home after work. The default.</string>
     <string name="settings_section_tracking">Tracking</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_section_billing">Billing</string>
@@ -305,7 +314,7 @@
     <string name="summary_group_by_day">By day</string>
     <string name="summary_empty_title">No job blocks in this range</string>
     <string name="summary_empty_body">Add job blocks on the timeline and they add up here.</string>
-    <string name="summary_job_archived">%1$s (archived)</string>
+    <string name="summary_job_archived">%1$s (done)</string>
     <plurals name="summary_blocks">
         <item quantity="one">%1$d block</item>
         <item quantity="other">%1$d blocks</item>

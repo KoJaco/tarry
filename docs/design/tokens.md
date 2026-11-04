@@ -105,6 +105,10 @@ No role keeps an M3 baseline value (`TarryThemeTest.noRoleKeepsTheM3BaselineValu
 | Sand | `#F3EBDD` / `#C9AE7E` / `#5E4718` | `#33291A` / `#B3996B` / `#E6D6B5` |
 | Slate | `#E8EAEE` / `#9AA3B2` / `#353D4A` | `#22262D` / `#848D9C` / `#CDD3DD` |
 
+**Done jobs (2026-11-05).** A job marked done (DB field `archived`) gives its colour back and draws in one neutral style instead: container `inset`, 1.5 dp `outline` border, text `ink` (`JobPalette.DONE`; callers pass `JobPalette.DONE_KEY` as the colour, via `JobPalette.displayKey`). It applies everywhere a job colour is drawn: calendar blocks and ranges, Summary dots, drawer chips and swatches, map pins, the Jobs list. Contrast: `ink` on `inset` 14.7:1 light / 12.4:1 dark; the `outline` border against `paper` 3.1:1 / 3.9:1 and against `card` 3.5:1 / 3.5:1 (UI minimum 3:1; `ContrastGuardTest` enforces them). Where "Done" is spelled out (Jobs list section, Summary "(done)", PDF "(done)") the style never relies on colour alone.
+
+**Assigning a colour.** A new job takes the first slot (palette order) that no open job uses, where open means neither deleted nor done. If all eight are in use it takes the least-used slot among open jobs, ties in palette order. Marking a job done leaves its stored colour untouched; reopening keeps that colour if no other open job uses it now, otherwise assigns one by the same rule.
+
 A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 
 ## Type
@@ -144,7 +148,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
   - These radii were reduced slightly on 2026-10-21, at the owner's request (from 24, 28, 14 and 10).
 - **Elevation:** flat. Surfaces separate by colour (`card` on `paper`), not shadow. Sheets and dialogs use the M3 scrim only. No drop shadows on cards or the bar.
   - Dark theme: cards and sheets carry a 1 dp `line` edge; light theme has none. No colour token changes for it (the dark `card` stays `#201D18`). One helper does it: `Modifier.surfaceEdge(shape)` (cards, grouped settings, standalone settings rows, empty and loading placeholders, the schedule grid, tracking-sheet rows, the stepper, `AlertDialog`s and the time-picker dialog) and `Modifier.sheetEdge()` (the top edge of every `ModalBottomSheet`); `surfaceEdgeStroke()` gives the same edge to components with a `border` parameter (the Summary export `DropdownMenu`, the only menu).
-- **Receded rows:** archived jobs and tags draw at 70 % opacity (`RECEDED_ALPHA`, never below 4.5:1 for `ink` text on `card`) and always carry the word "Archived", never dimming alone. The "Archived" marker is drawn outside the receded content at full opacity (`muted` on `card`, 6.4:1 / 6.5:1), because `muted` at 70 % falls below 4.5:1.
+- **Done rows (was "receded rows"):** done jobs no longer dim. They use the neutral done style (Job colours above) at full opacity, because the style is already neutral and any alpha would pull `ink` text toward the 4.5:1 limit. They always carry the word "Done" (the Jobs list section, "(done)" after the name in Summary and the PDF), never colour alone. The old 70 % `RECEDED_ALPHA` is removed.
 
 ## Motion
 - **Standard transitions:** 200 ms, M3 emphasized easing. The day change slides 24 dp and fades.

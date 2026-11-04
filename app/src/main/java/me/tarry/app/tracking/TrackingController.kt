@@ -79,6 +79,7 @@ class TrackingController @Inject constructor(
     private val health: HealthGapRecorder,
     private val clock: TrackingClock,
     private val config: TrackingConfig,
+    private val windowEndGrace: WindowEndGraceSource,
 ) {
     private val mutex = Mutex()
 
@@ -397,27 +398,35 @@ class TrackingController @Inject constructor(
         if (!effective.isActive && graceStartMs == null) health.closeOutage(now.toEpochMilli())
         val next = if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition
         // During the grace the cap is the one extra alarm; settling itself is driven by capture events, never a timer.
-        val graceCap = graceStartMs?.let { Instant.ofEpochMilli(it + config.windowEndGraceMaxMs) }
+        val graceCap = graceStartMs?.let { Instant.ofEpochMilli(it + graceMaxMs()) }
         rearm(if (graceCap != null && (next == null || graceCap.isBefore(next))) graceCap else next)
     }
+
+    private suspend fun graceMaxMs(): Long = windowEndGrace.graceMaxMin() * MS_PER_MIN
 
     /**
      * Window-end grace: at the schedule end a scheduled session stays open ("Finishing up…") while capture is MOVING or
      * the current stay is younger than [TrackingConfig.windowEndSettleMs], until a settled stay is confirmed
-     * (reported by the coordinator through [onSettled]) or [TrackingConfig.windowEndGraceMaxMs] has passed.
+     * (reported by the coordinator through [onSettled]) or the user's cap ([WindowEndGraceSource]) has passed.
+     * A cap of 0 means no grace at all. The cap is read at every reconcile, so a setting change applies at the next one.
      * Returns true to keep the session open.
      */
     private suspend fun keepOpenForGrace(nowMs: Long): Boolean {
         if (coordinator.activeTrigger != SessionTrigger.SCHEDULE) return false
+        if (graceStartMs == null && graceMaxMs() <= 0L) return false
         val started = graceStartMs
         if (started == null) {
             if (coordinator.isSettled()) return false
             graceStartMs = nowMs
-            statusStore.setFinishingUp(true, nowMs)
+            statusStore.setFinishingUp(true, nowMs, graceMaxMs())
             coordinator.watchSettle(true)
             return true
         }
-        return nowMs - started < config.windowEndGraceMaxMs && !coordinator.isSettled()
+        val cap = graceMaxMs()
+        if (nowMs - started >= cap || coordinator.isSettled()) return false
+        // A cap changed mid-grace is kept for crash accounting.
+        statusStore.setFinishingUp(true, capMs = cap)
+        return true
     }
 
     /**
