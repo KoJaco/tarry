@@ -31,7 +31,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDateRangePickerState
@@ -47,7 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -118,11 +116,9 @@ private val DotSize = 16.dp
 fun SummaryScreen(
     onOpenDay: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
-    snackbarHostState: SnackbarHostState? = null,
     viewModel: SummaryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     // After midnight "Today" and "This week" move on; re-derive them when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
     // The file goes only where the user picks it (SAF); cancelling the picker does nothing.
@@ -131,9 +127,6 @@ fun SummaryScreen(
     }
     val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(SummaryExportFormat.PDF.mimeType)) { uri ->
         if (uri != null) viewModel.export(SummaryExportFormat.PDF, uri)
-    }
-    LaunchedEffect(viewModel, snackbarHostState) {
-        viewModel.events.collect { event -> snackbarHostState?.showSnackbar(summaryExportMessage(context.resources, event)) }
     }
     SummaryContent(
         state = state,
@@ -595,12 +588,16 @@ private fun JobBlocksSheet(row: JobSummary, zone: ZoneId, onOpenDay: (LocalDate)
     }
 }
 
+/** [this] with its spaces (normal and narrow no-break) replaced by NO-BREAK SPACE, so the text wraps only between words it is joined to. */
+internal fun String.nonBreaking(): String = replace(' ', '\u00A0').replace('\u202F', '\u00A0')
+
 @Composable
 private fun PieceRow(piece: BlockPiece, dateText: String, zone: ZoneId, onClick: () -> Unit) {
     val formats = rememberTimeFormats()
     val start = formats.time(piece.start, zone)
     val end = formats.time(piece.end, zone)
-    val range = stringResource(R.string.timeline_time_range, start, end)
+    // Lines may break around the dash but never inside a time ("9:00 / am" at large font scales).
+    val range = stringResource(R.string.timeline_time_range, start.nonBreaking(), end.nonBreaking())
     val spokenRange = stringResource(R.string.timeline_spoken_range, start, end)
     val duration = summaryDuration(piece.durationMs)
     val billedText = piece.billedMs?.let { summaryDuration(it) }

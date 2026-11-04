@@ -7,6 +7,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.remember
 import me.tarry.app.ui.shell.ShellStatusViewModel
 import me.tarry.app.ui.shell.UndoSnackbarEffect
+import me.tarry.app.ui.summary.SummaryExportSnackbarEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,6 +80,8 @@ fun TarryApp(
     val backStack = rememberNavBackStack(TimelineRoute)
     val snackbarHostState = remember { SnackbarHostState() }
     UndoSnackbarEffect(statusViewModel.undoEvents, snackbarHostState, statusViewModel::undo)
+    // Collected here, not by the Summary screen, so an export finishing on another tab is still announced.
+    SummaryExportSnackbarEffect(summaryViewModel.events, snackbarHostState)
     val trackingState by shellViewModel.trackingState.collectAsStateWithLifecycle()
     val trackingDetails by shellViewModel.trackingDetails.collectAsStateWithLifecycle()
     val selection by timelineViewModel.selection.collectAsStateWithLifecycle()
@@ -128,7 +131,6 @@ fun TarryApp(
                     timelineViewModel.selectDate(date)
                     backStack.navigateTopLevel(TimelineRoute)
                 },
-                snackbarHostState = snackbarHostState,
                 viewModel = summaryViewModel,
             )
         },
