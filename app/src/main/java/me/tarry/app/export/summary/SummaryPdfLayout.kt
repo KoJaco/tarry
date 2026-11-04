@@ -262,19 +262,33 @@ object SummaryPdfLayout {
             page.rules += PdfRule(PdfPageSpec.MARGIN, RIGHT, y, 0.8f)
         }
 
-        /** Starts a table: its header now, and again under [continued] on every page it spills onto. */
-        private fun startTable(cols: List<Column>, continued: String, firstRow: Row? = null) {
+        /**
+         * Starts a table: its header now, and again under [continued] on every page it spills onto. The section heading is
+         * drawn just before, so the first row must start under it: when header and first row do not fit in what is left of
+         * the page (a very tall row) and [keepWithHeading] says the heading already stands on a fresh page, the row is cut to what fits instead of breaking the page and orphaning the heading.
+         */
+        private fun startTable(cols: List<Column>, continued: String, firstRow: Row? = null, keepWithHeading: Boolean = false) {
             columns = cols
-            // No table is running yet while the header is made to fit, so a page break here does not draw a header of its own.
-            continuationTitle = null
-            // Keep with next: the header never sits alone at the bottom of a page, it goes with the first row.
+            // Measured as it will be drawn on later pages (the continuation header decides how tall a row can get).
             continuationTitle = continued
             val first = firstRow?.let { prepare(it).height } ?: 0f
+            // No table is running yet while the header is made to fit, so a page break here does not draw a header of its own.
             continuationTitle = null
-            ensure(PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD + first)
+            val headerHeight = PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD
+            val available = PdfPageSpec.CONTENT_BOTTOM - y - headerHeight
+            if (keepWithHeading && firstRow != null && first > available) {
+                // Keep with next, capped: the heading, table header and a cut first row share this page.
+                firstRowMax = available.coerceAtLeast(0f)
+                ensure(headerHeight)
+            } else {
+                ensure(headerHeight + first)
+            }
             continuationTitle = continued
             tableHeader()
         }
+
+        /** Height limit for the first row of the table just started (see [startTable]); consumed by the next [row]. */
+        private var firstRowMax: Float? = null
 
         private data class Prepared(
             val wrapped: List<List<String>>,
@@ -288,12 +302,12 @@ object SummaryPdfLayout {
         }
 
         /** [row] wrapped into the current columns, cut to what a page can hold, with its heights. */
-        private fun prepare(row: Row): Prepared {
+        private fun prepare(row: Row, maxHeight: Float = PdfPageSpec.CONTENT_BOTTOM - PdfPageSpec.MARGIN - continuationHeight()): Prepared {
             val body = PdfTextStyle.BODY
             val detail = PdfTextStyle.DETAIL
             val trailerHeight = if (row.trailer != null) PdfTextStyle.BODY_BOLD.lineHeight + ROW_PAD else 0f
             // The most a row can take: a whole page under the actual continuation header. Taller rows are cut to it.
-            val room = PdfPageSpec.CONTENT_BOTTOM - PdfPageSpec.MARGIN - continuationHeight() - 2 * ROW_PAD - trailerHeight
+            val room = maxHeight - 2 * ROW_PAD - trailerHeight
             val maxLines = (room / body.lineHeight).toInt().coerceAtLeast(1)
             // With details the number line may take at most half of that, so the details always get room.
             val numberCap = if (row.details.isEmpty()) maxLines else (maxLines / 2).coerceAtLeast(1)
@@ -318,7 +332,8 @@ object SummaryPdfLayout {
         }
 
         private fun row(row: Row) {
-            val prepared = prepare(row)
+            val prepared = prepare(row, firstRowMax ?: (PdfPageSpec.CONTENT_BOTTOM - PdfPageSpec.MARGIN - continuationHeight()))
+            firstRowMax = null
             ensure(prepared.height)
             val top = y
             columns.forEachIndexed { i, c -> prepared.wrapped[i].forEachIndexed { line, s -> cell(c, s, row.styles[i], top, line) } }
@@ -401,7 +416,7 @@ object SummaryPdfLayout {
             lines(name, PdfTextStyle.HEADING, gapAfter = 2f)
             lines(text.rangeLong(snapshot.range), PdfTextStyle.SUBHEADING)
             lines(text.jobTotals(job.billedMs, job.totalMs, job.billableMs), PdfTextStyle.BODY_BOLD, gapAfter = 10f)
-            startTable(cols, continued = text.continued(name), firstRow = rows.firstOrNull())
+            startTable(cols, continued = text.continued(name), firstRow = rows.firstOrNull(), keepWithHeading = true)
             rows.forEach { row(it) }
         }
 

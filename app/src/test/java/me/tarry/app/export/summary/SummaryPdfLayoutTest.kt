@@ -233,8 +233,7 @@ class SummaryPdfLayoutTest {
                 override fun rules(rules: BillingRules) = "word ".repeat(n * 20)
             }
             val pages = SummaryPdfLayout.layout(snapshot(listOf(block("a", "A", 0, 9, 10))), longRules, FakeMeasurer)
-            // At most once per page: a page break before the header never draws it twice (a header at the very bottom
-            // with its row on the next page repeats it there, which is the continuation header and fine).
+            // At most once per page: the header goes with its first row (keep with next), so a page break never draws it twice.
             for (p in pages) assertThat(p.runs.count { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER }).isAtMost(1)
             assertThat(pages.flatMap { it.runs }.count { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER }).isAtLeast(1)
             val tablePage = pages.indexOfFirst { p -> p.runs.any { it.text == "Job" } }
@@ -453,6 +452,28 @@ class SummaryPdfLayoutTest {
             val words = pages.sumOf { p -> p.detailRuns().sumOf { r -> r.text.split(" ").count { it == "note" } } }
             assertThat(words).isEqualTo(40 * n)
         }
+    }
+
+    @Test
+    fun aVeryTallFirstRow_staysUnderTheJobHeading_andNoTableHeaderIsLeftWithoutATitle() {
+        val tall = "word ".repeat(1500).trim()
+        val blocks = listOf(block("a0", "A", 0, 9, 10, notes = tall)) + (1..6).map { block("a$it", "A", it, 9, 10, notes = "short") }
+        val pages = layout(snapshot(blocks))
+        val headingPage = pages.first { p -> p.runs.any { it.style == PdfTextStyle.HEADING && it.text == "Alpha" } }
+        val heading = headingPage.runs.first { it.style == PdfTextStyle.HEADING && it.text == "Alpha" }
+        val header = headingPage.runs.firstOrNull { it.text == "Date" && it.style == PdfTextStyle.TABLE_HEADER }
+        assertThat(header).isNotNull()
+        // The heading, the table header and the first row's number line and details all share a page, in that order.
+        val firstDate = headingPage.runs.first { it.style == PdfTextStyle.BODY && it.x == PdfPageSpec.MARGIN && it.text.startsWith("2025-") }
+        assertThat(header!!.baseline).isGreaterThan(heading.baseline)
+        assertThat(firstDate.baseline).isGreaterThan(header.baseline)
+        assertThat(headingPage.runs.any { it.style == PdfTextStyle.DETAIL && it.baseline > firstDate.baseline }).isTrue()
+        // A table header never opens a page without a title above it.
+        for (p in pages) {
+            val h = p.runs.firstOrNull { it.text == "Date" && it.style == PdfTextStyle.TABLE_HEADER } ?: continue
+            assertThat(p.runs.any { it.style == PdfTextStyle.HEADING && it.baseline < h.baseline && it.text.startsWith("Alpha") }).isTrue()
+        }
+        for (p in pages) for (r in p.runs) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM + PdfPageSpec.MARGIN)
     }
 
     @Test
