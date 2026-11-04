@@ -339,6 +339,10 @@
     <string name="summary_piece_day_total">Billed for the day</string>
     <string name="summary_picker_ok">OK</string>
     <string name="summary_picker_cancel">Cancel</string>
+    <string name="summary_picker_title">Select dates</string>
+    <string name="summary_picker_start_placeholder">Start date</string>
+    <string name="summary_picker_end_placeholder">End date</string>
+    <string name="summary_picker_range_headline">%1$s&#160;– %2$s</string>
     <string name="summary_export">Export</string>
     <string name="summary_export_disabled">Export, no job blocks in this range</string>
     <string name="summary_exporting">Exporting</string>

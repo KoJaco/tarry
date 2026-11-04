@@ -7,8 +7,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
-import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -43,29 +48,44 @@ class ReviewRowTest {
     }
 
     @Test
-    fun wideRowKeepsTheAddJobLabel() {
+    fun wideRowShowsTheLabelledToggleThenAddJobThenTheFilter() {
         show(560.dp)
+        composeRule.onNodeWithText("Timeline").assertExists()
+        composeRule.onNodeWithText("Map").assertExists()
         composeRule.onNodeWithText("Add job").assertExists()
         composeRule.onNodeWithText("Needs review").assertExists()
+
+        val toggleRight = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot.right
+        val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
+        val filterLeft = composeRule.onNodeWithTag("timeline_filter_review").fetchSemanticsNode().boundsInRoot.left
+        assertThat(addJob.left).isAtLeast(toggleRight)
+        assertThat(filterLeft).isAtLeast(addJob.right)
     }
 
     @Test
-    fun narrowRowShowsAddJobAsAnIconWithItsLabelAsDescription() {
-        // Narrower than the labelled row (Robolectric measures text narrower than a device, so 320 dp would still fit).
+    fun narrowRowScrollsInsteadOfDroppingTheAddJobLabel() {
         show(200.dp)
-        composeRule.onNodeWithText("Add job").assertDoesNotExist()
-        composeRule.onNodeWithContentDescription("Add job")
-            .assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
-        composeRule.onNodeWithText("Needs review").assertExists()
+        composeRule.onNodeWithTag("timeline_review_row").assert(hasScrollAction())
+        composeRule.onNodeWithText("Add job").assertExists()
+        composeRule.onNodeWithContentDescription("Add job").assertDoesNotExist()
+        composeRule.onNodeWithText("Needs review").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun toggleOptionsAreAtLeast48dpTall() {
+        show(560.dp)
+        composeRule.onNodeWithText("Timeline").assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("Map").assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag("timeline_add_job").assertHeightIsAtLeast(48.dp)
     }
 
     @Test
     fun toggleSwitchesToTheMapAndHidesTheReviewFilter() {
         show(560.dp)
-        composeRule.onNodeWithContentDescription("Day").assertIsSelected()
-        composeRule.onNodeWithContentDescription("Map").assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNode(hasText("Timeline") and hasClickAction()).assertIsSelected()
+        composeRule.onNode(hasText("Map") and hasClickAction()).assertHeightIsAtLeast(48.dp).performClick()
         assertThat(showMap).isTrue()
-        composeRule.onNodeWithContentDescription("Map").assertIsSelected()
+        composeRule.onNode(hasText("Map") and hasClickAction()).assertIsSelected()
         composeRule.onNodeWithTag("timeline_filter_review").assertDoesNotExist()
     }
 }

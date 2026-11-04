@@ -1,4 +1,4 @@
-package me.tarry.app.ui.summary
+package me.tarry.app.ui.components
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test

@@ -5,8 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -24,17 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.ui.components.FadingScrollRow
 import me.tarry.app.ui.theme.TarryTheme
 
 private val MinTouch = 48.dp
@@ -42,9 +36,9 @@ private val MarkSize = 20.dp
 private val RingWidth = 2.dp
 
 /**
- * The row under the week strip: the compact Day | Map toggle first, then the "Needs review" switch (only when
- * [showToggle], and not on the map) and "Add job". "Add job" drops its label to a `+` icon when the labelled row
- * would not fit on one line; past that (large font scales) the row wraps instead of shrinking or truncating.
+ * The row under the week strip: the labelled Timeline | Map toggle first, then "Add job", then the "Needs review"
+ * switch (only when [showToggle], and not on the map). It is one row that scrolls sideways at large font scales
+ * (edges fade while more lies that way) and never wraps or drops a label.
  */
 @Composable
 internal fun ReviewRow(
@@ -56,47 +50,19 @@ internal fun ReviewRow(
     showMap: Boolean = false,
     onShowMapChange: (Boolean) -> Unit = {},
 ) {
-    SubcomposeLayout(modifier.fillMaxWidth()) { constraints ->
-        // The fully labelled row, measured unconstrained; its semantics are cleared so it never reaches TalkBack or tests.
-        val labelledWidth = subcompose("probe") {
-            ReviewRowItems(reviewOnly, showToggle, {}, {}, showMap, {}, compact = false, Modifier.clearAndSetSemantics {})
-        }.first().measure(Constraints()).width
-        val row = subcompose("row") {
-            ReviewRowItems(
-                reviewOnly, showToggle, onReviewOnlyChange, onAddJob, showMap, onShowMapChange,
-                compact = labelledWidth > constraints.maxWidth,
-            )
-        }.first().measure(constraints.copy(minWidth = 0))
-        layout(constraints.maxWidth, row.height) { row.place(0, 0) }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ReviewRowItems(
-    reviewOnly: Boolean,
-    showToggle: Boolean,
-    onReviewOnlyChange: (Boolean) -> Unit,
-    onAddJob: () -> Unit,
-    showMap: Boolean,
-    onShowMapChange: (Boolean) -> Unit,
-    compact: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    FlowRow(
-        modifier = modifier,
+    FadingScrollRow(
+        modifier = modifier.fillMaxWidth().testTag("timeline_review_row"),
         horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-        verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-        itemVerticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         ViewToggle(showMap, onShowMapChange, Modifier.testTag("timeline_view_toggle"))
+        AddJobButton(onAddJob, Modifier.testTag("timeline_add_job"))
         // The filter dims canvas blocks, so it means nothing on the map.
         if (showToggle && !showMap) NeedsReviewToggle(reviewOnly, onReviewOnlyChange, Modifier.testTag("timeline_filter_review"))
-        AddJobButton(onAddJob, compact, Modifier.testTag("timeline_add_job"))
     }
 }
 
-/** Day | Map: a compact `card` track with an `ink` pill on the selected view. Each half is a 48 dp tab. */
+/** Timeline | Map: a `card` track with an `ink` pill on the selected view. Each half is an icon and a label, at least 48 dp tall. */
 @Composable
 private fun ViewToggle(showMap: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = Modifier) {
     val c = TarryTheme.colors
@@ -107,25 +73,29 @@ private fun ViewToggle(showMap: Boolean, onChange: (Boolean) -> Unit, modifier: 
             .selectableGroup(),
     ) {
         listOf(false to (R.string.timeline_view_day to R.drawable.ic_calendar), true to (R.string.timeline_view_map to R.drawable.ic_map)).forEach { (map, labelAndIcon) ->
-            val (label, icon) = labelAndIcon
-            val description = stringResource(label)
+            val (labelRes, icon) = labelAndIcon
             val selected = map == showMap
-            Box(
+            Row(
                 modifier = Modifier
                     .heightIn(min = MinTouch)
                     .widthIn(min = MinTouch)
                     .clip(TarryTheme.shapes.pill)
                     .background(if (selected) c.ink else c.card)
-                    .semantics { contentDescription = description }
                     .selectable(selected = selected, role = Role.Tab, onClick = { onChange(map) })
-                    .padding(horizontal = TarryTheme.space.m),
-                contentAlignment = Alignment.Center,
+                    .padding(horizontal = TarryTheme.space.l),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
             ) {
                 Icon(
                     painter = painterResource(icon),
                     contentDescription = null,
                     tint = if (selected) c.onInk else c.ink,
                     modifier = Modifier.size(24.dp),
+                )
+                Text(
+                    text = stringResource(labelRes),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (selected) c.onInk else c.ink,
                 )
             }
         }
@@ -156,9 +126,9 @@ private fun NeedsReviewToggle(on: Boolean, onChange: (Boolean) -> Unit, modifier
     }
 }
 
-/** `+` icon and "Add job" on a `card` pill. [compact] is a 48 dp `+` circle that keeps the label as its description. */
+/** `+` icon and "Add job" on a `card` pill, at least 48 dp tall. */
 @Composable
-private fun AddJobButton(onClick: () -> Unit, compact: Boolean, modifier: Modifier = Modifier) {
+private fun AddJobButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     val c = TarryTheme.colors
     val label = stringResource(R.string.timeline_add_job)
     Row(
@@ -167,13 +137,12 @@ private fun AddJobButton(onClick: () -> Unit, compact: Boolean, modifier: Modifi
             .widthIn(min = MinTouch)
             .clip(TarryTheme.shapes.pill)
             .background(c.card)
-            .then(if (compact) Modifier.semantics { contentDescription = label } else Modifier)
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(horizontal = if (compact) 0.dp else TarryTheme.space.l, vertical = TarryTheme.space.s),
+            .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.s),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s, Alignment.CenterHorizontally),
     ) {
         Icon(painterResource(R.drawable.ic_plus), contentDescription = null, tint = c.ink, modifier = Modifier.size(MarkSize))
-        if (!compact) Text(text = label, style = MaterialTheme.typography.labelLarge, color = c.ink)
+        Text(text = label, style = MaterialTheme.typography.labelLarge, color = c.ink)
     }
 }
