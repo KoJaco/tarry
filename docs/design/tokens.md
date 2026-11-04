@@ -156,14 +156,14 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 
 ### Bottom bar
 - Full width, edge to edge, in `paper` (the screen background), set apart only by a 1 dp `line` top border. It has no fill of its own, no rounded corners and no shadow. It extends under the gesture/navigation bar (insets padding inside).
-- **Three equal slots** (`weight(1f)` each), in this order: **Timeline | tracking toggle | Settings**. Each slot is centred and at least 56 dp tall.
+- **Four slots**, in this order: **Timeline | Summary | Settings | tracking toggle**. The three nav slots are equal (`weight(1f)`); the toggle slot is wider (`weight(1.5f)`) so its label fits at large font sizes. Each slot is centred and at least 56 dp tall.
 - **Nav items** are an icon over a `labelMedium` label, with 6 dp between them. Labels are always shown (no icon-only nav). Only the icon is backed, never the whole item.
   - **Nav label scaling is capped at 1.3×** (`NavLabelMaxFontScale`), whatever the system font scale: the effective size and line height are the `labelMedium` values × min(fontScale, 1.3) ÷ fontScale. The word-safe shrink (below) stays as a fallback. The tracking toggle keeps full scaling.
   - Selected: a subtle `accentSoft` backing behind the icon only (64 × 32 dp, fully rounded `pill`), with the icon and label in `ink`. `inset` was too faint on `paper` in the light theme (about 1.1:1); `accentSoft` reads as a soft tint in both themes without the weight of an `ink` fill.
   - Unselected: the icon and label in `muted`, with no backing.
   - When the selection changes, the backing glides across to the new item (350 ms, emphasized easing `cubic-bezier(0.2, 0, 0, 1)`). With reduced motion it jumps.
   - Nav items have **no ripple or press background**; feedback is a light haptic (`SegmentTick`) on tap. The touch target (at least 48 dp) and semantics are unchanged.
-- **The centre slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
+- **The right-hand slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
   - The label may wrap between words but never inside one. In a one-third slot at large font scales it shrinks a step at a time until no word is split.
 
 ### Tracking toggle (four states, each different in more than colour)
