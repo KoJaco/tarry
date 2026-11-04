@@ -831,6 +831,45 @@ class TrackingControllerTest {
         assertThat(gap.start).isEqualTo(lastPing)
         assertThat(gap.end).isEqualTo(clock.now)
     }
+    @Test
+    fun graceThatLostItsProcessIsAccountedOnlyUpToThePersistedCap() = runBlocking {
+        controller.reconcile()
+        val start = mondayAt(16, 30).toEpochMilli()
+        val sessionId = trackingRepo.saveSession(TrackingSession(start = start, zoneId = sydney.id, trigger = SessionTrigger.SCHEDULE))
+        val lastPing = mondayAt(17, 5).toEpochMilli()
+        trackingRepo.savePing(
+            me.tarry.core.data.db.entity.LocationPing(
+                timestamp = lastPing, zoneId = sydney.id, lat = -33.0, lng = 151.0, accuracyM = 10f, speedMps = null,
+                bearing = null, activity = null, source = me.tarry.core.data.model.PingSource.FUSED, sessionId = sessionId,
+            ),
+        )
+        // The grace began at 17:00 under a 15 minute cap; the app is back an hour later.
+        store.setFinishingUp(true, mondayAt(17).toEpochMilli(), 15 * 60_000L)
+        clock.now = mondayAt(18).toEpochMilli()
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(lastPing)
+        assertThat(gap.end).isEqualTo(mondayAt(17, 15).toEpochMilli())
+    }
+
+    @Test
+    fun theGraceCapInForceIsPersistedAndFollowsAMidGraceChange() = runBlocking {
+        windowEndGrace.maxMin = 30
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(store.current().finishingUpCapMs).isEqualTo(30 * 60_000L)
+
+        windowEndGrace.maxMin = 60
+        clock.now = mondayAt(17, 5).toEpochMilli()
+        controller.reconcile(ReconcileSource.UI)
+
+        assertThat(store.current().finishingUpCapMs).isEqualTo(60 * 60_000L)
+    }
+
 
     private val thisWeek = LocalDate.of(2026, 10, 19)
 

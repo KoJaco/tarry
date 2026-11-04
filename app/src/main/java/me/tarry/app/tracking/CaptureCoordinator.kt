@@ -340,7 +340,7 @@ class CaptureCoordinator @Inject constructor(
         val status = statusStore.current()
         val graceStart = status.finishingUpSinceMs?.takeIf { status.finishingUp }
         val graceEnd = graceStart?.let {
-            minOf(now, it + config.windowEndGraceMaxMs, windows.firstOrNull()?.start?.toEpochMilli() ?: Long.MAX_VALUE)
+            minOf(now, it + (status.finishingUpCapMs ?: config.windowEndGraceMaxMs), windows.firstOrNull()?.start?.toEpochMilli() ?: Long.MAX_VALUE)
         }
         val active = if (graceEnd != null && graceEnd > closedAt) {
             listOf(WindowBounds(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(graceEnd))) + windows

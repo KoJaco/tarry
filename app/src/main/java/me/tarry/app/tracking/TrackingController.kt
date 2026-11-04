@@ -418,11 +418,15 @@ class TrackingController @Inject constructor(
         if (started == null) {
             if (coordinator.isSettled()) return false
             graceStartMs = nowMs
-            statusStore.setFinishingUp(true, nowMs)
+            statusStore.setFinishingUp(true, nowMs, graceMaxMs())
             coordinator.watchSettle(true)
             return true
         }
-        return nowMs - started < graceMaxMs() && !coordinator.isSettled()
+        val cap = graceMaxMs()
+        if (nowMs - started >= cap || coordinator.isSettled()) return false
+        // A cap changed mid-grace is kept for crash accounting.
+        statusStore.setFinishingUp(true, capMs = cap)
+        return true
     }
 
     /**
