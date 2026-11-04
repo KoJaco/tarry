@@ -1,5 +1,6 @@
 package me.tarry.app.ui
 
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasAnyAncestor
@@ -87,7 +88,7 @@ class SessionsUiTest {
 
     @Test
     fun runSegmentationButtonInvokesActionAndMeetsTouchTarget() {
-        composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions, showRunSegmentation = true) }
         composeRule.onNodeWithTag("sessions_run_segmentation").assertHeightIsAtLeast(48.dp)
         composeRule.onNodeWithText("Run segmentation now").performClick()
         assertThat(segmentationRuns).isEqualTo(1)
@@ -180,7 +181,7 @@ class SessionsUiTest {
 
     @Test
     fun runningSegmentationDisablesTheButtonAndSaysSo() {
-        composeRule.setContent { SessionsContent(emptyList(), false, null, actions, segmentation = SegmentationUi(running = true)) }
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions, segmentation = SegmentationUi(running = true), showRunSegmentation = true) }
         composeRule.onNodeWithTag("sessions_run_segmentation").assertIsNotEnabled()
         composeRule.onNodeWithText("Segmentation running…").assertExists()
         composeRule.onNodeWithTag("sessions_run_segmentation").performClick()
@@ -190,7 +191,7 @@ class SessionsUiTest {
     @Test
     fun lastSuccessIsShownWhenIdle() {
         composeRule.setContent {
-            SessionsContent(emptyList(), false, null, actions, segmentation = SegmentationUi(lastSuccessMs = 1_700_000_000_000))
+            SessionsContent(emptyList(), false, null, actions, segmentation = SegmentationUi(lastSuccessMs = 1_700_000_000_000), showRunSegmentation = true)
         }
         composeRule.onNodeWithTag("sessions_segmentation_status").assertTextContains("Last segmentation:", substring = true)
         composeRule.onNodeWithTag("sessions_run_segmentation").assertIsEnabled()
@@ -212,5 +213,34 @@ class SessionsUiTest {
     fun noStatusLineBeforeAnyRun() {
         composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
         composeRule.onNodeWithTag("sessions_segmentation_status").assertDoesNotExist()
+    }
+
+    @Test
+    fun runSegmentationButtonIsHiddenInReleaseButItsStatusStaysVisible() {
+        composeRule.setContent {
+            SessionsContent(
+                emptyList(), false, null, actions,
+                segmentation = SegmentationUi(lastSuccessMs = 1L, error = SegmentationError(1_700_000_000_000, "db closed")),
+                showRunSegmentation = false,
+            )
+        }
+        composeRule.onNodeWithTag("sessions_run_segmentation").assertDoesNotExist()
+        composeRule.onNodeWithTag("sessions_segmentation_status").assertTextContains("db closed", substring = true)
+    }
+
+    @Test
+    fun runSegmentationButtonShowsWhenTheDebugFlagIsOn() {
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions, showRunSegmentation = true) }
+        composeRule.onNodeWithTag("sessions_run_segmentation").assertExists()
+    }
+
+    @Test
+    fun rangeExportActionsAreOneScrollingRow_keepingTheirTargetsAndTags() {
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
+        composeRule.onNodeWithTag("range_export_row").assert(androidx.compose.ui.test.hasScrollAction())
+        for (tag in listOf("range_from", "range_to", "range_export_GPX", "range_export_CSV")) {
+            composeRule.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp)
+            composeRule.onNode(hasTestTag(tag) and hasAnyAncestor(hasTestTag("range_export_row"))).assertExists()
+        }
     }
 }
