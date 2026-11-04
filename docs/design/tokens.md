@@ -118,8 +118,8 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 |---|---|---|---|
 | `displaySmall` | Nunito 700 | 34 / 40, −0.25 tracking | Timeline date ("21 October") |
 | `headlineLarge` | Nunito 700 | 32 / 38 | Totals ("6 h 12 m") |
-| `headlineMedium` | Nunito 700 | 28 / 34 | Screen titles (Settings, Sessions, Permissions), empty-state titles |
-| `titleLarge` | Nunito 700 | 20 / 26 | Sheet and dialog titles |
+| `headlineMedium` | Nunito 700 | 28 / 34 | Screen titles (Settings, Sessions, Permissions), full-screen empty-state titles |
+| `titleLarge` | Nunito 700 | 20 / 26 | Sheet and dialog titles, empty-state titles in a card |
 | `titleMedium` | Nunito 600 | 16 / 22 | Card headers and block titles (place name) |
 | `titleSmall` | Nunito Sans 600 | 14 / 20 | Row titles |
 | `bodyLarge` | Nunito Sans 400 | 16 / 24 | Body |
@@ -218,14 +218,14 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
 ### Buttons, chips, inputs
 - **Primary:** `ink` pill, `onInk` label, 52 dp. **Secondary:** a 1.5 dp `ink` outline pill. **Tertiary:** a text button in `ink`. **Destructive:** `alert` text, or an outline pill in `alert`.
 - **The accent is not a button colour.** It is reserved for tracking state and "needs attention from you" cues, so it keeps its meaning.
-- **Chips:** a `card` pill on `paper` (or an `inset` pill on `card`), `labelMedium`. Selected: an `ink` fill.
+- **Chips:** a `card` pill on `paper` (or an `inset` pill on `card`), `labelMedium`. Selected: an `ink` fill. Unselected chips carry a 1 dp `line` border in both themes, whatever their fill; selected chips have none.
   - A row of chips that scrolls sideways (the Summary range chips) fades its edges: 32 dp (`ChipsEdgeFadeWidth`) at the right edge while more follows and at the left edge while scrolled away from the start. No fade when everything fits. Semantics are unchanged.
 - **Segmented control:** a `card` track with an `ink` pill for the selected item.
 - **Switch:** M3 `Switch` with track `ink` when on, `inset` when off, and a `paper` thumb.
 - **Inputs:** an `inset` fill, pill (single line) or `card` radius (multi-line), no underline, a 2 dp `ink` focus ring.
 
 ### Empty, loading and error states
-- **Empty:** a short Nunito line (`headlineMedium`, "Nothing yet today") plus one `bodyMedium` `muted` sentence on what will fill it. No illustration.
+- **Empty:** a short Nunito line ("Nothing yet today") plus one `bodyMedium` `muted` sentence on what will fill it. No illustration. The title is `titleLarge` when the empty state sits in a card (every use today) and `headlineMedium` if one is ever full screen without a card. Titles never end in a full stop; bodies keep theirs.
 - **Loading:** `card` placeholder blocks at 60 % opacity, with no shimmer when reduced motion is on.
 - **Error:** an `alertSoft` card with an icon, a cause and one action.
 

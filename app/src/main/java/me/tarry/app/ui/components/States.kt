@@ -44,7 +44,8 @@ private const val PlaceholderAlpha = 0.6f
 private const val PlaceholderPulseLow = 0.35f
 
 /**
- * A short Nunito line plus one muted sentence on what will fill the screen, centred in a `card` surface.
+ * A short Nunito line (`titleLarge`, since it always sits in a card) plus one muted sentence on what will fill the screen,
+ * centred in a `card` surface. Titles never end in a full stop.
  * No illustration.
  */
 @Composable
@@ -65,7 +66,7 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
         ) {
             Text(
                 title,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.titleLarge,
                 color = TarryTheme.colors.ink,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().semantics { heading() },

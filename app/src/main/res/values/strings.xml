@@ -308,7 +308,7 @@
     <string name="summary_range_chips_description">Date range</string>
     <string name="summary_group_by_job">By job</string>
     <string name="summary_group_by_day">By day</string>
-    <string name="summary_empty_title">No job blocks in this range.</string>
+    <string name="summary_empty_title">No job blocks in this range</string>
     <string name="summary_empty_body">Add job blocks on the timeline and they add up here.</string>
     <string name="summary_job_archived">%1$s (archived)</string>
     <plurals name="summary_blocks">

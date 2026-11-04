@@ -2,6 +2,7 @@ package me.tarry.app.ui.components
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,6 +34,9 @@ import me.tarry.app.ui.theme.TarryTheme
 
 private val MinTouch = 48.dp
 
+/** Unselected chips carry this `line` border in both themes. */
+private val ChipBorderWidth = 1.dp
+
 /**
  * Selectable pill. Selected = `ink` fill with `onInk` text; unselected = [unselectedColor] fill
  * (`card` on paper by default, pass `TarryTheme.colors.inset` on a card).
@@ -59,6 +63,7 @@ fun TarryChip(
             .heightIn(min = MinTouch)
             .clip(TarryTheme.shapes.pill)
             .background(container)
+            .then(if (selected) Modifier else Modifier.border(ChipBorderWidth, c.line, TarryTheme.shapes.pill))
             .selectable(selected = selected, enabled = enabled, role = role, onClick = onClick)
             .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.s),
         contentAlignment = Alignment.Center,

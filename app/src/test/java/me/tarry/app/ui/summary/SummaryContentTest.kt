@@ -282,7 +282,7 @@ class SummaryContentTest {
     @Test
     fun emptyState_showsTheMessage_andNoTotals() {
         show(state(result(blocks = emptyList())))
-        composeRule.onNodeWithText("No job blocks in this range.").assertIsDisplayed()
+        composeRule.onNodeWithText("No job blocks in this range").assertIsDisplayed()
         composeRule.onNodeWithTag(SummaryTags.Totals).assertDoesNotExist()
         composeRule.onNodeWithTag(SummaryTags.Unlabelled).assertDoesNotExist()
     }
@@ -290,7 +290,7 @@ class SummaryContentTest {
     @Test
     fun emptyState_stillShowsTheUnlabelledCard() {
         show(state(result(blocks = emptyList(), visits = listOf(visit(9, 11)), trips = listOf(trip(11, 12)))))
-        composeRule.onNodeWithText("No job blocks in this range.").assertIsDisplayed()
+        composeRule.onNodeWithText("No job blocks in this range").assertIsDisplayed()
         composeRule.onNodeWithTag(SummaryTags.Unlabelled).assertIsDisplayed()
         composeRule.onNode(hasText("On site") and hasText("2 h")).assertExists()
         composeRule.onNode(hasText("Travel") and hasText("1 h")).assertExists()
