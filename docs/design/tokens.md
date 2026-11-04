@@ -213,10 +213,7 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - Dividers run edge to edge across the surface, with no left (or right) inset. They are not focusable.
 - **Standalone rows** (`SettingsRow`, `SettingsValueRow`, `SettingsSwitchRow`): used only where rows aren't a group. A row is a `card` pill (`card` radius), at least 56 dp tall, with a 40 dp `inset` icon circle on the left, the title (`titleSmall`), an optional value (`bodyMedium` `muted`) and a chevron or a switch on the right. Standalone rows are separate cards with 8 dp gaps and no dividers.
 - Section headers use `labelSmall` `muted`.
-- **Permissions:** one card per permission, with 12 dp between cards:
-  - a leading icon circle;
-  - the status as an icon plus a word: a check in `success` for granted, a cross in `alert` for not granted;
-  - an action. Not granted: request it. Granted: "Change", which opens the system settings page.
+- **Permissions:** one `card` per permission, with 12 dp between cards, in the same row style as the Sessions export rows (`SettingsGroup` surface, leading 24 dp `ink` icon, chevron on the right). The whole surface is the button: one merged TalkBack node, `Role.Button`, with the click label "Grant" (not granted) or "Change" (granted; opens the system settings page). A step still waiting on an earlier one is not tappable and has no chevron. There are no separate action buttons. Content is stacked: 1) the status as an icon plus a word (a check in `success` for "Granted", a cross in `alert` for "Not granted"), 2) the title (`titleSmall`), 3) the description (`bodyMedium` `muted`), 4) the warning text if any ("Required for scheduled tracking" in `accentStrong`, or what a skipped step loses in `alert`).
 - **Tracking sheet actions** are rows in the settings-row style (an icon circle, the title and an optional subtitle), not pill buttons.
 
 ### Buttons, chips, inputs

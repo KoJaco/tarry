@@ -1,8 +1,7 @@
 package me.tarry.app.ui.permissions
 
-import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,10 +10,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -25,14 +22,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.ui.components.Chevron
 import me.tarry.app.ui.components.PrimaryButton
-import me.tarry.app.ui.components.SecondaryButton
-import me.tarry.app.ui.components.TarryCard
-import me.tarry.app.ui.components.TertiaryButton
+import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.theme.TarryTheme
 
 /** What the permission screen can ask for. The stateful wrapper wires these to launchers and the ViewModel. */
@@ -47,6 +43,7 @@ data class PermissionsActions(
 )
 
 private val MinTouchTarget = 48.dp
+private val PermissionRowMinHeight = 64.dp
 
 /** Stateless permission list; renders every [StepStatus] so it can be Compose-tested without Hilt. */
 @Composable
@@ -74,7 +71,7 @@ fun PermissionsContent(
             color = TarryTheme.colors.muted,
             modifier = Modifier.padding(bottom = space.s),
         )
-        state.items.forEach { item -> PermissionRow(item, actions) }
+        state.items.forEach { entry -> PermissionRow(entry, actions) }
         if (state.missingRequired.isNotEmpty()) {
             Text(
                 stringResource(R.string.permissions_missing_required),
@@ -94,19 +91,39 @@ fun PermissionsContent(
     }
 }
 
+/**
+ * One permission on a `card` surface in the Sessions export-row style: a leading 24 dp icon, a chevron on the right,
+ * and the whole surface is the button. Stacked: the status (icon and word), the title, the description, then the
+ * required / skipped warning. Tapping runs the action: [PermissionsActions.onGrant] when not granted,
+ * [PermissionsActions.onChange] (the system settings page) when granted; a locked step is not tappable.
+ */
 @Composable
-private fun PermissionRow(item: PermissionItem, actions: PermissionsActions) {
-    val step = item.step
+private fun PermissionRow(entry: PermissionItem, actions: PermissionsActions) {
+    val step = entry.step
     val colors = TarryTheme.colors
     val space = TarryTheme.space
-    val title = stringResource(step.titleRes())
-    val statusText = stringResource(item.status.labelRes())
-    val granted = item.status == StepStatus.GRANTED
-    TarryCard(modifier = Modifier.fillMaxWidth().testTag("permission_row_${step.name}")) {
-        Row(horizontalArrangement = Arrangement.spacedBy(space.m)) {
-            Box(
-                modifier = Modifier.size(40.dp).clip(CircleShape).background(colors.inset),
-                contentAlignment = Alignment.Center,
+    val granted = entry.status == StepStatus.GRANTED
+    val onClick: (() -> Unit)? = when {
+        granted -> ({ actions.onChange(step) })
+        entry.actionable -> ({ actions.onGrant(step) })
+        else -> null
+    }
+    val clickLabel = stringResource(if (granted) R.string.permissions_action_change else R.string.permissions_action_grant)
+    val frame = if (onClick != null) {
+        Modifier.clickable(onClickLabel = clickLabel, role = Role.Button, onClick = onClick)
+    } else {
+        Modifier.semantics(mergeDescendants = true) {}
+    }
+    SettingsGroup {
+        item {
+            Row(
+                modifier = frame
+                    .fillMaxWidth()
+                    .heightIn(min = PermissionRowMinHeight)
+                    .padding(horizontal = space.l, vertical = space.m)
+                    .testTag("permission_row_${step.name}"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(space.l),
             ) {
                 Icon(
                     painter = painterResource(step.iconRes()),
@@ -114,87 +131,42 @@ private fun PermissionRow(item: PermissionItem, actions: PermissionsActions) {
                     tint = colors.ink,
                     modifier = Modifier.size(24.dp),
                 )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = colors.ink)
-                Text(stringResource(step.bodyRes()), style = MaterialTheme.typography.bodyMedium, color = colors.muted)
-                if (step.requiredForScheduled) {
-                    Text(
-                        stringResource(R.string.permissions_required_note),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colors.accentStrong,
-                    )
-                }
-                val statusDescription = stringResource(R.string.permissions_status_description, title, statusText)
-                val statusColor = if (granted) colors.success else colors.alert
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(space.xs),
-                    modifier = Modifier
-                        .padding(top = space.s),
-                ) {
-                    Icon(
-                        painter = painterResource(if (granted) R.drawable.ic_check else R.drawable.ic_close),
-                        contentDescription = null,
-                        tint = statusColor,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Text(
-                        text = statusText,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = statusColor,
-                        modifier = Modifier
-                            .semantics { contentDescription = statusDescription }
-                            .testTag("permission_status_${step.name}"),
-                    )
-                }
-                if (item.status == StepStatus.SKIPPED) {
-                    // A skipped step degrades visibly: say what is lost.
-                    Text(
-                        stringResource(step.degradedRes()),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = colors.alert,
-                        modifier = Modifier.padding(top = space.xs),
-                    )
-                }
-                if (item.actionable) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(space.s), modifier = Modifier.padding(top = space.s)) {
-                        val allow = stringResource(R.string.permissions_action_allow_description, title)
-                        val grantModifier = Modifier
-                            .semantics { contentDescription = allow }
-                            .testTag("permission_grant_${step.name}")
-                        val grantLabel = stringResource(step.grantLabelRes())
-                        if (item.status == StepStatus.CURRENT) {
-                            PrimaryButton(grantLabel, { actions.onGrant(step) }, grantModifier)
-                        } else {
-                            SecondaryButton(grantLabel, { actions.onGrant(step) }, grantModifier)
-                        }
-                        if (item.canSkip) {
-                            val skip = stringResource(R.string.permissions_action_skip_description, title)
-                            TertiaryButton(
-                                text = stringResource(R.string.permissions_action_skip),
-                                onClick = { actions.onSkip(step) },
-                                modifier = Modifier
-                                    .semantics { contentDescription = skip }
-                                    .testTag("permission_skip_${step.name}"),
-                            )
-                        }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(space.xs)) {
+                    val statusColor = if (granted) colors.success else colors.alert
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(space.xs)) {
+                        Icon(
+                            painter = painterResource(if (granted) R.drawable.ic_check else R.drawable.ic_close),
+                            contentDescription = null,
+                            tint = statusColor,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Text(
+                            text = stringResource(entry.status.labelRes()),
+                            style = MaterialTheme.typography.labelLarge,
+                            color = statusColor,
+                            modifier = Modifier.testTag("permission_status_${step.name}"),
+                        )
                     }
-                } else if (granted) {
-                    val change = stringResource(R.string.permissions_action_change_description, title)
-                    SecondaryButton(
-                        text = stringResource(R.string.permissions_action_change),
-                        onClick = { actions.onChange(step) },
-                        modifier = Modifier
-                            .padding(top = space.s)
-                            .semantics { contentDescription = change }
-                            .testTag("permission_change_${step.name}"),
-                    )
+                    Text(stringResource(step.titleRes()), style = MaterialTheme.typography.titleSmall, color = colors.ink)
+                    Text(stringResource(step.bodyRes()), style = MaterialTheme.typography.bodyMedium, color = colors.muted)
+                    if (step.requiredForScheduled) {
+                        Text(
+                            stringResource(R.string.permissions_required_note),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = colors.accentStrong,
+                        )
+                    }
+                    if (entry.status == StepStatus.SKIPPED) {
+                        // A skipped step degrades visibly: say what is lost.
+                        Text(stringResource(step.degradedRes()), style = MaterialTheme.typography.bodySmall, color = colors.alert)
+                    }
                 }
+                if (onClick != null) Chevron()
             }
         }
     }
 }
+
 
 private fun PermissionStep.iconRes(): Int = when (this) {
     PermissionStep.LOCATION -> R.drawable.ic_location_pin
@@ -257,10 +229,4 @@ private fun PermissionStep.degradedRes(): Int = when (this) {
     PermissionStep.NOTIFICATIONS -> R.string.permissions_step_notifications_degraded
     PermissionStep.EXACT_ALARMS -> R.string.permissions_step_exact_alarms_degraded
     PermissionStep.BATTERY_OPTIMISATION -> R.string.permissions_step_battery_degraded
-}
-
-/** Steps granted on a system settings page say "Open settings"; the rest show a runtime dialog. */
-private fun PermissionStep.grantLabelRes(): Int = when (this) {
-    PermissionStep.EXACT_ALARMS, PermissionStep.BATTERY_OPTIMISATION -> R.string.permissions_action_open_settings
-    else -> R.string.permissions_action_allow
 }

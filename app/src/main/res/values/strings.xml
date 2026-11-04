@@ -113,13 +113,8 @@
     <string name="permissions_status_not_granted">Not granted</string>
     <string name="permissions_status_skipped">Skipped</string>
     <string name="permissions_status_locked">Waiting for the previous step</string>
-    <string name="permissions_action_allow">Allow</string>
-    <string name="permissions_action_open_settings">Open settings</string>
-    <string name="permissions_action_skip">Skip</string>
     <string name="permissions_action_done">Done</string>
-    <string name="permissions_action_allow_description">Allow %1$s</string>
-    <string name="permissions_action_skip_description">Skip %1$s</string>
-    <string name="permissions_status_description">%1$s: %2$s</string>
+    <string name="permissions_action_grant">Grant</string>
     <string name="permissions_missing_required">Scheduled tracking will not start until the steps marked as required are granted.</string>
 
     <string name="permissions_step_location">Precise location</string>
@@ -258,7 +253,6 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="permissions_action_change">Change</string>
-    <string name="permissions_action_change_description">Change %1$s</string>
     <plurals name="settings_days_value">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
