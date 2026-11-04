@@ -320,7 +320,7 @@
     <string name="summary_row_description">%1$s, %2$s, total %3$s, billed %4$s</string>
     <string name="summary_row_open_hint">Show blocks</string>
     <string name="summary_totals">Billed %1$s · on the clock %2$s</string>
-    <string name="summary_totals_description">Billed %1$s, on the clock %2$s</string>
+    <string name="summary_totals_description">Total, %1$s. Billed %2$s, on the clock %3$s</string>
     <string name="summary_totals_title">Total, %1$s</string>
     <string name="summary_totals_billed">%1$s billed</string>
     <string name="summary_totals_on_clock">On the clock %1$s</string>

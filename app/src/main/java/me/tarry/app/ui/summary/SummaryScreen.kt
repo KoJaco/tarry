@@ -399,6 +399,7 @@ internal fun scrollEdgeFadeBands(canScrollBackward: Boolean, canScrollForward: B
 }
 
 /** Fades the right edge while [state] can scroll forward and the left edge while it can scroll back; nothing when it all fits. */
+// Black and Transparent below are only the DstIn alpha mask (opacity of the fade), never a visible colour.
 internal fun Modifier.scrollEdgeFade(state: ScrollState, width: Dp): Modifier = this
     .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
     .drawWithContent {
@@ -587,7 +588,7 @@ private fun DaySectionItem(section: DaySection, onRow: (JobSummary) -> Unit) {
 private fun TotalsCard(result: SummaryResult, range: SummaryRange) {
     val billed = summaryDuration(result.billedMs)
     val clock = summaryDuration(result.onClockMs)
-    val description = stringResource(R.string.summary_totals_description, summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
+    val description = stringResource(R.string.summary_totals_description, rangeText(range), summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
     TarryCard(
         modifier = Modifier
             .fillMaxWidth()

@@ -263,9 +263,11 @@ class SummaryContentTest {
     @Test
     fun totals_areSpoken() {
         show(state())
+        val rangeText = composeRule.onNodeWithTag("summary_range_text").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
         val description = composeRule.onNodeWithTag(SummaryTags.Totals).fetchSemanticsNode()
             .config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].joinToString()
-        assertThat(description).isEqualTo("Billed 3 hours, on the clock 4 hours")
+        assertThat(description).isEqualTo("Total, $rangeText. Billed 3 hours, on the clock 4 hours")
     }
 
     @Test

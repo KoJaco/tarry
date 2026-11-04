@@ -3,7 +3,7 @@ package me.tarry.app.ui.summary
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import kotlinx.coroutines.flow.Flow
 import me.tarry.app.summary.SummaryExportEvent
 
@@ -13,7 +13,7 @@ import me.tarry.app.summary.SummaryExportEvent
  */
 @Composable
 fun SummaryExportSnackbarEffect(events: Flow<SummaryExportEvent>, hostState: SnackbarHostState) {
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     LaunchedEffect(events, hostState) {
         events.collect { event -> hostState.showSnackbar(summaryExportMessage(resources, event)) }
     }
