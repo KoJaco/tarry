@@ -362,7 +362,6 @@
     <string name="summary_pdf_col_date">Date</string>
     <string name="summary_pdf_col_time">Time</string>
     <string name="summary_pdf_col_duration">Duration</string>
-    <string name="summary_pdf_col_places">Places</string>
     <string name="summary_pdf_col_notes">Notes</string>
     <string name="summary_pdf_rules_none">Not rounded</string>
     <string name="summary_pdf_rules_nearest">Rounded to the nearest %1$d min</string>

@@ -36,7 +36,6 @@ internal class AndroidSummaryPdfText(context: Context) : SummaryPdfText {
     override val colTime = res.getString(R.string.summary_pdf_col_time)
     override val colDuration = res.getString(R.string.summary_pdf_col_duration)
     override val colBilled = res.getString(R.string.summary_pdf_col_billed)
-    override val colPlaces = res.getString(R.string.summary_pdf_col_places)
     override val colNotes = res.getString(R.string.summary_pdf_col_notes)
 
     override fun rangeLong(range: SummaryRange): String =

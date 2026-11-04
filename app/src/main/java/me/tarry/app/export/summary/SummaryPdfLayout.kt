@@ -36,13 +36,19 @@ object PdfFontSize {
     const val FOOTER = 8f
 }
 
-enum class PdfTextStyle(val size: Float, val bold: Boolean) {
+/** Text colours as ARGB ints: black for everything but the detail lines, which are dark grey (#444 on white is about 9.7:1). */
+private const val BLACK = 0xFF000000.toInt()
+private const val DARK_GREY = 0xFF444444.toInt()
+
+enum class PdfTextStyle(val size: Float, val bold: Boolean, val colorArgb: Int = BLACK) {
     TITLE(PdfFontSize.TITLE, true),
     HEADING(PdfFontSize.HEADING, true),
     TOTALS(PdfFontSize.TOTALS, true),
     SUBHEADING(PdfFontSize.BODY, false),
     BODY(PdfFontSize.BODY, false),
     BODY_BOLD(PdfFontSize.BODY, true),
+    /** The places and notes lines under a block's number line. */
+    DETAIL(PdfFontSize.BODY, false, DARK_GREY),
     TABLE_HEADER(PdfFontSize.TABLE_HEADER, true),
     FOOTER(PdfFontSize.FOOTER, false),
     ;
@@ -76,7 +82,6 @@ interface SummaryPdfText {
     val colTime: String
     val colDuration: String
     val colBilled: String
-    val colPlaces: String
     val colNotes: String
 
     /** "Mon 2 Nov – Sun 8 Nov 2026". */
@@ -123,8 +128,14 @@ object SummaryPdfLayout {
 
     private class Column(val header: String, val x: Float, val width: Float, val align: Align = Align.LEFT)
 
-    /** One table row: a cell per column, and an optional line under it that stays on its page (a day total). */
-    private class Row(val cells: List<String>, val styles: List<PdfTextStyle>, val trailer: String? = null)
+    /** One table row: a cell per column, optional detail lines under them, and an optional trailer (a day total); all stay on one page. */
+    private class Row(
+        val cells: List<String>,
+        val styles: List<PdfTextStyle>,
+        val trailer: String? = null,
+        /** Full-width lines under the cells (places, then notes); they stay on the row's page. */
+        val details: List<String> = emptyList(),
+    )
 
     /** Lays [snapshot] out: the cover, then one section per job in `byJob` order, each page with its footer. */
     fun layout(snapshot: SummarySnapshot, text: SummaryPdfText, measurer: TextMeasurer): List<PdfPage> {
@@ -252,47 +263,76 @@ object SummaryPdfLayout {
         }
 
         /** Starts a table: its header now, and again under [continued] on every page it spills onto. */
-        private fun startTable(cols: List<Column>, continued: String) {
+        private fun startTable(cols: List<Column>, continued: String, firstRow: Row? = null) {
             columns = cols
             // No table is running yet while the header is made to fit, so a page break here does not draw a header of its own.
             continuationTitle = null
-            ensure(PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD)
+            // Keep with next: the header never sits alone at the bottom of a page, it goes with the first row.
+            continuationTitle = continued
+            val first = firstRow?.let { prepare(it).height } ?: 0f
+            continuationTitle = null
+            ensure(PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD + first)
             continuationTitle = continued
             tableHeader()
         }
 
-        private data class Prepared(val wrapped: List<List<String>>, val cellsHeight: Float, val trailerHeight: Float)
+        private data class Prepared(
+            val wrapped: List<List<String>>,
+            val details: List<String>,
+            val numberHeight: Float,
+            val cellsHeight: Float,
+            val trailerHeight: Float,
+        ) {
+            /** The whole row: number line, detail lines and trailer. It never splits across pages. */
+            val height: Float get() = cellsHeight + trailerHeight
+        }
 
         /** [row] wrapped into the current columns, cut to what a page can hold, with its heights. */
         private fun prepare(row: Row): Prepared {
             val body = PdfTextStyle.BODY
+            val detail = PdfTextStyle.DETAIL
             val trailerHeight = if (row.trailer != null) PdfTextStyle.BODY_BOLD.lineHeight + ROW_PAD else 0f
             // The most a row can take: a whole page under the actual continuation header. Taller rows are cut to it.
             val room = PdfPageSpec.CONTENT_BOTTOM - PdfPageSpec.MARGIN - continuationHeight() - 2 * ROW_PAD - trailerHeight
             val maxLines = (room / body.lineHeight).toInt().coerceAtLeast(1)
+            // With details the number line may take at most half of that, so the details always get room.
+            val numberCap = if (row.details.isEmpty()) maxLines else (maxLines / 2).coerceAtLeast(1)
             val wrapped = columns.mapIndexed { i, c ->
                 val lines = wrap(row.cells[i], c.width - CELL_GAP, row.styles[i])
-                if (lines.size > maxLines) {
-                    lines.take(maxLines - 1) + withEllipsis(lines[maxLines - 1], c.width - CELL_GAP, row.styles[i])
+                if (lines.size > numberCap) {
+                    lines.take(numberCap - 1) + withEllipsis(lines[numberCap - 1], c.width - CELL_GAP, row.styles[i])
                 } else {
                     lines
                 }
             }
-            val lineCount = wrapped.maxOf { it.size }
-            return Prepared(wrapped, lineCount * body.lineHeight + 2 * ROW_PAD, trailerHeight)
+            val numberHeight = wrapped.maxOf { it.size } * body.lineHeight
+            var details = row.details.flatMap { wrap(it, PdfPageSpec.CONTENT_WIDTH, detail) }
+            if (details.isNotEmpty()) {
+                val budget = ((room - numberHeight - DETAIL_GAP) / detail.lineHeight).toInt().coerceAtLeast(1)
+                if (details.size > budget) {
+                    details = details.take(budget - 1) + withEllipsis(details[budget - 1], PdfPageSpec.CONTENT_WIDTH, detail)
+                }
+            }
+            val detailHeight = if (details.isEmpty()) 0f else DETAIL_GAP + details.size * detail.lineHeight
+            return Prepared(wrapped, details, numberHeight, numberHeight + detailHeight + 2 * ROW_PAD, trailerHeight)
         }
 
         private fun row(row: Row) {
-            val (wrapped, cellsHeight, trailerHeight) = prepare(row)
-            ensure(cellsHeight + trailerHeight)
+            val prepared = prepare(row)
+            ensure(prepared.height)
             val top = y
-            columns.forEachIndexed { i, c -> wrapped[i].forEachIndexed { line, s -> cell(c, s, row.styles[i], top, line) } }
-            y += cellsHeight
+            columns.forEachIndexed { i, c -> prepared.wrapped[i].forEachIndexed { line, s -> cell(c, s, row.styles[i], top, line) } }
+            // Detail lines: full width, under the number line with a little extra space.
+            val detailTop = top + ROW_PAD + prepared.numberHeight + DETAIL_GAP
+            prepared.details.forEachIndexed { line, s ->
+                page.runs += PdfRun(PdfPageSpec.MARGIN, detailTop + line * PdfTextStyle.DETAIL.lineHeight + PdfTextStyle.DETAIL.size, s, PdfTextStyle.DETAIL)
+            }
+            y += prepared.cellsHeight
             if (row.trailer != null) {
                 val style = PdfTextStyle.BODY_BOLD
                 val w = width(row.trailer, style)
                 page.runs += PdfRun(RIGHT - w, y + style.size - ROW_PAD, row.trailer, style)
-                y += trailerHeight
+                y += prepared.trailerHeight
             }
             page.rules += PdfRule(PdfPageSpec.MARGIN, RIGHT, y, 0.3f)
         }
@@ -306,6 +346,13 @@ object SummaryPdfLayout {
 
             val numeric = 78f
             val w = PdfPageSpec.CONTENT_WIDTH
+            val body = PdfTextStyle.BODY
+            val rows = result.byJob.map { job ->
+                Row(
+                    listOf(text.jobName(job.name, job.archived), text.blocks(job.blockCount), text.duration(job.totalMs), text.duration(job.billedMs)),
+                    listOf(body, body, body, PdfTextStyle.BODY_BOLD),
+                )
+            }
             startTable(
                 listOf(
                     Column(text.coverJob, PdfPageSpec.MARGIN, w - 3 * numeric),
@@ -314,16 +361,9 @@ object SummaryPdfLayout {
                     Column(text.coverBilled, PdfPageSpec.MARGIN + w - numeric, numeric, Align.RIGHT),
                 ),
                 continued = text.continued(text.title),
+                firstRow = rows.firstOrNull(),
             )
-            val body = PdfTextStyle.BODY
-            for (job in result.byJob) {
-                row(
-                    Row(
-                        listOf(text.jobName(job.name, job.archived), text.blocks(job.blockCount), text.duration(job.totalMs), text.duration(job.billedMs)),
-                        listOf(body, body, body, PdfTextStyle.BODY_BOLD),
-                    ),
-                )
-            }
+            rows.forEach { row(it) }
             continuationTitle = null
             y += 14f
             lines(text.totals(result.billedMs, result.onClockMs), PdfTextStyle.TOTALS, gapAfter = 6f)
@@ -333,28 +373,26 @@ object SummaryPdfLayout {
         fun job(snapshot: SummarySnapshot, job: JobSummary) {
             val perDay = snapshot.result.perDay
             val name = text.jobName(job.name, job.archived)
-            val fixed = listOf(COL_DATE, COL_TIME, COL_DURATION, COL_BILLED)
-            val rest = PdfPageSpec.CONTENT_WIDTH - fixed.sum()
-            val xs = fixed.runningFold(PdfPageSpec.MARGIN) { acc, wd -> acc + wd }
+            // Four columns spread over the content width; Duration and Billed are right-aligned.
+            val widths = listOf(COL_DATE, COL_TIME, COL_DURATION, PdfPageSpec.CONTENT_WIDTH - COL_DATE - COL_TIME - COL_DURATION)
+            val xs = widths.runningFold(PdfPageSpec.MARGIN) { acc, wd -> acc + wd }
             val cols = listOf(
-                Column(text.colDate, xs[0], fixed[0]),
-                Column(text.colTime, xs[1], fixed[1]),
-                Column(text.colDuration, xs[2], fixed[2], Align.RIGHT),
-                Column(text.colBilled, xs[3], fixed[3], Align.RIGHT),
-                Column(text.colPlaces, xs[4], rest / 2),
-                Column(text.colNotes, xs[4] + rest / 2, rest / 2),
+                Column(text.colDate, xs[0], widths[0]),
+                Column(text.colTime, xs[1], widths[1]),
+                Column(text.colDuration, xs[2], widths[2], Align.RIGHT),
+                Column(text.colBilled, xs[3], widths[3], Align.RIGHT),
             )
             val rows = job.pieces.mapIndexed { i, piece ->
                 val lastOfDay = job.pieces.getOrNull(i + 1)?.date != piece.date
                 val trailer = if (perDay && lastOfDay) job.days.firstOrNull { it.date == piece.date }?.let { text.dayTotal(it.billedMs) } else null
-                Row(pieceCells(snapshot, piece, perDay), List(6) { PdfTextStyle.BODY }, trailer)
+                Row(pieceCells(snapshot, piece, perDay), List(4) { PdfTextStyle.BODY }, trailer, pieceDetails(snapshot, piece))
             }
 
             // Keep with next: the header, subtitle, totals line, table header and first row all fit here, or the section starts a page.
             val headerLines = wrap(name, PdfPageSpec.CONTENT_WIDTH, PdfTextStyle.HEADING).size
             columns = cols
             continuationTitle = text.continued(name)
-            val firstRow = rows.firstOrNull()?.let { prepare(it).let { p -> p.cellsHeight + p.trailerHeight } } ?: 0f
+            val firstRow = rows.firstOrNull()?.let { prepare(it).height } ?: 0f
             continuationTitle = null
             val needed = headerLines * PdfTextStyle.HEADING.lineHeight + 2f + PdfTextStyle.SUBHEADING.lineHeight +
                 PdfTextStyle.BODY_BOLD.lineHeight + 10f + PdfTextStyle.TABLE_HEADER.lineHeight + 2 * ROW_PAD + firstRow
@@ -363,9 +401,15 @@ object SummaryPdfLayout {
             lines(name, PdfTextStyle.HEADING, gapAfter = 2f)
             lines(text.rangeLong(snapshot.range), PdfTextStyle.SUBHEADING)
             lines(text.jobTotals(job.billedMs, job.totalMs, job.billableMs), PdfTextStyle.BODY_BOLD, gapAfter = 10f)
-            startTable(cols, continued = text.continued(name))
+            startTable(cols, continued = text.continued(name), firstRow = rows.firstOrNull())
             rows.forEach { row(it) }
         }
+
+        /** The lines under a block's number line: the covered places, then "Notes: …"; a line with nothing to say is left out. */
+        private fun pieceDetails(snapshot: SummarySnapshot, p: BlockPiece): List<String> = listOfNotNull(
+            coveredPlaces(p, snapshot.visits, snapshot.places, text.unnamedPlace).joinToString(", ").takeIf { it.isNotBlank() },
+            p.notes?.takeIf { it.isNotBlank() }?.let { "${text.colNotes}: ${it.trim()}" },
+        )
 
         private fun pieceCells(snapshot: SummarySnapshot, p: BlockPiece, perDay: Boolean): List<String> {
             val billed = when {
@@ -378,8 +422,6 @@ object SummaryPdfLayout {
                 text.timeRange(p.start, p.end, snapshot.zone),
                 text.duration(p.durationMs),
                 billed,
-                coveredPlaces(p, snapshot.visits, snapshot.places, text.unnamedPlace).joinToString(", "),
-                p.notes.orEmpty(),
             )
         }
     }
@@ -389,10 +431,10 @@ object SummaryPdfLayout {
     /** Space between one job section and what is above it. */
     private const val JOB_GAP = 20f
 
-    // Fixed job table columns in points, sized for Roboto at 10.5 pt: "12:05 pm – 12:05 pm" is about 100 pt wide.
-    private const val COL_DATE = 68f
-    private const val COL_TIME = 112f
-    private const val COL_DURATION = 60f
-    private const val COL_BILLED = 70f
+    // Job table columns in points (Billed takes the rest of the 515 pt): "12:05 pm – 12:05 pm" is about 100 pt wide at 10.5 pt.
+    private const val DETAIL_GAP = 4f
+    private const val COL_DATE = 110f
+    private const val COL_TIME = 175f
+    private const val COL_DURATION = 115f
     private const val MAX_TITLE_LINES = 3
 }

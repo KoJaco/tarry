@@ -26,7 +26,7 @@ class SummaryPdfRenderer @Inject constructor(
             Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 typeface = Typeface.create(Typeface.SANS_SERIF, if (style.bold) Typeface.BOLD else Typeface.NORMAL)
                 textSize = style.size
-                color = Color.BLACK
+                color = style.colorArgb
             }
         }
         val measurer = object : TextMeasurer {
