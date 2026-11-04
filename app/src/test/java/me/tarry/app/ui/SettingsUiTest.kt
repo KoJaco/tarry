@@ -129,7 +129,7 @@ class SettingsUiTest {
     fun everyRadiusHasAUseCaseAndTheWarningShowsOnceUnderTheExplanation() {
         show()
         composeRule.onNodeWithText("Stop radius").performClick()
-        composeRule.onNodeWithText("Boats at a berth", substring = true).assertExists()
+        composeRule.onNodeWithText("Closely spaced sites", substring = true).assertExists()
         composeRule.onNodeWithText("Most work: shops", substring = true).assertExists()
         composeRule.onNodeWithText("Farms, quarries", substring = true).assertExists()
         val warning = "Below 100 m: Android geofences are less reliable"
