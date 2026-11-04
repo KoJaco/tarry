@@ -51,6 +51,8 @@ import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
+import me.tarry.app.ui.theme.sheetEdge
 import java.time.Instant
 import java.time.ZoneId
 
@@ -104,7 +106,7 @@ internal fun JobPickerSheet(
     /** Whether the "no job" row shows its check; a bulk edit has no current value, so it passes false. */
     noneSelected: Boolean = selectedId == null,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
+    ModalBottomSheet(modifier = Modifier.sheetEdge(), onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -171,7 +173,7 @@ internal fun PlacePickerSheet(
         val q = query.trim()
         if (q.isEmpty()) places else places.filter { it.label.contains(q, ignoreCase = true) || it.detail?.contains(q, ignoreCase = true) == true }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
+    ModalBottomSheet(modifier = Modifier.sheetEdge(), onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -229,6 +231,7 @@ internal fun NameDialog(
 ) {
     var name by remember { mutableStateOf(initial) }
     AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container,
         containerColor = TarryTheme.colors.card,
@@ -251,6 +254,7 @@ internal fun ConfirmDialog(
     confirmEnabled: Boolean = true,
 ) {
     AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container,
         containerColor = TarryTheme.colors.card,
@@ -281,7 +285,7 @@ internal fun TimePickerDialog(
         Surface(
             shape = TarryTheme.shapes.container,
             color = TarryTheme.colors.card,
-            modifier = Modifier.width(IntrinsicSize.Min),
+            modifier = Modifier.width(IntrinsicSize.Min).surfaceEdge(TarryTheme.shapes.container),
         ) {
             Column(
                 modifier = Modifier

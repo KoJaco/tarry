@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
 
 private val EmptyStateMinHeight = 240.dp
 private const val PlaceholderAlpha = 0.6f
@@ -56,6 +57,7 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
             .heightIn(min = EmptyStateMinHeight)
             .clip(TarryTheme.shapes.card)
             .background(TarryTheme.colors.card)
+            .surfaceEdge(TarryTheme.shapes.card)
             .padding(TarryTheme.space.xxl),
         contentAlignment = Alignment.Center,
     ) {
@@ -108,7 +110,8 @@ fun LoadingBlocks(
                     .height(blockHeight)
                     .graphicsLayer { this.alpha = alpha.value }
                     .clip(TarryTheme.shapes.card)
-                    .background(TarryTheme.colors.card),
+                    .background(TarryTheme.colors.card)
+                    .surfaceEdge(TarryTheme.shapes.card),
             ) {}
         }
     }

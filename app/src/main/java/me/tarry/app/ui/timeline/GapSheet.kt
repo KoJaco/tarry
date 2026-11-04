@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.sheetEdge
 import me.tarry.core.data.model.GapCause
 import java.time.ZoneId
 
@@ -42,6 +43,7 @@ fun GapSheet(
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(
+        modifier = Modifier.sheetEdge(),
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,

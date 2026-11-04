@@ -63,6 +63,8 @@ import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.scheduleSummaryText
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
+import me.tarry.app.ui.theme.sheetEdge
 import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
@@ -345,6 +347,7 @@ private fun RestoreDialog(prompt: RestorePrompt, zone: ZoneId, onReplace: () -> 
     val space = TarryTheme.space
     val resources = LocalContext.current.resources
     AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
         onDismissRequest = onCancel,
         shape = TarryTheme.shapes.container,
         containerColor = colors.card,
@@ -457,6 +460,7 @@ private fun <T> PickerSheet(
     val space = TarryTheme.space
     val shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
     ModalBottomSheet(
+        modifier = Modifier.sheetEdge(),
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = shape,

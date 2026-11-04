@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
 
 private val RowMinHeight = 56.dp
 private val IconCircleSize = 40.dp
@@ -134,6 +135,7 @@ private fun RowFrame(
         modifier = modifier
             .fillMaxWidth()
             .background(TarryTheme.colors.card)
+            .surfaceEdge(TarryTheme.shapes.card)
             .heightIn(min = RowMinHeight)
             .padding(horizontal = space.m, vertical = space.s),
         verticalAlignment = Alignment.CenterVertically,

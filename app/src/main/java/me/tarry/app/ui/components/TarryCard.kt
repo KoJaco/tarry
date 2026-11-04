@@ -15,6 +15,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
 
 /** Flat `card`-coloured surface. Pass `shape = TarryTheme.shapes.container` for the summary card and sheets. */
 @Composable
@@ -28,6 +29,7 @@ fun TarryCard(
         modifier = modifier
             .clip(shape)
             .background(TarryTheme.colors.card)
+            .surfaceEdge(shape)
             .padding(contentPadding),
         content = content,
     )
