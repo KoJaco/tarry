@@ -95,6 +95,7 @@ import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdgeStroke
 import me.tarry.app.ui.theme.tabular
 import me.tarry.app.ui.timeline.formatDuration
 import me.tarry.app.ui.timeline.rememberTimeFormats
@@ -205,7 +206,11 @@ private fun ExportButton(hasBlocks: Boolean?, exporting: Boolean, onExport: (Sum
             containerColor = Color.Transparent,
             modifier = Modifier.testTag(SummaryTags.Export),
         )
-        DropdownMenu(expanded = menuOpen && enabled, onDismissRequest = { menuOpen = false }) {
+        DropdownMenu(
+            expanded = menuOpen && enabled,
+            onDismissRequest = { menuOpen = false },
+            border = surfaceEdgeStroke(),
+        ) {
             for (format in SummaryExportFormat.entries) {
                 DropdownMenuItem(
                     text = { Text(stringResource(format.menuLabelRes())) },

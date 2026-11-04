@@ -142,7 +142,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
   - `small` 8 dp: compact blocks under 30 min.
   - These radii were reduced slightly on 2026-10-21, at the owner's request (from 24, 28, 14 and 10).
 - **Elevation:** flat. Surfaces separate by colour (`card` on `paper`), not shadow. Sheets and dialogs use the M3 scrim only. No drop shadows on cards or the bar.
-  - Dark theme: cards and sheets carry a 1 dp `line` edge; light theme has none. No colour token changes for it (the dark `card` stays `#201D18`). One helper does it: `Modifier.surfaceEdge(shape)` (cards, grouped settings, standalone settings rows, empty and loading placeholders, the schedule grid, tracking-sheet rows, the stepper, `AlertDialog`s and the time-picker dialog) and `Modifier.sheetEdge()` (the top edge of every `ModalBottomSheet`).
+  - Dark theme: cards and sheets carry a 1 dp `line` edge; light theme has none. No colour token changes for it (the dark `card` stays `#201D18`). One helper does it: `Modifier.surfaceEdge(shape)` (cards, grouped settings, standalone settings rows, empty and loading placeholders, the schedule grid, tracking-sheet rows, the stepper, `AlertDialog`s and the time-picker dialog) and `Modifier.sheetEdge()` (the top edge of every `ModalBottomSheet`); `surfaceEdgeStroke()` gives the same edge to components with a `border` parameter (the Summary export `DropdownMenu`, the only menu).
 - **Receded rows:** archived jobs and tags draw at 70 % opacity (`RECEDED_ALPHA`, never below 4.5:1 for `ink` text on `card`) and always carry the word "Archived", never dimming alone. The "Archived" marker is drawn outside the receded content at full opacity (`muted` on `card`, 6.4:1 / 6.5:1), because `muted` at 70 % falls below 4.5:1.
 
 ## Motion

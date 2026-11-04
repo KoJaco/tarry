@@ -1,5 +1,6 @@
 package me.tarry.app.ui.theme
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.runtime.Composable
@@ -46,3 +47,7 @@ fun Modifier.sheetEdge(): Modifier {
         }
     }
 }
+
+/** The dark-theme edge as a [BorderStroke] for components with a `border` parameter (`DropdownMenu`); null in light. */
+@Composable
+fun surfaceEdgeStroke(): BorderStroke? = if (TarryTheme.isDark) BorderStroke(SurfaceEdgeWidth, TarryTheme.colors.line) else null

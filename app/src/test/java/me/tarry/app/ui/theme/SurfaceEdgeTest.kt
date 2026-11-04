@@ -94,4 +94,23 @@ class SurfaceEdgeTest {
         }
         assertThat(close(m.topCentre(), LightTarryColors.paper)).isTrue()
     }
+
+    private fun stroke(dark: Boolean): androidx.compose.foundation.BorderStroke? {
+        var result: androidx.compose.foundation.BorderStroke? = null
+        composeRule.setContent { TarryTheme(darkTheme = dark) { result = surfaceEdgeStroke() } }
+        composeRule.waitForIdle()
+        return result
+    }
+
+    @Test
+    fun dropdownMenuEdge_isALineStrokeInDark_andNoneInLight() {
+        val dark = stroke(dark = true)!!
+        assertThat(dark.width).isEqualTo(1.dp)
+        assertThat((dark.brush as androidx.compose.ui.graphics.SolidColor).value).isEqualTo(DarkTarryColors.line)
+    }
+
+    @Test
+    fun dropdownMenuEdge_noneInLight() {
+        assertThat(stroke(dark = false)).isNull()
+    }
 }
