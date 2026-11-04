@@ -31,6 +31,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.disabledIcon
 
 private val MinTouch = 48.dp
 
@@ -137,7 +138,7 @@ fun IconCircleButton(
         Icon(
             painter = painterResource(icon),
             contentDescription = null,
-            tint = if (enabled) c.ink else c.faint,
+            tint = if (enabled) c.ink else c.disabledIcon,
             modifier = Modifier.size(24.dp),
         )
     }

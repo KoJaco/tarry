@@ -21,7 +21,7 @@ Code uses these names through `TarryTheme.colors` (an extended colour object), m
 | `ink` | `#1B1813` | `#F2EDE4` | Body text, primary pill buttons, selected states |
 | `onInk` | `#F3EFE8` | `#14120F` | Text and icons on `ink` |
 | `muted` | `#655E54` | `#A9A193` | Secondary text, time labels, unselected nav |
-| `faint` | `#C2BAAE` | `#5E574D` | Disabled control fills and outlines (decorative, never text; disabled labels use `muted`) |
+| `faint` | `#C2BAAE` | `#5E574D` | Disabled control fills and outlines (decorative, never text and never icon glyphs; disabled labels use `muted`, disabled icons use `muted` at 72 %) |
 | `line` | `#DDD5C8` | `#3A352E` | Borders outside surfaces (the bottom bar's top border), unselected chips, and in dark the edge of cards, sheets and dialogs |
 | `divider` | `line` at 80 % | `line` at 80 % | Dividers and hour rules inside surfaces (grouped settings, the timeline canvas card, its rail) |
 | `outline` | `#8F877B` | `#7A7266` | Input borders, the dashed outline of a visit that needs review (3:1 UI contrast) |
@@ -58,6 +58,7 @@ Contrast, computed with WCAG 2.x relative luminance (keep these passing when tun
 | `alert` on `card` | 6.5:1 | 9.8:1 |
 | `success` on `card` | 7.7:1 | 11.5:1 |
 | `outline` on `paper` (UI, 3:1) | 3.1:1 | 3.9:1 |
+| Disabled icon (`muted` at 72 %) on `paper` / `card` (UI, 3:1) | 3.1:1 / 3.4:1 | 4.3:1 / 4.1:1 |
 
 Every job-colour text-on-container pair is at least 6.6:1 in both themes.
 

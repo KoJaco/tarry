@@ -67,6 +67,7 @@ import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.drawer.TimePickerDialog
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.disabledIcon
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -286,7 +287,7 @@ private fun StepButton(@DrawableRes icon: Int, label: String, enabled: Boolean, 
         Icon(
             painterResource(icon),
             contentDescription = null,
-            tint = if (enabled) TarryTheme.colors.ink else TarryTheme.colors.faint,
+            tint = if (enabled) TarryTheme.colors.ink else TarryTheme.colors.disabledIcon,
             modifier = Modifier.size(StepIcon),
         )
     }
