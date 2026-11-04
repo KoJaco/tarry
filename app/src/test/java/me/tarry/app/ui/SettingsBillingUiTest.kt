@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.settings.SettingsContent
@@ -147,5 +149,41 @@ class SettingsBillingUiTest {
     fun perDaySwitchIsEnabled_whenOnlyRoundingIsOn() {
         show(Settings(roundingIncrementMin = 15, minBillableMinutes = 0))
         composeRule.onNodeWithText("Round per day, per job").performScrollTo().assertIsEnabled()
+    }
+
+    private fun top(text: String, exact: Boolean = true): Float =
+        composeRule.onNode(hasText(text, substring = !exact)).fetchSemanticsNode().positionInRoot.y
+
+    @Test
+    fun sectionsRunBillingThenRemindersThenData_withTheRowsMovedAsPlanned() {
+        show(Settings(roundingIncrementMin = 15, rawPingRetentionDays = 30))
+
+        val order = listOf(
+            "BILLING", "Rounding", "Round to", "Minimum billable time", "Round per day, per job",
+            "REMINDERS", "Review reminder", "Review reminder time",
+            "DATA", "Back up now", "Restore from backup", "Raw location retention",
+        ).map { top(it) }
+        assertThat(order).isInOrder()
+    }
+
+    @Test
+    fun billingGroupHoldsNoReminderOrRetentionRows() {
+        show(Settings(roundingIncrementMin = 15))
+        // The Billing header and the Reminders header are separated only by the four billing rows.
+        val rows = listOf("Rounding", "Round to", "Minimum billable time", "Round per day, per job").map { top(it) }
+        assertThat(rows).isInOrder()
+        assertThat(top("Review reminder")).isGreaterThan(top("REMINDERS"))
+        assertThat(top("Raw location retention")).isGreaterThan(top("DATA"))
+        assertThat(top("Raw location retention")).isGreaterThan(top("Restore from backup"))
+    }
+
+    @Test
+    fun movedRowsStayDisplayOnly() {
+        show(Settings(reviewReminderEnabled = true, reviewReminderMinuteOfDay = 20 * 60 + 5, rawPingRetentionDays = null))
+        composeRule.onNode(hasText("Review reminder") and hasText("On")).assertExists()
+        composeRule.onNode(hasText("Review reminder time") and hasText("20:05")).assertExists()
+        composeRule.onNode(hasText("Raw location retention") and hasText("Forever")).assertExists()
+        composeRule.onNode(hasText("Review reminder time")).assertHasNoClickAction()
+        composeRule.onNode(hasText("Raw location retention")).assertHasNoClickAction()
     }
 }

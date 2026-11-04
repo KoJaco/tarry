@@ -222,6 +222,7 @@
     <string name="settings_section_tracking">Tracking</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_section_billing">Billing</string>
+    <string name="settings_section_reminders">Reminders</string>
     <string name="settings_section_data">Data</string>
     <string name="settings_backup_now">Back up now</string>
     <string name="settings_backup_last">Last backup: %1$s</string>

@@ -205,6 +205,7 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
 
 ### Lists and settings rows
 - **Grouped settings surfaces are the default** for a settings group (Tracking, Appearance, Billing), built with `SettingsGroup { row(...) }`: ONE `card` surface (`card` radius) holding all the rows, separated by 1 dp `divider` rules.
+  - Settings sections today: Tracking, Labels, Appearance, Billing (Rounding, Round to, Minimum billable time, Round per day per job), Reminders (Review reminder and its time, display-only), Data (Back up now, Restore, Raw location retention, display-only).
   - A row has a plain 24 dp `ink` leading icon (no icon circle), a `titleSmall` title with an optional `muted` `bodyMedium` subtitle under it, and a chevron on the right when it is tappable (Role.Button, merged semantics). Read-only rows (Billing) show a `muted` value on the right and no chevron.
   - Rows are at least 64 dp tall, with 16 dp side padding and 12 dp vertical padding.
   - Dividers run edge to edge across the surface, with no left (or right) inset. They are not focusable.

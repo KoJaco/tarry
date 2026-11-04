@@ -62,8 +62,9 @@ class SettingsGroupScope internal constructor() {
         onCheckedChange: (Boolean) -> Unit,
         subtitle: String? = null,
         enabled: Boolean = true,
+        @DrawableRes icon: Int? = null,
     ) {
-        rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle, enabled) }
+        rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle, enabled, icon) }
     }
 
     /** Free-form content on the group's surface (e.g. a header above its rows); it brings its own padding. */
@@ -139,7 +140,14 @@ private fun GroupedSettingsRow(
 }
 
 @Composable
-private fun GroupedSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, subtitle: String?, enabled: Boolean) {
+private fun GroupedSwitchRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String?,
+    enabled: Boolean,
+    @DrawableRes icon: Int?,
+) {
     val space = TarryTheme.space
     val colors = TarryTheme.colors
     Row(
@@ -151,6 +159,14 @@ private fun GroupedSwitchRow(title: String, checked: Boolean, onCheckedChange: (
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(space.l),
     ) {
+        if (icon != null) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = colors.ink,
+                modifier = Modifier.size(GroupedIconSize),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) colors.ink else colors.muted)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = colors.muted)

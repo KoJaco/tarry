@@ -151,16 +151,10 @@ fun SettingsContent(
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
-    val billing: List<Pair<String, String>> = settings?.let { s ->
-        listOf(
-            stringResource(R.string.settings_ping_retention) to
-                (s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
-                    ?: stringResource(R.string.settings_forever)),
-            stringResource(R.string.settings_review_reminder) to if (s.reviewReminderEnabled) on else off,
-            stringResource(R.string.settings_review_reminder_time) to
-                "%02d:%02d".format(s.reviewReminderMinuteOfDay / 60, s.reviewReminderMinuteOfDay % 60),
-        )
-    } ?: emptyList()
+    val retentionValue = settings?.let { s ->
+        s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
+            ?: stringResource(R.string.settings_forever)
+    }
 
     if (settings != null) {
         when (picker) {
@@ -284,14 +278,25 @@ fun SettingsContent(
             // With no rounding and no minimum there is nothing to apply per day: keep the stored value, just stop offering it.
             val perDayEnabled = !(roundingOff && settings.minBillableMinutes == 0)
             SettingsGroup {
-                row(roundingTitle, onClick = { picker = Picker.ROUNDING }, subtitle = roundingValue)
-                row(roundToTitle, onClick = { picker = Picker.ROUND_TO }, subtitle = roundToValue, enabled = !roundingOff)
-                row(minTitle, onClick = { picker = Picker.MIN_BILLABLE }, subtitle = minValue)
-                switchRow(perDayTitle, settings.roundDailyTotalPerJob, onRoundDailyTotalChange, subtitle = perDaySubtitle, enabled = perDayEnabled)
-                billing.forEach { (label, value) -> row(label, value = value) }
+                row(roundingTitle, onClick = { picker = Picker.ROUNDING }, icon = R.drawable.ic_timer, subtitle = roundingValue)
+                row(roundToTitle, onClick = { picker = Picker.ROUND_TO }, icon = R.drawable.ic_swap_vert, subtitle = roundToValue, enabled = !roundingOff)
+                row(minTitle, onClick = { picker = Picker.MIN_BILLABLE }, icon = R.drawable.ic_hourglass_bottom, subtitle = minValue)
+                switchRow(
+                    perDayTitle, settings.roundDailyTotalPerJob, onRoundDailyTotalChange,
+                    subtitle = perDaySubtitle, enabled = perDayEnabled, icon = R.drawable.ic_event_repeat,
+                )
+            }
+            SectionHeader(stringResource(R.string.settings_section_reminders), Modifier.padding(top = space.m))
+            val reminderTitle = stringResource(R.string.settings_review_reminder)
+            val reminderValue = if (settings.reviewReminderEnabled) on else off
+            val reminderTimeTitle = stringResource(R.string.settings_review_reminder_time)
+            val reminderTimeValue = "%02d:%02d".format(settings.reviewReminderMinuteOfDay / 60, settings.reviewReminderMinuteOfDay % 60)
+            SettingsGroup {
+                row(reminderTitle, icon = R.drawable.ic_notifications, value = reminderValue)
+                row(reminderTimeTitle, icon = R.drawable.ic_schedule, value = reminderTimeValue)
             }
         }
-        DataSection(settings?.lastBackupMs, data, zone, onBackUp, onRestore)
+        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore)
     }
     // Hidden (not dropped) while "Back up current data first" runs, so it comes back when that finishes.
     if (data.prompt != null && data.busy == null) {
@@ -301,17 +306,19 @@ fun SettingsContent(
 
 /** Settings → Data: back up, restore, and a progress row while either runs. */
 @Composable
-private fun ColumnScope.DataSection(lastBackupMs: Long?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit) {
+private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit) {
     val space = TarryTheme.space
     val busy = data.busy != null
     SectionHeader(stringResource(R.string.settings_section_data), Modifier.padding(top = space.m))
     val backUpTitle = stringResource(R.string.settings_backup_now)
     val restoreTitle = stringResource(R.string.settings_restore)
+    val retentionTitle = stringResource(R.string.settings_ping_retention)
     val lastBackup = lastBackupMs?.let { stringResource(R.string.settings_backup_last, formatBackupDate(it, zone)) }
     val working = data.busy?.let { stringResource(it.labelRes()) }
     SettingsGroup {
-        row(backUpTitle, onClick = onBackUp, subtitle = lastBackup, enabled = !busy)
-        row(restoreTitle, onClick = onRestore, enabled = !busy)
+        row(backUpTitle, onClick = onBackUp, icon = R.drawable.ic_backup, subtitle = lastBackup, enabled = !busy)
+        row(restoreTitle, onClick = onRestore, icon = R.drawable.ic_settings_backup_restore, enabled = !busy)
+        if (retentionValue != null) row(retentionTitle, icon = R.drawable.ic_history, value = retentionValue)
         if (working != null) item { WorkingRow(working) }
     }
     Text(
