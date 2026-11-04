@@ -62,6 +62,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setStayGeofenceRadiusM(meters) }
     }
 
+    /** Read at the controller's next reconcile; a grace already running picks the new cap up then. */
+    fun setWindowEndGraceMaxMin(minutes: Int) {
+        viewModelScope.launch { repository.setWindowEndGraceMaxMin(minutes) }
+    }
+
     fun setTheme(mode: ThemeMode) {
         viewModelScope.launch { repository.setTheme(mode) }
     }

@@ -111,6 +111,7 @@ fun SettingsScreen(
         onOpenJobs = onOpenJobs,
         onOpenPlaces = onOpenPlaces,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
+        onGraceSelected = viewModel::setWindowEndGraceMaxMin,
         onThemeSelected = viewModel::setTheme,
         onRoundingIncrementSelected = viewModel::setRoundingIncrementMin,
         onRoundingModeSelected = viewModel::setRoundingMode,
@@ -120,7 +121,7 @@ fun SettingsScreen(
     )
 }
 
-private enum class Picker { RADIUS, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE }
+private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE }
 
 /** Stateless sectioned settings; the stop radius, theme and the billing rounding rows are the editable ones. */
 @Composable
@@ -133,6 +134,7 @@ fun SettingsContent(
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
+    onGraceSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
     onRoundingIncrementSelected: (Int) -> Unit = {},
     onRoundingModeSelected: (RoundingMode) -> Unit = {},
@@ -167,6 +169,18 @@ fun SettingsContent(
                 current = settings.stayGeofenceRadiusM,
                 onSelect = {
                     onStayRadiusSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.GRACE -> PickerSheet(
+                title = stringResource(R.string.settings_grace),
+                explanation = stringResource(R.string.settings_grace_explanation),
+                options = Settings.ALLOWED_WINDOW_END_GRACE_MIN.map { it to graceLabel(it) },
+                details = Settings.ALLOWED_WINDOW_END_GRACE_MIN.associateWith { graceDetail(it) },
+                current = settings.windowEndGraceMaxMin,
+                onSelect = {
+                    onGraceSelected(it)
                     picker = null
                 },
                 onDismiss = { picker = null },
@@ -237,6 +251,8 @@ fun SettingsContent(
         )
         SectionHeader(stringResource(R.string.settings_section_tracking), Modifier.padding(top = space.m))
         val stayRadiusTitle = stringResource(R.string.settings_stay_radius)
+        val graceTitle = stringResource(R.string.settings_grace)
+        val graceValue = settings?.let { graceLabel(it.windowEndGraceMaxMin) }
         val stayRadiusValue = settings?.let { stringResource(R.string.settings_stay_radius_value, it.stayGeofenceRadiusM) }
         val scheduleTitle = stringResource(R.string.settings_schedule)
         val scheduleSubtitle = schedule?.let { scheduleRowSubtitle(it) }
@@ -246,6 +262,9 @@ fun SettingsContent(
             row(scheduleTitle, onClick = onOpenSchedule, icon = R.drawable.ic_calendar, subtitle = scheduleSubtitle)
             if (stayRadiusValue != null) {
                 row(stayRadiusTitle, onClick = { picker = Picker.RADIUS }, icon = R.drawable.ic_radius, subtitle = stayRadiusValue)
+            }
+            if (graceValue != null) {
+                row(graceTitle, onClick = { picker = Picker.GRACE }, icon = R.drawable.ic_more_time, subtitle = graceValue)
             }
             row(permissionsTitle, onClick = onOpenPermissions, icon = R.drawable.ic_permissions)
             row(sessionsTitle, onClick = onOpenSessions, icon = R.drawable.ic_sessions)
@@ -438,6 +457,25 @@ private fun ThemeMode.labelRes(): Int = when (this) {
     ThemeMode.LIGHT -> R.string.settings_theme_light
     ThemeMode.DARK -> R.string.settings_theme_dark
 }
+
+@Composable
+private fun graceLabel(minutes: Int): String = stringResource(
+    when (minutes) {
+        0 -> R.string.settings_grace_0
+        15 -> R.string.settings_grace_15
+        30 -> R.string.settings_grace_30
+        else -> R.string.settings_grace_60
+    },
+)
+
+@Composable
+private fun graceDetail(minutes: Int): String = stringResource(
+    when (minutes) {
+        0 -> R.string.settings_grace_use_0
+        60 -> R.string.settings_grace_use_60
+        else -> R.string.settings_grace_use_keep
+    },
+)
 
 /** One-line use case for a stop radius option. */
 @Composable
