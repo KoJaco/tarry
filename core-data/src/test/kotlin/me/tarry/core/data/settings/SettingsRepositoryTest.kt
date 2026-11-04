@@ -46,6 +46,7 @@ class SettingsRepositoryTest {
         assertThat(s.reviewReminderMinuteOfDay).isEqualTo(1050)
         assertThat(s.theme).isEqualTo(ThemeMode.SYSTEM)
         assertThat(s.stayGeofenceRadiusM).isEqualTo(100)
+        assertThat(s.windowEndGraceMaxMin).isEqualTo(60)
         assertThat(s.lastBackupMs).isNull()
     }
 
@@ -167,6 +168,23 @@ class SettingsRepositoryTest {
         val store = createSettingsDataStore(newScope()) { file }
         store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("stay_geofence_radius_m")] = 300 }
         assertThat(SettingsRepository(store).settings.first().stayGeofenceRadiusM).isEqualTo(200)
+    }
+
+    @Test
+    fun windowEndGrace_roundTrips_rejectsOthers_andBadStoredFallsBackToDefault() = runTest {
+        val r = repo()
+        for (m in Settings.ALLOWED_WINDOW_END_GRACE_MIN) {
+            r.setWindowEndGraceMaxMin(m)
+            assertThat(r.settings.first().windowEndGraceMaxMin).isEqualTo(m)
+        }
+        assertRejected { r.setWindowEndGraceMaxMin(20) }
+        assertRejected { r.setWindowEndGraceMaxMin(-1) }
+        assertThat(r.settings.first().windowEndGraceMaxMin).isEqualTo(60)
+
+        val file = tmp.newFile("badgrace.preferences_pb")
+        val store = createSettingsDataStore(newScope()) { file }
+        store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("window_end_grace_max_min")] = 20 }
+        assertThat(SettingsRepository(store).settings.first().windowEndGraceMaxMin).isEqualTo(60)
     }
 
     @Test

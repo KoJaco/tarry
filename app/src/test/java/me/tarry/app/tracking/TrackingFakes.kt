@@ -117,3 +117,7 @@ class FakeAlertNotifier : HealthAlertNotifier {
 class FakeStayRadius(var radiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat()) : StayRadiusSource {
     override suspend fun stayRadiusM() = radiusM
 }
+
+class FakeWindowEndGrace(var maxMin: Int = Settings.DEFAULT_WINDOW_END_GRACE_MIN) : WindowEndGraceSource {
+    override suspend fun graceMaxMin() = maxMin
+}

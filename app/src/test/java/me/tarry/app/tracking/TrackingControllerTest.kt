@@ -61,6 +61,7 @@ class TrackingControllerTest {
     private val permissions = FakePermissions()
     private val launcher = FakeLauncher()
     private val alarms = FakeAlarmScheduler()
+    private val windowEndGrace = FakeWindowEndGrace()
     private val segmentation = FakeSegmentationTrigger()
     private val alerts = FakeAlertNotifier()
     private val clock = FakeClock(now = mondayAt(10).toEpochMilli(), zone = sydney)
@@ -107,7 +108,7 @@ class TrackingControllerTest {
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
-            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, segmentation, health, clock, config,
+            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, segmentation, health, clock, config, windowEndGrace,
         )
     }
 
@@ -445,7 +446,7 @@ class TrackingControllerTest {
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, short, clock)
         val shortController = TrackingController(
             coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, EffectiveScheduleCalculator(short), alarms, segmentation,
-            health, clock, short,
+            health, clock, short, FakeWindowEndGrace(),
         )
         // Monday-only schedule: the next window is a week away, beyond the 3-day look-ahead.
         var mondayOnly = Schedule.EMPTY
@@ -498,7 +499,7 @@ class TrackingControllerTest {
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val c = TrackingController(
             failingCoordinator, launcher, store, trackingRepo, scheduleRepo, inputs, EffectiveScheduleCalculator(config), alarms,
-            segmentation, health, clock, config,
+            segmentation, health, clock, config, FakeWindowEndGrace(),
         )
 
         c.onServiceStarted(SessionTrigger.SCHEDULE)
@@ -628,6 +629,125 @@ class TrackingControllerTest {
         assertThat(segmentation.windowEnds).isEqualTo(1)
         assertThat(store.current().finishingUp).isFalse()
         assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun graceCapOfZeroStopsExactlyAtTheWindowEndEvenWhileMoving() = runBlocking {
+        windowEndGrace.maxMin = 0
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(sessions().single().end).isEqualTo(mondayAt(17).toEpochMilli())
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(7, day = 20))
+    }
+
+    @Test
+    fun graceCapOf15UsesThatCapForTheAlarmAndEndsAtIt() = runBlocking {
+        windowEndGrace.maxMin = 15
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isTrue()
+        assertThat(store.current().finishingUp).isTrue()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17, 15))
+
+        clock.now = mondayAt(17, 15).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+        assertThat(store.current().finishingUp).isFalse()
+    }
+
+    @Test
+    fun graceCapOf60IsTheDefaultAndEndsAtOneHour() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(18))
+        clock.now = mondayAt(18).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+    }
+
+    @Test
+    fun aSettledStayEndsTheGraceBeforeTheCapWhateverTheCap() = runBlocking {
+        windowEndGrace.maxMin = 15
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(16, 55).toEpochMilli()
+        stayFrom(clock.now)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isTrue()
+
+        clock.now = mondayAt(17, 6).toEpochMilli()
+        coordinator.onFixes(listOf(Fix(-33.0, 151.0, 10f, clock.now)))
+        awaitSessionEnd(nextAlarm = mondayAt(7, day = 20))
+
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(store.current().finishingUp).isFalse()
+    }
+
+    @Test
+    fun loweringTheCapMidGraceEndsTheGraceAtTheNextReconcileIfThatCapHasPassed() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(coordinator.isActive).isTrue()
+
+        windowEndGrace.maxMin = 15
+        clock.now = mondayAt(17, 20).toEpochMilli()
+        controller.reconcile(ReconcileSource.SYSTEM)
+
+        assertThat(coordinator.isActive).isFalse()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+    }
+
+    @Test
+    fun loweringTheCapMidGraceRearmsTheAlarmAtTheNewCapWhenItIsStillAhead() = runBlocking {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+
+        windowEndGrace.maxMin = 30
+        clock.now = mondayAt(17, 10).toEpochMilli()
+        controller.reconcile(ReconcileSource.SYSTEM)
+
+        assertThat(coordinator.isActive).isTrue()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17, 30))
+    }
+
+    @Test
+    fun raisingTheCapMidGraceKeepsTheSessionOpenPastTheOldCap() = runBlocking {
+        windowEndGrace.maxMin = 15
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+
+        windowEndGrace.maxMin = 60
+        clock.now = mondayAt(17, 20).toEpochMilli()
+        controller.reconcile(ReconcileSource.SYSTEM)
+
+        assertThat(coordinator.isActive).isTrue()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(18))
     }
 
     @Test
