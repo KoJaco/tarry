@@ -84,6 +84,8 @@ class SettingsViewModelDataTest {
     private lateinit var db: TarryDatabase
     private lateinit var backup: FakeBackup
     private lateinit var vm: SettingsViewModel
+    private var reconciles = 0
+    private val reconcile = me.tarry.app.tracking.ReconcileTrigger { reconciles++ }
     private val uri: Uri = Uri.parse("content://test/doc")
 
     @Before
@@ -94,7 +96,7 @@ class SettingsViewModelDataTest {
             .build()
         backup = FakeBackup()
         val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("s.preferences_pb") })
-        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup)
+        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile)
     }
 
     @After
@@ -102,6 +104,15 @@ class SettingsViewModelDataTest {
         Dispatchers.resetMain()
         scope.cancel()
         db.close()
+    }
+
+    @Test
+    fun changingTheWindowEndGraceSavesItAndReconcilesAtOnce() = runBlocking<Unit> {
+        vm.setWindowEndGraceMaxMin(15)
+
+        assertThat(vm.settings.first { it?.windowEndGraceMaxMin == 15 }).isNotNull()
+        kotlinx.coroutines.withTimeout(5_000) { while (reconciles == 0) kotlinx.coroutines.delay(10) }
+        assertThat(reconciles).isEqualTo(1)
     }
 
     @Test
