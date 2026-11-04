@@ -5,11 +5,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Density
 import com.google.common.truth.Truth.assertThat
-import me.tarry.app.ui.assertNotTruncated
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.SessionEndReason
 import org.junit.Rule
@@ -43,25 +43,68 @@ class TrackingMarkersCanvasTest {
         }
     }
 
+    private fun lines(): List<String> = composeRule.onAllNodesWithTag("timeline_tracking_marker_line", useUnmergedTree = true)
+        .fetchSemanticsNodes().map { it.config[SemanticsProperties.Text].single().text }
+
+    private fun hourLabels(): List<String> = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true)
+        .fetchSemanticsNodes().map { it.config[SemanticsProperties.Text].single().text }
+
     @Test
-    fun startAndStopLabelsRenderWithTheirTimes_evenOutsideTheVisits() {
-        show(listOf(TrackingMarker(at(7, 2), null), TrackingMarker(null, at(17, 4), SessionEndReason.USER_PAUSE)))
-        composeRule.onNodeWithText("Tracking started 7:02 AM", substring = true).assertExists()
-        composeRule.onNodeWithText("Tracking paused 5:04 PM", substring = true).assertExists()
+    fun startAndStopShowTheWordOverTheTimeInTheTimeColumn_andAreSpokenInFull() {
+        show(listOf(TrackingMarker(at(7, 2), null), TrackingMarker(null, at(17, 4), SessionEndReason.SCHEDULE_END)))
+        assertThat(lines()).containsExactly("Start", "7:02 AM", "Stop", "5:04 PM").inOrder()
+        composeRule.onNodeWithContentDescription("Tracking started 7:02 AM").assertExists()
+        composeRule.onNodeWithContentDescription("Tracking ended 5:04 PM").assertExists()
         composeRule.onAllNodesWithTag("timeline_tracking_marker").assertCountEquals(2)
     }
 
     @Test
-    fun collapsedMarkerShowsBothTimesInOneLabel() {
-        show(listOf(TrackingMarker(startedMs = at(12, 58), stoppedMs = at(12, 56), reason = SessionEndReason.USER_PAUSE)))
-        composeRule.onNodeWithText("Tracking stopped 12:56 PM · started 12:58 PM", substring = true).assertExists()
+    fun theLabelSitsLeftOfTheBlocks_notAcrossTheCanvas() {
+        show(listOf(TrackingMarker(null, at(9, 30), SessionEndReason.USER_PAUSE)))
+        val marker = composeRule.onNodeWithTag("timeline_tracking_marker").fetchSemanticsNode().boundsInRoot
+        val visit = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().boundsInRoot
+        assertThat(marker.right).isAtMost(visit.left)
+    }
+
+    @Test
+    fun anHourLabelThatWouldCollideWithAMarkerIsHidden_otherHoursStay() {
+        show(listOf(TrackingMarker(null, at(9, 5))))
+        val labels = hourLabels()
+        assertThat(labels.none { it.startsWith("9") }).isTrue()
+        assertThat(labels.any { it.startsWith("12") }).isTrue()
+    }
+
+    @Test
+    fun withoutMarkersEveryHourLabelShows() {
+        show(emptyList())
+        assertThat(hourLabels().any { it.startsWith("9") }).isTrue()
+    }
+
+    @Test
+    fun aCollapsedPairIsOneLabelWithBothTimes_stackedOrOff() {
+        show(listOf(TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5), reason = SessionEndReason.USER_PAUSE)))
+        assertThat(lines()).containsExactly("Stop 12:05 PM", "Start 12:20 PM").inOrder()
+        composeRule.onNodeWithContentDescription("Tracking stopped 12:05 PM · started 12:20 PM").assertExists()
         composeRule.onAllNodesWithTag("timeline_tracking_marker").assertCountEquals(1)
     }
 
     @Test
-    fun labelIsNotTruncatedAtFontScale2() {
-        show(listOf(TrackingMarker(startedMs = at(12, 58), stoppedMs = at(12, 56))), fontScale = 2f)
-        composeRule.onNodeWithTag("timeline_tracking_marker").assertNotTruncated()
+    fun spokenMarkersFollowTimeOrderBetweenTheBlocks() {
+        show(listOf(TrackingMarker(at(7, 2), null), TrackingMarker(null, at(17, 4))))
+        val index = { text: String ->
+            composeRule.onNodeWithContentDescription(text).fetchSemanticsNode().config[SemanticsProperties.TraversalIndex]
+        }
+        // The visit (9:00-10:00) sits between them: the start is before it, the stop after.
+        assertThat(index("Tracking started 7:02 AM")).isLessThan(index("Tracking stopped 5:04 PM"))
+    }
+
+    @Test
+    fun theTimeColumnGrowsToFitTheLabelAtFontScale2() {
+        show(listOf(TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5), reason = SessionEndReason.USER_PAUSE)), fontScale = 2f)
+        val marker = composeRule.onNodeWithTag("timeline_tracking_marker").fetchSemanticsNode().boundsInRoot
+        val visit = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().boundsInRoot
+        assertThat(marker.left).isAtLeast(0f)
+        assertThat(marker.right).isAtMost(visit.left)
     }
 
     @Test

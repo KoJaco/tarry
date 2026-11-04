@@ -60,13 +60,14 @@ fun trackingMarkers(
     return out
 }
 
-/** A [marker] with where its label sits (dp from the canvas top) and the rule positions. */
-data class PlacedMarker(val marker: TrackingMarker, val ruleDps: List<Float>, val labelTopDp: Float)
+/** A [marker] and where its label sits in the time column: [anchorDp] is its true time position, [labelTopDp] the label's top. */
+data class PlacedMarker(val marker: TrackingMarker, val anchorDp: Float, val labelTopDp: Float, val labelHeightDp: Float)
 
 /**
- * Positions [markers] on a canvas starting at [canvasStart] with [dpPerHour]. The label hangs just under the rule, or
- * just above it when it would not fit before [canvasHeightDp]; a label that would overlap the previous one is pushed
- * down below it (the rules stay at their true time). Markers outside the canvas are dropped.
+ * Positions [markers] for the time column of a canvas starting at [canvasStart] with [dpPerHour]. A label is
+ * `lineCount(marker) * lineHeightDp` tall and centred on its time (a collapsed pair on the middle of its two times),
+ * kept inside `0..canvasHeightDp`; a label that would overlap the previous one is pushed down below it, [gapDp] apart.
+ * Markers outside the canvas are dropped.
  */
 fun placeTrackingMarkers(
     markers: List<TrackingMarker>,
@@ -74,16 +75,41 @@ fun placeTrackingMarkers(
     canvasEnd: Long,
     dpPerHour: Float,
     canvasHeightDp: Float,
-    labelHeightDp: Float,
+    lineHeightDp: Float,
     gapDp: Float,
+    lineCount: (TrackingMarker) -> Int = { 2 },
 ): List<PlacedMarker> {
     var prevBottom = Float.NEGATIVE_INFINITY
     return markers.filter { it.timeMs in canvasStart..canvasEnd }.sortedBy { it.timeMs }.map { m ->
-        val rules = m.ruleTimes.map { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }
-        val y = rules.first()
-        val natural = if (y + gapDp + labelHeightDp <= canvasHeightDp) y + gapDp else maxOf(0f, y - gapDp - labelHeightDp)
-        val top = maxOf(natural, prevBottom)
-        prevBottom = top + labelHeightDp
-        PlacedMarker(m, rules, top)
+        val anchor = m.ruleTimes.map { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }.average().toFloat()
+        val height = lineCount(m) * lineHeightDp
+        val natural = (anchor - height / 2f).coerceIn(0f, maxOf(0f, canvasHeightDp - height))
+        val top = maxOf(natural, prevBottom + gapDp)
+        prevBottom = top + height
+        PlacedMarker(m, anchor, top, height)
+    }
+}
+
+/** True when the hour label centred at [markDp] (half a line of [hourHalfLineDp] each way) would overlap [placed]; the marker wins. */
+fun hourLabelCoveredByMarker(markDp: Float, placed: PlacedMarker, hourHalfLineDp: Float): Boolean =
+    markDp - hourHalfLineDp < placed.labelTopDp + placed.labelHeightDp && markDp + hourHalfLineDp > placed.labelTopDp
+
+/** The words of the time-column labels ("Start", "Stop", "Off"). */
+data class MarkerWords(val start: String, val stop: String, val off: String)
+
+/**
+ * The visible lines of a marker's time-column label. A start or stop is the word over the time ("Start" / "7:30"). A
+ * collapsed pair is "Stop 12:05" over "Start 12:20" when [fits] accepts those lines, otherwise "Off" over "12:05–12:20".
+ */
+fun markerLines(marker: TrackingMarker, words: MarkerWords, time: (Long) -> String, fits: (List<String>) -> Boolean): List<String> {
+    val stopped = marker.stoppedMs?.let(time)
+    val started = marker.startedMs?.let(time)
+    return when {
+        stopped != null && started != null -> {
+            val stacked = listOf("${words.stop} $stopped", "${words.start} $started")
+            if (fits(stacked)) stacked else listOf(words.off, "$stopped–$started")
+        }
+        stopped != null -> listOf(words.stop, stopped)
+        else -> listOf(words.start, started.orEmpty())
     }
 }
