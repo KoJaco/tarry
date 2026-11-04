@@ -279,11 +279,13 @@ fun SettingsContent(
             val minValue = minutesOrOff(settings.minBillableMinutes)
             val perDayTitle = stringResource(R.string.settings_round_daily_total)
             val perDaySubtitle = stringResource(R.string.settings_round_daily_total_subtitle)
+            // With no rounding and no minimum there is nothing to apply per day: keep the stored value, just stop offering it.
+            val perDayEnabled = !(roundingOff && settings.minBillableMinutes == 0)
             SettingsGroup {
                 row(roundingTitle, onClick = { picker = Picker.ROUNDING }, subtitle = roundingValue)
                 row(roundToTitle, onClick = { picker = Picker.ROUND_TO }, subtitle = roundToValue, enabled = !roundingOff)
                 row(minTitle, onClick = { picker = Picker.MIN_BILLABLE }, subtitle = minValue)
-                switchRow(perDayTitle, settings.roundDailyTotalPerJob, onRoundDailyTotalChange, subtitle = perDaySubtitle)
+                switchRow(perDayTitle, settings.roundDailyTotalPerJob, onRoundDailyTotalChange, subtitle = perDaySubtitle, enabled = perDayEnabled)
                 billing.forEach { (label, value) -> row(label, value = value) }
             }
         }

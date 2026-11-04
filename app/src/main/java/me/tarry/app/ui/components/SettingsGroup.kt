@@ -61,8 +61,9 @@ class SettingsGroupScope internal constructor() {
         checked: Boolean,
         onCheckedChange: (Boolean) -> Unit,
         subtitle: String? = null,
+        enabled: Boolean = true,
     ) {
-        rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle) }
+        rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle, enabled) }
     }
 
     /** Free-form content on the group's surface (e.g. a header above its rows); it brings its own padding. */
@@ -138,12 +139,12 @@ private fun GroupedSettingsRow(
 }
 
 @Composable
-private fun GroupedSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, subtitle: String?) {
+private fun GroupedSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, subtitle: String?, enabled: Boolean) {
     val space = TarryTheme.space
     val colors = TarryTheme.colors
     Row(
         modifier = Modifier
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             .fillMaxWidth()
             .heightIn(min = GroupedRowMinHeight)
             .padding(horizontal = space.l, vertical = space.m),
@@ -151,12 +152,13 @@ private fun GroupedSwitchRow(title: String, checked: Boolean, onCheckedChange: (
         horizontalArrangement = Arrangement.spacedBy(space.l),
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = colors.ink)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) colors.ink else colors.muted)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
         }
         Switch(
             checked = checked,
             onCheckedChange = null,
+            enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedTrackColor = colors.ink,
                 checkedThumbColor = colors.paper,
