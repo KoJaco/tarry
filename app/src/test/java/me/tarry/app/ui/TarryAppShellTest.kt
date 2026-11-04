@@ -15,6 +15,8 @@ import androidx.compose.ui.test.assertIsNotSelected
 import com.google.common.truth.Truth.assertThat
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -48,7 +50,8 @@ class TarryAppShellTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    private val timelineTab get() = composeRule.onNode(hasText("Timeline") and isSelectable())
+    // The timeline view toggle also has a selectable "Timeline" option: the nav tab is the one outside it.
+    private val timelineTab get() = composeRule.onNode(hasText("Timeline") and isSelectable() and !hasAnyAncestor(hasTestTag("timeline_view_toggle")))
     private val settingsTab get() = composeRule.onNode(hasText("Settings") and isSelectable())
     private val summaryTab get() = composeRule.onNode(hasText("Summary") and isSelectable())
 
