@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -44,7 +45,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
@@ -56,6 +64,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -110,6 +119,9 @@ object SummaryTags {
 }
 
 private val DotSize = 16.dp
+
+/** Width of the fade on the range chips' scrolling edges. */
+internal val ChipsEdgeFadeWidth = 32.dp
 
 /** Hilt-wired Summary tab. [onOpenDay] opens that local day on the timeline. */
 @Composable
@@ -344,10 +356,12 @@ fun SummaryContent(
 @Composable
 private fun RangeChips(preset: RangePreset?, onPreset: (RangePreset) -> Unit) {
     val label = stringResource(R.string.summary_range_chips_description)
+    val scrollState = rememberScrollState()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .scrollEdgeFade(scrollState, ChipsEdgeFadeWidth)
+            .horizontalScroll(scrollState)
             .selectableGroup()
             .semantics { contentDescription = label }
             .testTag(SummaryTags.Chips),
@@ -363,6 +377,37 @@ private fun RangeChips(preset: RangePreset?, onPreset: (RangePreset) -> Unit) {
         }
     }
 }
+
+
+/** Which horizontal bands (start..end px) fade out: the left one while scrolled away from the start, the right one while more follows. */
+internal fun scrollEdgeFadeBands(canScrollBackward: Boolean, canScrollForward: Boolean, widthPx: Float, fadePx: Float): List<ClosedFloatingPointRange<Float>> {
+    val w = fadePx.coerceAtMost(widthPx / 2f)
+    return buildList {
+        if (canScrollBackward) add(0f..w)
+        if (canScrollForward) add((widthPx - w)..widthPx)
+    }
+}
+
+/** Fades the right edge while [state] can scroll forward and the left edge while it can scroll back; nothing when it all fits. */
+internal fun Modifier.scrollEdgeFade(state: ScrollState, width: Dp): Modifier = this
+    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+    .drawWithContent {
+        drawContent()
+        val bands = scrollEdgeFadeBands(state.canScrollBackward, state.canScrollForward, size.width, width.toPx())
+        for (band in bands) {
+            val toRight = band.start > 0f
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    colors = if (toRight) listOf(Color.Black, Color.Transparent) else listOf(Color.Transparent, Color.Black),
+                    startX = band.start,
+                    endX = band.endInclusive,
+                ),
+                topLeft = Offset(band.start, 0f),
+                size = Size(band.endInclusive - band.start, size.height),
+                blendMode = BlendMode.DstIn,
+            )
+        }
+    }
 
 private fun RangePreset.labelRes(): Int = when (this) {
     RangePreset.TODAY -> R.string.summary_range_today
