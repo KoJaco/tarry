@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.SemanticsPropertyReceiver
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
@@ -149,13 +150,17 @@ private const val MinLabelFactor = 0.4f
 private const val LabelShrinkStep = 0.9f
 
 /**
- * The toggle label. It may wrap, but only between words: if the slot is too narrow for the longest word at the
- * current size (large font scales in a one-third slot), the text shrinks a step at a time until no line ends
- * mid-word, instead of splitting the word.
+ * A bar label (the toggle's, and the nav items'). It may wrap, but only between words: if the slot is too narrow for
+ * the longest word at the current size (large font scales in a narrow slot), the text shrinks a step at a time until
+ * no line ends mid-word, instead of splitting the word.
  */
 @Composable
-private fun FitLabel(text: String, color: Color, modifier: Modifier = Modifier) {
-    val style = MaterialTheme.typography.labelLarge
+internal fun FitLabel(
+    text: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.labelLarge,
+) {
     val fontScale = LocalDensity.current.fontScale
     var factor by remember(text, fontScale) { mutableFloatStateOf(1f) }
     Text(

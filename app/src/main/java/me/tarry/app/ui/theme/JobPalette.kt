@@ -3,6 +3,7 @@ package me.tarry.app.ui.theme
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.unit.dp
 
 /** One theme's colours for a job block: tinted container, 1.5 dp border and dark text. */
 @Immutable
@@ -28,6 +29,9 @@ private fun slot(
 
 /** The eight job colour slots from tokens.md. */
 object JobPalette {
+    /** Border width of a job's tinted container (blocks, swatches). */
+    val BorderWidth = 1.5.dp
+
     val slots: List<JobSlot> = listOf(
         slot("Apricot", 0xFDEBD8, 0xEBA35C, 0x7A3F0B, 0x3A2614, 0xD9894A, 0xF6CDA6),
         slot("Sky", 0xE3EDFB, 0x7FA6E3, 0x1E4A8F, 0x172A45, 0x5F8BD6, 0xB9D0F5),

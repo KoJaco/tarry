@@ -1,0 +1,26 @@
+{
+  "format": "tarry-backup",
+  "formatVersion": 1,
+  "createdAt": 1700000000000,
+  "zoneId": "UTC",
+  "appVersionName": "0.0-fixture",
+  "futureTopLevelField": {"ignored": true},
+  "settings": [
+    {"key": "theme", "type": "string", "value": "DARK"},
+    {"key": "stay_geofence_radius_m", "type": "int", "value": "150"}
+  ],
+  "tables": {
+    "sessions": [
+      {"id": 1, "start": 1000, "end": 2000, "zoneId": "UTC", "trigger": "SCHEDULE", "endReason": "SCHEDULE_END"}
+    ],
+    "pings": [
+      {"id": 1, "timestamp": 1500, "zoneId": "UTC", "lat": -33.5, "lng": 151.5, "accuracyM": 8.0, "source": "FUSED", "sessionId": 1}
+    ],
+    "jobs": [
+      {"id": "j1", "name": "Fixture job", "colorArgb": -16711936, "updatedAt": 5}
+    ],
+    "visits": [
+      {"id": "v1", "start": 1000, "end": 1800, "zoneId": "UTC", "origin": "DETECTED", "confidence": 0.9, "updatedAt": 6, "futureVisitField": 1}
+    ]
+  }
+}

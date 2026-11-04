@@ -3,6 +3,7 @@ package me.tarry.core.data.db
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import me.tarry.core.data.db.dao.BackupDao
 import me.tarry.core.data.db.dao.ExcludedRangeDao
 import me.tarry.core.data.db.dao.GapDao
 import me.tarry.core.data.db.dao.JobDao
@@ -53,4 +54,5 @@ abstract class TarryDatabase : RoomDatabase() {
     abstract fun gapDao(): GapDao
     abstract fun excludedRangeDao(): ExcludedRangeDao
     abstract fun scheduleDao(): ScheduleDao
+    abstract fun backupDao(): BackupDao
 }

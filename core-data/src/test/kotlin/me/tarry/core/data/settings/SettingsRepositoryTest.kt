@@ -46,6 +46,16 @@ class SettingsRepositoryTest {
         assertThat(s.reviewReminderMinuteOfDay).isEqualTo(1050)
         assertThat(s.theme).isEqualTo(ThemeMode.SYSTEM)
         assertThat(s.stayGeofenceRadiusM).isEqualTo(100)
+        assertThat(s.lastBackupMs).isNull()
+    }
+
+    @Test
+    fun lastBackup_isStoredAndOnlyAffectsItself() = runTest {
+        val r = repo()
+        r.setLastBackupMs(1_700_000_000_000L)
+        val s = r.settings.first()
+        assertThat(s.lastBackupMs).isEqualTo(1_700_000_000_000L)
+        assertThat(s.copy(lastBackupMs = null)).isEqualTo(Settings())
     }
 
     @Test

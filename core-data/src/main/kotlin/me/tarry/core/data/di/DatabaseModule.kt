@@ -8,6 +8,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import me.tarry.core.data.db.ALL_MIGRATIONS
+import me.tarry.core.data.db.BackupStore
 import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.TarryDatabase
 import kotlinx.coroutines.flow.first
@@ -29,6 +30,7 @@ object DatabaseModule {
             .build()
 
     @Provides fun segmentationStore(db: TarryDatabase) = SegmentationStore(db)
+    @Provides fun backupStore(db: TarryDatabase) = BackupStore(db)
     @Provides fun editClock(): EditClock = EditClock { System.currentTimeMillis() }
     @Provides fun rewindFloor(settings: SettingsRepository): RewindFloor = RewindFloor {
         val days = settings.settings.first().rawPingRetentionDays

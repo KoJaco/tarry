@@ -19,15 +19,21 @@ data class Settings(
     val theme: ThemeMode = ThemeMode.SYSTEM,
     /** One of [ALLOWED_STAY_RADII_M]. Radius of the stay geofence created at the next stop. */
     val stayGeofenceRadiusM: Int = DEFAULT_STAY_RADIUS_M,
+    /** When the last user-initiated backup finished (UTC epoch ms); null if none yet. */
+    val lastBackupMs: Long? = null,
 ) {
     companion object {
         const val DEFAULT_REVIEW_REMINDER_MINUTE = 1050
+        /** DataStore key of [lastBackupMs]; device-local, so a backup file neither carries nor overwrites it. */
+        const val LAST_BACKUP_KEY = "last_backup_ms"
         const val DEFAULT_STAY_RADIUS_M = 100
 
         /** 300 m was an option before dogfood 1; a stored 300 now reads as [MAX_STAY_RADIUS_M]. */
         const val LEGACY_STAY_RADIUS_M = 300
         const val MAX_STAY_RADIUS_M = 200
         val ALLOWED_ROUNDING_INCREMENTS = setOf(0, 6, 15, 30)
+        /** 0 = no minimum. */
+        val ALLOWED_MIN_BILLABLE_MINUTES = setOf(0, 15, 30, 60)
         val ALLOWED_RETENTION_DAYS = setOf(30, 90, 365)
         val ALLOWED_STAY_RADII_M = setOf(50, 75, 100, 150, 200)
     }
