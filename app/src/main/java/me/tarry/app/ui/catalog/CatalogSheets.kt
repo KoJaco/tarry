@@ -24,7 +24,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -41,7 +40,7 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
-import me.tarry.app.ui.theme.sheetEdge
+import me.tarry.app.ui.components.TarrySheet
 
 private val ActionRowMinHeight = 56.dp
 private val ColourTarget = 48.dp
@@ -109,7 +108,7 @@ private fun ActionRow(action: SheetAction) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun SheetFrame(title: String, onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    ModalBottomSheet(modifier = Modifier.sheetEdge(), onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
+    TarrySheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

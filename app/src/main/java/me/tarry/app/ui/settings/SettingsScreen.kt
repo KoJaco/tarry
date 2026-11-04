@@ -38,7 +38,6 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
@@ -64,7 +63,7 @@ import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.scheduleSummaryText
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.theme.surfaceEdge
-import me.tarry.app.ui.theme.sheetEdge
+import me.tarry.app.ui.components.TarrySheet
 import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
@@ -466,8 +465,7 @@ private fun <T> PickerSheet(
     val colors = TarryTheme.colors
     val space = TarryTheme.space
     val shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
-    ModalBottomSheet(
-        modifier = Modifier.sheetEdge(),
+    TarrySheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = shape,

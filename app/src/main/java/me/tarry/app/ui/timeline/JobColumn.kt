@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,7 +66,7 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.rememberReducedMotion
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
-import me.tarry.app.ui.theme.sheetEdge
+import me.tarry.app.ui.components.TarrySheet
 import kotlinx.coroutines.delay
 import java.time.ZoneId
 import kotlin.math.abs
@@ -653,8 +652,7 @@ private fun JobOverflowSheet(
     val formats = rememberTimeFormats()
     @Composable fun range(start: Long, end: Long) =
         stringResource(R.string.timeline_time_range, formats.time(maxOf(start, dayStart), zone), formats.time(minOf(end, dayEnd), zone))
-    ModalBottomSheet(
-        modifier = Modifier.sheetEdge(),
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,
@@ -714,8 +712,7 @@ private fun SuggestionSheet(
         R.string.timeline_time_range,
         formats.time(maxOf(item.suggestion.start, dayStart), zone), formats.time(minOf(item.suggestion.end, dayEnd), zone),
     )
-    ModalBottomSheet(
-        modifier = Modifier.sheetEdge(),
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,

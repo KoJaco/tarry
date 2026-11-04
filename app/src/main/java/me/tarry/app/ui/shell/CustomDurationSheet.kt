@@ -17,7 +17,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,7 +37,7 @@ import me.tarry.app.tracking.TrackingDetails
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.drawer.TimePickerDialog
 import me.tarry.app.ui.theme.TarryTheme
-import me.tarry.app.ui.theme.sheetEdge
+import me.tarry.app.ui.components.TarrySheet
 import me.tarry.app.ui.theme.surfaceEdge
 import java.time.Duration
 import java.time.Instant
@@ -83,8 +82,7 @@ fun CustomDurationSheet(
     actions: CustomDurationActions,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
-        modifier = Modifier.sheetEdge(),
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,

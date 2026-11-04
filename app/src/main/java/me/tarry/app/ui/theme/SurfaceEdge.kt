@@ -27,7 +27,7 @@ fun Modifier.surfaceEdge(shape: Shape): Modifier =
 
 /**
  * Dark theme only: the same 1 dp `line` edge along the top of a bottom sheet (its rounded top corners included), none
- * in light. Pass it as the `modifier` of the `ModalBottomSheet`.
+ * in light. Apply it to a node that sits at the top of the sheet (`TarrySheet`'s drag handle), never to the `ModalBottomSheet` itself: the sheet's own modifier stays at the window's top while its content is offset.
  */
 @Composable
 fun Modifier.sheetEdge(): Modifier {
