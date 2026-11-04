@@ -197,6 +197,10 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - Reading order is time order.
   - At font scale 2.0 the canvas still scales, and the header and week strip wrap.
 
+### Summary
+- **Totals card** (`card`, `container` radius), modelled on the timeline's summary card: "Total, <range>" in `bodyMedium` `muted` (the range reads as the text under the chips), "<billed> billed" in `headlineLarge` tabular, then "On the clock <time>" in `bodyMedium` `muted`. It is one merged TalkBack element.
+- **Job rows:** a dot, then name (`titleSmall`) and caption (`bodyMedium` `muted`), with the billed figure (`titleMedium` tabular, bold) on the right. From font scale 1.5 (`StackedRowFontScale`) the figure drops under the caption as "Billed <time>" so the name keeps the full width. The spoken description is the same in both layouts.
+
 ### Lists and settings rows
 - **Grouped settings surfaces are the default** for a settings group (Tracking, Appearance, Billing), built with `SettingsGroup { row(...) }`: ONE `card` surface (`card` radius) holding all the rows, separated by 1 dp `divider` rules.
   - A row has a plain 24 dp `ink` leading icon (no icon circle), a `titleSmall` title with an optional `muted` `bodyMedium` subtitle under it, and a chevron on the right when it is tappable (Role.Button, merged semantics). Read-only rows (Billing) show a `muted` value on the right and no chevron.

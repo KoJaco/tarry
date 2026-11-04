@@ -54,6 +54,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -115,6 +116,7 @@ object SummaryTags {
     const val Export = "summary_export"
     fun exportFormat(format: SummaryExportFormat) = "summary_export_${format.name}"
     fun row(jobId: String) = "summary_row_$jobId"
+    fun rowBilled(jobId: String) = "summary_row_billed_$jobId"
     fun piece(blockId: String, date: LocalDate) = "summary_piece_${blockId}_$date"
 }
 
@@ -122,6 +124,9 @@ private val DotSize = 16.dp
 
 /** Width of the fade on the range chips' scrolling edges. */
 internal val ChipsEdgeFadeWidth = 32.dp
+
+/** From this font scale up, a job row stacks its billed figure under the name and caption. */
+internal const val StackedRowFontScale = 1.5f
 
 /** Hilt-wired Summary tab. [onOpenDay] opens that local day on the timeline. */
 @Composable
@@ -311,7 +316,7 @@ fun SummaryContent(
                     DaySectionItem(section) { row -> openJobId = row.jobId; openDay = section.date.toEpochDay() }
                 }
             }
-            if (result.hasBlocks) item { TotalsCard(result) }
+            if (result.hasBlocks) item { TotalsCard(result, state.range) }
             if (result.hasUnlabelled) item { UnlabelledCard(result) }
         }
     }
@@ -501,6 +506,8 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
     val description = stringResource(
         R.string.summary_row_description, title, blocks, summarySpoken(row.totalMs), summarySpoken(row.billedMs),
     )
+    // At large font sizes the billed figure drops under the caption so the name keeps the full width.
+    val stacked = LocalDensity.current.fontScale >= StackedRowFontScale
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -509,10 +516,14 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
             .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.m)
             .semantics(mergeDescendants = true) { contentDescription = description }
             .testTag(SummaryTags.row(row.jobId)),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = if (stacked) Alignment.Top else Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
     ) {
-        JobDot(row)
+        if (stacked) {
+            Box(Modifier.padding(top = TarryTheme.space.xs)) { JobDot(row) }
+        } else {
+            JobDot(row)
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = TarryTheme.colors.ink)
             Text(
@@ -520,13 +531,24 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = TarryTheme.colors.muted,
             )
+            if (stacked) {
+                Text(
+                    stringResource(R.string.summary_row_billed, summaryDuration(row.billedMs)),
+                    style = MaterialTheme.typography.titleMedium.tabular(),
+                    fontWeight = FontWeight.Bold,
+                    color = TarryTheme.colors.ink,
+                    modifier = Modifier.testTag(SummaryTags.rowBilled(row.jobId)),
+                )
+            }
         }
-        Text(
-            summaryDuration(row.billedMs),
-            style = MaterialTheme.typography.titleMedium.tabular(),
-            fontWeight = FontWeight.Bold,
-            color = TarryTheme.colors.ink,
-        )
+        if (!stacked) {
+            Text(
+                summaryDuration(row.billedMs),
+                style = MaterialTheme.typography.titleMedium.tabular(),
+                fontWeight = FontWeight.Bold,
+                color = TarryTheme.colors.ink,
+            )
+        }
     }
 }
 
@@ -557,7 +579,7 @@ private fun DaySectionItem(section: DaySection, onRow: (JobSummary) -> Unit) {
 }
 
 @Composable
-private fun TotalsCard(result: SummaryResult) {
+private fun TotalsCard(result: SummaryResult, range: SummaryRange) {
     val billed = summaryDuration(result.billedMs)
     val clock = summaryDuration(result.onClockMs)
     val description = stringResource(R.string.summary_totals_description, summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
@@ -569,9 +591,19 @@ private fun TotalsCard(result: SummaryResult) {
         shape = TarryTheme.shapes.container,
     ) {
         Text(
-            text = stringResource(R.string.summary_totals, billed, clock),
-            style = MaterialTheme.typography.titleMedium.tabular(),
+            text = stringResource(R.string.summary_totals_title, rangeText(range)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TarryTheme.colors.muted,
+        )
+        Text(
+            text = stringResource(R.string.summary_totals_billed, billed),
+            style = MaterialTheme.typography.headlineLarge.tabular(),
             color = TarryTheme.colors.ink,
+        )
+        Text(
+            text = stringResource(R.string.summary_totals_on_clock, clock),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TarryTheme.colors.muted,
         )
     }
 }
