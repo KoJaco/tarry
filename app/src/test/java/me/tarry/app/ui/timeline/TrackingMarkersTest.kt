@@ -88,6 +88,27 @@ class TrackingMarkersTest {
     }
 
     @Test
+    fun aLabelUnderTheNowPillMovesAboveIt() {
+        // Now pill spans 110..130 (10:00 at 120 dp); a start at 9:55 (anchor 115) would sit under it.
+        val placed = placeTrackingMarkers(
+            listOf(TrackingMarker(at(9, 55), null)), at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f,
+            lineHeightDp = 16f, gapDp = 2f, avoid = 110f..130f,
+        ).single()
+        assertThat(placed.labelTopDp).isEqualTo(76f) // 110 - 2 - 32
+    }
+
+    @Test
+    fun aLabelThatCannotGoAboveThePillGoesBelowIt() {
+        // The previous label ends at 106, so above the pill (76) would collide with it: the second label goes below (132).
+        val markers = listOf(TrackingMarker(null, at(9, 30)), TrackingMarker(at(9, 55), null))
+        val placed = placeTrackingMarkers(
+            markers, at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f, avoid = 110f..130f,
+        )
+        assertThat(placed[0].labelTopDp).isEqualTo(74f) // centred on 90, clear of the pill
+        assertThat(placed[1].labelTopDp).isEqualTo(132f)
+    }
+
+    @Test
     fun aCollapsedPairIsCentredOnTheMiddleOfItsTwoTimes() {
         val pair = TrackingMarker(startedMs = at(9, 2), stoppedMs = at(9, 0))
         val placed = placeTrackingMarkers(listOf(pair), at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f)

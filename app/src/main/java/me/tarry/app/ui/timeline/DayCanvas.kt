@@ -248,10 +248,14 @@ fun DayCanvas(
     val visitItems = remember(layout) { layout.blocks.mapNotNull { it.item as? TimelineItem.Visit }.sortedBy { it.start } }
     val handleStart = timeColumn + DayCanvasDefaults.BlockInset
     val placedMarkers = remember(markerLineTexts, layout, fontScale) {
+        // The now-pill sits in the time column too; a marker label never goes under it.
+        val pillHalf = DayCanvasDefaults.NowPillHalfHeight.value * fontScale
+        val pill = layout.nowDp?.let { (it - pillHalf)..(it + pillHalf) }
         placeTrackingMarkers(
             trackingMarkers, layout.canvasStart, layout.canvasEnd, layout.scale, layout.heightDp,
             DayCanvasDefaults.MarkerLabelLineDp * fontScale, DayCanvasDefaults.MarkerLabelGap.value,
             lineCount = { markerLineTexts[it]?.size ?: 2 },
+            avoid = pill,
         )
     }
 

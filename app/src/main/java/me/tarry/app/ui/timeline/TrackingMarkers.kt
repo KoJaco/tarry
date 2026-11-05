@@ -67,7 +67,8 @@ data class PlacedMarker(val marker: TrackingMarker, val anchorDp: Float, val lab
  * Positions [markers] for the time column of a canvas starting at [canvasStart] with [dpPerHour]. A label is
  * `lineCount(marker) * lineHeightDp` tall and centred on its time (a collapsed pair on the middle of its two times),
  * kept inside `0..canvasHeightDp`; a label that would overlap the previous one is pushed down below it, [gapDp] apart.
- * Markers outside the canvas are dropped.
+ * A label that would overlap [avoid] (the now-pill's span) moves just above it, or just below it when above would
+ * collide with the previous label or leave the top of the canvas. Markers outside the canvas are dropped.
  */
 fun placeTrackingMarkers(
     markers: List<TrackingMarker>,
@@ -78,13 +79,18 @@ fun placeTrackingMarkers(
     lineHeightDp: Float,
     gapDp: Float,
     lineCount: (TrackingMarker) -> Int = { 2 },
+    avoid: ClosedFloatingPointRange<Float>? = null,
 ): List<PlacedMarker> {
     var prevBottom = Float.NEGATIVE_INFINITY
     return markers.filter { it.timeMs in canvasStart..canvasEnd }.sortedBy { it.timeMs }.map { m ->
         val anchor = m.ruleTimes.map { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }.average().toFloat()
         val height = lineCount(m) * lineHeightDp
         val natural = (anchor - height / 2f).coerceIn(0f, maxOf(0f, canvasHeightDp - height))
-        val top = maxOf(natural, prevBottom + gapDp)
+        var top = maxOf(natural, prevBottom + gapDp)
+        if (avoid != null && top < avoid.endInclusive + gapDp && top + height > avoid.start - gapDp) {
+            val above = avoid.start - gapDp - height
+            top = if (above >= 0f && above >= prevBottom + gapDp) above else avoid.endInclusive + gapDp
+        }
         prevBottom = top + height
         PlacedMarker(m, anchor, top, height)
     }
