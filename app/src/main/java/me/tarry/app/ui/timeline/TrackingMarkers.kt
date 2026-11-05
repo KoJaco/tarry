@@ -99,16 +99,13 @@ data class MarkerWords(val start: String, val stop: String, val off: String)
 
 /**
  * The visible lines of a marker's time-column label. A start or stop is the word over the time ("Start" / "7:30"). A
- * collapsed pair is "Stop 12:05" over "Start 12:20" when [fits] accepts those lines, otherwise "Off" over "12:05–12:20".
+ * collapsed pair is always "Off" over "12:05–12:20", which keeps the time column narrow.
  */
-fun markerLines(marker: TrackingMarker, words: MarkerWords, time: (Long) -> String, fits: (List<String>) -> Boolean): List<String> {
+fun markerLines(marker: TrackingMarker, words: MarkerWords, time: (Long) -> String): List<String> {
     val stopped = marker.stoppedMs?.let(time)
     val started = marker.startedMs?.let(time)
     return when {
-        stopped != null && started != null -> {
-            val stacked = listOf("${words.stop} $stopped", "${words.start} $started")
-            if (fits(stacked)) stacked else listOf(words.off, "$stopped–$started")
-        }
+        stopped != null && started != null -> listOf(words.off, "$stopped–$started")
         stopped != null -> listOf(words.stop, stopped)
         else -> listOf(words.start, started.orEmpty())
     }

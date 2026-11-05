@@ -81,9 +81,9 @@ class TrackingMarkersCanvasTest {
     }
 
     @Test
-    fun aCollapsedPairIsOneLabelWithBothTimes_stackedOrOff() {
+    fun aCollapsedPairIsOneLabel_OffOverTheRange() {
         show(listOf(TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5), reason = SessionEndReason.USER_PAUSE)))
-        assertThat(lines()).containsExactly("Stop 12:05 PM", "Start 12:20 PM").inOrder()
+        assertThat(lines()).containsExactly("Off", "12:05 PM–12:20 PM").inOrder()
         composeRule.onNodeWithContentDescription("Tracking stopped 12:05 PM · started 12:20 PM").assertExists()
         composeRule.onAllNodesWithTag("timeline_tracking_marker").assertCountEquals(1)
     }

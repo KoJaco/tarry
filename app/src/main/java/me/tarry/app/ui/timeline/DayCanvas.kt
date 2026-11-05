@@ -166,8 +166,6 @@ private object DayCanvasDefaults {
     const val MarkerLabelLineDp = 16f
     val MarkerLabelGap = 2.dp
 
-    /** A collapsed stop+start pair stacks "Stop t" over "Start t" only if the wider line is at most this wide. */
-    val MarkerStackedMaxWidth = 96.dp
     val DashOn = 8.dp
     val DashOff = 5.dp
 }
@@ -229,13 +227,9 @@ fun DayCanvas(
     val markerWords = MarkerWords(
         stringResource(R.string.timeline_marker_start), stringResource(R.string.timeline_marker_stop), stringResource(R.string.timeline_marker_off),
     )
-    // The visible lines of each tracking marker's label; a collapsed pair stacks only if its lines are narrow enough.
-    val markerLineTexts = remember(trackingMarkers, markerWords, formats, zone, hourStyle, density) {
-        fun widthOf(text: String) = measurer.measure(text, hourStyle, maxLines = 1, softWrap = false, density = density).size.width
-        val stackedMax = with(density) { DayCanvasDefaults.MarkerStackedMaxWidth.toPx() }
-        trackingMarkers.associateWith { m ->
-            markerLines(m, markerWords, { formats.time(it, zone) }) { lines -> lines.maxOf(::widthOf) <= stackedMax }
-        }
+    // The visible lines of each tracking marker's label.
+    val markerLineTexts = remember(trackingMarkers, markerWords, formats, zone) {
+        trackingMarkers.associateWith { m -> markerLines(m, markerWords, { formats.time(it, zone) }) }
     }
     // The time column grows to the widest hour label, marker label or now-pill text, so none is ever clipped at large font sizes.
     val timeColumn = remember(hourLabels, markerLineTexts, now, formats, zone, hourStyle, density, layout.nowDp != null) {

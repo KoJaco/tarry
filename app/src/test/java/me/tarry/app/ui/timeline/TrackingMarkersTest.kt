@@ -108,14 +108,13 @@ class TrackingMarkersTest {
 
     @Test
     fun startAndStopAreTheWordOverTheTime() {
-        assertThat(markerLines(TrackingMarker(at(7, 30), null), words, ::time) { true }).containsExactly("Start", "7:30").inOrder()
-        assertThat(markerLines(TrackingMarker(null, at(7, 30)), words, ::time) { true }).containsExactly("Stop", "7:30").inOrder()
+        assertThat(markerLines(TrackingMarker(at(7, 30), null), words, ::time)).containsExactly("Start", "7:30").inOrder()
+        assertThat(markerLines(TrackingMarker(null, at(7, 30)), words, ::time)).containsExactly("Stop", "7:30").inOrder()
     }
 
     @Test
-    fun aCollapsedPairStacksStopOverStart_whenItFits_elseOff() {
+    fun aCollapsedPairIsAlwaysOffOverTheRange() {
         val pair = TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5))
-        assertThat(markerLines(pair, words, ::time) { true }).containsExactly("Stop 12:05", "Start 12:20").inOrder()
-        assertThat(markerLines(pair, words, ::time) { false }).containsExactly("Off", "12:05–12:20").inOrder()
+        assertThat(markerLines(pair, words, ::time)).containsExactly("Off", "12:05–12:20").inOrder()
     }
 }
