@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,7 @@ import me.tarry.app.export.backup.BackupError
 import me.tarry.app.export.backup.BackupException
 import me.tarry.app.export.backup.DataBackup
 import me.tarry.app.export.backup.RestorePreview
+import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.ReconcileTrigger
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.app.ui.schedule.WeekScheduleSummary
@@ -44,6 +46,8 @@ class SettingsViewModel @Inject constructor(
     private val clock: TrackingClock,
     private val backup: DataBackup,
     private val reconcile: ReconcileTrigger,
+    // The reconcile after a grace change must finish even if the user leaves Settings right after picking.
+    @param:CaptureScope private val captureScope: CoroutineScope,
 ) : ViewModel() {
     /** Null until the first DataStore read completes. */
     val settings: StateFlow<Settings?> = repository.settings
@@ -64,9 +68,12 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setStayGeofenceRadiusM(meters) }
     }
 
-    /** Saves the cap, then reconciles at once so a running grace and its cap alarm follow the new value. */
+    /**
+     * Saves the cap, then reconciles at once so a running grace and its cap alarm follow the new value. Both run in the
+     * app-lifetime capture scope: cancelled half-way, a reconcile could stop capture without re-arming the next window.
+     */
     fun setWindowEndGraceMaxMin(minutes: Int) {
-        viewModelScope.launch {
+        captureScope.launch {
             repository.setWindowEndGraceMaxMin(minutes)
             reconcile.reconcileNow()
         }
