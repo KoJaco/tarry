@@ -40,6 +40,8 @@ android {
             // Opt-in local replay of real traces: -Ptarry.replay=<dir of CSVs>
             providers.gradleProperty("tarry.replay").orNull?.let { dir -> it.systemProperty("tarry.replay", dir) }
             it.testLogging.showStandardStreams = providers.gradleProperty("tarry.replay").isPresent
+            // The default 512 MB test heap is too small for the whole Robolectric suite in one JVM: it slows to a GC crawl.
+            it.maxHeapSize = "2g"
             // Robolectric reaches into JDK internals; required on JDK 17+ (we run JDK 25).
             it.jvmArgs(
                 "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
