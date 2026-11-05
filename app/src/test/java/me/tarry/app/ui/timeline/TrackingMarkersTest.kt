@@ -109,6 +109,17 @@ class TrackingMarkersTest {
     }
 
     @Test
+    fun nearTheCanvasBottomALabelGoesBelowThePill_neverOverlappingAnotherLabel() {
+        // Pill 150..166 on a 180 dp canvas; above (116) would overlap the previous label (94..126), so it goes below
+        // (168), running into the card padding rather than over text.
+        val markers = listOf(TrackingMarker(null, at(9, 50)), TrackingMarker(at(10, 35), null))
+        val placed = placeTrackingMarkers(
+            markers, at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f, avoid = 150f..166f,
+        )
+        assertThat(placed[1].labelTopDp).isEqualTo(168f)
+    }
+
+    @Test
     fun aCollapsedPairIsCentredOnTheMiddleOfItsTwoTimes() {
         val pair = TrackingMarker(startedMs = at(9, 2), stoppedMs = at(9, 0))
         val placed = placeTrackingMarkers(listOf(pair), at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f)

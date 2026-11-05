@@ -89,6 +89,8 @@ fun placeTrackingMarkers(
         var top = maxOf(natural, prevBottom + gapDp)
         if (avoid != null && top < avoid.endInclusive + gapDp && top + height > avoid.start - gapDp) {
             val above = avoid.start - gapDp - height
+            // Below is not clamped to the canvas: a label running into the card's bottom padding stays readable, while
+            // clamping or squeezing it above would overlap the pill or the previous label.
             top = if (above >= 0f && above >= prevBottom + gapDp) above else avoid.endInclusive + gapDp
         }
         prevBottom = top + height
