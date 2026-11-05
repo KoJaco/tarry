@@ -413,16 +413,16 @@ class TrackingController @Inject constructor(
      */
     private suspend fun keepOpenForGrace(nowMs: Long): Boolean {
         if (coordinator.activeTrigger != SessionTrigger.SCHEDULE) return false
-        if (graceStartMs == null && graceMaxMs() <= 0L) return false
+        // Read once, so the cap checked is the cap persisted.
+        val cap = graceMaxMs()
         val started = graceStartMs
         if (started == null) {
-            if (coordinator.isSettled()) return false
+            if (cap <= 0L || coordinator.isSettled()) return false
             graceStartMs = nowMs
-            statusStore.setFinishingUp(true, nowMs, graceMaxMs())
+            statusStore.setFinishingUp(true, nowMs, cap)
             coordinator.watchSettle(true)
             return true
         }
-        val cap = graceMaxMs()
         if (nowMs - started >= cap || coordinator.isSettled()) return false
         // A cap changed mid-grace is kept for crash accounting.
         statusStore.setFinishingUp(true, capMs = cap)

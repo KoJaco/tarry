@@ -70,6 +70,7 @@ data class TrackingConfig(
     // Window-end grace: keep a session open past the schedule end until a stay this long is confirmed. The cap is the
     // user setting (Settings.windowEndGraceMaxMin, via WindowEndGraceSource); windowEndGraceMaxMs is only the fallback
     // (the setting default) used where the setting is not at hand, e.g. accounting a session that died during a grace.
+    // It was 2 h before the setting existed: a grace in flight across that upgrade (no persisted cap) is accounted to 60 min.
     val windowEndSettleMs: Long = 10 * 60_000L,
     val windowEndGraceMaxMs: Long = 60 * 60_000L,
     // Health.
