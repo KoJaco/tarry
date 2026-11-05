@@ -141,6 +141,13 @@ class TimelineEditorTest : DbTestBase() {
     }
 
     @Test
+    fun anEmptyPaletteFailsLoudly_neverHandingOutTheDoneColour() {
+        // Colour 0 means "done" in the app, so a silent 0 would draw a new job as done.
+        val error = runCatching { pickJobColour(emptyList(), emptyList()) }.exceptionOrNull()
+        assertThat(error).isInstanceOf(IllegalArgumentException::class.java)
+    }
+
+    @Test
     fun createJobTakesTheNextUnusedPaletteColour() = runTest {
         val palette = listOf(10, 20, 30)
 
