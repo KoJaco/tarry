@@ -7,6 +7,9 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.TouchInjectionScope
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -101,6 +104,25 @@ class JobColumnTest {
         assertThat(description("timeline_job_a")).endsWith(", billable")
         val texts = composeRule.onNodeWithTag("timeline_job_a").fetchSemanticsNode().config[SemanticsProperties.Text]
         assertThat(texts.map { it.text }).contains("Smith reno")
+    }
+
+    @Test
+    fun aDoneJobSaysDoneAboveItsName_andTalkBackHearsIt() {
+        show(listOf(block("a", at(9), at(11)).copy(jobColorArgb = JobPalette.DONE_KEY)))
+        val done = composeRule.onNodeWithTag("timeline_job_done_a", useUnmergedTree = true).fetchSemanticsNode()
+        val name = composeRule.onNode(hasText("Smith reno") and hasAnyAncestor(hasTestTag("timeline_job_a")), useUnmergedTree = true)
+            .fetchSemanticsNode()
+        assertThat(done.config[SemanticsProperties.Text].single().text).isEqualTo("Done")
+        assertThat(done.positionInRoot.y).isLessThan(name.positionInRoot.y)
+        assertThat(description("timeline_job_a")).startsWith("Job Smith reno, done, from ")
+    }
+
+    @Test
+    fun anOpenJobHasNoDoneLine_andAShortDoneBlockLeavesItOut() {
+        show(listOf(block("a", at(9), at(11)), block("b", at(12), at(12, 15)).copy(jobColorArgb = JobPalette.DONE_KEY)), items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_done_a", useUnmergedTree = true).assertDoesNotExist()
+        composeRule.onNodeWithTag("timeline_job_done_b", useUnmergedTree = true).assertDoesNotExist()
+        assertThat(description("timeline_job_a")).doesNotContain("done")
     }
 
     @Test

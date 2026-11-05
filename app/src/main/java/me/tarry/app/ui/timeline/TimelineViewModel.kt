@@ -109,7 +109,10 @@ data class JobBlockItem(
     val end: Long,
     val billable: Boolean,
     val notes: String?,
-)
+) {
+    /** The job is done: it draws in the neutral [JobPalette.DONE] style and says "Done". */
+    val done: Boolean get() = jobColorArgb == JobPalette.DONE_KEY
+}
 
 /** A [JobSuggestion] with the suggested job's name and colour. */
 data class JobSuggestionItem(val suggestion: JobSuggestion, val jobName: String, val jobColorArgb: Int)
@@ -280,7 +283,7 @@ class TimelineViewModel internal constructor(
                 blocks.mapNotNull { b ->
                     val job = jobsById[b.jobId] ?: return@mapNotNull null
                     JobBlockItem(
-                        b.id, b.jobId, job.name, job.colorArgb, b.start, b.end, b.billable, b.notes,
+                        b.id, b.jobId, job.name, JobPalette.displayKey(job.colorArgb, job.archived), b.start, b.end, b.billable, b.notes,
                     )
                 }
             }
@@ -296,7 +299,7 @@ class TimelineViewModel internal constructor(
             ) { visits, allPlaces, blocks, allJobs, declined ->
                 val jobsById = allJobs.associateBy { it.id }
                 suggestions(visits, allPlaces.associateBy { it.id }, blocks, declined).mapNotNull { s ->
-                    jobsById[s.jobId]?.let { JobSuggestionItem(s, it.name, it.colorArgb) }
+                    jobsById[s.jobId]?.let { JobSuggestionItem(s, it.name, JobPalette.displayKey(it.colorArgb, it.archived)) }
                 }
             }
         }

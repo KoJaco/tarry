@@ -38,12 +38,14 @@ class SettingsUiTest {
 
     private val selected = mutableListOf<Int>()
     private val themes = mutableListOf<ThemeMode>()
+    private val graces = mutableListOf<Int>()
 
-    private fun show(radius: Int = 100, theme: ThemeMode = ThemeMode.SYSTEM) = composeRule.setContent {
+    private fun show(radius: Int = 100, theme: ThemeMode = ThemeMode.SYSTEM, grace: Int = 60) = composeRule.setContent {
         SettingsContent(
-            Settings(stayGeofenceRadiusM = radius, theme = theme),
+            Settings(stayGeofenceRadiusM = radius, theme = theme, windowEndGraceMaxMin = grace),
             onStayRadiusSelected = { selected += it },
             onThemeSelected = { themes += it },
+            onGraceSelected = { graces += it },
         )
     }
 
@@ -53,6 +55,39 @@ class SettingsUiTest {
         composeRule.onNodeWithText("Stop radius").assertExists()
         composeRule.onNodeWithText("150 m").assertExists()
         composeRule.onNodeWithText("Stop radius").assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun graceRowShowsTheCurrentValueAndIsATallEnoughTarget() {
+        show(grace = 30)
+        composeRule.onNodeWithText("After the window ends").assertExists()
+        composeRule.onNodeWithText("Up to 30 min").assertExists()
+        composeRule.onNodeWithText("After the window ends").assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun graceDefaultReadsUpToOneHour() {
+        show()
+        composeRule.onNodeWithText("Up to 1 hour").assertExists()
+    }
+
+    @Test
+    fun gracePickerListsFourOptionsWithDetailsAndSelectingOneCallsBack() {
+        show()
+        composeRule.onNodeWithText("After the window ends").performClick()
+        composeRule.onAllNodes(radioOption).assertCountEquals(4)
+        composeRule.onNode(option("Stop on time")).assertExists()
+        composeRule.onNode(option("Up to 15 min")).assertExists()
+        composeRule.onNode(option("Up to 30 min")).assertExists()
+        composeRule.onNode(option("Up to 1 hour")).assertIsSelected()
+        composeRule.onNodeWithText("so the last trip isn't cut off", substring = true).assertExists()
+        composeRule.onNodeWithText("A trip you're on is cut off there.", substring = true).assertExists()
+        composeRule.onNodeWithText("Good for a drive home after work. The default.", substring = true).assertExists()
+
+        composeRule.onNode(option("Stop on time")).performScrollTo().performClick()
+
+        assertThat(graces).containsExactly(0)
+        composeRule.onNodeWithText("so the last trip isn't cut off", substring = true).assertDoesNotExist()
     }
 
     @Test
@@ -129,7 +164,7 @@ class SettingsUiTest {
     fun everyRadiusHasAUseCaseAndTheWarningShowsOnceUnderTheExplanation() {
         show()
         composeRule.onNodeWithText("Stop radius").performClick()
-        composeRule.onNodeWithText("Boats at a berth", substring = true).assertExists()
+        composeRule.onNodeWithText("Closely spaced sites", substring = true).assertExists()
         composeRule.onNodeWithText("Most work: shops", substring = true).assertExists()
         composeRule.onNodeWithText("Farms, quarries", substring = true).assertExists()
         val warning = "Below 100 m: Android geofences are less reliable"

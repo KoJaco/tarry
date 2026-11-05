@@ -60,13 +60,15 @@ fun trackingMarkers(
     return out
 }
 
-/** A [marker] with where its label sits (dp from the canvas top) and the rule positions. */
-data class PlacedMarker(val marker: TrackingMarker, val ruleDps: List<Float>, val labelTopDp: Float)
+/** A [marker] and where its label sits in the time column: [anchorDp] is its true time position, [labelTopDp] the label's top. */
+data class PlacedMarker(val marker: TrackingMarker, val anchorDp: Float, val labelTopDp: Float, val labelHeightDp: Float)
 
 /**
- * Positions [markers] on a canvas starting at [canvasStart] with [dpPerHour]. The label hangs just under the rule, or
- * just above it when it would not fit before [canvasHeightDp]; a label that would overlap the previous one is pushed
- * down below it (the rules stay at their true time). Markers outside the canvas are dropped.
+ * Positions [markers] for the time column of a canvas starting at [canvasStart] with [dpPerHour]. A label is
+ * `lineCount(marker) * lineHeightDp` tall and centred on its time (a collapsed pair on the middle of its two times),
+ * kept inside `0..canvasHeightDp`; a label that would overlap the previous one is pushed down below it, [gapDp] apart.
+ * A label that would overlap [avoid] (the now-pill's span) moves just above it, or just below it when above would
+ * collide with the previous label or leave the top of the canvas. Markers outside the canvas are dropped.
  */
 fun placeTrackingMarkers(
     markers: List<TrackingMarker>,
@@ -74,16 +76,45 @@ fun placeTrackingMarkers(
     canvasEnd: Long,
     dpPerHour: Float,
     canvasHeightDp: Float,
-    labelHeightDp: Float,
+    lineHeightDp: Float,
     gapDp: Float,
+    lineCount: (TrackingMarker) -> Int = { 2 },
+    avoid: ClosedFloatingPointRange<Float>? = null,
 ): List<PlacedMarker> {
     var prevBottom = Float.NEGATIVE_INFINITY
     return markers.filter { it.timeMs in canvasStart..canvasEnd }.sortedBy { it.timeMs }.map { m ->
-        val rules = m.ruleTimes.map { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }
-        val y = rules.first()
-        val natural = if (y + gapDp + labelHeightDp <= canvasHeightDp) y + gapDp else maxOf(0f, y - gapDp - labelHeightDp)
-        val top = maxOf(natural, prevBottom)
-        prevBottom = top + labelHeightDp
-        PlacedMarker(m, rules, top)
+        val anchor = m.ruleTimes.map { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }.average().toFloat()
+        val height = lineCount(m) * lineHeightDp
+        val natural = (anchor - height / 2f).coerceIn(0f, maxOf(0f, canvasHeightDp - height))
+        var top = maxOf(natural, prevBottom + gapDp)
+        if (avoid != null && top < avoid.endInclusive + gapDp && top + height > avoid.start - gapDp) {
+            val above = avoid.start - gapDp - height
+            // Below is not clamped to the canvas: a label running into the card's bottom padding stays readable, while
+            // clamping or squeezing it above would overlap the pill or the previous label.
+            top = if (above >= 0f && above >= prevBottom + gapDp) above else avoid.endInclusive + gapDp
+        }
+        prevBottom = top + height
+        PlacedMarker(m, anchor, top, height)
+    }
+}
+
+/** True when the hour label centred at [markDp] (half a line of [hourHalfLineDp] each way) would overlap [placed]; the marker wins. */
+fun hourLabelCoveredByMarker(markDp: Float, placed: PlacedMarker, hourHalfLineDp: Float): Boolean =
+    markDp - hourHalfLineDp < placed.labelTopDp + placed.labelHeightDp && markDp + hourHalfLineDp > placed.labelTopDp
+
+/** The words of the time-column labels ("Start", "Stop", "Off"). */
+data class MarkerWords(val start: String, val stop: String, val off: String)
+
+/**
+ * The visible lines of a marker's time-column label. A start or stop is the word over the time ("Start" / "7:30"). A
+ * collapsed pair is always "Off" over "12:05–12:20", which keeps the time column narrow.
+ */
+fun markerLines(marker: TrackingMarker, words: MarkerWords, time: (Long) -> String): List<String> {
+    val stopped = marker.stoppedMs?.let(time)
+    val started = marker.startedMs?.let(time)
+    return when {
+        stopped != null && started != null -> listOf(words.off, "$stopped–$started")
+        stopped != null -> listOf(words.stop, stopped)
+        else -> listOf(words.start, started.orEmpty())
     }
 }

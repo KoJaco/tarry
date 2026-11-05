@@ -76,13 +76,77 @@ class TrackingMarkersTest {
     }
 
     @Test
-    fun placementPushesOverlappingLabelsDownAndFlipsAboveAtTheBottom() {
+    fun placementCentresLabelsOnTheirTime_pushesOverlapsDown_andKeepsThemInsideTheCanvas() {
         val start = at(8, 0)
         val markers = listOf(TrackingMarker(null, at(9, 0)), TrackingMarker(at(9, 5), null), TrackingMarker(null, at(11, 0)))
-        val placed = placeTrackingMarkers(markers, start, at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, labelHeightDp = 16f, gapDp = 2f)
-        assertThat(placed.map { it.ruleDps.first() }).containsExactly(60f, 65f, 180f).inOrder()
-        assertThat(placed[0].labelTopDp).isEqualTo(62f)
-        assertThat(placed[1].labelTopDp).isEqualTo(78f) // pushed under the first label
-        assertThat(placed[2].labelTopDp).isEqualTo(162f) // no room below the rule: above it
+        val placed = placeTrackingMarkers(markers, start, at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f)
+        assertThat(placed.map { it.anchorDp }).containsExactly(60f, 65f, 180f).inOrder()
+        assertThat(placed.map { it.labelHeightDp }).containsExactly(32f, 32f, 32f)
+        assertThat(placed[0].labelTopDp).isEqualTo(44f) // centred on 60
+        assertThat(placed[1].labelTopDp).isEqualTo(78f) // pushed under the first label (44 + 32 + 2)
+        assertThat(placed[2].labelTopDp).isEqualTo(148f) // clamped so it ends at the canvas bottom
+    }
+
+    @Test
+    fun aLabelUnderTheNowPillMovesAboveIt() {
+        // Now pill spans 110..130 (10:00 at 120 dp); a start at 9:55 (anchor 115) would sit under it.
+        val placed = placeTrackingMarkers(
+            listOf(TrackingMarker(at(9, 55), null)), at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f,
+            lineHeightDp = 16f, gapDp = 2f, avoid = 110f..130f,
+        ).single()
+        assertThat(placed.labelTopDp).isEqualTo(76f) // 110 - 2 - 32
+    }
+
+    @Test
+    fun aLabelThatCannotGoAboveThePillGoesBelowIt() {
+        // The previous label ends at 106, so above the pill (76) would collide with it: the second label goes below (132).
+        val markers = listOf(TrackingMarker(null, at(9, 30)), TrackingMarker(at(9, 55), null))
+        val placed = placeTrackingMarkers(
+            markers, at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f, avoid = 110f..130f,
+        )
+        assertThat(placed[0].labelTopDp).isEqualTo(74f) // centred on 90, clear of the pill
+        assertThat(placed[1].labelTopDp).isEqualTo(132f)
+    }
+
+    @Test
+    fun nearTheCanvasBottomALabelGoesBelowThePill_neverOverlappingAnotherLabel() {
+        // Pill 150..166 on a 180 dp canvas; above (116) would overlap the previous label (94..126), so it goes below
+        // (168), running into the card padding rather than over text.
+        val markers = listOf(TrackingMarker(null, at(9, 50)), TrackingMarker(at(10, 35), null))
+        val placed = placeTrackingMarkers(
+            markers, at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f, avoid = 150f..166f,
+        )
+        assertThat(placed[1].labelTopDp).isEqualTo(168f)
+    }
+
+    @Test
+    fun aCollapsedPairIsCentredOnTheMiddleOfItsTwoTimes() {
+        val pair = TrackingMarker(startedMs = at(9, 2), stoppedMs = at(9, 0))
+        val placed = placeTrackingMarkers(listOf(pair), at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f)
+        assertThat(placed.single().anchorDp).isEqualTo(61f)
+    }
+
+    @Test
+    fun anHourLabelCollidingWithAMarkerIsHidden_onesClearOfItAreNot() {
+        val placed = PlacedMarker(TrackingMarker(null, at(9, 0)), anchorDp = 60f, labelTopDp = 44f, labelHeightDp = 32f)
+        assertThat(hourLabelCoveredByMarker(60f, placed, 8f)).isTrue()
+        assertThat(hourLabelCoveredByMarker(80f, placed, 8f)).isTrue() // its top (72) is inside 44..76
+        assertThat(hourLabelCoveredByMarker(84.1f, placed, 8f)).isFalse() // 76.1..92.1 starts below the label
+        assertThat(hourLabelCoveredByMarker(35.9f, placed, 8f)).isFalse() // 27.9..43.9 ends above it
+    }
+
+    private val words = MarkerWords("Start", "Stop", "Off")
+    private fun time(ms: Long) = if (ms == at(12, 5)) "12:05" else if (ms == at(12, 20)) "12:20" else "7:30"
+
+    @Test
+    fun startAndStopAreTheWordOverTheTime() {
+        assertThat(markerLines(TrackingMarker(at(7, 30), null), words, ::time)).containsExactly("Start", "7:30").inOrder()
+        assertThat(markerLines(TrackingMarker(null, at(7, 30)), words, ::time)).containsExactly("Stop", "7:30").inOrder()
+    }
+
+    @Test
+    fun aCollapsedPairIsAlwaysOffOverTheRange() {
+        val pair = TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5))
+        assertThat(markerLines(pair, words, ::time)).containsExactly("Off", "12:05–12:20").inOrder()
     }
 }

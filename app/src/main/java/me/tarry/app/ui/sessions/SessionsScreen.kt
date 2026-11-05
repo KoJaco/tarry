@@ -53,6 +53,7 @@ fun SessionsScreen(
     SessionsContent(
         sessions = sessions,
         showTestWindow = BuildConfig.DEBUG,
+        showRunSegmentation = BuildConfig.DEBUG,
         exportResult = exportResult,
         segmentation = segmentation,
         actions = actions,

@@ -1,6 +1,7 @@
 package me.tarry.app.export.summary
 
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import me.tarry.app.summary.BillingRules
 import me.tarry.app.summary.SummaryInput
 import me.tarry.app.summary.SummaryRange
@@ -35,12 +36,11 @@ private object FakeText : SummaryPdfText {
     override val colTime = "Time"
     override val colDuration = "Duration"
     override val colBilled = "Billed"
-    override val colPlaces = "Places"
     override val colNotes = "Notes"
     override fun rangeLong(range: SummaryRange) = "${range.from} to ${range.to}"
     override fun rangeShort(range: SummaryRange) = "${range.from} - ${range.to}"
     override fun rules(rules: BillingRules) = "rules ${rules.incrementMin}/${rules.minimumMin}/${rules.perDay}"
-    override fun jobName(name: String, archived: Boolean) = if (archived) "$name (archived)" else name
+    override fun jobName(name: String, archived: Boolean) = if (archived) "$name (done)" else name
     override fun continued(name: String) = "$name (continued)"
     override fun blocks(count: Int) = "$count blocks"
     override fun duration(ms: Long) = "${ms / 60_000L}m"
@@ -52,7 +52,9 @@ private object FakeText : SummaryPdfText {
         "Billed ${duration(billedMs)} · total ${duration(totalMs)} · billable ${duration(billableMs)}"
     override fun dayTotal(billedMs: Long) = "Day total, billed ${duration(billedMs)}"
     override fun notBillable() = "Not billable"
-    override fun footer(range: SummaryRange, page: Int, pages: Int) = "Tarry · ${rangeShort(range)} · Page $page of $pages"
+    override fun generatedDate(date: LocalDate) = "gen $date"
+    override fun footer(range: SummaryRange, generated: LocalDate, page: Int, pages: Int) =
+        "Tarry · ${rangeShort(range)} · Generated ${generatedDate(generated)} · Page $page of $pages"
 }
 
 class SummaryPdfLayoutTest {
@@ -60,6 +62,9 @@ class SummaryPdfLayoutTest {
     private val first = LocalDate.of(2025, 11, 10)
     private val range = SummaryRange(first, first.plusDays(6))
     private val hour = 3_600_000L
+
+    // 00:30 on 4 Nov 2025 in Sydney is still the 3rd in UTC: the footer shows the date in the snapshot zone.
+    private val generatedAt = ZonedDateTime.of(LocalDate.of(2025, 11, 4), LocalTime.of(0, 30), zone).toInstant().toEpochMilli()
 
     private fun at(day: Int, h: Int, m: Int = 0) =
         ZonedDateTime.of(first.plusDays(day.toLong()), LocalTime.of(h, m), zone).toInstant().toEpochMilli()
@@ -85,7 +90,7 @@ class SummaryPdfLayoutTest {
                 ignoredPlaceIds = places.filter { it.ignored }.map { it.id }.toSet(), rules = rules,
             ),
         ),
-        rules, visits, places,
+        rules, visits, places, generatedAt,
     )
 
     private fun layout(s: SummarySnapshot) = SummaryPdfLayout.layout(s, FakeText, FakeMeasurer)
@@ -106,7 +111,7 @@ class SummaryPdfLayoutTest {
         assertThat(pages).hasSize(1)
         val runs = pages[0].runs
         val alpha = runs.first { it.style == PdfTextStyle.HEADING && it.text == "Alpha" }
-        val bravo = runs.first { it.style == PdfTextStyle.HEADING && it.text == "Bravo (archived)" }
+        val bravo = runs.first { it.style == PdfTextStyle.HEADING && it.text == "Bravo (done)" }
         val unlabelledOrTotals = runs.last { it.style == PdfTextStyle.TOTALS }
         assertThat(alpha.baseline).isGreaterThan(unlabelledOrTotals.baseline + 15f)
         assertThat(bravo.baseline).isGreaterThan(alpha.baseline)
@@ -121,8 +126,8 @@ class SummaryPdfLayoutTest {
         for (n in 1..60) {
             val alphaBlocks = (0 until n).map { i -> block("a$i", "A", i % 7, 5 + i / 7, 6 + i / 7) }
             val pages = layout(snapshot(alphaBlocks + block("b", "B", 0, 13, 15)))
-            val bravoPage = pages.indexOfFirst { p -> p.runs.any { it.style == PdfTextStyle.HEADING && it.text == "Bravo (archived)" } }
-            val part = pages.jobPart("Bravo (archived)")
+            val bravoPage = pages.indexOfFirst { p -> p.runs.any { it.style == PdfTextStyle.HEADING && it.text == "Bravo (done)" } }
+            val part = pages.jobPart("Bravo (done)")
             // Never a header alone: the table header and the row follow it on the same page.
             assertThat(part.texts()).containsAtLeast("Date", "2025-11-10")
             val header = part.runs.first()
@@ -163,7 +168,7 @@ class SummaryPdfLayoutTest {
         val cover = layout(snapshot(twoJobs, rules)).first().texts()
         assertThat(cover).containsAtLeast("Hours summary", "2025-11-10 to 2025-11-16", "rules 15/30/true")
         assertThat(cover).containsAtLeast("Job", "Blocks", "Total", "Billed")
-        assertThat(cover).containsAtLeast("Alpha", "2 blocks", "240m", "Bravo (archived)", "1 blocks", "120m")
+        assertThat(cover).containsAtLeast("Alpha", "2 blocks", "240m", "Bravo (done)", "1 blocks", "120m")
         assertThat(cover).contains("Billed 360m · on the clock 360m")
     }
 
@@ -190,8 +195,9 @@ class SummaryPdfLayoutTest {
         val page = layout(snapshot(listOf(block("a1", "A", 0, 9, 12, notes = "Hello"), block("n", "A", 1, 9, 10, billable = false)), rules, listOf(visit), places = listOf(place))).jobPart("Alpha")
         val t = page.texts()
         assertThat(t).containsAtLeast("Alpha", "2025-11-10 to 2025-11-16", "Billed 180m · total 240m · billable 180m")
-        assertThat(t).containsAtLeast("Date", "Time", "Duration", "Billed", "Places", "Notes")
-        assertThat(t).containsAtLeast("2025-11-10", "180m", "Site", "Hello", "2025-11-11", "Not billable")
+        assertThat(t).containsAtLeast("Date", "Time", "Duration", "Billed")
+        assertThat(t).doesNotContain("Places")
+        assertThat(t).containsAtLeast("2025-11-10", "180m", "Site", "Notes: Hello", "2025-11-11", "Not billable")
         assertThat(t.none { it.startsWith("Day total") }).isTrue()
     }
 
@@ -210,14 +216,36 @@ class SummaryPdfLayoutTest {
     }
 
     @Test
-    fun placesAndNotes_wrapWithinTheirColumns() {
-        val notes = "one two three four five six seven eight nine ten eleven twelve thirteen fourteen"
-        val page = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = notes)))).jobPart("Alpha")
-        val noteLines = page.runs.filter { it.x > 400f && it.text != "Notes" && it.style == PdfTextStyle.BODY && it.baseline > 100f }
-        assertThat(noteLines.size).isAtLeast(3)
-        assertThat(noteLines.joinToString(" ") { it.text }).isEqualTo(notes)
-        for (line in noteLines) assertThat(line.x + FakeMeasurer.width(line.text, line.style)).isAtMost(PdfPageSpec.WIDTH - PdfPageSpec.MARGIN)
+    fun perDayMode_saysNotBillable_forANonBillableBlock_andLeavesBillableBlocksBlank() {
+        val rules = BillingRules(0, RoundingMode.NEAREST, 0, perDay = true)
+        val blocks = listOf(block("1", "A", 0, 9, 10, billable = false), block("2", "A", 1, 9, 10))
+        val page = layout(snapshot(blocks, rules)).jobPart("Alpha")
+        assertThat(page.runs.count { it.text == "Not billable" }).isEqualTo(1)
+        // The billable day still carries its figure on the day-total line only.
+        assertThat(page.texts()).contains("Day total, billed 60m")
     }
+
+    @Test
+    fun theCoverTableHeader_isDrawnOnce_wherever_theTableStarts() {
+        var startedOnLaterPage = false
+        for (n in 1..60) {
+            val longRules = object : SummaryPdfText by FakeText {
+                override fun rules(rules: BillingRules) = "word ".repeat(n * 20)
+            }
+            val pages = SummaryPdfLayout.layout(snapshot(listOf(block("a", "A", 0, 9, 10))), longRules, FakeMeasurer)
+            // At most once per page: the header goes with its first row (keep with next), so a page break never draws it twice.
+            for (p in pages) assertThat(p.runs.count { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER }).isAtMost(1)
+            assertThat(pages.flatMap { it.runs }.count { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER }).isAtLeast(1)
+            val tablePage = pages.indexOfFirst { p -> p.runs.any { it.text == "Job" } }
+            if (tablePage > 0) {
+                startedOnLaterPage = true
+                // The table moved to a page that does not already hold anything of the cover's heading.
+                assertThat(pages[tablePage].texts()).doesNotContain("Hours summary (continued)")
+            }
+        }
+        assertThat(startedOnLaterPage).isTrue()
+    }
+
 
     private fun longJob(): SummarySnapshot {
         // 24 rows, each with a long note that wraps to a few lines: well over two pages.
@@ -237,10 +265,10 @@ class SummaryPdfLayoutTest {
         assertThat(job[0].texts()).doesNotContain("Alpha (continued)")
         assertThat(job[0].texts()).contains("Alpha")
         for (continuation in job.drop(1)) {
-            assertThat(continuation.texts()).containsAtLeast("Alpha (continued)", "Date", "Time", "Duration", "Billed", "Places", "Notes")
+            assertThat(continuation.texts()).containsAtLeast("Alpha (continued)", "Date", "Time", "Duration", "Billed")
         }
         // Every row of every page is whole: each note shows all of its lines, never part of them.
-        val noteWords = job.sumOf { p -> p.runs.filter { it.x > 400f && it.text.startsWith("note") }.sumOf { it.text.split(' ').size } }
+        val noteWords = job.sumOf { p -> p.runs.filter { it.style == PdfTextStyle.DETAIL }.sumOf { r -> r.text.split(" ").count { it == "note" } } }
         assertThat(noteWords).isEqualTo(30 * s.result.byJob.single().pieces.size)
         for (p in pages) for (r in p.runs) assertThat(r.baseline).isAtMost(PdfPageSpec.HEIGHT - PdfPageSpec.MARGIN)
         for (p in job) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
@@ -251,7 +279,7 @@ class SummaryPdfLayoutTest {
         val pages = layout(longJob())
         pages.forEachIndexed { i, p ->
             val footer = p.runs.single { it.style == PdfTextStyle.FOOTER }
-            assertThat(footer.text).isEqualTo("Tarry · 2025-11-10 - 2025-11-16 · Page ${i + 1} of ${pages.size}")
+            assertThat(footer.text).isEqualTo("Tarry · 2025-11-10 - 2025-11-16 · Generated gen 2025-11-04 · Page ${i + 1} of ${pages.size}")
             assertThat(footer.x).isEqualTo(PdfPageSpec.MARGIN)
             assertThat(footer.baseline).isEqualTo(PdfPageSpec.HEIGHT - PdfPageSpec.MARGIN)
         }
@@ -266,7 +294,7 @@ class SummaryPdfLayoutTest {
         assertThat(cut).hasSize(1)
         assertThat(cut.single().baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
         // The row after it is still there, and nothing ran off the page.
-        assertThat(job.flatMap { it.texts() }).contains("short")
+        assertThat(job.flatMap { it.texts() }).contains("Notes: short")
         for (p in job) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
     }
 
@@ -280,7 +308,7 @@ class SummaryPdfLayoutTest {
             block("1", "L", 0, 9, 10, notes = "short"), block("2", "L", 1, 9, 10, notes = tall),
             block("3", "L", 2, 9, 10, notes = tall), block("4", "L", 3, 9, 10, notes = "end"),
         )
-        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())))
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())), generatedAt = generatedAt)
         val pages = layout(s)
         val continuation = pages.drop(2)
         assertThat(continuation).isNotEmpty()
@@ -289,7 +317,7 @@ class SummaryPdfLayoutTest {
             assertThat(p.runs.count { it.style == PdfTextStyle.HEADING }).isAtLeast(2)
             assertThat(p.texts()).contains("Date")
         }
-        assertThat(pages.flatMap { it.texts() }).containsAtLeast("short", "end")
+        assertThat(pages.flatMap { it.texts() }).containsAtLeast("Notes: short", "Notes: end")
         for (p in pages) {
             for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
             for (rule in p.rules) assertThat(rule.y).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
@@ -301,7 +329,7 @@ class SummaryPdfLayoutTest {
         val long = Job(id = "L", name = "Job name ".repeat(60).trim(), colorArgb = 1, updatedAt = 0)
         val tall = "word ".repeat(2000).trim()
         val blocks = listOf(block("1", "L", 0, 9, 10, notes = tall), block("2", "L", 1, 9, 10, notes = tall))
-        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())))
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, listOf(long), emptyList(), emptyList(), emptySet(), BillingRules())), generatedAt = generatedAt)
         val pages = layout(s)
         for (p in pages.drop(2)) assertThat(p.runs.count { it.style == PdfTextStyle.HEADING }).isAtMost(3)
         for (p in pages) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
@@ -319,24 +347,12 @@ class SummaryPdfLayoutTest {
         for (p in pages) for (r in p.runs.filter { it.style != PdfTextStyle.FOOTER }) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM)
     }
 
-    @Test
-    fun emptyAndMissingNotes_addNoHeightToARow() {
-        // The fake time text wraps in its column, so the reference is a row with a one word note, not a fixed height.
-        val blocks = listOf(
-            block("1", "A", 0, 9, 10, notes = ""), block("2", "A", 1, 9, 10, notes = null),
-            block("3", "A", 2, 9, 10, notes = "   "), block("4", "A", 3, 9, 10, notes = "x"), block("5", "A", 4, 9, 10, notes = "x"),
-        )
-        val page = layout(snapshot(blocks)).jobPart("Alpha")
-        val tops = (10..14).map { d -> page.runs.single { it.text == "2025-11-$d" }.baseline }
-        val steps = tops.zipWithNext { a, b -> b - a }
-        for (step in steps) assertThat(step).isWithin(0.01f).of(steps.last())
-    }
 
     @Test
     fun tabsAndOtherControlCharacters_becomeSpaces_butNewlinesStay() {
         val page = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = "one\ttwo\u0000three\u001Bfour\nfive\r\nsix")))).jobPart("Alpha")
-        val noteLines = page.runs.filter { it.x > 400f && it.style == PdfTextStyle.BODY && it.baseline > 100f }.map { it.text }
-        assertThat(noteLines.joinToString("\n")).isEqualTo("one two three four\nfive\nsix")
+        val noteLines = page.runs.filter { it.style == PdfTextStyle.DETAIL }.map { it.text }
+        assertThat(noteLines.joinToString("\n")).isEqualTo("Notes: one two three four\nfive\nsix")
         for (p in listOf(page)) for (r in p.runs) assertThat(r.text.any { it.isISOControl() }).isFalse()
     }
 
@@ -344,9 +360,134 @@ class SummaryPdfLayoutTest {
     fun theCoverTable_continuesOnAnotherPage_whenThereAreManyJobs() {
         val jobs = (0 until 120).map { Job(id = "J$it", name = "Job $it", colorArgb = 1, updatedAt = 0) }
         val blocks = jobs.map { block("b${it.id}", it.id, 0, 9, 10).copy(jobId = it.id) }
-        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, jobs, emptyList(), emptyList(), emptySet(), BillingRules())))
+        val s = SummarySnapshot(range, zone, calculateSummary(SummaryInput(range, zone, blocks, jobs, emptyList(), emptyList(), emptySet(), BillingRules())), generatedAt = generatedAt)
         val pages = layout(s)
         assertThat(pages[1].texts()).contains("Hours summary (continued)")
         assertThat(pages.flatMap { it.texts() }).contains("Billed 7200m · on the clock 60m")
+    }
+
+    // ---- the job table's four columns and the detail lines under each number line ---------------------------------
+
+    private fun PdfPage.detailRuns() = runs.filter { it.style == PdfTextStyle.DETAIL }
+
+    private fun twoPlacesSnapshot(notes: String?): SummarySnapshot {
+        val p1 = Place(id = "p1", centroidLat = 0.0, centroidLng = 0.0, name = "Site", updatedAt = 0)
+        val p2 = Place(id = "p2", centroidLat = 1.0, centroidLng = 1.0, name = "Depot", updatedAt = 0)
+        val v1 = Visit(id = "v1", placeId = "p1", start = at(0, 9), end = at(0, 10), zoneId = zone.id, origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0)
+        val v2 = Visit(id = "v2", placeId = "p2", start = at(0, 10), end = at(0, 11), zoneId = zone.id, origin = VisitOrigin.DETECTED, confidence = 1f, updatedAt = 0)
+        return snapshot(listOf(block("a", "A", 0, 9, 11, notes = notes)), visits = listOf(v1, v2), places = listOf(p1, p2))
+    }
+
+    @Test
+    fun theJobTable_hasFourHeadersOnly_spreadOverTheContentWidth() {
+        val page = layout(snapshot(twoJobs)).jobPart("Alpha")
+        val headers = page.runs.filter { it.style == PdfTextStyle.TABLE_HEADER }.take(4)
+        assertThat(headers.map { it.text }).containsExactly("Date", "Time", "Duration", "Billed").inOrder()
+        assertThat(headers.first().x).isEqualTo(PdfPageSpec.MARGIN)
+        // Duration and Billed are right-aligned: the Billed header ends at the right edge less the cell gap.
+        val billed = headers.last()
+        assertThat(billed.x + FakeMeasurer.width(billed.text, billed.style)).isWithin(0.01f).of(PdfPageSpec.WIDTH - PdfPageSpec.MARGIN - 6f)
+        assertThat(headers.map { it.x }).isInOrder()
+    }
+
+    @Test
+    fun detailLines_sitPlacesThenNotes_belowTheNumberLine_fullWidth_inDarkGrey() {
+        val page = layout(twoPlacesSnapshot("Fixed the pump")).jobPart("Alpha")
+        val number = page.runs.first { it.text == "2025-11-10" }
+        val details = page.detailRuns()
+        assertThat(details.map { it.text }).containsExactly("Site, Depot", "Notes: Fixed the pump").inOrder()
+        assertThat(details[0].baseline).isGreaterThan(number.baseline + 4f)
+        assertThat(details[1].baseline).isGreaterThan(details[0].baseline)
+        for (d in details) assertThat(d.x).isEqualTo(PdfPageSpec.MARGIN)
+        assertThat(PdfTextStyle.DETAIL.size).isEqualTo(10.5f)
+        assertThat(PdfTextStyle.DETAIL.colorArgb).isEqualTo(0xFF444444.toInt())
+        assertThat(PdfTextStyle.BODY.colorArgb).isEqualTo(0xFF000000.toInt())
+        // The gap between the number line and the first detail is more than a plain line step.
+        assertThat(details[0].baseline - number.baseline).isGreaterThan(PdfTextStyle.BODY.lineHeight)
+    }
+
+    @Test
+    fun emptyPlacesOrNotes_produceNoLine() {
+        val noNotes = layout(twoPlacesSnapshot(notes = null)).jobPart("Alpha").detailRuns().map { it.text }
+        assertThat(noNotes).containsExactly("Site, Depot")
+        val blank = layout(twoPlacesSnapshot(notes = "   ")).jobPart("Alpha").detailRuns().map { it.text }
+        assertThat(blank).containsExactly("Site, Depot")
+        val notesOnly = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = "Hello")))).jobPart("Alpha").detailRuns().map { it.text }
+        assertThat(notesOnly).containsExactly("Notes: Hello")
+        val neither = layout(snapshot(listOf(block("a", "A", 0, 9, 10)))).jobPart("Alpha")
+        assertThat(neither.detailRuns()).isEmpty()
+    }
+
+    @Test
+    fun aRowWithoutDetails_isShorterThanOneWithDetails() {
+        val blocks = listOf(block("1", "A", 0, 9, 10, notes = ""), block("2", "A", 1, 9, 10, notes = "x"), block("3", "A", 2, 9, 10))
+        val page = layout(snapshot(blocks)).jobPart("Alpha")
+        val dates = (10..12).map { d -> page.runs.single { it.text == "2025-11-$d" }.baseline }
+        val plain = dates[1] - dates[0]
+        val withNote = dates[2] - dates[1]
+        assertThat(withNote - plain).isWithin(0.01f).of(4f + PdfTextStyle.DETAIL.lineHeight)
+    }
+
+    @Test
+    fun longNotes_wrapToTheContentWidth() {
+        val notes = "one two three four five six seven eight nine ten ".repeat(8).trim()
+        val page = layout(snapshot(listOf(block("a", "A", 0, 9, 10, notes = notes)))).jobPart("Alpha")
+        val lines = page.detailRuns()
+        assertThat(lines.size).isAtLeast(3)
+        assertThat(lines.joinToString(" ") { it.text }).isEqualTo("Notes: $notes")
+        for (line in lines) assertThat(line.x + FakeMeasurer.width(line.text, line.style)).isAtMost(PdfPageSpec.WIDTH - PdfPageSpec.MARGIN)
+    }
+
+    @Test
+    fun aRowAndItsDetails_neverSplitAcrossPages() {
+        for (n in 1..60) {
+            val blocks = (0 until n).map { i -> block("a$i", "A", i % 7, 5 + i / 7, 6 + i / 7, notes = "note ".repeat(40).trim()) }
+            val pages = layout(snapshot(blocks))
+            for (p in pages) {
+                // Every date (number line) on a page has all of its detail lines on that same page, right under it.
+                val dateRuns = p.runs.filter { it.style == PdfTextStyle.BODY && it.x == PdfPageSpec.MARGIN && it.text.startsWith("2025-") }
+                val details = p.detailRuns()
+                assertThat(details.size).isAtLeast(dateRuns.size)
+            }
+            val words = pages.sumOf { p -> p.detailRuns().sumOf { r -> r.text.split(" ").count { it == "note" } } }
+            assertThat(words).isEqualTo(40 * n)
+        }
+    }
+
+    @Test
+    fun aVeryTallFirstRow_staysUnderTheJobHeading_andNoTableHeaderIsLeftWithoutATitle() {
+        val tall = "word ".repeat(1500).trim()
+        val blocks = listOf(block("a0", "A", 0, 9, 10, notes = tall)) + (1..6).map { block("a$it", "A", it, 9, 10, notes = "short") }
+        val pages = layout(snapshot(blocks))
+        val headingPage = pages.first { p -> p.runs.any { it.style == PdfTextStyle.HEADING && it.text == "Alpha" } }
+        val heading = headingPage.runs.first { it.style == PdfTextStyle.HEADING && it.text == "Alpha" }
+        val header = headingPage.runs.firstOrNull { it.text == "Date" && it.style == PdfTextStyle.TABLE_HEADER }
+        assertThat(header).isNotNull()
+        // The heading, the table header and the first row's number line and details all share a page, in that order.
+        val firstDate = headingPage.runs.first { it.style == PdfTextStyle.BODY && it.x == PdfPageSpec.MARGIN && it.text.startsWith("2025-") }
+        assertThat(header!!.baseline).isGreaterThan(heading.baseline)
+        assertThat(firstDate.baseline).isGreaterThan(header.baseline)
+        assertThat(headingPage.runs.any { it.style == PdfTextStyle.DETAIL && it.baseline > firstDate.baseline }).isTrue()
+        // A table header never opens a page without a title above it.
+        for (p in pages) {
+            val h = p.runs.firstOrNull { it.text == "Date" && it.style == PdfTextStyle.TABLE_HEADER } ?: continue
+            assertThat(p.runs.any { it.style == PdfTextStyle.HEADING && it.baseline < h.baseline && it.text.startsWith("Alpha") }).isTrue()
+        }
+        for (p in pages) for (r in p.runs) assertThat(r.baseline).isAtMost(PdfPageSpec.CONTENT_BOTTOM + PdfPageSpec.MARGIN)
+    }
+
+    @Test
+    fun theCoverTableHeader_isNeverLeftAloneAtThePageBottom() {
+        for (n in 1..80) {
+            val longRules = object : SummaryPdfText by FakeText {
+                override fun rules(rules: BillingRules) = "word ".repeat(n * 12)
+            }
+            val pages = SummaryPdfLayout.layout(snapshot(twoJobs), longRules, FakeMeasurer)
+            for (p in pages) {
+                val header = p.runs.firstOrNull { it.text == "Job" && it.style == PdfTextStyle.TABLE_HEADER } ?: continue
+                // A cover row sits on the same page, below the header (a continuation page starts with the next job).
+                assertWithMessage("n=$n").that(p.runs.any { (it.text == "Alpha" || it.text == "Bravo (done)") && it.style == PdfTextStyle.BODY && it.baseline > header.baseline }).isTrue()
+            }
+        }
     }
 }

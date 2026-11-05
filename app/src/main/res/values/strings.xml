@@ -113,13 +113,10 @@
     <string name="permissions_status_not_granted">Not granted</string>
     <string name="permissions_status_skipped">Skipped</string>
     <string name="permissions_status_locked">Waiting for the previous step</string>
-    <string name="permissions_action_allow">Allow</string>
-    <string name="permissions_action_open_settings">Open settings</string>
-    <string name="permissions_action_skip">Skip</string>
     <string name="permissions_action_done">Done</string>
-    <string name="permissions_action_allow_description">Allow %1$s</string>
+    <string name="permissions_action_grant">Grant</string>
+    <string name="permissions_action_skip">Skip</string>
     <string name="permissions_action_skip_description">Skip %1$s</string>
-    <string name="permissions_status_description">%1$s: %2$s</string>
     <string name="permissions_missing_required">Scheduled tracking will not start until the steps marked as required are granted.</string>
 
     <string name="permissions_step_location">Precise location</string>
@@ -207,7 +204,7 @@
     <string name="settings_min_billable">Minimum billable time</string>
     <string name="settings_min_billable_explanation">Shorter jobs are billed as at least this long.</string>
     <string name="settings_round_daily_total">Round per day, per job</string>
-    <string name="settings_round_daily_total_subtitle">Add up each job\'s blocks for the day before rounding and the minimum.</string>
+    <string name="settings_round_daily_total_subtitle">Add up each job\'s blocks for the day before dropping seconds, rounding and the minimum.</string>
     <string name="settings_ping_retention">Raw location retention</string>
     <string name="settings_review_reminder">Review reminder</string>
     <string name="settings_review_reminder_time">Review reminder time</string>
@@ -219,9 +216,19 @@
     <string name="settings_stay_radius">Stop radius</string>
     <string name="settings_stay_radius_value">%1$d m</string>
     <string name="settings_stay_radius_explanation">How far you must move from a stop before Tarry starts tracking closely again. Smaller catches short trips sooner but can be triggered by GPS drift indoors.</string>
+    <string name="settings_grace">After the window ends</string>
+    <string name="settings_grace_explanation">If you\'re still on the move when your schedule ends, Tarry can keep recording until you\'ve stopped, so the last trip isn\'t cut off. It never records longer than this.</string>
+    <string name="settings_grace_0">Stop on time</string>
+    <string name="settings_grace_15">Up to 15 min</string>
+    <string name="settings_grace_30">Up to 30 min</string>
+    <string name="settings_grace_60">Up to 1 hour</string>
+    <string name="settings_grace_use_0">Tracking stops exactly when your window ends. A trip you\'re on is cut off there.</string>
+    <string name="settings_grace_use_keep">Keeps recording while you\'re on the move, until you\'ve stopped for 10 minutes.</string>
+    <string name="settings_grace_use_60">Keeps recording while you\'re on the move, until you\'ve stopped for 10 minutes. Good for a drive home after work. The default.</string>
     <string name="settings_section_tracking">Tracking</string>
     <string name="settings_section_appearance">Appearance</string>
     <string name="settings_section_billing">Billing</string>
+    <string name="settings_section_reminders">Reminders</string>
     <string name="settings_section_data">Data</string>
     <string name="settings_backup_now">Back up now</string>
     <string name="settings_backup_last">Last backup: %1$s</string>
@@ -257,7 +264,6 @@
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>
     <string name="permissions_action_change">Change</string>
-    <string name="permissions_action_change_description">Change %1$s</string>
     <plurals name="settings_days_value">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
@@ -308,9 +314,9 @@
     <string name="summary_range_chips_description">Date range</string>
     <string name="summary_group_by_job">By job</string>
     <string name="summary_group_by_day">By day</string>
-    <string name="summary_empty_title">No job blocks in this range.</string>
+    <string name="summary_empty_title">No job blocks in this range</string>
     <string name="summary_empty_body">Add job blocks on the timeline and they add up here.</string>
-    <string name="summary_job_archived">%1$s (archived)</string>
+    <string name="summary_job_archived">%1$s (done)</string>
     <plurals name="summary_blocks">
         <item quantity="one">%1$d block</item>
         <item quantity="other">%1$d blocks</item>
@@ -319,12 +325,16 @@
     <string name="summary_row_description">%1$s, %2$s, total %3$s, billed %4$s</string>
     <string name="summary_row_open_hint">Show blocks</string>
     <string name="summary_totals">Billed %1$s · on the clock %2$s</string>
-    <string name="summary_totals_description">Billed %1$s, on the clock %2$s</string>
+    <string name="summary_totals_description">Total, %1$s. Billed %2$s, on the clock %3$s</string>
+    <string name="summary_totals_title">Total, %1$s</string>
+    <string name="summary_totals_billed">%1$s billed</string>
+    <string name="summary_totals_on_clock">On the clock %1$s</string>
     <string name="summary_unlabelled_title">Unlabelled</string>
     <string name="summary_unlabelled_on_site">On site</string>
     <string name="summary_unlabelled_travel">Travel</string>
     <string name="summary_unlabelled_description">Unlabelled: on site %1$s, travel %2$s</string>
     <string name="summary_day_billed">Billed %1$s</string>
+    <string name="summary_row_billed">Billed %1$s</string>
     <string name="summary_duration_zero">0 min</string>
     <string name="summary_spoken_zero">0 minutes</string>
     <string name="summary_piece_not_billable">Not billable</string>
@@ -334,6 +344,10 @@
     <string name="summary_piece_day_total">Billed for the day</string>
     <string name="summary_picker_ok">OK</string>
     <string name="summary_picker_cancel">Cancel</string>
+    <string name="summary_picker_title">Select dates</string>
+    <string name="summary_picker_start_placeholder">Start date</string>
+    <string name="summary_picker_end_placeholder">End date</string>
+    <string name="summary_picker_range_headline">%1$s&#160;– %2$s</string>
     <string name="summary_export">Export</string>
     <string name="summary_export_disabled">Export, no job blocks in this range</string>
     <string name="summary_exporting">Exporting</string>
@@ -357,7 +371,6 @@
     <string name="summary_pdf_col_date">Date</string>
     <string name="summary_pdf_col_time">Time</string>
     <string name="summary_pdf_col_duration">Duration</string>
-    <string name="summary_pdf_col_places">Places</string>
     <string name="summary_pdf_col_notes">Notes</string>
     <string name="summary_pdf_rules_none">Not rounded</string>
     <string name="summary_pdf_rules_nearest">Rounded to the nearest %1$d min</string>
@@ -368,5 +381,5 @@
     <string name="summary_pdf_unlabelled">Unlabelled: on site %1$s · travel %2$s</string>
     <string name="summary_pdf_job_totals">Billed %1$s · total %2$s · billable %3$s</string>
     <string name="summary_pdf_day_total">Day total, billed %1$s</string>
-    <string name="summary_pdf_footer">Tarry · %1$s · Page %2$d of %3$d</string>
+    <string name="summary_pdf_footer">Tarry · %1$s · Generated %2$s · Page %3$d of %4$d</string>
 </resources>

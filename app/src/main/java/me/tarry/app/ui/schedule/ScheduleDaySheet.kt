@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,6 +48,8 @@ import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
+import me.tarry.app.ui.components.TarrySheet
 import me.tarry.core.data.model.Schedule
 import java.time.DayOfWeek
 import java.time.format.TextStyle
@@ -70,7 +71,7 @@ data class ScheduleDayActions(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScheduleDaySheet(day: DayOfWeek, schedule: Schedule, actions: ScheduleDayActions, onDismiss: () -> Unit) {
-    ModalBottomSheet(
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,
@@ -202,6 +203,7 @@ private fun TimePickerField(label: String, slot: Int, options: IntRange, onPick:
     if (open) {
         val listState = rememberLazyListState(initialFirstVisibleItemIndex = (slot - options.first).coerceAtLeast(0))
         AlertDialog(
+            modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
             onDismissRequest = { open = false },
             shape = TarryTheme.shapes.container,
             containerColor = c.card,

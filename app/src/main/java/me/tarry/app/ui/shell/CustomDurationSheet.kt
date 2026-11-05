@@ -17,7 +17,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -38,6 +37,8 @@ import me.tarry.app.tracking.TrackingDetails
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.drawer.TimePickerDialog
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.components.TarrySheet
+import me.tarry.app.ui.theme.surfaceEdge
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalTime
@@ -81,7 +82,7 @@ fun CustomDurationSheet(
     actions: CustomDurationActions,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,
@@ -183,6 +184,7 @@ private fun Stepper(label: String, canDecrease: Boolean, canIncrease: Boolean, o
             .fillMaxWidth()
             .clip(TarryTheme.shapes.card)
             .background(colors.card)
+            .surfaceEdge(TarryTheme.shapes.card)
             .heightIn(min = 56.dp)
             .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.s),
         verticalAlignment = Alignment.CenterVertically,

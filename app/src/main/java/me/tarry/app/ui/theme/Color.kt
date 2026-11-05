@@ -96,3 +96,12 @@ val LocalTarryColors = staticCompositionLocalOf { LightTarryColors }
 /** M3 `onError` per tokens.md: white in light, `#601410` in dark. */
 internal val LightOnError = Color(0xFFFFFFFF)
 internal val DarkOnError = Color(0xFF601410)
+
+/**
+ * Opacity of `muted` for disabled icon glyphs: about 3:1 against both `paper` and `card` in both themes (3.1 / 3.4 light,
+ * 4.3 / 4.1 dark), and still clearly lighter than the enabled `ink` icon. `faint` is for fills and outlines, never glyphs.
+ */
+const val DISABLED_ICON_ALPHA = 0.72f
+
+/** The tint of a disabled icon glyph: `muted` at [DISABLED_ICON_ALPHA]. */
+val TarryColors.disabledIcon: Color get() = muted.copy(alpha = DISABLED_ICON_ALPHA)

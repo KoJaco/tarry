@@ -40,6 +40,7 @@ import me.tarry.app.ui.components.SegmentedControl
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.drawer.ConfirmDialog
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
 import me.tarry.core.data.model.Schedule
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -141,7 +142,8 @@ fun ScheduleEditorContent(
                     .weight(1f)
                     .fillMaxWidth()
                     .clip(TarryTheme.shapes.card)
-                    .background(colors.card),
+                    .background(colors.card)
+                    .surfaceEdge(TarryTheme.shapes.card),
             ) {
                 ScheduleGrid(
                     schedule = state.draft,

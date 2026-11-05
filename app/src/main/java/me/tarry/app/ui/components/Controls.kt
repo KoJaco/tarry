@@ -2,6 +2,7 @@ package me.tarry.app.ui.components
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,8 +31,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.disabledIcon
 
 private val MinTouch = 48.dp
+
+/** Unselected chips carry this `line` border in both themes. */
+private val ChipBorderWidth = 1.dp
 
 /**
  * Selectable pill. Selected = `ink` fill with `onInk` text; unselected = [unselectedColor] fill
@@ -59,6 +64,7 @@ fun TarryChip(
             .heightIn(min = MinTouch)
             .clip(TarryTheme.shapes.pill)
             .background(container)
+            .then(if (selected) Modifier else Modifier.border(ChipBorderWidth, c.line, TarryTheme.shapes.pill))
             .selectable(selected = selected, enabled = enabled, role = role, onClick = onClick)
             .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.s),
         contentAlignment = Alignment.Center,
@@ -132,7 +138,7 @@ fun IconCircleButton(
         Icon(
             painter = painterResource(icon),
             contentDescription = null,
-            tint = if (enabled) c.ink else c.faint,
+            tint = if (enabled) c.ink else c.disabledIcon,
             modifier = Modifier.size(24.dp),
         )
     }

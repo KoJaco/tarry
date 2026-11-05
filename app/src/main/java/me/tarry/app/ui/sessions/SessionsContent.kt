@@ -41,6 +41,7 @@ import me.tarry.app.R
 import me.tarry.app.export.ExportFormat
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.tracking.ArSessionLog
+import me.tarry.app.ui.components.FadingScrollRow
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.TarryCard
@@ -75,6 +76,8 @@ fun SessionsContent(
     exportResult: ExportResult?,
     actions: SessionsActions,
     segmentation: SegmentationUi = SegmentationUi(),
+    /** The manual "Run segmentation" button is a debug tool; its status text is shown in every build (rule 6). */
+    showRunSegmentation: Boolean = false,
     modifier: Modifier = Modifier,
     today: LocalDate = LocalDate.now(),
 ) {
@@ -97,14 +100,16 @@ fun SessionsContent(
                     color = TarryTheme.colors.muted,
                 )
                 ExportResultText(exportResult, actions.onDismissExportResult)
-                SecondaryButton(
-                    text = stringResource(
-                        if (segmentation.running) R.string.sessions_segmentation_running else R.string.sessions_run_segmentation,
-                    ),
-                    onClick = actions.onRunSegmentation,
-                    enabled = !segmentation.running,
-                    modifier = Modifier.testTag("sessions_run_segmentation"),
-                )
+                if (showRunSegmentation) {
+                    SecondaryButton(
+                        text = stringResource(
+                            if (segmentation.running) R.string.sessions_segmentation_running else R.string.sessions_run_segmentation,
+                        ),
+                        onClick = actions.onRunSegmentation,
+                        enabled = !segmentation.running,
+                        modifier = Modifier.testTag("sessions_run_segmentation"),
+                    )
+                }
                 SegmentationStatusText(segmentation)
                 if (showTestWindow) {
                     Text(
@@ -254,7 +259,8 @@ private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
         color = TarryTheme.colors.ink,
         modifier = Modifier.padding(top = TarryTheme.space.l),
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
+    // One sideways-scrolling row (From, To, GPX, CSV): never wraps; the edges fade while more lies that way.
+    FadingScrollRow(modifier = Modifier.fillMaxWidth().testTag("range_export_row"), horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
         val fromText = from.format(dateFormat)
         val toText = to.format(dateFormat)
         val fromDescription = stringResource(R.string.sessions_export_range_from_description, fromText)
@@ -273,8 +279,6 @@ private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
                 .semantics { contentDescription = toDescription }
                 .testTag("range_to"),
         )
-    }
-    Row(horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
         for (format in ExportFormat.entries) {
             SecondaryButton(
                 text = stringResource(

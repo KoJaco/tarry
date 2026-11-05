@@ -38,7 +38,6 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
@@ -63,6 +62,8 @@ import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.scheduleSummaryText
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
+import me.tarry.app.ui.components.TarrySheet
 import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
@@ -110,6 +111,7 @@ fun SettingsScreen(
         onOpenJobs = onOpenJobs,
         onOpenPlaces = onOpenPlaces,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
+        onGraceSelected = viewModel::setWindowEndGraceMaxMin,
         onThemeSelected = viewModel::setTheme,
         onRoundingIncrementSelected = viewModel::setRoundingIncrementMin,
         onRoundingModeSelected = viewModel::setRoundingMode,
@@ -119,7 +121,7 @@ fun SettingsScreen(
     )
 }
 
-private enum class Picker { RADIUS, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE }
+private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE }
 
 /** Stateless sectioned settings; the stop radius, theme and the billing rounding rows are the editable ones. */
 @Composable
@@ -132,6 +134,7 @@ fun SettingsContent(
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
+    onGraceSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
     onRoundingIncrementSelected: (Int) -> Unit = {},
     onRoundingModeSelected: (RoundingMode) -> Unit = {},
@@ -149,16 +152,10 @@ fun SettingsContent(
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
-    val billing: List<Pair<String, String>> = settings?.let { s ->
-        listOf(
-            stringResource(R.string.settings_ping_retention) to
-                (s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
-                    ?: stringResource(R.string.settings_forever)),
-            stringResource(R.string.settings_review_reminder) to if (s.reviewReminderEnabled) on else off,
-            stringResource(R.string.settings_review_reminder_time) to
-                "%02d:%02d".format(s.reviewReminderMinuteOfDay / 60, s.reviewReminderMinuteOfDay % 60),
-        )
-    } ?: emptyList()
+    val retentionValue = settings?.let { s ->
+        s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
+            ?: stringResource(R.string.settings_forever)
+    }
 
     if (settings != null) {
         when (picker) {
@@ -172,6 +169,18 @@ fun SettingsContent(
                 current = settings.stayGeofenceRadiusM,
                 onSelect = {
                     onStayRadiusSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.GRACE -> PickerSheet(
+                title = stringResource(R.string.settings_grace),
+                explanation = stringResource(R.string.settings_grace_explanation),
+                options = Settings.ALLOWED_WINDOW_END_GRACE_MIN.map { it to graceLabel(it) },
+                details = Settings.ALLOWED_WINDOW_END_GRACE_MIN.associateWith { graceDetail(it) },
+                current = settings.windowEndGraceMaxMin,
+                onSelect = {
+                    onGraceSelected(it)
                     picker = null
                 },
                 onDismiss = { picker = null },
@@ -242,6 +251,8 @@ fun SettingsContent(
         )
         SectionHeader(stringResource(R.string.settings_section_tracking), Modifier.padding(top = space.m))
         val stayRadiusTitle = stringResource(R.string.settings_stay_radius)
+        val graceTitle = stringResource(R.string.settings_grace)
+        val graceValue = settings?.let { graceLabel(it.windowEndGraceMaxMin) }
         val stayRadiusValue = settings?.let { stringResource(R.string.settings_stay_radius_value, it.stayGeofenceRadiusM) }
         val scheduleTitle = stringResource(R.string.settings_schedule)
         val scheduleSubtitle = schedule?.let { scheduleRowSubtitle(it) }
@@ -251,6 +262,9 @@ fun SettingsContent(
             row(scheduleTitle, onClick = onOpenSchedule, icon = R.drawable.ic_calendar, subtitle = scheduleSubtitle)
             if (stayRadiusValue != null) {
                 row(stayRadiusTitle, onClick = { picker = Picker.RADIUS }, icon = R.drawable.ic_radius, subtitle = stayRadiusValue)
+            }
+            if (graceValue != null) {
+                row(graceTitle, onClick = { picker = Picker.GRACE }, icon = R.drawable.ic_more_time, subtitle = graceValue)
             }
             row(permissionsTitle, onClick = onOpenPermissions, icon = R.drawable.ic_permissions)
             row(sessionsTitle, onClick = onOpenSessions, icon = R.drawable.ic_sessions)
@@ -280,14 +294,25 @@ fun SettingsContent(
             val perDayTitle = stringResource(R.string.settings_round_daily_total)
             val perDaySubtitle = stringResource(R.string.settings_round_daily_total_subtitle)
             SettingsGroup {
-                row(roundingTitle, onClick = { picker = Picker.ROUNDING }, subtitle = roundingValue)
-                row(roundToTitle, onClick = { picker = Picker.ROUND_TO }, subtitle = roundToValue, enabled = !roundingOff)
-                row(minTitle, onClick = { picker = Picker.MIN_BILLABLE }, subtitle = minValue)
-                switchRow(perDayTitle, settings.roundDailyTotalPerJob, onRoundDailyTotalChange, subtitle = perDaySubtitle)
-                billing.forEach { (label, value) -> row(label, value = value) }
+                row(roundingTitle, onClick = { picker = Picker.ROUNDING }, icon = R.drawable.ic_timer, subtitle = roundingValue)
+                row(roundToTitle, onClick = { picker = Picker.ROUND_TO }, icon = R.drawable.ic_swap_vert, subtitle = roundToValue, enabled = !roundingOff)
+                row(minTitle, onClick = { picker = Picker.MIN_BILLABLE }, icon = R.drawable.ic_hourglass_bottom, subtitle = minValue)
+                switchRow(
+                    perDayTitle, settings.roundDailyTotalPerJob, onRoundDailyTotalChange,
+                    subtitle = perDaySubtitle, icon = R.drawable.ic_event_repeat,
+                )
+            }
+            SectionHeader(stringResource(R.string.settings_section_reminders), Modifier.padding(top = space.m))
+            val reminderTitle = stringResource(R.string.settings_review_reminder)
+            val reminderValue = if (settings.reviewReminderEnabled) on else off
+            val reminderTimeTitle = stringResource(R.string.settings_review_reminder_time)
+            val reminderTimeValue = "%02d:%02d".format(settings.reviewReminderMinuteOfDay / 60, settings.reviewReminderMinuteOfDay % 60)
+            SettingsGroup {
+                row(reminderTitle, icon = R.drawable.ic_notifications, value = reminderValue)
+                row(reminderTimeTitle, icon = R.drawable.ic_schedule, value = reminderTimeValue)
             }
         }
-        DataSection(settings?.lastBackupMs, data, zone, onBackUp, onRestore)
+        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore)
     }
     // Hidden (not dropped) while "Back up current data first" runs, so it comes back when that finishes.
     if (data.prompt != null && data.busy == null) {
@@ -297,17 +322,19 @@ fun SettingsContent(
 
 /** Settings → Data: back up, restore, and a progress row while either runs. */
 @Composable
-private fun ColumnScope.DataSection(lastBackupMs: Long?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit) {
+private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit) {
     val space = TarryTheme.space
     val busy = data.busy != null
     SectionHeader(stringResource(R.string.settings_section_data), Modifier.padding(top = space.m))
     val backUpTitle = stringResource(R.string.settings_backup_now)
     val restoreTitle = stringResource(R.string.settings_restore)
+    val retentionTitle = stringResource(R.string.settings_ping_retention)
     val lastBackup = lastBackupMs?.let { stringResource(R.string.settings_backup_last, formatBackupDate(it, zone)) }
     val working = data.busy?.let { stringResource(it.labelRes()) }
     SettingsGroup {
-        row(backUpTitle, onClick = onBackUp, subtitle = lastBackup, enabled = !busy)
-        row(restoreTitle, onClick = onRestore, enabled = !busy)
+        row(backUpTitle, onClick = onBackUp, icon = R.drawable.ic_backup, subtitle = lastBackup, enabled = !busy)
+        row(restoreTitle, onClick = onRestore, icon = R.drawable.ic_settings_backup_restore, enabled = !busy)
+        if (retentionValue != null) row(retentionTitle, icon = R.drawable.ic_history, value = retentionValue)
         if (working != null) item { WorkingRow(working) }
     }
     Text(
@@ -343,6 +370,7 @@ private fun RestoreDialog(prompt: RestorePrompt, zone: ZoneId, onReplace: () -> 
     val space = TarryTheme.space
     val resources = LocalContext.current.resources
     AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
         onDismissRequest = onCancel,
         shape = TarryTheme.shapes.container,
         containerColor = colors.card,
@@ -428,6 +456,25 @@ private fun ThemeMode.labelRes(): Int = when (this) {
     ThemeMode.DARK -> R.string.settings_theme_dark
 }
 
+@Composable
+private fun graceLabel(minutes: Int): String = stringResource(
+    when (minutes) {
+        0 -> R.string.settings_grace_0
+        15 -> R.string.settings_grace_15
+        30 -> R.string.settings_grace_30
+        else -> R.string.settings_grace_60
+    },
+)
+
+@Composable
+private fun graceDetail(minutes: Int): String = stringResource(
+    when (minutes) {
+        0 -> R.string.settings_grace_use_0
+        60 -> R.string.settings_grace_use_60
+        else -> R.string.settings_grace_use_keep
+    },
+)
+
 /** One-line use case for a stop radius option. */
 @Composable
 private fun stayRadiusDetail(meters: Int): String = when (meters) {
@@ -454,7 +501,7 @@ private fun <T> PickerSheet(
     val colors = TarryTheme.colors
     val space = TarryTheme.space
     val shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
-    ModalBottomSheet(
+    TarrySheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = shape,

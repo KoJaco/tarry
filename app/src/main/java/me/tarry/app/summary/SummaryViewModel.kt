@@ -107,6 +107,8 @@ class SummaryViewModel internal constructor(
     private val settings: Flow<Settings>,
     private val zone: ZoneId,
     private val todayProvider: () -> LocalDate,
+    /** The current time in epoch ms, stamped on an export as when it was generated. */
+    private val nowProvider: () -> Long,
     /** Writes the snapshot to the document and returns the number of blocks in it; throws on failure. */
     private val exportFile: suspend (SummaryExportFormat, SummarySnapshot, Uri) -> Int,
     /** Deletes the empty document the file picker created for an export that will not happen; never throws. */
@@ -131,6 +133,7 @@ class SummaryViewModel internal constructor(
         settings = settings.settings,
         zone = ZoneId.systemDefault(),
         todayProvider = { LocalDate.now(ZoneId.systemDefault()) },
+        nowProvider = System::currentTimeMillis,
         exportFile = exporter::export,
         discardFile = exporter::discard,
     )
@@ -212,7 +215,7 @@ class SummaryViewModel internal constructor(
                     discardFile(uri)
                     _events.send(SummaryExportEvent.Failed)
                 } else {
-                    val snapshot = SummarySnapshot(ready.range, zone, ready.result, ready.rules, ready.visits, ready.places)
+                    val snapshot = SummarySnapshot(ready.range, zone, ready.result, ready.rules, ready.visits, ready.places, nowProvider())
                     _events.send(SummaryExportEvent.Saved(format, exportFile(format, snapshot, uri)))
                 }
             } catch (e: CancellationException) {

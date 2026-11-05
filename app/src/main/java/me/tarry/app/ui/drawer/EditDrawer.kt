@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,6 +16,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.components.TarrySheet
 
 /**
  * The edit drawer for [target]. Hosted by the timeline screen, which keeps the open target; [onRetarget] swaps it
@@ -80,7 +80,7 @@ fun EditDrawer(
             },
         )
     }
-    ModalBottomSheet(
+    TarrySheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false),
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),

@@ -21,8 +21,8 @@ Code uses these names through `TarryTheme.colors` (an extended colour object), m
 | `ink` | `#1B1813` | `#F2EDE4` | Body text, primary pill buttons, selected states |
 | `onInk` | `#F3EFE8` | `#14120F` | Text and icons on `ink` |
 | `muted` | `#655E54` | `#A9A193` | Secondary text, time labels, unselected nav |
-| `faint` | `#C2BAAE` | `#5E574D` | Disabled control fills and outlines (decorative, never text; disabled labels use `muted`) |
-| `line` | `#DDD5C8` | `#3A352E` | Borders outside surfaces (the bottom bar's top border) |
+| `faint` | `#C2BAAE` | `#5E574D` | Disabled control fills and outlines (decorative, never text and never icon glyphs; disabled labels use `muted`, disabled icons use `muted` at 72 %) |
+| `line` | `#DDD5C8` | `#3A352E` | Borders outside surfaces (the bottom bar's top border), unselected chips, and in dark the edge of cards, sheets and dialogs |
 | `divider` | `line` at 80 % | `line` at 80 % | Dividers and hour rules inside surfaces (grouped settings, the timeline canvas card, its rail) |
 | `outline` | `#8F877B` | `#7A7266` | Input borders, the dashed outline of a visit that needs review (3:1 UI contrast) |
 | `accent` | `#F2B064` | `#F2B064` | Apricot: tracking toggle, now-line, needs-review chip fill |
@@ -58,6 +58,7 @@ Contrast, computed with WCAG 2.x relative luminance (keep these passing when tun
 | `alert` on `card` | 6.5:1 | 9.8:1 |
 | `success` on `card` | 7.7:1 | 11.5:1 |
 | `outline` on `paper` (UI, 3:1) | 3.1:1 | 3.9:1 |
+| Disabled icon (`muted` at 72 %) on `paper` / `card` (UI, 3:1) | 3.1:1 / 3.4:1 | 4.3:1 / 4.1:1 |
 
 Every job-colour text-on-container pair is at least 6.6:1 in both themes.
 
@@ -104,6 +105,10 @@ No role keeps an M3 baseline value (`TarryThemeTest.noRoleKeepsTheM3BaselineValu
 | Sand | `#F3EBDD` / `#C9AE7E` / `#5E4718` | `#33291A` / `#B3996B` / `#E6D6B5` |
 | Slate | `#E8EAEE` / `#9AA3B2` / `#353D4A` | `#22262D` / `#848D9C` / `#CDD3DD` |
 
+**Done jobs (2026-11-05).** A job marked done (DB field `archived`) gives its colour back and draws in one neutral style instead: container `inset`, 1.5 dp `outline` border, text `ink` (`JobPalette.DONE`; callers pass `JobPalette.DONE_KEY` as the colour, via `JobPalette.displayKey`). On a calendar block the word "Done" sits above the name in `labelSmall` `muted` (5.3:1 / 5.6:1 on `inset`) when the block is tall enough for two lines, and TalkBack says "done". It applies everywhere a job colour is drawn: calendar blocks and ranges, Summary dots, drawer chips and swatches, map pins, the Jobs list. Contrast: `ink` on `inset` 14.7:1 light / 12.4:1 dark; the `outline` border against `paper` 3.1:1 / 3.9:1 and against `card` 3.5:1 / 3.5:1 (UI minimum 3:1; `ContrastGuardTest` enforces them). Where "Done" is spelled out (Jobs list section, Summary "(done)", PDF "(done)") the style never relies on colour alone.
+
+**Assigning a colour.** A new job takes the first slot (palette order) that no open job uses, where open means neither deleted nor done. If all eight are in use it takes the least-used slot among open jobs, ties in palette order. Marking a job done leaves its stored colour untouched; reopening keeps that colour if no other open job uses it now, otherwise assigns one by the same rule.
+
 A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 
 ## Type
@@ -118,8 +123,8 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 |---|---|---|---|
 | `displaySmall` | Nunito 700 | 34 / 40, −0.25 tracking | Timeline date ("21 October") |
 | `headlineLarge` | Nunito 700 | 32 / 38 | Totals ("6 h 12 m") |
-| `headlineMedium` | Nunito 700 | 28 / 34 | Screen titles (Settings, Sessions, Permissions), empty-state titles |
-| `titleLarge` | Nunito 700 | 20 / 26 | Sheet and dialog titles |
+| `headlineMedium` | Nunito 700 | 28 / 34 | Screen titles (Settings, Sessions, Permissions), full-screen empty-state titles |
+| `titleLarge` | Nunito 700 | 20 / 26 | Sheet and dialog titles, empty-state titles in a card |
 | `titleMedium` | Nunito 600 | 16 / 22 | Card headers and block titles (place name) |
 | `titleSmall` | Nunito Sans 600 | 14 / 20 | Row titles |
 | `bodyLarge` | Nunito Sans 400 | 16 / 24 | Body |
@@ -142,7 +147,8 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
   - `small` 8 dp: compact blocks under 30 min.
   - These radii were reduced slightly on 2026-10-21, at the owner's request (from 24, 28, 14 and 10).
 - **Elevation:** flat. Surfaces separate by colour (`card` on `paper`), not shadow. Sheets and dialogs use the M3 scrim only. No drop shadows on cards or the bar.
-- **Receded rows:** archived jobs and tags draw at 70 % opacity (`RECEDED_ALPHA`, never below 4.5:1 for `ink` text on `card`) and always carry the word "Archived", never dimming alone. The "Archived" marker is drawn outside the receded content at full opacity (`muted` on `card`, 6.4:1 / 6.5:1), because `muted` at 70 % falls below 4.5:1.
+  - Dark theme: cards and sheets carry a 1 dp `line` edge; light theme has none. No colour token changes for it (the dark `card` stays `#201D18`). One helper does it: `Modifier.surfaceEdge(shape)` (cards, grouped settings, standalone settings rows, empty and loading placeholders, the schedule grid, tracking-sheet rows, the stepper, `AlertDialog`s and the time-picker dialog) and `Modifier.sheetEdge()` (the top edge of every `ModalBottomSheet`); `surfaceEdgeStroke()` gives the same edge to components with a `border` parameter (the Summary export `DropdownMenu`, the only menu).
+- **Done rows (was "receded rows"):** done jobs no longer dim. They use the neutral done style (Job colours above) at full opacity, because the style is already neutral and any alpha would pull `ink` text toward the 4.5:1 limit. They always carry the word "Done" (the Jobs list section, "(done)" after the name in Summary and the PDF), never colour alone. The old 70 % `RECEDED_ALPHA` is removed.
 
 ## Motion
 - **Standard transitions:** 200 ms, M3 emphasized easing. The day change slides 24 dp and fades.
@@ -154,13 +160,14 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 
 ### Bottom bar
 - Full width, edge to edge, in `paper` (the screen background), set apart only by a 1 dp `line` top border. It has no fill of its own, no rounded corners and no shadow. It extends under the gesture/navigation bar (insets padding inside).
-- **Three equal slots** (`weight(1f)` each), in this order: **Timeline | tracking toggle | Settings**. Each slot is centred and at least 56 dp tall.
+- **Four slots**, in this order: **Timeline | Summary | Settings | tracking toggle**. The three nav slots are equal (`weight(1f)`); the toggle slot is wider (`weight(1.5f)`) so its label fits at large font sizes. Each slot is centred and at least 56 dp tall.
 - **Nav items** are an icon over a `labelMedium` label, with 6 dp between them. Labels are always shown (no icon-only nav). Only the icon is backed, never the whole item.
+  - **Nav label scaling is capped at 1.3×** (`NavLabelMaxFontScale`), whatever the system font scale: the effective size and line height are the `labelMedium` values × min(fontScale, 1.3) ÷ fontScale. The word-safe shrink (below) stays as a fallback. The tracking toggle keeps full scaling.
   - Selected: a subtle `accentSoft` backing behind the icon only (64 × 32 dp, fully rounded `pill`), with the icon and label in `ink`. `inset` was too faint on `paper` in the light theme (about 1.1:1); `accentSoft` reads as a soft tint in both themes without the weight of an `ink` fill.
   - Unselected: the icon and label in `muted`, with no backing.
   - When the selection changes, the backing glides across to the new item (350 ms, emphasized easing `cubic-bezier(0.2, 0, 0, 1)`). With reduced motion it jumps.
   - Nav items have **no ripple or press background**; feedback is a light haptic (`SegmentTick`) on tap. The touch target (at least 48 dp) and semantics are unchanged.
-- **The centre slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
+- **The right-hand slot is the tracking toggle**, a pill in its state style (below), not a nav destination. Tap opens the tracking sheet; long-press does the same with haptics.
   - The label may wrap between words but never inside one. In a one-third slot at large font scales it shrinks a step at a time until no word is split.
 
 ### Tracking toggle (four states, each different in more than colour)
@@ -192,34 +199,40 @@ The PAUSED look deliberately differs from the MVP spec's "amber" because the acc
   - **Gaps:** `alertSoft` fill with diagonal hatch lines (`alert` at 25 %, 1 dp every 8 dp), a 1.5 dp `alert` border, a warning icon and "Not tracked · App was closed" in `onAlertSoft`. They are never mistaken for a visit, because they have different fill, pattern, icon and text.
   - **Gaps inside a visit:** segmentation bridges short outages, so a gap can fall inside a visit. It is drawn inside the visit block, not as a block of its own, and never as a full-width band, so text is never crossed: a small 5 dp `alert` dot sitting on the block's left border at the outage's real time (its proportional midpoint), drawn above the border. When the block has room for a third line (not compact), an "Includes N min not tracked" line follows the time: warning icon (16 dp, `alert`) and `bodySmall` `onAlertSoft` text. A gap belongs to the visit it overlaps most and is inner when at least half of it lies inside that visit; otherwise it stays a block. The dot is decorative: the visit's spoken description ends with ", includes N minutes not tracked".
   - **Now-line:** today only, a 2 dp `accent` line across the canvas with a pill in the time column showing the time (`accent` fill, `onAccent` text). Its position is the proportional time position, moved down if needed so that every placed block or trip that has started sits at or above it (blocks keep a minimum height and are pushed apart, so they can drift below true time); an ongoing visit meets it at its elapsed fraction.
+  - **Tracking start/stop markers** live in the time column, never on the canvas (no rule or label across it, so they cannot cover a block or trip label). A marker is the word over the time in `bodySmall` `muted`, right-aligned like the hour labels and centred on its time ("Start" / "7:30", "Stop" / "6:30 PM", in the 12 or 24-hour format). A collapsed stop+start pair is always "Off" over "12:05–12:20" (owner choice, to keep the time column narrow). Markers that would overlap are pushed apart, and a marker never sits under the now-pill (it moves just above the pill, or below it if above would collide); an hour label that would collide with a marker is hidden (the marker wins). The time column grows to fit the widest marker line, like hour labels and the now-pill. Each marker is one TalkBack node with the full sentence and the end reason ("Tracking ended 6:30 PM"), in time order.
 - **Accessibility:**
   - Each block is one focusable element. Its content description is the same phrasing as phase 2b's day list: "Visit at Rose Bay Marina, from 7:02 to 9:40, 2 hours 38 minutes, job Antifoul".
   - Reading order is time order.
   - At font scale 2.0 the canvas still scales, and the header and week strip wrap.
 
+### Summary
+- **Totals card** (`card`, `container` radius), modelled on the timeline's summary card: "Total, <range>" in `bodyMedium` `muted` (the range reads as the text under the chips), "<billed> billed" in `headlineLarge` tabular, then "On the clock <time>" in `bodyMedium` `muted`. It is one merged TalkBack element.
+- **Job rows:** a dot, then name (`titleSmall`) and caption (`bodyMedium` `muted`), with the billed figure (`titleMedium` tabular, bold) on the right. From font scale 1.5 (`StackedRowFontScale`) the figure drops under the caption as "Billed <time>" so the name keeps the full width. The spoken description is the same in both layouts.
+
 ### Lists and settings rows
 - **Grouped settings surfaces are the default** for a settings group (Tracking, Appearance, Billing), built with `SettingsGroup { row(...) }`: ONE `card` surface (`card` radius) holding all the rows, separated by 1 dp `divider` rules.
+  - Settings sections today: Tracking, Labels, Appearance, Billing (Rounding, Round to, Minimum billable time, Round per day per job), Reminders (Review reminder and its time, display-only), Data (Back up now, Restore, Raw location retention, display-only).
   - A row has a plain 24 dp `ink` leading icon (no icon circle), a `titleSmall` title with an optional `muted` `bodyMedium` subtitle under it, and a chevron on the right when it is tappable (Role.Button, merged semantics). Read-only rows (Billing) show a `muted` value on the right and no chevron.
   - Rows are at least 64 dp tall, with 16 dp side padding and 12 dp vertical padding.
   - Dividers run edge to edge across the surface, with no left (or right) inset. They are not focusable.
 - **Standalone rows** (`SettingsRow`, `SettingsValueRow`, `SettingsSwitchRow`): used only where rows aren't a group. A row is a `card` pill (`card` radius), at least 56 dp tall, with a 40 dp `inset` icon circle on the left, the title (`titleSmall`), an optional value (`bodyMedium` `muted`) and a chevron or a switch on the right. Standalone rows are separate cards with 8 dp gaps and no dividers.
 - Section headers use `labelSmall` `muted`.
-- **Permissions:** one card per permission, with 12 dp between cards:
-  - a leading icon circle;
-  - the status as an icon plus a word: a check in `success` for granted, a cross in `alert` for not granted;
-  - an action. Not granted: request it. Granted: "Change", which opens the system settings page.
+- **Permissions:** one `card` per permission, with 12 dp between cards, in the same row style as the Sessions export rows (`SettingsGroup` surface, leading 24 dp `ink` icon, chevron on the right). The whole surface is the button: one merged TalkBack node, `Role.Button`, with the click label "Grant" (not granted) or "Change" (granted; opens the system settings page). A step still waiting on an earlier one is not tappable and has no chevron. The only separate action is "Skip": a `TertiaryButton` (48 dp) under the card of the current step when that step can be skipped, outside the card so the card stays one button; it reads "Skip <title>" to TalkBack. Content is stacked: 1) the status as an icon plus a word (a check in `success` for "Granted", a cross in `alert` for "Not granted"), 2) the title (`titleSmall`), 3) the description (`bodyMedium` `muted`), 4) the warning text if any ("Required for scheduled tracking" in `accentStrong`, or what a skipped step loses in `alert`).
 - **Tracking sheet actions** are rows in the settings-row style (an icon circle, the title and an optional subtitle), not pill buttons.
 
 ### Buttons, chips, inputs
 - **Primary:** `ink` pill, `onInk` label, 52 dp. **Secondary:** a 1.5 dp `ink` outline pill. **Tertiary:** a text button in `ink`. **Destructive:** `alert` text, or an outline pill in `alert`.
 - **The accent is not a button colour.** It is reserved for tracking state and "needs attention from you" cues, so it keeps its meaning.
-- **Chips:** a `card` pill on `paper` (or an `inset` pill on `card`), `labelMedium`. Selected: an `ink` fill.
+- **Chips:** a `card` pill on `paper` (or an `inset` pill on `card`), `labelMedium`. Selected: an `ink` fill. Unselected chips carry a 1 dp `line` border in both themes, whatever their fill; selected chips have none.
+  - Any row that scrolls sideways (the Summary range chips, the timeline review row, the Sessions export actions) is a `FadingScrollRow` (`ui/components/ScrollEdgeFade.kt`, or `Modifier.horizontalScrollEdgeFade(scrollState)`): it fades its edges, 32 dp (`ChipsEdgeFadeWidth`), at the right edge while more follows and at the left edge while scrolled away from the start. No fade when everything fits; it never wraps. Semantics are unchanged.
+  - **Summary custom range dialog** (M3 `DateRangePicker`): the default title and headline are replaced. The title is "Select dates" in `labelMedium` `muted`; the headline is the range in `titleMedium` `ink` ("26 Oct 2026 – 1 Nov 2026"). Both have 24 dp start and 12 dp end padding (the month headings and the grid inset), and spaces inside each date are non-breaking, so at large font scales the headline wraps only between the dates, never mid-date.
 - **Segmented control:** a `card` track with an `ink` pill for the selected item.
+- **Timeline review row** (under the week strip): one sideways-scrolling `FadingScrollRow` holding the Timeline | Map toggle (each option an icon and a text label, at least 48 dp tall, selected = `ink` pill), then "+ Add job" (always labelled), then the "Needs review" switch (Timeline view only).
 - **Switch:** M3 `Switch` with track `ink` when on, `inset` when off, and a `paper` thumb.
 - **Inputs:** an `inset` fill, pill (single line) or `card` radius (multi-line), no underline, a 2 dp `ink` focus ring.
 
 ### Empty, loading and error states
-- **Empty:** a short Nunito line (`headlineMedium`, "Nothing yet today") plus one `bodyMedium` `muted` sentence on what will fill it. No illustration.
+- **Empty:** a short Nunito line ("Nothing yet today") plus one `bodyMedium` `muted` sentence on what will fill it. No illustration. The title is `titleLarge` when the empty state sits in a card (every use today) and `headlineMedium` if one is ever full screen without a card. Titles never end in a full stop; bodies keep theirs.
 - **Loading:** `card` placeholder blocks at 60 % opacity, with no shimmer when reduced motion is on.
 - **Error:** an `alertSoft` card with an icon, a cause and one action.
 

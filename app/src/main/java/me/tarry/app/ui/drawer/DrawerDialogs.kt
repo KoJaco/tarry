@@ -24,7 +24,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TimePicker
@@ -51,6 +50,9 @@ import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
+import me.tarry.app.ui.theme.surfaceEdgeStroke
+import me.tarry.app.ui.components.TarrySheet
 import java.time.Instant
 import java.time.ZoneId
 
@@ -104,7 +106,7 @@ internal fun JobPickerSheet(
     /** Whether the "no job" row shows its check; a bulk edit has no current value, so it passes false. */
     noneSelected: Boolean = selectedId == null,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
+    TarrySheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -171,7 +173,7 @@ internal fun PlacePickerSheet(
         val q = query.trim()
         if (q.isEmpty()) places else places.filter { it.label.contains(q, ignoreCase = true) || it.detail?.contains(q, ignoreCase = true) == true }
     }
-    ModalBottomSheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
+    TarrySheet(onDismissRequest = onDismiss, shape = sheetShape(), containerColor = TarryTheme.colors.paper) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -229,6 +231,7 @@ internal fun NameDialog(
 ) {
     var name by remember { mutableStateOf(initial) }
     AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container,
         containerColor = TarryTheme.colors.card,
@@ -251,6 +254,7 @@ internal fun ConfirmDialog(
     confirmEnabled: Boolean = true,
 ) {
     AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container,
         containerColor = TarryTheme.colors.card,
@@ -282,6 +286,7 @@ internal fun TimePickerDialog(
             shape = TarryTheme.shapes.container,
             color = TarryTheme.colors.card,
             modifier = Modifier.width(IntrinsicSize.Min),
+            border = surfaceEdgeStroke(),
         ) {
             Column(
                 modifier = Modifier

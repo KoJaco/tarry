@@ -30,7 +30,10 @@ class CatalogEditorTest : DbTestBase() {
         )
     }
 
-    private fun job(id: String, name: String = id) = Job(id = id, name = name, colorArgb = 1, updatedAt = 1)
+    private val palette = listOf(10, 20, 30)
+
+    private fun job(id: String, name: String = id, colorArgb: Int = 1, archived: Boolean = false, deleted: Boolean = false) =
+        Job(id = id, name = name, colorArgb = colorArgb, archived = archived, deleted = deleted, updatedAt = 1)
 
     private fun place(id: String, defaultJobId: String? = null) =
         Place(id = id, centroidLat = 1.0, centroidLng = 1.0, defaultJobId = defaultJobId, updatedAt = 1)
@@ -156,10 +159,51 @@ class CatalogEditorTest : DbTestBase() {
         db.placeDao().upsert(place("p", "j"))
         catalog.archiveJob("j")
 
-        assertThat(catalog.unarchiveJob("j")).isEqualTo(EditResult.Ok())
+        assertThat(catalog.unarchiveJob("j", palette)).isEqualTo(EditResult.Ok())
 
         assertThat(db.jobDao().getById("j")!!.archived).isFalse()
         assertThat(db.placeDao().getById("p")!!.defaultJobId).isNull()
+    }
+
+    @Test
+    fun markingDoneKeepsTheColourAndReopeningKeepsItWhileNoOpenJobUsesIt() = runTest {
+        db.jobDao().upsert(job("j", colorArgb = 20))
+        catalog.archiveJob("j")
+        assertThat(db.jobDao().getById("j")!!.colorArgb).isEqualTo(20)
+
+        // Another open job took a different colour: the done job's stays free.
+        db.jobDao().upsert(job("other", colorArgb = 10))
+        catalog.unarchiveJob("j", palette)
+
+        val j = db.jobDao().getById("j")!!
+        assertThat(j.archived).isFalse()
+        assertThat(j.colorArgb).isEqualTo(20)
+    }
+
+    @Test
+    fun reopeningAssignsAFreeColourWhenAnOpenJobTookTheOldOne() = runTest {
+        db.jobDao().upsert(job("j", colorArgb = 10, archived = true))
+        db.jobDao().upsert(job("taker", colorArgb = 10))
+
+        catalog.unarchiveJob("j", palette)
+
+        val j = db.jobDao().getById("j")!!
+        assertThat(j.archived).isFalse()
+        assertThat(j.colorArgb).isEqualTo(20)
+        assertThat(j.updatedAt).isEqualTo(now)
+    }
+
+    @Test
+    fun reopeningWithEveryColourTakenPicksTheLeastUsedInPaletteOrder() = runTest {
+        db.jobDao().upsert(job("j", colorArgb = 10, archived = true))
+        // 10 x2, 20 x1, 30 x2 among open jobs; a done job and a deleted one hold nothing.
+        listOf("a" to 10, "b" to 10, "c" to 20, "d" to 30, "e" to 30).forEach { (id, c) -> db.jobDao().upsert(job(id, colorArgb = c)) }
+        db.jobDao().upsert(job("done", colorArgb = 20, archived = true))
+        db.jobDao().upsert(job("gone", colorArgb = 20, deleted = true))
+
+        catalog.unarchiveJob("j", palette)
+
+        assertThat(db.jobDao().getById("j")!!.colorArgb).isEqualTo(20)
     }
     @Test
     fun deletingAJobIsBlockedWhileAnythingLiveUsesIt() = runTest {

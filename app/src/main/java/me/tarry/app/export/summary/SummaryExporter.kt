@@ -37,6 +37,8 @@ data class SummarySnapshot(
     val visits: List<Visit> = emptyList(),
     /** All places, ignored ones included (visits there are left out of "places visited"). */
     val places: List<Place> = emptyList(),
+    /** When the export was asked for (epoch ms); the PDF footer shows its date in [zone]. */
+    val generatedAt: Long,
 )
 
 /** File name offered to the system file picker: `tarry-summary-<from>_<to>.csv`, ISO dates, both always present. */
@@ -58,7 +60,8 @@ class SummaryExporter @Inject constructor(
     /**
      * Writes [snapshot] as [format] to [uri] and returns the number of blocks in it. Throws [SummaryExportException]:
      * CANNOT_OPEN if the document cannot be opened, WRITE_FAILED if writing fails (the document is deleted in both
-     * cases, best effort, and also when the export is cancelled or fails with an Error, which are rethrown as they are).
+     * cases, best effort, and also when the export is cancelled or fails with an Error). An OutOfMemoryError counts as WRITE_FAILED;
+     * cancellation and other Errors are rethrown as they are.
      */
     suspend fun export(format: SummaryExportFormat, snapshot: SummarySnapshot, uri: Uri): Int = export(
         format, snapshot,
@@ -99,6 +102,8 @@ class SummaryExporter @Inject constructor(
         } catch (e: Throwable) {
             // Anything, an OutOfMemoryError from a large PdfDocument included, leaves a partial file that must go.
             runCatching { discard() }
+            // An OutOfMemoryError is a failed write like any other, so it gets the failure message instead of a crash.
+            if (e is OutOfMemoryError) throw SummaryExportException(SummaryExportError.WRITE_FAILED, e)
             if (e is Exception && e !is CancellationException) throw SummaryExportException(SummaryExportError.WRITE_FAILED, e)
             throw e
         }

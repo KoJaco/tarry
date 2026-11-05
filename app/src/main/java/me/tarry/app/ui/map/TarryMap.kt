@@ -47,6 +47,7 @@ import me.tarry.app.map.MapStyle
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.TarryColors
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdge
 import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapLibreMapOptions
 import org.maplibre.android.maps.MapView
@@ -200,6 +201,7 @@ private fun MapAttribution(modifier: Modifier = Modifier) {
             R.string.map_attribution_osm to "https://www.openstreetmap.org/copyright",
         )
         AlertDialog(
+            modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
             onDismissRequest = { open = false },
             shape = TarryTheme.shapes.container,
             containerColor = c.card,

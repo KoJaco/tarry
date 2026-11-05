@@ -7,7 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -31,7 +29,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDateRangePickerState
@@ -47,7 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -79,6 +76,7 @@ import me.tarry.app.summary.SummaryUiState
 import me.tarry.app.summary.SummaryViewModel
 import me.tarry.app.ui.catalog.SheetFrame
 import me.tarry.app.ui.components.EmptyState
+import me.tarry.app.ui.components.FadingScrollRow
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.SectionHeader
@@ -87,6 +85,7 @@ import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.theme.surfaceEdgeStroke
 import me.tarry.app.ui.theme.tabular
 import me.tarry.app.ui.timeline.formatDuration
 import me.tarry.app.ui.timeline.rememberTimeFormats
@@ -108,21 +107,24 @@ object SummaryTags {
     const val Export = "summary_export"
     fun exportFormat(format: SummaryExportFormat) = "summary_export_${format.name}"
     fun row(jobId: String) = "summary_row_$jobId"
+    fun rowBilled(jobId: String) = "summary_row_billed_$jobId"
     fun piece(blockId: String, date: LocalDate) = "summary_piece_${blockId}_$date"
 }
 
 private val DotSize = 16.dp
+
+
+/** From this font scale up, a job row stacks its billed figure under the name and caption. */
+internal const val StackedRowFontScale = 1.5f
 
 /** Hilt-wired Summary tab. [onOpenDay] opens that local day on the timeline. */
 @Composable
 fun SummaryScreen(
     onOpenDay: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
-    snackbarHostState: SnackbarHostState? = null,
     viewModel: SummaryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val context = LocalContext.current
     // After midnight "Today" and "This week" move on; re-derive them when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
     // The file goes only where the user picks it (SAF); cancelling the picker does nothing.
@@ -131,9 +133,6 @@ fun SummaryScreen(
     }
     val createPdf = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(SummaryExportFormat.PDF.mimeType)) { uri ->
         if (uri != null) viewModel.export(SummaryExportFormat.PDF, uri)
-    }
-    LaunchedEffect(viewModel, snackbarHostState) {
-        viewModel.events.collect { event -> snackbarHostState?.showSnackbar(summaryExportMessage(context.resources, event)) }
     }
     SummaryContent(
         state = state,
@@ -195,7 +194,11 @@ private fun ExportButton(hasBlocks: Boolean?, exporting: Boolean, onExport: (Sum
             containerColor = Color.Transparent,
             modifier = Modifier.testTag(SummaryTags.Export),
         )
-        DropdownMenu(expanded = menuOpen && enabled, onDismissRequest = { menuOpen = false }) {
+        DropdownMenu(
+            expanded = menuOpen && enabled,
+            onDismissRequest = { menuOpen = false },
+            border = surfaceEdgeStroke(),
+        ) {
             for (format in SummaryExportFormat.entries) {
                 DropdownMenuItem(
                     text = { Text(stringResource(format.menuLabelRes())) },
@@ -306,7 +309,7 @@ fun SummaryContent(
                     DaySectionItem(section) { row -> openJobId = row.jobId; openDay = section.date.toEpochDay() }
                 }
             }
-            if (result.hasBlocks) item { TotalsCard(result) }
+            if (result.hasBlocks) item { TotalsCard(result, state.range) }
             if (result.hasUnlabelled) item { UnlabelledCard(result) }
         }
     }
@@ -351,10 +354,9 @@ fun SummaryContent(
 @Composable
 private fun RangeChips(preset: RangePreset?, onPreset: (RangePreset) -> Unit) {
     val label = stringResource(R.string.summary_range_chips_description)
-    Row(
+    FadingScrollRow(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
             .selectableGroup()
             .semantics { contentDescription = label }
             .testTag(SummaryTags.Chips),
@@ -371,6 +373,7 @@ private fun RangeChips(preset: RangePreset?, onPreset: (RangePreset) -> Unit) {
     }
 }
 
+
 private fun RangePreset.labelRes(): Int = when (this) {
     RangePreset.TODAY -> R.string.summary_range_today
     RangePreset.YESTERDAY -> R.string.summary_range_yesterday
@@ -380,7 +383,7 @@ private fun RangePreset.labelRes(): Int = when (this) {
 }
 
 @Composable
-private fun dateFormatter(skeleton: String): DateTimeFormatter {
+internal fun dateFormatter(skeleton: String): DateTimeFormatter {
     val locale = Locale.current.platformLocale
     val configuration = LocalConfiguration.current
     return remember(locale, configuration, skeleton) {
@@ -426,7 +429,14 @@ private fun RangePickerDialog(initial: SummaryRange, onConfirm: (LocalDate, Loca
             }
         },
     ) {
-        DateRangePicker(state = picker, modifier = Modifier.weight(1f, fill = false))
+        val format = dateFormatter("dMMMy")
+        fun Long?.date() = this?.let { Instant.ofEpochMilli(it).atZone(ZoneOffset.UTC).toLocalDate() }
+        DateRangePicker(
+            state = picker,
+            modifier = Modifier.weight(1f, fill = false),
+            title = { RangePickerTitle() },
+            headline = { RangePickerHeadline(picker.selectedStartDateMillis.date(), picker.selectedEndDateMillis.date(), format) },
+        )
     }
 }
 
@@ -442,7 +452,7 @@ internal fun summarySpoken(ms: Long): String =
 
 @Composable
 private fun JobDot(job: JobSummary) {
-    val colors = JobPalette.lookup(job.colorArgb, job.jobId).colors(TarryTheme.isDark)
+    val colors = JobPalette.lookup(JobPalette.displayKey(job.colorArgb, job.archived), job.jobId).colors(TarryTheme.isDark)
     androidx.compose.foundation.layout.Box(
         Modifier
             .size(DotSize)
@@ -463,6 +473,8 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
     val description = stringResource(
         R.string.summary_row_description, title, blocks, summarySpoken(row.totalMs), summarySpoken(row.billedMs),
     )
+    // At large font sizes the billed figure drops under the caption so the name keeps the full width.
+    val stacked = LocalDensity.current.fontScale >= StackedRowFontScale
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -471,10 +483,14 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
             .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.m)
             .semantics(mergeDescendants = true) { contentDescription = description }
             .testTag(SummaryTags.row(row.jobId)),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = if (stacked) Alignment.Top else Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.m),
     ) {
-        JobDot(row)
+        if (stacked) {
+            Box(Modifier.padding(top = TarryTheme.space.xs)) { JobDot(row) }
+        } else {
+            JobDot(row)
+        }
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleSmall, color = TarryTheme.colors.ink)
             Text(
@@ -482,13 +498,24 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = TarryTheme.colors.muted,
             )
+            if (stacked) {
+                Text(
+                    stringResource(R.string.summary_row_billed, summaryDuration(row.billedMs)),
+                    style = MaterialTheme.typography.titleMedium.tabular(),
+                    fontWeight = FontWeight.Bold,
+                    color = TarryTheme.colors.ink,
+                    modifier = Modifier.testTag(SummaryTags.rowBilled(row.jobId)),
+                )
+            }
         }
-        Text(
-            summaryDuration(row.billedMs),
-            style = MaterialTheme.typography.titleMedium.tabular(),
-            fontWeight = FontWeight.Bold,
-            color = TarryTheme.colors.ink,
-        )
+        if (!stacked) {
+            Text(
+                summaryDuration(row.billedMs),
+                style = MaterialTheme.typography.titleMedium.tabular(),
+                fontWeight = FontWeight.Bold,
+                color = TarryTheme.colors.ink,
+            )
+        }
     }
 }
 
@@ -519,10 +546,10 @@ private fun DaySectionItem(section: DaySection, onRow: (JobSummary) -> Unit) {
 }
 
 @Composable
-private fun TotalsCard(result: SummaryResult) {
+private fun TotalsCard(result: SummaryResult, range: SummaryRange) {
     val billed = summaryDuration(result.billedMs)
     val clock = summaryDuration(result.onClockMs)
-    val description = stringResource(R.string.summary_totals_description, summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
+    val description = stringResource(R.string.summary_totals_description, rangeText(range), summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
     TarryCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -531,9 +558,19 @@ private fun TotalsCard(result: SummaryResult) {
         shape = TarryTheme.shapes.container,
     ) {
         Text(
-            text = stringResource(R.string.summary_totals, billed, clock),
-            style = MaterialTheme.typography.titleMedium.tabular(),
+            text = stringResource(R.string.summary_totals_title, rangeText(range)),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TarryTheme.colors.muted,
+        )
+        Text(
+            text = stringResource(R.string.summary_totals_billed, billed),
+            style = MaterialTheme.typography.headlineLarge.tabular(),
             color = TarryTheme.colors.ink,
+        )
+        Text(
+            text = stringResource(R.string.summary_totals_on_clock, clock),
+            style = MaterialTheme.typography.bodyMedium,
+            color = TarryTheme.colors.muted,
         )
     }
 }
@@ -595,12 +632,16 @@ private fun JobBlocksSheet(row: JobSummary, zone: ZoneId, onOpenDay: (LocalDate)
     }
 }
 
+/** [this] with its spaces (normal and narrow no-break) replaced by NO-BREAK SPACE, so the text wraps only between words it is joined to. */
+internal fun String.nonBreaking(): String = replace(' ', '\u00A0').replace('\u202F', '\u00A0')
+
 @Composable
 private fun PieceRow(piece: BlockPiece, dateText: String, zone: ZoneId, onClick: () -> Unit) {
     val formats = rememberTimeFormats()
     val start = formats.time(piece.start, zone)
     val end = formats.time(piece.end, zone)
-    val range = stringResource(R.string.timeline_time_range, start, end)
+    // Lines may break around the dash but never inside a time ("9:00 / am" at large font scales).
+    val range = stringResource(R.string.timeline_time_range, start.nonBreaking(), end.nonBreaking())
     val spokenRange = stringResource(R.string.timeline_spoken_range, start, end)
     val duration = summaryDuration(piece.durationMs)
     val billedText = piece.billedMs?.let { summaryDuration(it) }

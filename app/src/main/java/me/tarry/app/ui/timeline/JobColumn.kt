@@ -28,7 +28,6 @@ import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +66,7 @@ import me.tarry.app.R
 import me.tarry.app.ui.components.rememberReducedMotion
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.components.TarrySheet
 import kotlinx.coroutines.delay
 import java.time.ZoneId
 import kotlin.math.abs
@@ -109,6 +109,9 @@ private object JobColumnDefaults {
     /** Below these heights (per unit of font scale) a block has no room for its duration line / its billable line. */
     const val DurationMinDp = 56f
     const val BillableMinDp = 84f
+
+    /** Height (per unit of font scale) of the "Done" line on a done job's block; below [DurationMinDp] it is left out. */
+    const val DoneLineDp = 16f
 
     /** Alpha of the range being drawn by a drag, over the card. */
     const val PreviewFillAlpha = 0.25f
@@ -366,7 +369,9 @@ internal fun BoxScope.JobColumn(
             JobTile(
                 top = placed.topDp, height = placed.heightDp, lane = placed.lane, laneCount = placed.laneCount, columnWidth = width,
                 traversal = traversal(b.start),
-                description = stringResource(R.string.timeline_job_description, b.jobName, spoken, billable.lowercase()),
+                description = stringResource(
+                    if (b.done) R.string.timeline_job_description_done else R.string.timeline_job_description, b.jobName, spoken, billable.lowercase(),
+                ),
                 clickLabel = stringResource(R.string.timeline_open_job),
                 enabled = enabled,
                 container = colors.container, border = colors.border, dashed = false,
@@ -378,6 +383,18 @@ internal fun BoxScope.JobColumn(
                 gripColor = if (movable) colors.border else null,
             ) {
                 val textColor = colors.text
+                // A done job says so at the top, quietly; the grey style alone would rely on colour.
+                val showDone = b.done && placed.heightDp >= JobColumnDefaults.DurationMinDp * fontScale
+                val doneDp = if (showDone) JobColumnDefaults.DoneLineDp else 0f
+                if (showDone) {
+                    Text(
+                        text = stringResource(R.string.timeline_job_done),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TarryTheme.colors.muted,
+                        maxLines = 1,
+                        modifier = Modifier.testTag("timeline_job_done_${b.id}"),
+                    )
+                }
                 Text(
                     text = b.jobName,
                     style = MaterialTheme.typography.labelLarge,
@@ -385,7 +402,7 @@ internal fun BoxScope.JobColumn(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (placed.heightDp >= JobColumnDefaults.DurationMinDp * fontScale) {
+                if (placed.heightDp >= (JobColumnDefaults.DurationMinDp + doneDp) * fontScale) {
                     Text(
                         text = formatDuration(end - start),
                         style = MaterialTheme.typography.bodySmall,
@@ -394,7 +411,7 @@ internal fun BoxScope.JobColumn(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (placed.heightDp >= JobColumnDefaults.BillableMinDp * fontScale) {
+                if (placed.heightDp >= (JobColumnDefaults.BillableMinDp + doneDp) * fontScale) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
                         val mark = Modifier.size(JobColumnDefaults.MarkSize).clip(CircleShape)
                         Box(if (b.billable) mark.background(textColor) else mark.border(JobColumnDefaults.MarkRing, textColor, CircleShape))
@@ -652,7 +669,7 @@ private fun JobOverflowSheet(
     val formats = rememberTimeFormats()
     @Composable fun range(start: Long, end: Long) =
         stringResource(R.string.timeline_time_range, formats.time(maxOf(start, dayStart), zone), formats.time(minOf(end, dayEnd), zone))
-    ModalBottomSheet(
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,
@@ -712,7 +729,7 @@ private fun SuggestionSheet(
         R.string.timeline_time_range,
         formats.time(maxOf(item.suggestion.start, dayStart), zone), formats.time(minOf(item.suggestion.end, dayEnd), zone),
     )
-    ModalBottomSheet(
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,

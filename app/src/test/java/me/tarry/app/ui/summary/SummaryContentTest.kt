@@ -90,10 +90,16 @@ class SummaryContentTest {
         onOpenDay: (LocalDate) -> Unit = {},
         onCustomRange: (LocalDate, LocalDate) -> Unit = { _, _ -> },
         onExport: (SummaryExportFormat) -> Unit = {},
+        fontScale: Float? = null,
     ) {
         composeRule.setContent {
             TarryTheme {
-                SummaryContent(state, onPreset, onCustomRange, onGrouping, onOpenDay, onExport = onExport)
+                val density = androidx.compose.ui.platform.LocalDensity.current
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalDensity provides if (fontScale == null) density else androidx.compose.ui.unit.Density(density.density, fontScale),
+                ) {
+                    SummaryContent(state, onPreset, onCustomRange, onGrouping, onOpenDay, onExport = onExport)
+                }
             }
         }
     }
@@ -164,12 +170,12 @@ class SummaryContentTest {
     @Test
     fun jobRows_showNameBlocksTotalAndBilled() {
         show(state())
-        // Alpha: 2 blocks, 2 h + 1 h = 3 h, all billable. Bravo (archived): 1 block, 1 h not billable, billed 0.
+        // Alpha: 2 blocks, 2 h + 1 h = 3 h, all billable. Bravo (done): 1 block, 1 h not billable, billed 0.
         val alphaRow = composeRule.onNodeWithTag(SummaryTags.row("A"))
         alphaRow.assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         composeRule.onNode(hasText("Alpha") and hasText("2 blocks · 3 h") and hasText("3 h")).assertExists()
         composeRule.onNodeWithTag(SummaryTags.row("B")).assertIsDisplayed()
-        composeRule.onNode(hasText("Bravo (archived)") and hasText("1 block · 1 h") and hasText("0 min")).assertExists()
+        composeRule.onNode(hasText("Bravo (done)") and hasText("1 block · 1 h") and hasText("0 min")).assertExists()
     }
 
     @Test
@@ -205,22 +211,63 @@ class SummaryContentTest {
             rules = BillingRules(incrementMin = 60, mode = RoundingMode.UP),
         )
         show(state(r))
-        composeRule.onNode(hasText("Billed 2 h · on the clock 1 h 10 min")).assertIsDisplayed()
+        composeRule.onNode(hasText("2 h billed")).assertIsDisplayed()
     }
 
     @Test
     fun totals_showBilledAndOnTheClock_overlapCountsOnce() {
         val overlapping = listOf(block("a", "A", day, 9, 11), block("b", "B", day, 10, 12))
         show(state(result(blocks = overlapping)))
-        composeRule.onNode(hasText("Billed 4 h · on the clock 3 h")).assertIsDisplayed()
+        composeRule.onNode(hasText("4 h billed")).assertIsDisplayed()
+        composeRule.onNode(hasText("On the clock 3 h")).assertIsDisplayed()
+    }
+
+    @Test
+    fun totals_cardReadsTotalRange_thenBilled_thenOnTheClock() {
+        show(state())
+        val rangeText = composeRule.onNodeWithTag("summary_range_text").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
+        composeRule.onNode(hasText("Total, $rangeText")).assertIsDisplayed()
+        composeRule.onNode(hasText("3 h billed")).assertIsDisplayed()
+        composeRule.onNode(hasText("On the clock 4 h")).assertIsDisplayed()
+    }
+
+    @Test
+    fun totals_singleDayRangeShowsOneDate() {
+        val one = SummaryRange(day, day)
+        val r = calculateSummary(SummaryInput(one, zone, blocks.take(1), listOf(alpha, bravo), emptyList(), emptyList(), emptySet(), BillingRules()))
+        show(SummaryUiState(RangePreset.TODAY, one, SummaryGrouping.BY_JOB, zone, r))
+        val rangeText = composeRule.onNodeWithTag("summary_range_text").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
+        assertThat(rangeText).doesNotContain("–")
+        composeRule.onNode(hasText("Total, $rangeText")).assertIsDisplayed()
+    }
+
+    @Test
+    fun jobRow_keepsTheBilledFigureBesideTheNameBelowFontScale1_5() {
+        show(state(), fontScale = 1.4f)
+        composeRule.onNodeWithTag(SummaryTags.rowBilled("A"), useUnmergedTree = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun jobRow_stacksTheBilledFigureUnderTheCaptionFromFontScale1_5() {
+        show(state(), fontScale = 1.5f)
+        composeRule.onNodeWithTag(SummaryTags.rowBilled("A"), useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNode(hasText("Billed 3 h")).assertExists()
+        // Spoken description is the same as in the side-by-side layout.
+        val description = composeRule.onNodeWithTag(SummaryTags.row("A")).fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].joinToString()
+        assertThat(description).isEqualTo("Alpha, 2 blocks, total 3 hours, billed 3 hours")
     }
 
     @Test
     fun totals_areSpoken() {
         show(state())
+        val rangeText = composeRule.onNodeWithTag("summary_range_text").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
         val description = composeRule.onNodeWithTag(SummaryTags.Totals).fetchSemanticsNode()
             .config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].joinToString()
-        assertThat(description).isEqualTo("Billed 3 hours, on the clock 4 hours")
+        assertThat(description).isEqualTo("Total, $rangeText. Billed 3 hours, on the clock 4 hours")
     }
 
     @Test
@@ -237,7 +284,7 @@ class SummaryContentTest {
     @Test
     fun emptyState_showsTheMessage_andNoTotals() {
         show(state(result(blocks = emptyList())))
-        composeRule.onNodeWithText("No job blocks in this range.").assertIsDisplayed()
+        composeRule.onNodeWithText("No job blocks in this range").assertIsDisplayed()
         composeRule.onNodeWithTag(SummaryTags.Totals).assertDoesNotExist()
         composeRule.onNodeWithTag(SummaryTags.Unlabelled).assertDoesNotExist()
     }
@@ -245,7 +292,7 @@ class SummaryContentTest {
     @Test
     fun emptyState_stillShowsTheUnlabelledCard() {
         show(state(result(blocks = emptyList(), visits = listOf(visit(9, 11)), trips = listOf(trip(11, 12)))))
-        composeRule.onNodeWithText("No job blocks in this range.").assertIsDisplayed()
+        composeRule.onNodeWithText("No job blocks in this range").assertIsDisplayed()
         composeRule.onNodeWithTag(SummaryTags.Unlabelled).assertIsDisplayed()
         composeRule.onNode(hasText("On site") and hasText("2 h")).assertExists()
         composeRule.onNode(hasText("Travel") and hasText("1 h")).assertExists()

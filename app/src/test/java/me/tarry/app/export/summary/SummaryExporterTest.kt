@@ -44,6 +44,7 @@ class SummaryExporterTest {
                 emptyList(), emptyList(), emptySet(), BillingRules(),
             ),
         ),
+        generatedAt = at(12),
     )
 
     @Test
@@ -117,15 +118,30 @@ class SummaryExporterTest {
     }
 
     @Test
-    fun anError_deletesThePartialFile_andIsRethrownAsIs() {
+    fun anotherError_deletesThePartialFile_andIsRethrownAsIs() {
+        var discarded = 0
+        val oom = object : OutputStream() {
+            override fun write(b: Int) = throw StackOverflowError("deep")
+            override fun write(b: ByteArray, off: Int, len: Int) = throw StackOverflowError("deep")
+        }
+        assertThrows(StackOverflowError::class.java) {
+            runBlocking { exporter.export(SummaryExportFormat.CSV, snapshot, open = { oom }, discard = { discarded++ }) }
+        }
+        assertThat(discarded).isEqualTo(1)
+    }
+
+    @Test
+    fun anOutOfMemoryError_whileRendering_isAWriteFailure_andDeletesThePartialFile() {
         var discarded = 0
         val oom = object : OutputStream() {
             override fun write(b: Int) = throw OutOfMemoryError("big")
             override fun write(b: ByteArray, off: Int, len: Int) = throw OutOfMemoryError("big")
         }
-        assertThrows(OutOfMemoryError::class.java) {
+        val e = assertThrows(SummaryExportException::class.java) {
             runBlocking { exporter.export(SummaryExportFormat.CSV, snapshot, open = { oom }, discard = { discarded++ }) }
         }
+        assertThat(e.error).isEqualTo(SummaryExportError.WRITE_FAILED)
+        assertThat(e.cause).isInstanceOf(OutOfMemoryError::class.java)
         assertThat(discarded).isEqualTo(1)
     }
 

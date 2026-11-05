@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
+import com.google.common.truth.Truth.assertWithMessage
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -84,6 +86,9 @@ class SettingsViewModelDataTest {
     private lateinit var db: TarryDatabase
     private lateinit var backup: FakeBackup
     private lateinit var vm: SettingsViewModel
+    private lateinit var settingsRepo: SettingsRepository
+    @Volatile private var reconciles = 0
+    private val reconcile = me.tarry.app.tracking.ReconcileTrigger { reconciles++ }
     private val uri: Uri = Uri.parse("content://test/doc")
 
     @Before
@@ -94,7 +99,8 @@ class SettingsViewModelDataTest {
             .build()
         backup = FakeBackup()
         val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("s.preferences_pb") })
-        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup)
+        settingsRepo = settings
+        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, scope)
     }
 
     @After
@@ -102,6 +108,41 @@ class SettingsViewModelDataTest {
         Dispatchers.resetMain()
         scope.cancel()
         db.close()
+    }
+
+    @Test
+    fun changingTheWindowEndGraceSavesItAndReconcilesAtOnce() = runBlocking<Unit> {
+        val captureJob = SupervisorJob()
+        val capturing = SettingsViewModel(
+            settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, CoroutineScope(Dispatchers.IO + captureJob),
+        )
+        capturing.setWindowEndGraceMaxMin(15)
+
+        // Wait for the save-and-reconcile itself (with a timeout, so a stuck write fails instead of hanging the suite).
+        val step = captureJob.children.single()
+        val done = withTimeoutOrNull(20_000) { step.join() }
+        assertWithMessage("save-and-reconcile still running after 20 s: $step").that(done).isNotNull()
+        assertThat(settingsRepo.settings.first().windowEndGraceMaxMin).isEqualTo(15)
+        assertThat(reconciles).isEqualTo(1)
+        captureJob.cancel()
+    }
+
+    @Test
+    fun theGraceReconcileRunsInTheCaptureScope_notTheViewModels() = runBlocking<Unit> {
+        val gate = CompletableDeferred<Unit>()
+        val captureJob = SupervisorJob()
+        val gated = SettingsViewModel(
+            settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup,
+            { gate.await(); reconciles++ }, CoroutineScope(Dispatchers.IO + captureJob),
+        )
+        gated.setWindowEndGraceMaxMin(30)
+
+        // The save-and-reconcile is a child of the capture scope, so leaving Settings cannot cancel it half-way.
+        withTimeout(5_000) { while (captureJob.children.none()) kotlinx.coroutines.delay(10) }
+        gate.complete(Unit)
+        withTimeout(5_000) { while (reconciles == 0) kotlinx.coroutines.delay(10) }
+        assertThat(reconciles).isEqualTo(1)
+        captureJob.cancel()
     }
 
     @Test

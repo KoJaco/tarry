@@ -26,6 +26,7 @@ import me.tarry.app.tracking.FakeLocationClient
 import me.tarry.app.tracking.FakePermissions
 import me.tarry.app.tracking.FakeSegmentationTrigger
 import me.tarry.app.tracking.FakeStayRadius
+import me.tarry.app.tracking.FakeWindowEndGrace
 import me.tarry.app.tracking.HealthGapRecorder
 import me.tarry.app.tracking.ReconcileSource
 import me.tarry.app.tracking.ScheduleAlarmScheduler
@@ -116,7 +117,7 @@ class BackupRestoreTrackingTest {
             FakeStayRadius(), FakePermissions(), EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
-            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, FakeSegmentationTrigger(), health, clock, config,
+            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, FakeSegmentationTrigger(), health, clock, config, FakeWindowEndGrace(),
         )
     }
 

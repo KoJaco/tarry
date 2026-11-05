@@ -46,6 +46,8 @@ data class TrackingStatus(
     val finishingUp: Boolean = false,
     /** When that grace began (epoch ms); kept across a process death so the orphaned grace can be accounted for. */
     val finishingUpSinceMs: Long? = null,
+    /** The grace cap (ms) in force when the grace began or was last reconciled; null for data written before it was kept. */
+    val finishingUpCapMs: Long? = null,
     /** Recent schedule saves, ascending; edits count from the moment they were saved (see [ScheduleEdit]). */
     val scheduleEdits: List<ScheduleEdit> = emptyList(),
 )
@@ -104,6 +106,7 @@ class TrackingStatusStore @Inject constructor(
             segmentationError = p[SEG_ERROR_TIME]?.let { SegmentationError(it, p[SEG_ERROR_MESSAGE] ?: "") },
             finishingUp = p[FINISHING_UP] ?: false,
             finishingUpSinceMs = p[FINISHING_UP_SINCE],
+            finishingUpCapMs = p[FINISHING_UP_CAP],
             scheduleEdits = decodeScheduleEdits(p[SCHEDULE_EDITS]),
         )
     }
@@ -151,14 +154,16 @@ class TrackingStatusStore @Inject constructor(
         }
     }
 
-    suspend fun setFinishingUp(on: Boolean, sinceMs: Long? = null) {
+    suspend fun setFinishingUp(on: Boolean, sinceMs: Long? = null, capMs: Long? = null) {
         dataStore.edit {
             if (on) {
                 it[FINISHING_UP] = true
                 if (sinceMs != null) it[FINISHING_UP_SINCE] = sinceMs
+                if (capMs != null) it[FINISHING_UP_CAP] = capMs
             } else {
                 it.remove(FINISHING_UP)
                 it.remove(FINISHING_UP_SINCE)
+                it.remove(FINISHING_UP_CAP)
             }
         }
     }
@@ -205,6 +210,7 @@ class TrackingStatusStore @Inject constructor(
         val SEG_ERROR_MESSAGE = stringPreferencesKey("segmentation_error_message")
         val FINISHING_UP = booleanPreferencesKey("finishing_up")
         val FINISHING_UP_SINCE = longPreferencesKey("finishing_up_since_ms")
+        val FINISHING_UP_CAP = longPreferencesKey("finishing_up_cap_ms")
         val SCHEDULE_EDITS = stringPreferencesKey("schedule_edits")
         val AR_LOG = stringPreferencesKey("ar_log")
         const val AR_LOG_SESSIONS = 20

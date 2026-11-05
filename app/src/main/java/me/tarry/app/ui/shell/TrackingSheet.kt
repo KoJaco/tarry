@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -36,6 +35,8 @@ import me.tarry.app.tracking.PauseKind
 import me.tarry.app.tracking.TrackingDetails
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.components.TarrySheet
+import me.tarry.app.ui.theme.surfaceEdge
 import me.tarry.core.data.model.ManualOverrideEndMode
 import java.time.Instant
 import java.util.Date
@@ -64,7 +65,7 @@ fun TrackingSheet(
     actions: TrackingSheetActions,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(
+    TarrySheet(
         onDismissRequest = onDismiss,
         shape = TarryTheme.shapes.container.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp)),
         containerColor = TarryTheme.colors.paper,
@@ -167,6 +168,7 @@ internal fun SheetRow(label: String, onDone: () -> Unit, @DrawableRes icon: Int,
                 onDone()
             }
             .background(colors.card)
+            .surfaceEdge(TarryTheme.shapes.card)
             .heightIn(min = 56.dp)
             .padding(horizontal = space.m, vertical = space.s),
         verticalAlignment = Alignment.CenterVertically,

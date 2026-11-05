@@ -71,7 +71,8 @@ class JobsViewModel @Inject constructor(
         else report(result)
     }
 
-    fun unarchive(jobId: String) = viewModelScope.launch { report(catalog.unarchiveJob(jobId)) }
+    /** Reopens the job; it keeps its colour unless another open job took it meanwhile. */
+    fun unarchive(jobId: String) = viewModelScope.launch { report(catalog.unarchiveJob(jobId, JobPalette.slots.map { it.key })) }
 
     fun delete(jobId: String) = viewModelScope.launch { report(catalog.deleteJob(jobId)) }
 

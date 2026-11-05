@@ -61,8 +61,10 @@ class SettingsGroupScope internal constructor() {
         checked: Boolean,
         onCheckedChange: (Boolean) -> Unit,
         subtitle: String? = null,
+        enabled: Boolean = true,
+        @DrawableRes icon: Int? = null,
     ) {
-        rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle) }
+        rows += { GroupedSwitchRow(title, checked, onCheckedChange, subtitle, enabled, icon) }
     }
 
     /** Free-form content on the group's surface (e.g. a header above its rows); it brings its own padding. */
@@ -138,25 +140,41 @@ private fun GroupedSettingsRow(
 }
 
 @Composable
-private fun GroupedSwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit, subtitle: String?) {
+private fun GroupedSwitchRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String?,
+    enabled: Boolean,
+    @DrawableRes icon: Int?,
+) {
     val space = TarryTheme.space
     val colors = TarryTheme.colors
     Row(
         modifier = Modifier
-            .toggleable(value = checked, role = Role.Switch, onValueChange = onCheckedChange)
+            .toggleable(value = checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
             .fillMaxWidth()
             .heightIn(min = GroupedRowMinHeight)
             .padding(horizontal = space.l, vertical = space.m),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(space.l),
     ) {
+        if (icon != null) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                tint = colors.ink,
+                modifier = Modifier.size(GroupedIconSize),
+            )
+        }
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = colors.ink)
+            Text(title, style = MaterialTheme.typography.titleSmall, color = if (enabled) colors.ink else colors.muted)
             if (subtitle != null) Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = colors.muted)
         }
         Switch(
             checked = checked,
             onCheckedChange = null,
+            enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedTrackColor = colors.ink,
                 checkedThumbColor = colors.paper,

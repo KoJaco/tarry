@@ -182,17 +182,14 @@ class TimelineEditor @Inject constructor(
     // region catalog
 
     /**
-     * Creates a job with the first colour in [paletteArgb] that no live job uses (the palette is the app's
-     * `JobPalette` keys, passed in because core-data cannot see the UI theme). When all are used it cycles by job count.
+     * Creates a job with the first colour in [paletteArgb] that no open job uses (the palette is the app's
+     * `JobPalette` keys, passed in because core-data cannot see the UI theme). Done and deleted jobs hold no colour; when
+     * all are in use the least-used one is taken ([pickJobColour]).
      */
     suspend fun createJob(name: String, paletteArgb: List<Int>): EditResult = db.withTransaction {
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return@withTransaction EditResult.BlankName
-        val used = jobs.getAllActive()
-        val usedColors = used.map { it.colorArgb }.toSet()
-        val color = paletteArgb.firstOrNull { it !in usedColors }
-            ?: paletteArgb.getOrNull(used.size % paletteArgb.size.coerceAtLeast(1))
-            ?: 0
+        val color = pickJobColour(jobs.getAllActive(), paletteArgb)
         val job = Job(name = trimmed, colorArgb = color, updatedAt = clock.nowMs())
         jobs.upsert(job)
         EditResult.Ok(id = job.id)

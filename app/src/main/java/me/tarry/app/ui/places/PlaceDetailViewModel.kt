@@ -28,6 +28,7 @@ import me.tarry.app.ui.timeline.displayLabel
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.app.ui.undo.noticeRes
+import me.tarry.app.ui.theme.JobPalette
 import me.tarry.core.data.db.entity.Job
 import me.tarry.core.data.db.entity.Place
 import me.tarry.core.data.repository.EditResult
@@ -97,7 +98,7 @@ class PlaceDetailViewModel @Inject constructor(
     private suspend fun build(i: Inputs): PlaceDetailLoad {
         val id = i.id ?: return PlaceDetailLoad.Loading
         val place = i.all.firstOrNull { it.id == id && it.mergedIntoId == null } ?: return PlaceDetailLoad.Missing
-        val jobOptions = i.catalog.jobs.filter { !it.archived || it.id == place.defaultJobId }.map { JobOption(it.id, it.name, it.colorArgb) }
+        val jobOptions = i.catalog.jobs.filter { !it.archived || it.id == place.defaultJobId }.map { JobOption(it.id, it.name, JobPalette.displayKey(it.colorArgb, it.archived)) }
         return PlaceDetailLoad.Ready(
             PlaceDetailUi(
                 id = id, label = place.displayLabel(), name = place.name?.takeIf { it.isNotBlank() },

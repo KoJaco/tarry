@@ -32,6 +32,23 @@ object JobPalette {
     /** Border width of a job's tinted container (blocks, swatches). */
     val BorderWidth = 1.5.dp
 
+    /**
+     * Stand-in for `Job.colorArgb` meaning "this job is done". Done jobs give their palette colour back and draw in
+     * [DONE] instead; the stored colour is untouched. Alpha 0 can never equal a slot key (those are opaque), and callers
+     * map a done job to it at the data boundary with [displayKey], so every screen that calls [lookup] follows.
+     */
+    const val DONE_KEY = 0
+
+    /** The neutral style of a done job: `inset` container, `outline` border, `ink` text (tokens.md), in both themes. */
+    val DONE: JobSlot = JobSlot(
+        "Done",
+        JobColors(LightTarryColors.inset, LightTarryColors.outline, LightTarryColors.ink),
+        JobColors(DarkTarryColors.inset, DarkTarryColors.outline, DarkTarryColors.ink),
+    )
+
+    /** The colour to hand to [lookup] for a job: [DONE_KEY] when it is done, else its stored colour. */
+    fun displayKey(colorArgb: Int, done: Boolean): Int = if (done) DONE_KEY else colorArgb
+
     val slots: List<JobSlot> = listOf(
         slot("Apricot", 0xFDEBD8, 0xEBA35C, 0x7A3F0B, 0x3A2614, 0xD9894A, 0xF6CDA6),
         slot("Sky", 0xE3EDFB, 0x7FA6E3, 0x1E4A8F, 0x172A45, 0x5F8BD6, 0xB9D0F5),
@@ -50,6 +67,7 @@ object JobPalette {
     /** Deterministic fallback slot for a job id (String.hashCode is specified, so stable across runs). */
     fun fallbackFor(jobId: String): JobSlot = slots[Math.floorMod(jobId.hashCode(), slots.size)]
 
-    /** The stored colour's slot if it names one, else the deterministic slot for [jobId]. */
-    fun lookup(colorArgb: Int?, jobId: String): JobSlot = byColorArgb(colorArgb) ?: fallbackFor(jobId)
+    /** [DONE] for [DONE_KEY], else the stored colour's slot if it names one, else the deterministic slot for [jobId]. */
+    fun lookup(colorArgb: Int?, jobId: String): JobSlot =
+        if (colorArgb == DONE_KEY) DONE else byColorArgb(colorArgb) ?: fallbackFor(jobId)
 }
