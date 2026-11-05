@@ -115,6 +115,8 @@
     <string name="permissions_status_locked">Waiting for the previous step</string>
     <string name="permissions_action_done">Done</string>
     <string name="permissions_action_grant">Grant</string>
+    <string name="permissions_action_skip">Skip</string>
+    <string name="permissions_action_skip_description">Skip %1$s</string>
     <string name="permissions_missing_required">Scheduled tracking will not start until the steps marked as required are granted.</string>
 
     <string name="permissions_step_location">Precise location</string>

@@ -23,12 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.Chevron
 import me.tarry.app.ui.components.PrimaryButton
 import me.tarry.app.ui.components.SettingsGroup
+import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.TarryTheme
 
 /** What the permission screen can ask for. The stateful wrapper wires these to launchers and the ViewModel. */
@@ -164,6 +166,17 @@ private fun PermissionRow(entry: PermissionItem, actions: PermissionsActions) {
                 if (onClick != null) Chevron()
             }
         }
+    }
+    if (entry.canSkip) {
+        // Outside the card, so the card stays one button. Steps unlock in order: without Skip a declined optional step blocks the rest.
+        val skip = stringResource(R.string.permissions_action_skip_description, stringResource(step.titleRes()))
+        TertiaryButton(
+            text = stringResource(R.string.permissions_action_skip),
+            onClick = { actions.onSkip(step) },
+            modifier = Modifier
+                .semantics { contentDescription = skip }
+                .testTag("permission_skip_${step.name}"),
+        )
     }
 }
 

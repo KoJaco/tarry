@@ -98,14 +98,38 @@ class PermissionsUiTest {
     }
 
     @Test
-    fun noSeparateActionButtonsAreLeft() {
+    fun noSeparateGrantOrChangeButtonsAreLeft() {
         val ui = buildPermissionsUiState(PermissionSnapshot(fineLocation = true), emptySet())
         composeRule.setContent { PermissionsContent(ui, noop) }
-        listOf("permission_grant_", "permission_skip_", "permission_change_").forEach { prefix ->
+        listOf("permission_grant_", "permission_change_").forEach { prefix ->
             PermissionStep.entries.forEach { composeRule.onNodeWithTag(prefix + it.name).assertDoesNotExist() }
         }
         composeRule.onNodeWithText("Allow").assertDoesNotExist()
-        composeRule.onNodeWithText("Skip").assertDoesNotExist()
+    }
+
+    @Test
+    fun onlyTheCurrentSkippableStepHasASkipButton_outsideItsCard() {
+        val skipped = mutableListOf<PermissionStep>()
+        val ui = buildPermissionsUiState(PermissionSnapshot(fineLocation = true), emptySet())
+        composeRule.setContent { PermissionsContent(ui, noop.copy(onSkip = { skipped += it })) }
+
+        val skip = composeRule.onNodeWithTag("permission_skip_BACKGROUND_LOCATION").assertHeightIsAtLeast(48.dp)
+        assertThat(skip.fetchSemanticsNode().config[SemanticsProperties.ContentDescription].single())
+            .isEqualTo("Skip Location all the time")
+        composeRule.onNode(hasTestTag("permission_skip_BACKGROUND_LOCATION") and hasAnyAncestor(hasTestTag("permission_row_BACKGROUND_LOCATION")))
+            .assertDoesNotExist()
+        PermissionStep.entries.filter { it != PermissionStep.BACKGROUND_LOCATION }
+            .forEach { composeRule.onNodeWithTag("permission_skip_${it.name}").assertDoesNotExist() }
+
+        skip.performScrollTo().performClick()
+        assertThat(skipped).containsExactly(PermissionStep.BACKGROUND_LOCATION)
+    }
+
+    @Test
+    fun theFirstStepCannotBeSkipped() {
+        val ui = buildPermissionsUiState(PermissionSnapshot(), emptySet())
+        composeRule.setContent { PermissionsContent(ui, noop) }
+        composeRule.onNodeWithTag("permission_skip_LOCATION").assertDoesNotExist()
     }
 
     @Test
