@@ -50,6 +50,8 @@
     <string name="timeline_add_job">Add job</string>
     <!-- Job column on the day canvas. -->
     <string name="timeline_job_description">Job %1$s, %2$s, %3$s</string>
+    <string name="timeline_job_description_done">Job %1$s, done, %2$s, %3$s</string>
+    <string name="timeline_job_done">Done</string>
     <string name="timeline_job_billable">Billable</string>
     <string name="timeline_job_not_billable">Not billable</string>
     <string name="timeline_open_job">Open job</string>

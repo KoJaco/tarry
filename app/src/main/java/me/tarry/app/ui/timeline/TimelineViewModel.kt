@@ -109,7 +109,10 @@ data class JobBlockItem(
     val end: Long,
     val billable: Boolean,
     val notes: String?,
-)
+) {
+    /** The job is done: it draws in the neutral [JobPalette.DONE] style and says "Done". */
+    val done: Boolean get() = jobColorArgb == JobPalette.DONE_KEY
+}
 
 /** A [JobSuggestion] with the suggested job's name and colour. */
 data class JobSuggestionItem(val suggestion: JobSuggestion, val jobName: String, val jobColorArgb: Int)
