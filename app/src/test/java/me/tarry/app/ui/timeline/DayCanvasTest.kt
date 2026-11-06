@@ -282,7 +282,8 @@ class DayCanvasTest {
         assertThat(targets).isEmpty()
         composeRule.onNodeWithTag("timeline_row_b")
             .assert(SemanticsMatcher("selected") { it.config[SemanticsProperties.Selected] })
-        composeRule.onNodeWithTag("timeline_row_t").performClick()
+        // The selected visit's resize handle now sits centred on the visit card, over the middle of the trip row, so tap the trip's left end.
+        composeRule.onNodeWithTag("timeline_row_t").performTouchInput { click(Offset(8f, height / 2f)) }
         assertThat(targets).containsExactly(EditTarget.Trip("t"))
     }
 

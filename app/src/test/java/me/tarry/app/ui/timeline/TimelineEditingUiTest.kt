@@ -43,6 +43,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.drawer.EditTarget
 import me.tarry.app.ui.theme.TarryTheme
@@ -421,10 +422,12 @@ class TimelineEditingUiTest {
         show(listOf(review, labelled))
         tag("timeline_filter_review").assertIsOff().assertHasClickAction()
         assertThat(tag("timeline_filter_review").fetchSemanticsNode().config[SemanticsProperties.Role]).isEqualTo(Role.Switch)
+        // The row scrolls sideways at this width, now that the Zoom pill sits before the filter.
+        tag("timeline_filter_review").performScrollTo()
         composeRule.onAllNodesWithText("Needs review").onFirst().assertIsDisplayed()
-        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").performScrollTo().performClick()
         tag("timeline_filter_review").assertIsOn()
-        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").performScrollTo().performClick()
         tag("timeline_filter_review").assertIsOff()
     }
 
@@ -479,13 +482,13 @@ class TimelineEditingUiTest {
     fun needsReviewFilterDimsEverythingElseButHidesNothing() {
         show(listOf(review, trip, labelled, gap))
         listOf("review", "trip", "labelled", "gap").forEach { assertThat(dimmed("timeline_row_$it")).isFalse() }
-        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").performScrollTo().performClick()
         assertThat(dimmed("timeline_row_review")).isFalse()
         listOf("trip", "labelled", "gap").forEach {
             tag("timeline_row_$it").assertIsDisplayed()
             assertThat(dimmed("timeline_row_$it")).isTrue()
         }
-        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").performScrollTo().performClick()
         assertThat(dimmed("timeline_row_labelled")).isFalse()
     }
 
@@ -493,7 +496,7 @@ class TimelineEditingUiTest {
     fun visitAtAnIgnoredPlaceIsDimmedByTheFilter() {
         val ignored = TimelineItem.Visit("ignored", at(9), at(10), "Home", placeIgnored = true)
         show(listOf(ignored, review.copy(id = "other", start = at(11), end = at(12))))
-        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").performScrollTo().performClick()
         assertThat(dimmed("timeline_row_ignored")).isTrue()
         assertThat(dimmed("timeline_row_other")).isFalse()
     }
