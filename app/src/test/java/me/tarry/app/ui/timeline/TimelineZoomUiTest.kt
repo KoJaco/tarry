@@ -126,6 +126,22 @@ class TimelineZoomUiTest {
     }
 
     @Test
+    fun aSidewaysPinchDoesNotZoom() {
+        show()
+        val before = hourSpacing()
+        composeRule.onNodeWithTag("timeline_row_a").performTouchInput {
+            val mid = center
+            pinch(
+                Offset(mid.x - 50f, mid.y), Offset(mid.x - 90f, mid.y),
+                Offset(mid.x + 50f, mid.y), Offset(mid.x + 90f, mid.y),
+            )
+        }
+        composeRule.waitForIdle()
+        assertThat(hourSpacing()).isWithin(0.5f).of(before)
+        assertThat(zoom).isEqualTo(ZoomLevel.Q15)
+    }
+
+    @Test
     fun aOneFingerVerticalSwipeScrollsAndDoesNotZoom() {
         show()
         val spacing = hourSpacing()

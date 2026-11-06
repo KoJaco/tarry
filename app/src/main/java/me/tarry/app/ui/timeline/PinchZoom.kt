@@ -3,8 +3,8 @@ package me.tarry.app.ui.timeline
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
-import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.animation.core.animate
@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInRoot
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -55,7 +56,7 @@ internal fun Modifier.pinchZoom(
                 }
                 if (pinching) {
                     if (pressed >= 2) {
-                        val ratio = event.calculateZoom()
+                        val ratio = event.verticalZoom()
                         focalY = event.calculateCentroid(useCurrent = true).y
                         if (ratio != 1f) onPinch(ratio, focalY)
                     }
@@ -183,4 +184,18 @@ internal fun rememberZoomState(
     }
     LaunchedEffect(savedLevel) { state.adopt(savedLevel) }
     return state
+}
+
+/**
+ * The change in the fingers' vertical spread since the last event (1 when there is none). Only the vertical spread
+ * counts: the timeline only stretches vertically, so a sideways pinch must not zoom it.
+ */
+internal fun PointerEvent.verticalZoom(): Float {
+    val moving = changes.filter { it.pressed && it.previousPressed }
+    if (moving.size < 2) return 1f
+    val currentCentre = moving.sumOf { it.position.y.toDouble() } / moving.size
+    val previousCentre = moving.sumOf { it.previousPosition.y.toDouble() } / moving.size
+    val current = moving.sumOf { abs(it.position.y - currentCentre) } / moving.size
+    val previous = moving.sumOf { abs(it.previousPosition.y - previousCentre) } / moving.size
+    return if (current > 0.0 && previous > 0.0) (current / previous).toFloat() else 1f
 }
