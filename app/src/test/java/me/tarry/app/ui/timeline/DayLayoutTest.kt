@@ -324,6 +324,29 @@ class DayLayoutTest {
     }
 
     @Test
+    fun minorLabelsFollowTheTickLevel() {
+        val items = listOf(visit("a", at(8, 20), at(10, 0)))
+        fun minutes(zoom: Float) = layout(items, zoom = zoom).minorLabels.map { java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).minute }
+        assertThat(minutes(1f)).isEmpty()
+        assertThat(minutes(2f)).containsExactly(10, 20, 30, 40, 50, 10, 20, 30, 40, 50).inOrder()
+        assertThat(minutes(3f)).containsExactly(15, 30, 45, 15, 30, 45).inOrder()
+        // Mid-pinch the labels switch with the ticks.
+        assertThat(minutes(1.49f)).isEmpty()
+        assertThat(minutes(1.5f)).hasSize(10)
+        assertThat(minutes(2.5f)).hasSize(6)
+    }
+
+    @Test
+    fun minorLabelsStayClearOfHourLabels() {
+        listOf(1.5f, 2f, 2.4f, 2.5f, 3f).forEach { z ->
+            val l = layout(listOf(visit("a", at(8, 20), at(11, 0))), zoom = z)
+            val hours = l.hourMarks.map { it.topDp }
+            // Two label half-heights (8 dp each) apart at least.
+            l.minorLabels.forEach { m -> hours.forEach { h -> assertThat(kotlin.math.abs(m.topDp - h)).isAtLeast(16f) } }
+        }
+    }
+
+    @Test
     fun zoomDoesNotChangeTripRowsOrMinimumBlockHeight() {
         val items = listOf(
             visit("a", at(8), at(9)),

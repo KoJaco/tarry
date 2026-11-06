@@ -75,4 +75,11 @@ class TimelineZoomTest {
         assertThat(pinnedTop(900, 500f, 20f, 2000f, 100f)).isEqualTo(420f)
         assertThat(pinnedTop(5000, 500f, 20f, 2000f, 100f)).isEqualTo(1900f)
     }
+
+    @Test
+    fun minorLabelRuleByTickLevel() {
+        assertThat((1..3).map { minorMarkLabelled(15, it * 15) }).containsExactly(false, false, false)
+        assertThat(listOf(10, 20, 30, 40, 50).map { minorMarkLabelled(10, it) }).doesNotContain(false)
+        assertThat((5..55 step 5).filter { minorMarkLabelled(5, it) }).containsExactly(15, 30, 45).inOrder()
+    }
 }

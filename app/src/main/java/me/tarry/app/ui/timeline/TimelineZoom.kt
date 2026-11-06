@@ -10,6 +10,9 @@ object TimelineZoomConfig {
 
     /** From this factor the minor ticks are 5 min apart. */
     const val FiveMinuteFrom = 2.5f
+
+    /** At 5-minute ticks only marks this many minutes apart (the quarters) are labelled. */
+    const val QuarterLabelEvery = 15
 }
 
 /** The three settled zoom levels. [snapMinutes] is the step job-block drags snap to at this level. */
@@ -56,3 +59,13 @@ fun ZoomLevel.zoomedOut(): ZoomLevel? = ZoomLevel.entries.getOrNull(ordinal - 1)
  */
 fun pinnedTop(scroll: Int, canvasTopInContent: Float, inset: Float, canvasHeight: Float, height: Float): Float =
     (scroll + inset - canvasTopInContent).coerceAtMost(canvasHeight - height).coerceAtLeast(0f)
+
+/**
+ * Whether the minor mark [minuteOfHour] minutes past the hour carries a time label at the given [tickMinutes] level:
+ * every mark at 10-minute ticks (:10 to :50), only the quarters at 5-minute ticks (:15, :30, :45), none at 15.
+ */
+fun minorMarkLabelled(tickMinutes: Int, minuteOfHour: Int): Boolean = when (tickMinutes) {
+    10 -> true
+    5 -> minuteOfHour % TimelineZoomConfig.QuarterLabelEvery == 0
+    else -> false
+}

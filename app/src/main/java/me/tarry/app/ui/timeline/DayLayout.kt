@@ -96,6 +96,8 @@ data class DayLayout(
     val nowDp: Float?,
     /** Offsets (dp from the canvas top) of the minor ticks on the rail (every 15, 10 or 5 min by zoom); the hour marks are in [hourMarks]. */
     val minorMarks: List<Float> = emptyList(),
+    /** The minor marks that carry a time label (see [minorMarkLabelled]); their instants and offsets. */
+    val minorLabels: List<HourMark> = emptyList(),
     val jobs: List<PlacedJob> = emptyList(),
     val suggestions: List<PlacedSuggestion> = emptyList(),
 ) {
@@ -299,13 +301,18 @@ fun layoutDay(
     }
 
     val tickMinutes = tickMinutesFor(zoom)
-    val quarters = buildList {
+    val quarters = mutableListOf<Float>()
+    val quarterLabels = mutableListOf<HourMark>()
+    run {
         var h = floorHour(canvasStart, zone)
         while (h.toInstant().toEpochMilli() < canvasEnd) {
             val base = h.toInstant().toEpochMilli()
             for (q in 1 until 60 / tickMinutes) {
                 val ms = base + q * tickMinutes * MS_PER_MINUTE
-                if (ms > canvasStart && ms < canvasEnd) add(dp(canvasStart, ms))
+                if (ms > canvasStart && ms < canvasEnd) {
+                    quarters += dp(canvasStart, ms)
+                    if (minorMarkLabelled(tickMinutes, q * tickMinutes)) quarterLabels += HourMark(ms, dp(canvasStart, ms))
+                }
             }
             h = h.plusHours(1)
         }
@@ -456,6 +463,7 @@ fun layoutDay(
         trips = trips,
         nowDp = nowDp,
         minorMarks = quarters,
+        minorLabels = quarterLabels,
         jobs = placedJobs,
         suggestions = placedSuggestions,
     )

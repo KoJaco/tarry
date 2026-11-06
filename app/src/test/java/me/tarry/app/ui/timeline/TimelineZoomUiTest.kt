@@ -48,7 +48,7 @@ class TimelineZoomUiTest {
     private fun at(hour: Int, minute: Int = 0): Long =
         date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
 
-    private fun show(fontScale: Float = 1f) {
+    private fun show(fontScale: Float = 1f, nowMs: Long? = null) {
         val items = listOf(
             TimelineItem.Visit("a", at(9), at(11), "A"),
             TimelineItem.Visit("b", at(13), at(15), "B"),
@@ -58,7 +58,7 @@ class TimelineZoomUiTest {
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
                 TarryTheme {
                     TimelineContent(
-                        date, items, {}, {}, today = date.plusDays(1), zone = zone,
+                        date, items, {}, {}, today = if (nowMs == null) date.plusDays(1) else date, zone = zone, nowMs = nowMs,
                         zoomLevel = zoom,
                         onZoomLevelChange = { zoom = it; zoomChanges += it },
                     )
@@ -66,6 +66,11 @@ class TimelineZoomUiTest {
             }
         }
     }
+
+    /** The texts of the minor labels that are currently composed. */
+    private fun minorLabels(): List<String> =
+        composeRule.onAllNodesWithTag(MinorLabelTag, useUnmergedTree = true).fetchSemanticsNodes()
+            .map { it.config[SemanticsProperties.Text].single().text }
 
     private fun select(id: String) {
         composeRule.onNodeWithTag("timeline_row_$id").performClick()
@@ -118,6 +123,34 @@ class TimelineZoomUiTest {
         composeRule.onNodeWithTag("timeline_zoom_out").performClick()
         composeRule.waitForIdle()
         assertThat(zoom).isEqualTo(ZoomLevel.Q10)
+    }
+
+    @Test
+    fun minorLabelsAppearWithTheTicksAtFiveAndTenMinutes() {
+        show()
+        assertThat(minorLabels()).isEmpty()
+        zoom = ZoomLevel.Q5
+        composeRule.waitForIdle()
+        assertThat(minorLabels()).contains(":30")
+        assertThat(minorLabels()).contains(":15")
+        assertThat(minorLabels()).doesNotContain(":10")
+        zoom = ZoomLevel.Q10
+        composeRule.waitForIdle()
+        assertThat(minorLabels()).containsAtLeast(":10", ":30", ":50")
+        zoom = ZoomLevel.Q15
+        composeRule.waitForIdle()
+        assertThat(minorLabels()).doesNotContain(":30")
+    }
+
+    @Test
+    fun aMinorLabelUnderTheNowPillIsHidden() {
+        zoom = ZoomLevel.Q5
+        show(nowMs = at(10, 30))
+        // The pill sits on 10:30; its neighbours stay.
+        val labels = composeRule.onAllNodesWithTag(MinorLabelTag, useUnmergedTree = true).fetchSemanticsNodes()
+        assertThat(labels.map { it.config[SemanticsProperties.Text].single().text }).contains(":15")
+        // Canvas 9:00 to 15:00 has six :30 marks; the one under the pill is gone.
+        assertThat(labels.count { it.config[SemanticsProperties.Text].single().text == ":30" }).isEqualTo(5)
     }
 
     @Test

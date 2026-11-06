@@ -97,6 +97,9 @@ private data class ResizeDrag(val visitId: String, val edge: ResizeEdge, val ori
 /** Test tag of every hour label in the time column. */
 internal const val HourLabelTag = "timeline_hour_label"
 
+/** Test tag of every minor-mark label (":10", ":30" ...) in the time column. */
+internal const val MinorLabelTag = "timeline_minor_label"
+
 /** Sizes and offsets of the day canvas (dp unless noted). Text-linked offsets are multiplied by the font scale. */
 private object DayCanvasDefaults {
     /** Minimum width of the time column; it grows to fit the widest hour label and the now-pill. */
@@ -231,6 +234,7 @@ fun DayCanvas(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val hourLabels = remember(layout.hourMarks, formats, zone) { layout.hourMarks.map { formats.hour(it.epochMs, zone) } }
+    val minorLabels = remember(layout.minorLabels, formats, zone) { layout.minorLabels.map { formats.minute(it.epochMs, zone) } }
     val markerWords = MarkerWords(
         stringResource(R.string.timeline_marker_start), stringResource(R.string.timeline_marker_stop), stringResource(R.string.timeline_marker_off),
     )
@@ -313,6 +317,28 @@ fun DayCanvas(
                         .semantics {
                             hideFromAccessibility()
                             testTag = HourLabelTag
+                        },
+                )
+            }
+            val minorStyle = MaterialTheme.typography.labelSmall
+            layout.minorLabels.forEachIndexed { i, mark ->
+                // The same collision rules as the hour labels: the now-pill and tracking-marker labels win.
+                if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed
+                if (placedMarkers.any { hourLabelCoveredByMarker(mark.topDp, it, DayCanvasDefaults.HourLabelHalfLine.value * fontScale) }) return@forEachIndexed
+                Text(
+                    text = minorLabels[i],
+                    style = minorStyle,
+                    color = c.muted,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .offset(y = mark.topDp.dp - DayCanvasDefaults.HourLabelHalfLine * fontScale)
+                        .width(timeColumn - DayCanvasDefaults.LabelGap)
+                        // Decorative, like the hour labels.
+                        .semantics {
+                            hideFromAccessibility()
+                            testTag = MinorLabelTag
                         },
                 )
             }
