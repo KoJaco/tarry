@@ -308,6 +308,8 @@ internal fun BoxScope.JobColumn(
                                     while (true) {
                                         val event = awaitPointerEvent(PointerEventPass.Initial)
                                         val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                        // A second finger (a pinch) or a consumed change cancels the draw without saving.
+                                        if (change.isConsumed || event.changes.count { it.pressed } >= 2) break
                                         change.consume()
                                         if (!change.pressed) {
                                             currentCreate(range.start, range.end)
@@ -862,7 +864,10 @@ private fun Modifier.blockDragGesture(
         onDrag(range)
         try {
             while (true) {
-                val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                // A second finger (a pinch) or a consumed change cancels the drag without saving.
+                if (change.isConsumed || event.changes.count { it.pressed } >= 2) break
                 change.consume()
                 val deltaMs = ((change.position.y - down.position.y) / density / layoutScale() * MsPerHour).toLong()
                 val next = when (resizeEdge) {
