@@ -105,6 +105,9 @@ internal class ZoomState(
     private var animation: Job? = null
     private var correction: Job? = null
 
+    /** An unclamped scroll a pinch step asked for but the old content height could not reach yet. */
+    private var pendingTarget: Int? = null
+
     /** A level that arrived from the saved setting (not from this screen): adopt it unless the user is mid-change. */
     fun adopt(level: ZoomLevel) {
         if (pinching || animation?.isActive == true || level == settled) return
@@ -159,15 +162,24 @@ internal class ZoomState(
         val new = target.coerceIn(TimelineZoomConfig.MinFactor, TimelineZoomConfig.MaxFactor)
         if (new == old) return
         zoom = new
-        val want = anchoredScroll(scroll.value, focal, old, new).coerceAtLeast(0)
+        // While a previous step is still short of its target (the content has not grown yet), anchor from that target,
+        // not from the clamped scroll, so no shortfall is lost.
+        val base = pendingTarget ?: scroll.value
+        val want = anchoredScroll(base, focal + (base - scroll.value), old, new).coerceAtLeast(0)
         scroll.dispatchRawDelta((want - scroll.value).toFloat())
         // The new content height is only known after the next layout; a target past the old maximum is finished then.
+        correction?.cancel()
         if (scroll.value != want) {
-            correction?.cancel()
+            pendingTarget = want
             correction = scope.launch {
+                // Frame 1 composes and lays out the grown content; by the start of frame 2 the new maximum is known.
+                withFrameNanos { }
                 withFrameNanos { }
                 scroll.scrollTo(want.coerceIn(0, scroll.maxValue))
+                pendingTarget = null
             }
+        } else {
+            pendingTarget = null
         }
     }
 }
