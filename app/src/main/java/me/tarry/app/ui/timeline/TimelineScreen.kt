@@ -27,12 +27,14 @@ fun TimelineScreen(
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val jobBlocks by viewModel.jobBlocks.collectAsStateWithLifecycle()
     val jobSuggestions by viewModel.jobSuggestions.collectAsStateWithLifecycle()
+    val zoomLevel by viewModel.zoomLevel.collectAsStateWithLifecycle()
     var editTarget by rememberSaveable(stateSaver = EditTargetSaver) { mutableStateOf<EditTarget?>(null) }
     var showMap by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     // After midnight the old "today" would stay selected; re-derive it when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
-    TimelineContent(
+    // The saved zoom is read asynchronously: hold the canvas back until it is known so it never flashes at 1x.
+    zoomLevel?.let { level -> TimelineContent(
         date = date,
         items = items,
         onPreviousDay = viewModel::previousDay,
@@ -59,8 +61,10 @@ fun TimelineScreen(
         onDeclineSuggestion = viewModel::declineSuggestion,
         onCreateJob = { start, end -> editTarget = EditTarget.NewJob(start, end) },
         onJobRangeChange = viewModel::moveOrResizeBlock,
+        zoomLevel = level,
+        onZoomLevelChange = viewModel::setZoomLevel,
         modifier = modifier,
-    )
+    ) }
     editTarget?.let { target ->
         EditDrawer(
             target = target,

@@ -6,6 +6,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -41,7 +44,8 @@ class ReviewRowTest {
             TarryTheme {
                 ReviewRow(
                     reviewOnly = false, showToggle = showToggle, onReviewOnlyChange = {}, onAddJob = {},
-                    showMap = showMap, onShowMapChange = { showMap = it }, modifier = Modifier.width(width),
+                    showMap = showMap, onShowMapChange = { showMap = it },
+                    modifier = Modifier.width(width),
                 )
             }
         }
@@ -87,5 +91,12 @@ class ReviewRowTest {
         assertThat(showMap).isTrue()
         composeRule.onNode(hasText("Map") and hasClickAction()).assertIsSelected()
         composeRule.onNodeWithTag("timeline_filter_review").assertDoesNotExist()
+    }
+
+    @Test
+    fun rowHasNoZoomControl() {
+        show(560.dp)
+        composeRule.onNodeWithTag("timeline_zoom_in").assertDoesNotExist()
+        composeRule.onNodeWithTag("timeline_zoom_out").assertDoesNotExist()
     }
 }

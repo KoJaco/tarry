@@ -31,7 +31,8 @@ class DayLayoutTest {
         window: Pair<Long, Long>? = null,
         z: ZoneId = zone,
         b: Pair<Long, Long> = bounds,
-    ) = layoutDay(items, b, z, now, fontScale, window = window)
+        zoom: Float = 1f,
+    ) = layoutDay(items, b, z, now, fontScale, window = window, zoom = zoom)
 
     @Test
     fun normalDay() {
@@ -286,10 +287,80 @@ class DayLayoutTest {
         val l = layout(listOf(visit("a", at(8, 20), at(10, 0))))
         assertThat(l.canvasStart).isEqualTo(at(8))
         assertThat(l.canvasEnd).isEqualTo(at(10))
-        assertThat(l.quarterMarks).hasSize(6)
+        assertThat(l.minorMarks).hasSize(6)
         listOf(36f, 72f, 108f, 180f, 216f, 252f).forEachIndexed { i, y ->
-            assertThat(l.quarterMarks[i]).isWithin(eps).of(y)
+            assertThat(l.minorMarks[i]).isWithin(eps).of(y)
         }
+    }
+
+    @Test
+    fun zoomScalesTheHourHeightAndSwitchesMinorTicksToTenMinutes() {
+        val l = layout(listOf(visit("a", at(8, 20), at(10, 0))), zoom = 2f)
+        assertThat(l.scale).isWithin(eps).of(288f)
+        assertThat(l.heightDp).isWithin(eps).of(2 * 288f)
+        assertThat(l.hourMarks.last().topDp).isWithin(eps).of(2 * 288f)
+        // Every 10 min, five per hour, never on the hour: 48 dp apart.
+        assertThat(l.minorMarks).hasSize(10)
+        listOf(48f, 96f, 144f, 192f, 240f).forEachIndexed { i, y -> assertThat(l.minorMarks[i]).isWithin(eps).of(y) }
+        assertThat(l.minorMarks[5]).isWithin(eps).of(288f + 48f)
+    }
+
+    @Test
+    fun zoomThreeUsesFiveMinuteTicks() {
+        val l = layout(listOf(visit("a", at(8, 20), at(10, 0))), zoom = 3f)
+        assertThat(l.scale).isWithin(eps).of(432f)
+        assertThat(l.minorMarks).hasSize(22)
+        assertThat(l.minorMarks[0]).isWithin(eps).of(36f)
+        assertThat(l.minorMarks[1]).isWithin(eps).of(72f)
+    }
+
+    @Test
+    fun minorMarksNeverCoincideWithHourMarks() {
+        listOf(1f, 1.5f, 2f, 2.5f, 3f).forEach { z ->
+            val l = layout(listOf(visit("a", at(8, 20), at(11, 0))), zoom = z)
+            val hours = l.hourMarks.map { it.topDp }
+            l.minorMarks.forEach { m -> hours.forEach { h -> assertThat(kotlin.math.abs(m - h)).isGreaterThan(1f) } }
+        }
+    }
+
+    @Test
+    fun minorLabelsFollowTheTickLevel() {
+        val items = listOf(visit("a", at(8, 20), at(10, 0)))
+        fun minutes(zoom: Float) = layout(items, zoom = zoom).minorLabels.map { java.time.Instant.ofEpochMilli(it.epochMs).atZone(zone).minute }
+        assertThat(minutes(1f)).isEmpty()
+        assertThat(minutes(2f)).containsExactly(10, 20, 30, 40, 50, 10, 20, 30, 40, 50).inOrder()
+        assertThat(minutes(3f)).containsExactly(15, 30, 45, 15, 30, 45).inOrder()
+        // Mid-pinch the labels switch with the ticks.
+        assertThat(minutes(1.49f)).isEmpty()
+        assertThat(minutes(1.5f)).hasSize(10)
+        assertThat(minutes(2.5f)).hasSize(6)
+    }
+
+    @Test
+    fun minorLabelsStayClearOfHourLabels() {
+        listOf(1.5f, 2f, 2.4f, 2.5f, 3f).forEach { z ->
+            val l = layout(listOf(visit("a", at(8, 20), at(11, 0))), zoom = z)
+            val hours = l.hourMarks.map { it.topDp }
+            // Two label half-heights (8 dp each) apart at least.
+            l.minorLabels.forEach { m -> hours.forEach { h -> assertThat(kotlin.math.abs(m.topDp - h)).isAtLeast(16f) } }
+        }
+    }
+
+    @Test
+    fun zoomDoesNotChangeTripRowsOrMinimumBlockHeight() {
+        val items = listOf(
+            visit("a", at(8), at(9)),
+            trip("t", at(9), at(9, 1)),
+            visit("b", at(9, 1), at(10)),
+        )
+        val one = layout(items, zoom = 1f)
+        val three = layout(items, zoom = 3f)
+        // The 1 min trip needs a full 24 dp row at both zooms; a 2 min visit is lifted to the 28 dp minimum.
+        assertThat(three.trips.single().heightDp).isWithin(eps).of(one.trips.single().heightDp)
+        assertThat(three.trips.single().heightDp).isWithin(eps).of(24f)
+        val short = listOf(visit("s", at(8), at(8, 2)))
+        assertThat(layout(short, zoom = 1f).blocks.single().heightDp).isWithin(eps).of(28f)
+        assertThat(layout(short, zoom = 3f).blocks.single().heightDp).isWithin(eps).of(28f)
     }
 
     @Test

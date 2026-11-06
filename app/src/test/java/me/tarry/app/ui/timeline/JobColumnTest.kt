@@ -407,6 +407,40 @@ class JobColumnTest {
 
 
     @Test
+    fun aSecondFingerCancelsADrawnRangeWithoutCreating() {
+        show(listOf(block("a", at(9), at(9, 30))), items = longVisit)
+        composeRule.onNodeWithTag(JobColumnTag).performTouchInput {
+            down(Offset(width / 2f, yAt(at(10, 7))))
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveTo(Offset(width / 2f, yAt(at(11, 40))))
+            down(1, Offset(width / 2f, yAt(at(10))))
+            moveTo(1, Offset(width / 2f, yAt(at(9, 30))))
+            up(1)
+            up()
+        }
+        composeRule.waitForIdle()
+        assertThat(created).isEmpty()
+        composeRule.onNodeWithTag("timeline_job_preview").assertDoesNotExist()
+    }
+
+    @Test
+    fun aSecondFingerCancelsABlockMoveWithoutChangingTheRange() {
+        show(tall, items = longVisit)
+        composeRule.onNodeWithTag("timeline_job_a").performTouchInput {
+            down(Offset(width / 2f, height / 2f))
+            advanceEventTime(viewConfiguration.longPressTimeoutMillis + 100)
+            moveBy(Offset(0f, 72.dp.toPx()))
+            down(1, Offset(width / 2f, height / 2f - 20f))
+            moveBy(1, Offset(0f, -20f))
+            up(1)
+            up()
+        }
+        composeRule.waitForIdle()
+        assertThat(changed).isEmpty()
+        assertThat(opened).isEmpty()
+    }
+
+    @Test
     fun draggingTheTopEdgeChangesOnlyTheStart() {
         show(tall, items = longVisit)
         composeRule.onNodeWithTag("timeline_job_a").performTouchInput {

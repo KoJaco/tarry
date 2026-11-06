@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -95,6 +96,9 @@ private data class ResizeDrag(val visitId: String, val edge: ResizeEdge, val ori
 
 /** Test tag of every hour label in the time column. */
 internal const val HourLabelTag = "timeline_hour_label"
+
+/** Test tag of every minor-mark label (":10", ":30" ...) in the time column. */
+internal const val MinorLabelTag = "timeline_minor_label"
 
 /** Sizes and offsets of the day canvas (dp unless noted). Text-linked offsets are multiplied by the font scale. */
 private object DayCanvasDefaults {
@@ -215,6 +219,12 @@ fun DayCanvas(
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
     /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
     onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
+    /** The settled zoom level's snap step in minutes for job drags (never a mid-pinch value). */
+    jobSnapMinutes: Int = JobBlockConfig().snapMinutes,
+    /** Applied to the canvas box itself (below the card padding): the host's pinch gesture and position tracking. */
+    canvasModifier: Modifier = Modifier,
+    /** Drawn on top of the canvas box, last in its traversal group (the pinned zoom buttons). */
+    overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -224,6 +234,7 @@ fun DayCanvas(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
     val hourLabels = remember(layout.hourMarks, formats, zone) { layout.hourMarks.map { formats.hour(it.epochMs, zone) } }
+    val minorLabels = remember(layout.minorLabels, formats, zone) { layout.minorLabels.map { formats.minute(it.epochMs, zone) } }
     val markerWords = MarkerWords(
         stringResource(R.string.timeline_marker_start), stringResource(R.string.timeline_marker_stop), stringResource(R.string.timeline_marker_off),
     )
@@ -264,6 +275,7 @@ fun DayCanvas(
             Modifier
                 .fillMaxWidth()
                 .height(layout.heightDp.dp)
+                .then(canvasModifier)
                 .drawBehind {
                     val stroke = DayCanvasDefaults.RuleWidth.toPx()
                     val railX = timeColumn.toPx()
@@ -274,10 +286,10 @@ fun DayCanvas(
                         drawLine(c.divider, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
                     }
                     drawLine(c.divider, Offset(railX, 0f), Offset(railX, size.height), strokeWidth = stroke)
-                    // :15 / :30 / :45 ticks on the rail: drawn only, so they are neither focusable nor spoken.
+                    // Minor ticks on the rail (every 15, 10 or 5 min by zoom): drawn only, so they are neither focusable nor spoken.
                     val tick = DayCanvasDefaults.QuarterTickHalf.toPx()
                     val tickColor = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
-                    layout.quarterMarks.forEach { dp ->
+                    layout.minorMarks.forEach { dp ->
                         val y = dp.dp.toPx()
                         drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
                     }
@@ -308,10 +320,32 @@ fun DayCanvas(
                         },
                 )
             }
+            val minorStyle = MaterialTheme.typography.labelSmall
+            layout.minorLabels.forEachIndexed { i, mark ->
+                // The same collision rules as the hour labels: the now-pill and tracking-marker labels win.
+                if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed
+                if (placedMarkers.any { hourLabelCoveredByMarker(mark.topDp, it, DayCanvasDefaults.HourLabelHalfLine.value * fontScale) }) return@forEachIndexed
+                Text(
+                    text = minorLabels[i],
+                    style = minorStyle,
+                    color = c.muted,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier
+                        .offset(y = mark.topDp.dp - DayCanvasDefaults.HourLabelHalfLine * fontScale)
+                        .width(timeColumn - DayCanvasDefaults.LabelGap)
+                        // Decorative, like the hour labels.
+                        .semantics {
+                            hideFromAccessibility()
+                            testTag = MinorLabelTag
+                        },
+                )
+            }
             JobColumn(
                 layout, dayStart, dayEnd, zone, jobWidth, fontScale, ordered, enabled = !selecting,
                 onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onDeclineSuggestion = onDeclineSuggestion, onCreateJob = onCreateJob,
-                onJobRangeChange = onJobRangeChange,
+                onJobRangeChange = onJobRangeChange, snapMinutes = jobSnapMinutes,
             )
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
             // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.
@@ -394,6 +428,7 @@ fun DayCanvas(
                         edgeDp = edgeDp,
                         shiftDp = if (live != null) (live.edgeMs - live.originMs) * dpPerMs else 0f,
                         start = handleStart,
+                        end = visitEnd,
                         onDragStart = { drag = ResizeDrag(selectedVisit.id, edge, originMs, originMs) },
                         onDragTo = { totalDp ->
                             val current = drag
@@ -421,12 +456,13 @@ fun DayCanvas(
                 drag?.takeIf { it.visitId == selectedVisit.id }?.let { d ->
                     val edgeDp = (if (d.edge == ResizeEdge.Start) selectedBlock.topDp else selectedBlock.topDp + selectedBlock.heightDp) +
                         (d.edgeMs - d.originMs) * dpPerMs
-                    ResizeLabel(formats.time(d.edgeMs, zone), edgeDp, handleStart)
+                    ResizeLabel(formats.time(d.edgeMs, zone), edgeDp, handleStart, visitEnd)
                 }
             }
             layout.nowDp?.let { nowDp ->
                 NowLine(nowDp, now, zone, ordered.count { it.topDp < nowDp } - 0.5f, timeColumn, fontScale)
             }
+            overlay()
         }
     }
 }
