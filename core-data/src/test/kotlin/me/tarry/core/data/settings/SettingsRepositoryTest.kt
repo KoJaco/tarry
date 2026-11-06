@@ -47,6 +47,7 @@ class SettingsRepositoryTest {
         assertThat(s.theme).isEqualTo(ThemeMode.SYSTEM)
         assertThat(s.stayGeofenceRadiusM).isEqualTo(100)
         assertThat(s.windowEndGraceMaxMin).isEqualTo(60)
+        assertThat(s.timelineZoomMinutes).isEqualTo(15)
         assertThat(s.lastBackupMs).isNull()
     }
 
@@ -185,6 +186,24 @@ class SettingsRepositoryTest {
         val store = createSettingsDataStore(newScope()) { file }
         store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("window_end_grace_max_min")] = 20 }
         assertThat(SettingsRepository(store).settings.first().windowEndGraceMaxMin).isEqualTo(60)
+    }
+
+
+    @Test
+    fun timelineZoom_defaultsRoundTripsAndFallsBackOnUnknownValues() = runTest {
+        val r = repo()
+        assertThat(r.settings.first().timelineZoomMinutes).isEqualTo(15)
+        for (m in listOf(10, 5, 15)) {
+            r.setTimelineZoomMinutes(m)
+            assertThat(r.settings.first()).isEqualTo(Settings(timelineZoomMinutes = m))
+        }
+        assertRejected { r.setTimelineZoomMinutes(7) }
+        assertThat(r.settings.first().timelineZoomMinutes).isEqualTo(15)
+
+        val file = tmp.newFile("badzoom.preferences_pb")
+        val store = createSettingsDataStore(newScope()) { file }
+        store.edit { it[androidx.datastore.preferences.core.intPreferencesKey("timeline_zoom_level")] = 7 }
+        assertThat(SettingsRepository(store).settings.first().timelineZoomMinutes).isEqualTo(15)
     }
 
     @Test

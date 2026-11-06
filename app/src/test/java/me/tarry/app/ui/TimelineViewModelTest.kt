@@ -522,6 +522,24 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun theSavedZoomReachesTheScreenAndAnUnknownValueReadsAsFifteen() = runBlocking {
+        val minutes = MutableStateFlow(10)
+        val saved = mutableListOf<Int>()
+        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, zoomMinutes = minutes, saveZoomMinutes = { saved += it }).managed()
+
+        assertThat(withTimeout(10_000) { vm.zoomLevel.first { it == me.tarry.app.ui.timeline.ZoomLevel.Q10 } })
+            .isEqualTo(me.tarry.app.ui.timeline.ZoomLevel.Q10)
+        minutes.value = 7
+        assertThat(withTimeout(10_000) { vm.zoomLevel.first { it == me.tarry.app.ui.timeline.ZoomLevel.Q15 } })
+            .isEqualTo(me.tarry.app.ui.timeline.ZoomLevel.Q15)
+
+        vm.setZoomLevel(me.tarry.app.ui.timeline.ZoomLevel.Q5)
+        withTimeout(10_000) { while (saved.isEmpty()) kotlinx.coroutines.delay(10) }
+        assertThat(saved).containsExactly(5)
+        Unit
+    }
+
+    @Test
     fun aVisitAtAnIgnoredPlaceNeverNeedsReview() = runBlocking {
         places.save(place("p", name = "Home").copy(ignored = true))
         timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
