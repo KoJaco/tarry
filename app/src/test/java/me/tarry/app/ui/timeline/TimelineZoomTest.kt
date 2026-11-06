@@ -77,6 +77,16 @@ class TimelineZoomTest {
     }
 
     @Test
+    fun atRestTheButtonsSitUpInTheCardPadding_andOncePinnedFollowTheViewportAsBefore() {
+        // minTop -30 px: at rest (canvas top on screen) the buttons rise 30 px into the card's top padding.
+        assertThat(pinnedTop(0, 500f, 20f, 2000f, 100f, minTop = -30f)).isEqualTo(-30f)
+        // Rising with the scroll until the viewport inset takes over; pinned positions are unchanged.
+        assertThat(pinnedTop(460, 500f, 20f, 2000f, 100f, minTop = -30f)).isEqualTo(-20f)
+        assertThat(pinnedTop(900, 500f, 20f, 2000f, 100f, minTop = -30f)).isEqualTo(420f)
+        assertThat(pinnedTop(5000, 500f, 20f, 2000f, 100f, minTop = -30f)).isEqualTo(1900f)
+    }
+
+    @Test
     fun minorLabelRuleByTickLevel() {
         assertThat((1..3).map { minorMarkLabelled(15, it * 15) }).containsExactly(false, false, false)
         assertThat(listOf(10, 20, 30, 40, 50).map { minorMarkLabelled(10, it) }).doesNotContain(false)

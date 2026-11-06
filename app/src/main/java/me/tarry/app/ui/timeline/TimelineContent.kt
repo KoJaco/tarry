@@ -263,14 +263,18 @@ fun TimelineContent(
                             val inset = with(LocalDensity.current) { TarryTheme.space.s.toPx() }
                             val height = with(LocalDensity.current) { ZoomButtonSize.toPx() }
                             val canvasHeight = with(LocalDensity.current) { layout.heightDp.dp.toPx() }
+                            // At rest the pair sits up in the card's top-right corner (owner, 6 Nov): into the card's
+                            // 16 dp top padding by ZoomRestLift and flush with its 8 dp side padding by ZoomRestShift.
+                            val restTop = with(LocalDensity.current) { -ZoomRestLift.toPx() }
+                            val shiftX = with(LocalDensity.current) { ZoomRestShift.roundToPx() }
                             ZoomControls(
                                 level = zoomState.settled,
                                 onLevelChange = zoomState::chooseLevel,
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .offset {
-                                        val top = pinnedTop(zoomState.scrollValue, zoomState.canvasTopInContent, inset, canvasHeight, height)
-                                        IntOffset(0, top.roundToInt())
+                                        val top = pinnedTop(zoomState.scrollValue, zoomState.canvasTopInContent, inset, canvasHeight, height, restTop)
+                                        IntOffset(shiftX, top.roundToInt())
                                     },
                             )
                         },

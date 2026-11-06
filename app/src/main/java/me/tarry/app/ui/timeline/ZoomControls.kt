@@ -24,6 +24,12 @@ import me.tarry.app.ui.theme.surfaceEdge
 /** Touch size of each zoom button. */
 internal val ZoomButtonSize = 48.dp
 
+/** At rest, how far the pair rises into the day card's 16 dp top padding (leaving 4 dp above the buttons). */
+internal val ZoomRestLift = 12.dp
+
+/** How far right the pair moves into the day card's 8 dp side padding: flush with the card edge. */
+internal val ZoomRestShift = 8.dp
+
 private const val DisabledAlpha = 0.38f
 
 /**

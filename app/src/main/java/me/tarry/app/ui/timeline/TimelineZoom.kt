@@ -56,9 +56,11 @@ fun ZoomLevel.zoomedOut(): ZoomLevel? = ZoomLevel.entries.getOrNull(ordinal - 1)
  * Where the pinned zoom buttons sit, in px from the canvas top: [inset] below the viewport top while the canvas is on
  * screen, never above the canvas top, never past the point where the buttons ([height]) would leave the canvas bottom.
  * [scroll] is the page scroll offset and [canvasTopInContent] the canvas top in the scrolled content, both in px.
+ * [minTop] is the resting position while the canvas top is on screen; a negative value lifts the buttons into the
+ * card's top padding (only at rest: once pinned to the viewport they sit [inset] below its top as before).
  */
-fun pinnedTop(scroll: Int, canvasTopInContent: Float, inset: Float, canvasHeight: Float, height: Float): Float =
-    (scroll + inset - canvasTopInContent).coerceAtMost(canvasHeight - height).coerceAtLeast(0f)
+fun pinnedTop(scroll: Int, canvasTopInContent: Float, inset: Float, canvasHeight: Float, height: Float, minTop: Float = 0f): Float =
+    (scroll + inset - canvasTopInContent).coerceAtMost(canvasHeight - height).coerceAtLeast(minTop)
 
 /**
  * Whether the minor mark [minuteOfHour] minutes past the hour carries a time label at the given [tickMinutes] level:
