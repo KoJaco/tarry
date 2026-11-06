@@ -45,23 +45,27 @@ internal fun Modifier.pinchZoom(
         awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         var pinching = false
         var focalY = 0f
-        do {
-            val event = awaitPointerEvent(PointerEventPass.Initial)
-            val pressed = event.changes.count { it.pressed }
-            if (!pinching && pressed >= 2) {
-                pinching = true
-                onStart()
-            }
-            if (pinching) {
-                if (pressed >= 2) {
-                    val ratio = event.calculateZoom()
-                    focalY = event.calculateCentroid(useCurrent = true).y
-                    if (ratio != 1f) onPinch(ratio, focalY)
+        try {
+            do {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val pressed = event.changes.count { it.pressed }
+                if (!pinching && pressed >= 2) {
+                    pinching = true
+                    onStart()
                 }
-                event.changes.forEach { it.consume() }
-            }
-        } while (event.changes.any { it.pressed })
-        if (pinching) onEnd(focalY)
+                if (pinching) {
+                    if (pressed >= 2) {
+                        val ratio = event.calculateZoom()
+                        focalY = event.calculateCentroid(useCurrent = true).y
+                        if (ratio != 1f) onPinch(ratio, focalY)
+                    }
+                    event.changes.forEach { it.consume() }
+                }
+            } while (event.changes.any { it.pressed })
+        } finally {
+            // Also runs when the gesture is cancelled, so the zoom never stays stuck mid-pinch.
+            if (pinching) onEnd(focalY)
+        }
     }
 }
 
