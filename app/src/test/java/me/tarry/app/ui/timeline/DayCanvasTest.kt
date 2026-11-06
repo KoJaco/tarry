@@ -303,6 +303,8 @@ class DayCanvasTest {
         composeRule.waitForIdle()
         val handle = composeRule.onNodeWithTag(handleTag(ResizeEdge.Start, "b"))
         handle.assertExists()
+        // 48 dp wide, so it covers no more of the trip row than the touch-target minimum needs.
+        assertThat(handle.getUnclippedBoundsInRoot().width.value).isWithin(0.5f).of(48f)
         // The b start handle sits inside the trip's 48 dp touch band; it is composed above the trip.
         val trip = composeRule.onNodeWithTag("timeline_row_t").fetchSemanticsNode().boundsInRoot
         val h = handle.fetchSemanticsNode().boundsInRoot

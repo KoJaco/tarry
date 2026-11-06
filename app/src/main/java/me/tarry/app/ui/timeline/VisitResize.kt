@@ -74,7 +74,8 @@ internal fun resizedEdge(
 }
 
 private val HandleTouchHeight = 48.dp
-private val HandleTouchWidth = 96.dp
+/** The 48 dp minimum and no wider: the handle is centred on the visit card, over the middle of an adjacent trip row. */
+private val HandleTouchWidth = 48.dp
 private val PillWidth = 40.dp
 private val PillHeight = 6.dp
 
