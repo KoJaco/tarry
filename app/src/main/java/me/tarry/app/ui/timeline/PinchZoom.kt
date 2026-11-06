@@ -4,6 +4,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.input.pointer.PointerEvent
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -56,9 +57,13 @@ internal fun Modifier.pinchZoom(
                 }
                 if (pinching) {
                     if (pressed >= 2) {
-                        val ratio = event.verticalZoom()
-                        focalY = event.calculateCentroid(useCurrent = true).y
-                        if (ratio != 1f) onPinch(ratio, focalY)
+                        val centroid = event.calculateCentroid(useCurrent = true)
+                        // An unspecified centroid (no usable pointers this event) is skipped rather than anchored on.
+                        if (centroid.isSpecified) {
+                            val ratio = event.verticalZoom()
+                            focalY = centroid.y
+                            if (ratio != 1f) onPinch(ratio, focalY)
+                        }
                     }
                     event.changes.forEach { it.consume() }
                 }
