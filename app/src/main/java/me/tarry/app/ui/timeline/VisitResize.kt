@@ -91,6 +91,7 @@ internal fun ResizeHandle(
     edgeDp: Float,
     shiftDp: Float,
     start: Dp,
+    end: Dp,
     onDragStart: () -> Unit,
     onDragTo: (totalDp: Float) -> Unit,
     onDragEnd: () -> Unit,
@@ -104,7 +105,7 @@ internal fun ResizeHandle(
     Box(
         modifier = Modifier
             .offset(y = edgeDp.dp - HandleTouchHeight / 2)
-            .padding(start = start)
+            .padding(start = start, end = end)
             .fillMaxWidth()
             .height(HandleTouchHeight),
         contentAlignment = Alignment.Center,
@@ -143,11 +144,11 @@ internal fun ResizeHandle(
 
 /** The floating time label next to the dragged edge. */
 @Composable
-internal fun ResizeLabel(text: String, edgeDp: Float, start: Dp) {
+internal fun ResizeLabel(text: String, edgeDp: Float, start: Dp, end: Dp) {
     Box(
         modifier = Modifier
             .offset(y = edgeDp.dp - HandleTouchHeight / 2)
-            .padding(start = start, end = TarryTheme.space.s)
+            .padding(start = start, end = end + TarryTheme.space.s)
             .fillMaxWidth()
             .height(HandleTouchHeight),
         contentAlignment = Alignment.CenterEnd,

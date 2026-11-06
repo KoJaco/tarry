@@ -394,6 +394,7 @@ fun DayCanvas(
                         edgeDp = edgeDp,
                         shiftDp = if (live != null) (live.edgeMs - live.originMs) * dpPerMs else 0f,
                         start = handleStart,
+                        end = visitEnd,
                         onDragStart = { drag = ResizeDrag(selectedVisit.id, edge, originMs, originMs) },
                         onDragTo = { totalDp ->
                             val current = drag
@@ -421,7 +422,7 @@ fun DayCanvas(
                 drag?.takeIf { it.visitId == selectedVisit.id }?.let { d ->
                     val edgeDp = (if (d.edge == ResizeEdge.Start) selectedBlock.topDp else selectedBlock.topDp + selectedBlock.heightDp) +
                         (d.edgeMs - d.originMs) * dpPerMs
-                    ResizeLabel(formats.time(d.edgeMs, zone), edgeDp, handleStart)
+                    ResizeLabel(formats.time(d.edgeMs, zone), edgeDp, handleStart, visitEnd)
                 }
             }
             layout.nowDp?.let { nowDp ->
