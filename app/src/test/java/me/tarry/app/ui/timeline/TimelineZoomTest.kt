@@ -57,4 +57,22 @@ class TimelineZoomTest {
     fun anchoredScrollMayGoNegativeForTheCallerToClamp() {
         assertThat(anchoredScroll(0, 100f, 3f, 1f)).isLessThan(0)
     }
+
+    @Test
+    fun steppingMovesOneLevelAndStopsAtTheLimits() {
+        assertThat(ZoomLevel.Q15.zoomedOut()).isNull()
+        assertThat(ZoomLevel.Q15.zoomedIn()).isEqualTo(ZoomLevel.Q10)
+        assertThat(ZoomLevel.Q10.zoomedIn()).isEqualTo(ZoomLevel.Q5)
+        assertThat(ZoomLevel.Q10.zoomedOut()).isEqualTo(ZoomLevel.Q15)
+        assertThat(ZoomLevel.Q5.zoomedIn()).isNull()
+    }
+
+    @Test
+    fun pinnedButtonsFollowTheViewportTopWithinTheCanvas() {
+        // Canvas at 500 px in the content, 2000 px tall, buttons 100 px, inset 20 px.
+        assertThat(pinnedTop(0, 500f, 20f, 2000f, 100f)).isEqualTo(0f)
+        assertThat(pinnedTop(480, 500f, 20f, 2000f, 100f)).isEqualTo(0f)
+        assertThat(pinnedTop(900, 500f, 20f, 2000f, 100f)).isEqualTo(420f)
+        assertThat(pinnedTop(5000, 500f, 20f, 2000f, 100f)).isEqualTo(1900f)
+    }
 }

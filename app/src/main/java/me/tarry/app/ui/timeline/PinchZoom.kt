@@ -79,7 +79,7 @@ private const val ZoomAnimationMillis = 200
 
 /**
  * The timeline's zoom: the live [zoom] factor (continuous during a pinch, always a level's factor at rest) and the
- * [settled] level, which is what snapping, the pill and the saved setting use. Pinches and menu changes both move the
+ * [settled] level, which is what snapping, the zoom buttons and the saved setting use. Pinches and button taps both move the
  * scroll so the time under the fingers (or the viewport centre) stays put.
  */
 @Stable
@@ -101,6 +101,20 @@ internal class ZoomState(
     /** The scrolling viewport and the canvas box, for turning a viewport position into a canvas position. */
     var viewport: LayoutCoordinates? = null
     var canvas: LayoutCoordinates? = null
+
+    /** The canvas top in scroll-content px (constant while the page scrolls); the pinned zoom buttons are placed from it. */
+    var canvasTopInContent by mutableFloatStateOf(0f)
+        private set
+
+    /** Called whenever the canvas box is positioned: keeps [canvas] and [canvasTopInContent] current. */
+    fun canvasPositioned(coordinates: LayoutCoordinates) {
+        canvas = coordinates
+        val viewportTop = viewport?.takeIf { it.isAttached }?.positionInRoot()?.y ?: return
+        canvasTopInContent = coordinates.positionInRoot().y - viewportTop + scroll.value
+    }
+
+    /** The page scroll offset in px, for placing the pinned zoom buttons. */
+    val scrollValue: Int get() = scroll.value
 
     private var animation: Job? = null
     private var correction: Job? = null
@@ -130,7 +144,7 @@ internal class ZoomState(
         settle(nearestLevel(zoom), focalY + canvasTop - viewportTop)
     }
 
-    /** The Zoom menu: animates to [level] around the viewport's centre. */
+    /** A zoom button: animates to [level] around the viewport's centre. */
     fun chooseLevel(level: ZoomLevel) {
         onInteraction()
         settle(level, (viewport?.takeIf { it.isAttached }?.size?.height ?: 0) / 2f)

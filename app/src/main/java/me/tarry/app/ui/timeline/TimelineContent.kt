@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -148,8 +151,6 @@ fun TimelineContent(
             onAddJob = onAddJob,
             showMap = showMap,
             onShowMapChange = onShowMapChange,
-            zoomLevel = zoomState.settled,
-            onZoomLevelChange = zoomState::chooseLevel,
             modifier = gutter,
         )
         if (showMap) {
@@ -256,8 +257,23 @@ fun TimelineContent(
                         // The settled level decides snapping: a value in the middle of a pinch never does.
                         jobSnapMinutes = zoomState.settled.snapMinutes,
                         canvasModifier = Modifier
-                            .onGloballyPositioned { zoomState.canvas = it }
+                            .onGloballyPositioned(zoomState::canvasPositioned)
                             .pinchZoom(zoomState::pinchStart, zoomState::pinch, zoomState::pinchEnd),
+                        overlay = {
+                            val inset = with(LocalDensity.current) { TarryTheme.space.s.toPx() }
+                            val height = with(LocalDensity.current) { ZoomButtonSize.toPx() }
+                            val canvasHeight = with(LocalDensity.current) { layout.heightDp.dp.toPx() }
+                            ZoomControls(
+                                level = zoomState.settled,
+                                onLevelChange = zoomState::chooseLevel,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset {
+                                        val top = pinnedTop(zoomState.scrollValue, zoomState.canvasTopInContent, inset, canvasHeight, height)
+                                        IntOffset(0, top.roundToInt())
+                                    },
+                            )
+                        },
                     )
                     val sheetBlock = gapSheetId?.let { id ->
                         layout.blocks.firstOrNull { it.item.id == id && it.item is TimelineItem.Gap }

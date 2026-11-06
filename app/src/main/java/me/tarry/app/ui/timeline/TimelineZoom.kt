@@ -42,3 +42,17 @@ fun nearestLevel(factor: Float): ZoomLevel =
  */
 fun anchoredScroll(oldScroll: Int, focalInContent: Float, oldFactor: Float, newFactor: Float): Int =
     (oldScroll + focalInContent * (newFactor / oldFactor - 1f)).let { Math.round(it) }
+
+/** The next level up (finer steps, bigger canvas), or null at the limit. */
+fun ZoomLevel.zoomedIn(): ZoomLevel? = ZoomLevel.entries.getOrNull(ordinal + 1)
+
+/** The next level down (coarser steps, smaller canvas), or null at the limit. */
+fun ZoomLevel.zoomedOut(): ZoomLevel? = ZoomLevel.entries.getOrNull(ordinal - 1)
+
+/**
+ * Where the pinned zoom buttons sit, in px from the canvas top: [inset] below the viewport top while the canvas is on
+ * screen, never above the canvas top, never past the point where the buttons ([height]) would leave the canvas bottom.
+ * [scroll] is the page scroll offset and [canvasTopInContent] the canvas top in the scrolled content, both in px.
+ */
+fun pinnedTop(scroll: Int, canvasTopInContent: Float, inset: Float, canvasHeight: Float, height: Float): Float =
+    (scroll + inset - canvasTopInContent).coerceAtMost(canvasHeight - height).coerceAtLeast(0f)

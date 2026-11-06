@@ -6,6 +6,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -15,6 +22,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.pinch
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.theme.TarryTheme
 import org.junit.Rule
@@ -25,7 +33,7 @@ import org.robolectric.annotation.Config
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** Zoom behaviour of the whole timeline screen: the Zoom menu, the two-finger pinch and the one-finger scroll. */
+/** Zoom behaviour of the whole timeline screen: the zoom buttons, the two-finger pinch and the one-finger scroll. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class, qualifiers = "w320dp-h1000dp")
 class TimelineZoomUiTest {
@@ -96,14 +104,67 @@ class TimelineZoomUiTest {
     fun selectedVisitsHandlesAreCentredOnTheVisitAtFontScale2() = assertHandlesCentredOnVisit(2f)
 
     @Test
-    fun choosingFiveMinutesTriplesTheSpacingBetweenHourMarks() {
+    fun eachZoomInTapStepsOneLevelAndTwoTapsTripleTheSpacingBetweenHourMarks() {
         show()
         val before = hourSpacing()
-        composeRule.onNodeWithTag("timeline_zoom").performClick()
-        composeRule.onNodeWithTag("timeline_zoom_5").performClick()
+        composeRule.onNodeWithTag("timeline_zoom_in").performClick()
+        composeRule.waitForIdle()
+        assertThat(zoom).isEqualTo(ZoomLevel.Q10)
+        composeRule.onNodeWithTag("timeline_zoom_in").performClick()
         composeRule.waitForIdle()
         assertThat(zoom).isEqualTo(ZoomLevel.Q5)
+        assertThat(zoomChanges).containsExactly(ZoomLevel.Q10, ZoomLevel.Q5).inOrder()
         assertThat(hourSpacing()).isWithin(1f).of(before * 3f)
+        composeRule.onNodeWithTag("timeline_zoom_out").performClick()
+        composeRule.waitForIdle()
+        assertThat(zoom).isEqualTo(ZoomLevel.Q10)
+    }
+
+    @Test
+    fun eachButtonIsDisabledAtItsLimit() {
+        show()
+        composeRule.onNodeWithTag("timeline_zoom_out").assertIsNotEnabled()
+        composeRule.onNodeWithTag("timeline_zoom_in").assertIsEnabled()
+        zoom = ZoomLevel.Q5
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("timeline_zoom_in").assertIsNotEnabled()
+        composeRule.onNodeWithTag("timeline_zoom_out").assertIsEnabled()
+    }
+
+    @Test
+    fun theButtonsAreNamedAndReportTheCurrentStep() {
+        show()
+        listOf("timeline_zoom_in" to "Zoom in", "timeline_zoom_out" to "Zoom out").forEach { (tag, name) ->
+            val node = composeRule.onNodeWithTag(tag)
+            node.assertHeightIsAtLeast(48.dp)
+            node.assertWidthIsAtLeast(48.dp)
+            composeRule.onNodeWithContentDescription(name).assertExists()
+            assertThat(node.fetchSemanticsNode().config[SemanticsProperties.StateDescription]).isEqualTo("15 minute steps")
+        }
+    }
+
+    @Test
+    fun aZoomButtonDeselectsTheSelectedVisit() {
+        show()
+        select("a")
+        composeRule.onNodeWithTag(handleTag(ResizeEdge.Start, "a")).assertExists()
+        composeRule.onNodeWithTag("timeline_zoom_in").performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(handleTag(ResizeEdge.Start, "a")).assertDoesNotExist()
+    }
+
+    @Test
+    fun theButtonsStayInViewWhileThePageScrolls() {
+        show()
+        zoom = ZoomLevel.Q5
+        composeRule.waitForIdle()
+        composeRule.onRoot().performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        // The canvas top has scrolled off screen, yet the buttons are still on it.
+        val canvasTop = composeRule.onNodeWithTag("timeline_row_a").fetchSemanticsNode().positionInRoot.y
+        assertThat(canvasTop).isLessThan(0f)
+        composeRule.onNodeWithTag("timeline_zoom_in").assertIsDisplayed()
+        composeRule.onNodeWithTag("timeline_zoom_out").assertIsDisplayed()
     }
 
     @Test

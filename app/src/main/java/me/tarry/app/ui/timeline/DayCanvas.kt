@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -219,6 +220,8 @@ fun DayCanvas(
     jobSnapMinutes: Int = JobBlockConfig().snapMinutes,
     /** Applied to the canvas box itself (below the card padding): the host's pinch gesture and position tracking. */
     canvasModifier: Modifier = Modifier,
+    /** Drawn on top of the canvas box, last in its traversal group (the pinned zoom buttons). */
+    overlay: @Composable BoxScope.() -> Unit = {},
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -433,6 +436,7 @@ fun DayCanvas(
             layout.nowDp?.let { nowDp ->
                 NowLine(nowDp, now, zone, ordered.count { it.topDp < nowDp } - 0.5f, timeColumn, fontScale)
             }
+            overlay()
         }
     }
 }

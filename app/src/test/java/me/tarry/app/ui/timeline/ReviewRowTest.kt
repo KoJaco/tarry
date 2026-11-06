@@ -38,14 +38,13 @@ class ReviewRowTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private var showMap by mutableStateOf(false)
-    private var zoom by mutableStateOf(ZoomLevel.Q15)
 
     private fun show(width: Dp, showToggle: Boolean = true) {
         composeRule.setContent {
             TarryTheme {
                 ReviewRow(
                     reviewOnly = false, showToggle = showToggle, onReviewOnlyChange = {}, onAddJob = {},
-                    showMap = showMap, onShowMapChange = { showMap = it }, zoomLevel = zoom, onZoomLevelChange = { zoom = it },
+                    showMap = showMap, onShowMapChange = { showMap = it },
                     modifier = Modifier.width(width),
                 )
             }
@@ -95,57 +94,9 @@ class ReviewRowTest {
     }
 
     @Test
-    fun zoomPillSitsBetweenAddJobAndTheFilterAndIsAtLeast48dpTall() {
+    fun rowHasNoZoomControl() {
         show(560.dp)
-        composeRule.onNodeWithTag("timeline_zoom").assertHeightIsAtLeast(48.dp)
-        composeRule.onNodeWithText("15 min", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithContentDescription("15 min, zoom").assertExists()
-        val addJobRight = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot.right
-        val zoomBounds = composeRule.onNodeWithTag("timeline_zoom").fetchSemanticsNode().boundsInRoot
-        val filterLeft = composeRule.onNodeWithTag("timeline_filter_review").fetchSemanticsNode().boundsInRoot.left
-        assertThat(zoomBounds.left).isAtLeast(addJobRight)
-        assertThat(filterLeft).isAtLeast(zoomBounds.right)
-    }
-
-    @Test
-    fun zoomMenuListsThreeStepsAndChoosingOneChangesTheLevel() {
-        show(560.dp)
-        composeRule.onNodeWithTag("timeline_zoom").performClick()
-        composeRule.onNodeWithTag("timeline_zoom_15").assertExists()
-        composeRule.onNodeWithTag("timeline_zoom_10").assertExists()
-        composeRule.onNodeWithTag("timeline_zoom_5").assertHeightIsAtLeast(48.dp).performClick()
-        assertThat(zoom).isEqualTo(ZoomLevel.Q5)
-        composeRule.onNodeWithText("5 min", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithContentDescription("5 min, zoom").assertExists()
-    }
-
-    @Test
-    fun zoomPillNameStartsWithItsVisibleTextAndReportsItsMenuState() {
-        show(560.dp)
-        val pill = composeRule.onNode(androidx.compose.ui.test.hasContentDescription("15 min, zoom"))
-        val config = pill.fetchSemanticsNode().config
-        assertThat(config[SemanticsProperties.ContentDescription].single()).startsWith("15 min")
-        assertThat(config[SemanticsProperties.StateDescription]).isEqualTo("Collapsed")
-        assertThat(config[SemanticsActions.OnClick].label).isEqualTo("Choose zoom step")
-        pill.performClick()
-        assertThat(pill.fetchSemanticsNode().config[SemanticsProperties.StateDescription]).isEqualTo("Expanded")
-    }
-
-    @Test
-    fun zoomMenuItemsMarkTheCurrentStepSelectedWithoutRenamingIt() {
-        show(560.dp)
-        composeRule.onNodeWithTag("timeline_zoom").performClick()
-        val current = composeRule.onNodeWithTag("timeline_zoom_15").fetchSemanticsNode().config
-        assertThat(current[SemanticsProperties.Selected]).isTrue()
-        assertThat(current.getOrNull(SemanticsProperties.ContentDescription)).isNull()
-        val other = composeRule.onNodeWithTag("timeline_zoom_10").fetchSemanticsNode().config
-        assertThat(other[SemanticsProperties.Selected]).isFalse()
-    }
-
-    @Test
-    fun zoomPillIsHiddenOnTheMap() {
-        show(560.dp)
-        composeRule.onNode(hasText("Map") and hasClickAction()).performClick()
-        composeRule.onNodeWithTag("timeline_zoom").assertDoesNotExist()
+        composeRule.onNodeWithTag("timeline_zoom_in").assertDoesNotExist()
+        composeRule.onNodeWithTag("timeline_zoom_out").assertDoesNotExist()
     }
 }
