@@ -277,7 +277,7 @@ fun DayCanvas(
                     // :15 / :30 / :45 ticks on the rail: drawn only, so they are neither focusable nor spoken.
                     val tick = DayCanvasDefaults.QuarterTickHalf.toPx()
                     val tickColor = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
-                    layout.quarterMarks.forEach { dp ->
+                    layout.minorMarks.forEach { dp ->
                         val y = dp.dp.toPx()
                         drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
                     }

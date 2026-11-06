@@ -94,8 +94,8 @@ data class DayLayout(
     val blocks: List<PlacedBlock>,
     val trips: List<PlacedTrip>,
     val nowDp: Float?,
-    /** Offsets (dp from the canvas top) of the :15, :30 and :45 ticks on the rail; the hour marks are in [hourMarks]. */
-    val quarterMarks: List<Float> = emptyList(),
+    /** Offsets (dp from the canvas top) of the minor ticks on the rail (every 15, 10 or 5 min by zoom); the hour marks are in [hourMarks]. */
+    val minorMarks: List<Float> = emptyList(),
     val jobs: List<PlacedJob> = emptyList(),
     val suggestions: List<PlacedSuggestion> = emptyList(),
 ) {
@@ -122,7 +122,7 @@ private fun ceilHour(ms: Long, zone: ZoneId): Long {
 
 /**
  * Lays [items] out on a day canvas on a true linear time scale: every visit, gap and long trip row sits exactly at its real
- * start and end, so hour marks, blocks and the now-line always agree. Scale, minimum block height and trip rows all grow with max(1, [fontScale]).
+ * start and end, so hour marks, blocks and the now-line always agree. Scale, minimum block height and trip rows all grow with max(1, [fontScale]); only the scale also grows with [zoom].
  *
  * Inner gaps: segmentation bridges short outages, so a gap can overlap a visit in time. Each gap is assigned to the
  * visit it overlaps most (clamped to the day); if that overlap is at least half of the gap's duration it is an inner
@@ -152,10 +152,12 @@ fun layoutDay(
     /** The day's job blocks and suggestions: placed in the job column, and their ends extend the canvas like [extraInstants]. */
     jobBlocks: List<JobBlockItem> = emptyList(),
     jobSuggestions: List<JobSuggestionItem> = emptyList(),
+    /** Zoom factor in [TimelineZoomConfig.MinFactor]..[TimelineZoomConfig.MaxFactor]. Scales the hour height only: trip rows and minimum block height stay put. */
+    zoom: Float = 1f,
 ): DayLayout {
     val (dayStart, dayEnd) = dayBounds
     val fs = maxOf(1f, fontScale)
-    val scale = params.dpPerHour * fs
+    val scale = params.dpPerHour * fs * zoom
     val tripRow = params.tripRowDp * fs
     val minBlock = params.minBlockDp * fs
 
@@ -296,12 +298,13 @@ fun layoutDay(
         }
     }
 
+    val tickMinutes = tickMinutesFor(zoom)
     val quarters = buildList {
         var h = floorHour(canvasStart, zone)
         while (h.toInstant().toEpochMilli() < canvasEnd) {
             val base = h.toInstant().toEpochMilli()
-            for (q in 1..3) {
-                val ms = base + q * 15 * MS_PER_MINUTE
+            for (q in 1 until 60 / tickMinutes) {
+                val ms = base + q * tickMinutes * MS_PER_MINUTE
                 if (ms > canvasStart && ms < canvasEnd) add(dp(canvasStart, ms))
             }
             h = h.plusHours(1)
@@ -452,7 +455,7 @@ fun layoutDay(
         blocks = blocks,
         trips = trips,
         nowDp = nowDp,
-        quarterMarks = quarters,
+        minorMarks = quarters,
         jobs = placedJobs,
         suggestions = placedSuggestions,
     )
