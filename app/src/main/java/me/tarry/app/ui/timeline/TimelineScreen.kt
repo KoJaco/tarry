@@ -27,6 +27,7 @@ fun TimelineScreen(
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val jobBlocks by viewModel.jobBlocks.collectAsStateWithLifecycle()
     val jobSuggestions by viewModel.jobSuggestions.collectAsStateWithLifecycle()
+    val zoomLevel by viewModel.zoomLevel.collectAsStateWithLifecycle()
     var editTarget by rememberSaveable(stateSaver = EditTargetSaver) { mutableStateOf<EditTarget?>(null) }
     var showMap by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -59,6 +60,8 @@ fun TimelineScreen(
         onDeclineSuggestion = viewModel::declineSuggestion,
         onCreateJob = { start, end -> editTarget = EditTarget.NewJob(start, end) },
         onJobRangeChange = viewModel::moveOrResizeBlock,
+        zoomLevel = zoomLevel,
+        onZoomLevelChange = viewModel::setZoomLevel,
         modifier = modifier,
     )
     editTarget?.let { target ->

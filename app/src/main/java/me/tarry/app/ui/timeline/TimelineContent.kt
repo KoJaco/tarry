@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.layout.onSizeChanged
@@ -105,6 +106,10 @@ fun TimelineContent(
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
     /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
     onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
+    /** The saved zoom level: the canvas starts at its factor and follows it when it changes from outside. */
+    zoomLevel: ZoomLevel = ZoomLevel.Q15,
+    /** The zoom settled on a level (a pinch released, or the Zoom menu): the host saves it. */
+    onZoomLevelChange: (ZoomLevel) -> Unit = {},
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -114,6 +119,7 @@ fun TimelineContent(
     LaunchedEffect(date) { selectedVisit = null }
     LaunchedEffect(selecting) { if (selecting) selectedVisit = null }
     LaunchedEffect(scroll) { snapshotFlow { scroll.isScrollInProgress }.filter { it }.collect { selectedVisit = null } }
+    val zoomState = rememberZoomState(scroll, zoomLevel, onZoomLevelChange) { selectedVisit = null }
     var reviewOnly by rememberSaveable { mutableStateOf(false) }
     var gapSheetId by rememberSaveable { mutableStateOf<String?>(null) }
     val isToday = date == today
@@ -124,6 +130,7 @@ fun TimelineContent(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .onGloballyPositioned { zoomState.viewport = it }
             // The map pans itself, so it takes the remaining height instead of scrolling with the page.
             .then(if (showMap) Modifier else Modifier.verticalScroll(scroll))
             // A tap nothing else consumed (blocks, buttons and handles consume theirs) deselects.
@@ -141,6 +148,8 @@ fun TimelineContent(
             onAddJob = onAddJob,
             showMap = showMap,
             onShowMapChange = onShowMapChange,
+            zoomLevel = zoomState.settled,
+            onZoomLevelChange = zoomState::chooseLevel,
             modifier = gutter,
         )
         if (showMap) {
@@ -215,11 +224,12 @@ fun TimelineContent(
                     val bounds = dayBounds(date, zone)
                     val fontScale = LocalDensity.current.fontScale
                     val minute = if (isToday) now / MillisPerMinute else 0L
-                    val layout = remember(items, date, zone, minute, isToday, fontScale, trackingMarkers, jobBlocks, jobSuggestions) {
+                    val layout = remember(items, date, zone, minute, isToday, fontScale, trackingMarkers, jobBlocks, jobSuggestions, zoomState.zoom) {
                         layoutDay(
                             items, bounds, zone, if (isToday) now else -1L, fontScale,
                             extraInstants = trackingMarkers.flatMap { it.ruleTimes },
                             jobBlocks = jobBlocks, jobSuggestions = jobSuggestions,
+                            zoom = zoomState.zoom,
                         )
                     }
                     SummaryCard(summarize(items, bounds), isToday)
@@ -243,6 +253,11 @@ fun TimelineContent(
                         onDeclineSuggestion = onDeclineSuggestion,
                         onCreateJob = onCreateJob,
                         onJobRangeChange = onJobRangeChange,
+                        // The settled level decides snapping: a value in the middle of a pinch never does.
+                        jobSnapMinutes = zoomState.settled.snapMinutes,
+                        canvasModifier = Modifier
+                            .onGloballyPositioned { zoomState.canvas = it }
+                            .pinchZoom(zoomState::pinchStart, zoomState::pinch, zoomState::pinchEnd),
                     )
                     val sheetBlock = gapSheetId?.let { id ->
                         layout.blocks.firstOrNull { it.item.id == id && it.item is TimelineItem.Gap }

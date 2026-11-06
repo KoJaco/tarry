@@ -217,6 +217,8 @@ fun DayCanvas(
     onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
     /** The settled zoom level's snap step in minutes for job drags (never a mid-pinch value). */
     jobSnapMinutes: Int = JobBlockConfig().snapMinutes,
+    /** Applied to the canvas box itself (below the card padding): the host's pinch gesture and position tracking. */
+    canvasModifier: Modifier = Modifier,
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -266,6 +268,7 @@ fun DayCanvas(
             Modifier
                 .fillMaxWidth()
                 .height(layout.heightDp.dp)
+                .then(canvasModifier)
                 .drawBehind {
                     val stroke = DayCanvasDefaults.RuleWidth.toPx()
                     val railX = timeColumn.toPx()
@@ -276,7 +279,7 @@ fun DayCanvas(
                         drawLine(c.divider, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
                     }
                     drawLine(c.divider, Offset(railX, 0f), Offset(railX, size.height), strokeWidth = stroke)
-                    // :15 / :30 / :45 ticks on the rail: drawn only, so they are neither focusable nor spoken.
+                    // Minor ticks on the rail (every 15, 10 or 5 min by zoom): drawn only, so they are neither focusable nor spoken.
                     val tick = DayCanvasDefaults.QuarterTickHalf.toPx()
                     val tickColor = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
                     layout.minorMarks.forEach { dp ->
