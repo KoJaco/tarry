@@ -215,6 +215,8 @@ fun DayCanvas(
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
     /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
     onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
+    /** The settled zoom level's snap step in minutes for job drags (never a mid-pinch value). */
+    jobSnapMinutes: Int = JobBlockConfig().snapMinutes,
 ) {
     val c = TarryTheme.colors
     val fontScale = maxOf(1f, LocalDensity.current.fontScale)
@@ -311,7 +313,7 @@ fun DayCanvas(
             JobColumn(
                 layout, dayStart, dayEnd, zone, jobWidth, fontScale, ordered, enabled = !selecting,
                 onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onDeclineSuggestion = onDeclineSuggestion, onCreateJob = onCreateJob,
-                onJobRangeChange = onJobRangeChange,
+                onJobRangeChange = onJobRangeChange, snapMinutes = jobSnapMinutes,
             )
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
             // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.

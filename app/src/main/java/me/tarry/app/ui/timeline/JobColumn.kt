@@ -246,8 +246,11 @@ internal fun BoxScope.JobColumn(
     onDeclineSuggestion: (JobSuggestion) -> Unit,
     onCreateJob: (start: Long, end: Long) -> Unit,
     onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
-    config: JobBlockConfig = JobBlockConfig(),
+    baseConfig: JobBlockConfig = JobBlockConfig(),
+    /** The settled zoom level's step: drags and the accessibility move/resize actions snap to it. A mid-pinch zoom never reaches here. */
+    snapMinutes: Int = baseConfig.snapMinutes,
 ) {
+    val config = remember(baseConfig, snapMinutes) { baseConfig.copy(snapMinutes = snapMinutes) }
     val formats = rememberTimeFormats()
     val haptics = LocalHapticFeedback.current
     val reducedMotion = rememberReducedMotion()
@@ -285,7 +288,7 @@ internal fun BoxScope.JobColumn(
                     if (!enabled) {
                         Modifier
                     } else {
-                        Modifier.pointerInput(dayStart, dayEnd) {
+                        Modifier.pointerInput(dayStart, dayEnd, snapMinutes) {
                             awaitEachGesture {
                                 val down = awaitFirstDown(requireUnconsumed = false)
                                 // A swipe (touch slop passed before the long press) is cancelled here and left to the scroll.
@@ -829,7 +832,7 @@ private fun Modifier.blockDragGesture(
     reducedMotion: Boolean,
     onDrag: (Span?) -> Unit,
     onCommit: (Span) -> Unit,
-): Modifier = pointerInput(block.id, block.start, block.end, blockHeightDp, touchHeightDp, dayStart, dayEnd, reducedMotion) {
+): Modifier = pointerInput(block.id, block.start, block.end, blockHeightDp, touchHeightDp, dayStart, dayEnd, config.snapMinutes, reducedMotion) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
         val edge = edgeAt(down.position.y / density, blockHeightDp, touchHeightDp, config.edgeZoneDp)
