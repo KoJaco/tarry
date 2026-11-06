@@ -6,6 +6,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -96,7 +98,7 @@ class ReviewRowTest {
         show(560.dp)
         composeRule.onNodeWithTag("timeline_zoom").assertHeightIsAtLeast(48.dp)
         composeRule.onNodeWithText("15 min", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithContentDescription("Zoom, 15 minute steps").assertExists()
+        composeRule.onNodeWithContentDescription("15 min, zoom").assertExists()
         val addJobRight = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot.right
         val zoomBounds = composeRule.onNodeWithTag("timeline_zoom").fetchSemanticsNode().boundsInRoot
         val filterLeft = composeRule.onNodeWithTag("timeline_filter_review").fetchSemanticsNode().boundsInRoot.left
@@ -113,7 +115,19 @@ class ReviewRowTest {
         composeRule.onNodeWithTag("timeline_zoom_5").assertHeightIsAtLeast(48.dp).performClick()
         assertThat(zoom).isEqualTo(ZoomLevel.Q5)
         composeRule.onNodeWithText("5 min", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithContentDescription("Zoom, 5 minute steps").assertExists()
+        composeRule.onNodeWithContentDescription("5 min, zoom").assertExists()
+    }
+
+    @Test
+    fun zoomPillNameStartsWithItsVisibleTextAndReportsItsMenuState() {
+        show(560.dp)
+        val pill = composeRule.onNode(androidx.compose.ui.test.hasContentDescription("15 min, zoom"))
+        val config = pill.fetchSemanticsNode().config
+        assertThat(config[SemanticsProperties.ContentDescription].single()).startsWith("15 min")
+        assertThat(config[SemanticsProperties.StateDescription]).isEqualTo("Collapsed")
+        assertThat(config[SemanticsActions.OnClick].label).isEqualTo("Choose zoom step")
+        pill.performClick()
+        assertThat(pill.fetchSemanticsNode().config[SemanticsProperties.StateDescription]).isEqualTo("Expanded")
     }
 
     @Test

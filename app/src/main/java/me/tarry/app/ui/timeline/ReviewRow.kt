@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
@@ -172,6 +173,8 @@ private fun ZoomButton(level: ZoomLevel, onLevelChange: (ZoomLevel) -> Unit, mod
     val c = TarryTheme.colors
     var open by remember { mutableStateOf(false) }
     val description = stringResource(R.string.timeline_zoom_description, level.tickMinutes)
+    val openLabel = stringResource(R.string.timeline_zoom_open_action)
+    val state = stringResource(if (open) R.string.timeline_zoom_expanded else R.string.timeline_zoom_collapsed)
     Box(modifier) {
         Row(
             modifier = Modifier
@@ -182,7 +185,8 @@ private fun ZoomButton(level: ZoomLevel, onLevelChange: (ZoomLevel) -> Unit, mod
                 .clearAndSetSemantics {
                     contentDescription = description
                     role = Role.Button
-                    onClick { open = true; true }
+                    stateDescription = state
+                    onClick(label = openLabel) { open = true; true }
                 }
                 .clickable(role = Role.Button, onClick = { open = true })
                 .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.s),
