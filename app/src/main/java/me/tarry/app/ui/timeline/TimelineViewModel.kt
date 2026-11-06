@@ -503,10 +503,10 @@ class TimelineViewModel internal constructor(
         }
     }
 
-    /** The saved zoom level; an unknown stored value reads as 15 min. */
-    val zoomLevel: StateFlow<ZoomLevel> = zoomMinutes
+    /** The saved zoom level; null until the setting has loaded. An unknown stored value reads as 15 min. */
+    val zoomLevel: StateFlow<ZoomLevel?> = zoomMinutes
         .map { ZoomLevel.fromMinutes(it) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, ZoomLevel.Q15)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     /** Saves the settled zoom level (kept across days and restarts). */
     fun setZoomLevel(level: ZoomLevel) {

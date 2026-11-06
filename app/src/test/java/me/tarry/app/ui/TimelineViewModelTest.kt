@@ -540,6 +540,18 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun theZoomLevelIsUnknownUntilTheSettingHasLoaded() = runBlocking {
+        val minutes = kotlinx.coroutines.flow.MutableSharedFlow<Int>()
+        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, zoomMinutes = minutes).managed()
+
+        assertThat(vm.zoomLevel.value).isNull()
+        withTimeout(10_000) { minutes.subscriptionCount.first { it > 0 } }
+        minutes.emit(5)
+        assertThat(withTimeout(10_000) { vm.zoomLevel.first { it != null } })
+            .isEqualTo(me.tarry.app.ui.timeline.ZoomLevel.Q5)
+    }
+
+    @Test
     fun aVisitAtAnIgnoredPlaceNeverNeedsReview() = runBlocking {
         places.save(place("p", name = "Home").copy(ignored = true))
         timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))
