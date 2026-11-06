@@ -54,7 +54,6 @@
     <string name="timeline_zoom_expanded">Expanded</string>
     <string name="timeline_zoom_collapsed">Collapsed</string>
     <string name="timeline_zoom_open_action">Choose zoom step</string>
-    <string name="timeline_zoom_item_selected">%1$d min, selected</string>
     <!-- Job column on the day canvas. -->
     <string name="timeline_job_description">Job %1$s, %2$s, %3$s</string>
     <string name="timeline_job_description_done">Job %1$s, done, %2$s, %3$s</string>

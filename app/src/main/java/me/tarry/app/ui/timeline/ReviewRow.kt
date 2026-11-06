@@ -37,6 +37,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -201,7 +202,6 @@ private fun ZoomButton(level: ZoomLevel, onLevelChange: (ZoomLevel) -> Unit, mod
             ZoomLevel.entries.forEach { item ->
                 val selected = item == level
                 val label = stringResource(R.string.timeline_zoom_label, item.tickMinutes)
-                val selectedLabel = stringResource(R.string.timeline_zoom_item_selected, item.tickMinutes)
                 DropdownMenuItem(
                     text = { Text(label, style = MaterialTheme.typography.labelLarge) },
                     leadingIcon = {
@@ -218,7 +218,7 @@ private fun ZoomButton(level: ZoomLevel, onLevelChange: (ZoomLevel) -> Unit, mod
                     modifier = Modifier
                         .heightIn(min = MinTouch)
                         .testTag("timeline_zoom_${item.tickMinutes}")
-                        .semantics { if (selected) contentDescription = selectedLabel },
+                        .semantics { this.selected = selected; role = Role.RadioButton },
                 )
             }
         }

@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
@@ -128,6 +129,17 @@ class ReviewRowTest {
         assertThat(config[SemanticsActions.OnClick].label).isEqualTo("Choose zoom step")
         pill.performClick()
         assertThat(pill.fetchSemanticsNode().config[SemanticsProperties.StateDescription]).isEqualTo("Expanded")
+    }
+
+    @Test
+    fun zoomMenuItemsMarkTheCurrentStepSelectedWithoutRenamingIt() {
+        show(560.dp)
+        composeRule.onNodeWithTag("timeline_zoom").performClick()
+        val current = composeRule.onNodeWithTag("timeline_zoom_15").fetchSemanticsNode().config
+        assertThat(current[SemanticsProperties.Selected]).isTrue()
+        assertThat(current.getOrNull(SemanticsProperties.ContentDescription)).isNull()
+        val other = composeRule.onNodeWithTag("timeline_zoom_10").fetchSemanticsNode().config
+        assertThat(other[SemanticsProperties.Selected]).isFalse()
     }
 
     @Test
