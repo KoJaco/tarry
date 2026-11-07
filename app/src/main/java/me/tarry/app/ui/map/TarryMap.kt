@@ -77,6 +77,18 @@ internal fun TarryColors.mapPalette(): Map<String, Int> = mapOf(
     "mapGreen" to mapGreen.toArgb(),
 )
 
+/**
+ * MapView options for every Tarry map. Texture mode draws the map into a TextureView, which composites with the rest
+ * of the UI: the default SurfaceView is a separate window layer that ignores the screen transitions' fade and slide,
+ * so the map stayed on screen under the next screen until the old one was torn down.
+ */
+internal fun tarryMapOptions(context: Context): MapLibreMapOptions =
+    MapLibreMapOptions.createFromAttributes(context)
+        .textureMode(true)
+        .logoEnabled(false)
+        // Drawn in Compose instead (MapAttribution): MapLibre's "i" button is below the 48 dp touch target.
+        .attributionEnabled(false)
+
 @Volatile private var cachedTemplate: String? = null
 
 /** The bundled style template, read from assets once per process (it is ~44 KB and every map and snapshot needs it). */
@@ -121,11 +133,7 @@ private fun TarryMapView(
     val compassEndPx = with(LocalDensity.current) { TarryTheme.space.s.roundToPx() }
     val mapView = remember {
         MapLibreInit.ensure(context)
-        val options = MapLibreMapOptions.createFromAttributes(context)
-            .logoEnabled(false)
-            // Drawn in Compose instead (MapAttribution): MapLibre's "i" button is below the 48 dp touch target.
-            .attributionEnabled(false)
-        MapView(context, options).apply { onCreate(null) }
+        MapView(context, tarryMapOptions(context)).apply { onCreate(null) }
     }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, mapView) {
