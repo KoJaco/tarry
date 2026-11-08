@@ -171,8 +171,6 @@
     <string name="sessions_end_user_pause">Paused</string>
     <string name="sessions_end_killed">Killed</string>
     <string name="sessions_end_permission_lost">Permission lost</string>
-    <string name="sessions_export_gpx">GPX</string>
-    <string name="sessions_export_csv">CSV</string>
     <string name="sessions_export_gpx_description">Export GPX for session %1$d</string>
     <string name="sessions_export_csv_description">Export CSV for session %1$d</string>
     <string name="sessions_export_range_title">Export a date range</string>
@@ -323,7 +321,6 @@
     </plurals>
     <string name="summary_row_caption">%1$s · %2$s</string>
     <string name="summary_row_description">%1$s, %2$s, total %3$s, billed %4$s</string>
-    <string name="summary_row_open_hint">Show blocks</string>
     <string name="summary_totals">Billed %1$s · on the clock %2$s</string>
     <string name="summary_totals_description">Total, %1$s. Billed %2$s, on the clock %3$s</string>
     <string name="summary_totals_title">Total, %1$s</string>
