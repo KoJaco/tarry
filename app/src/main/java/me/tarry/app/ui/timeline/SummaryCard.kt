@@ -18,8 +18,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -83,14 +87,29 @@ fun SummaryCard(
 
 /**
  * "N visits need review" doubling as the filter. Off: `accentSoft` pill. On: a leading check and an `accent` fill with
- * `onAccent` text (shape as well as colour). The touch target is 48 dp tall; the pill is drawn inside it.
+ * `onAccent` text (shape as well as colour). The touch target is 48 dp tall; the pill is drawn inside it, and the target
+ * overlaps the neighbouring spacing instead of adding height, so the card stays as compact as with a bare pill.
  */
 @Composable
 private fun ReviewChip(count: Int, on: Boolean, onChange: (Boolean) -> Unit) {
     val c = TarryTheme.colors
     val content = if (on) c.onAccent else c.onAccentSoft
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val labelStyle = MaterialTheme.typography.labelMedium
+    // The pill's own height (text line or check, plus its padding): what the chip takes in the card's layout.
+    val padPx = with(density) { TarryTheme.space.xs.toPx() * 2 }
+    val visualPx = remember(labelStyle, density, padPx) {
+        with(density) { maxOf(measurer.measure("Ag", labelStyle).size.height.toFloat(), ChipCheck.toPx()) + padPx }
+    }
     Box(
         modifier = Modifier
+            // Reports only the pill's height to the card and lets the 48 dp target hang equally above and below it.
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val overlap = (placeable.height - visualPx).coerceAtLeast(0f).toInt()
+                layout(placeable.width, placeable.height - overlap) { placeable.place(0, -overlap / 2) }
+            }
             .heightIn(min = ChipTouch)
             .toggleable(value = on, role = Role.Checkbox, onValueChange = onChange)
             .testTag("timeline_filter_review"),
