@@ -39,14 +39,19 @@ class ReviewRowTest {
 
     private var showMap by mutableStateOf(false)
 
-    private fun show(width: Dp) {
+    private fun show(width: Dp, fontScale: Float = 1f) {
         composeRule.setContent {
-            TarryTheme {
-                ReviewRow(
-                    onAddJob = {},
-                    showMap = showMap, onShowMapChange = { showMap = it },
-                    modifier = Modifier.width(width),
-                )
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale),
+            ) {
+                TarryTheme {
+                    ReviewRow(
+                        onAddJob = {},
+                        showMap = showMap, onShowMapChange = { showMap = it },
+                        modifier = Modifier.width(width),
+                    )
+                }
             }
         }
     }
@@ -61,6 +66,26 @@ class ReviewRowTest {
         val toggleRight = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot.right
         val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
         assertThat(addJob.left).isAtLeast(toggleRight)
+    }
+
+    @Test
+    fun addJobStaysBesideTheToggleBelowFontScale1_5() {
+        show(560.dp, fontScale = 1.0f)
+        val toggle = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot
+        val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
+        assertThat(addJob.top).isLessThan(toggle.bottom)
+    }
+
+    @Test
+    fun addJobSitsOnItsOwnLeftAlignedLineFromFontScale1_5() {
+        show(411.dp, fontScale = 2.0f)
+        val row = composeRule.onNodeWithTag("timeline_review_row").fetchSemanticsNode().boundsInRoot
+        val toggle = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot
+        val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithText("Add job").assertExists()
+        assertThat(addJob.top).isAtLeast(toggle.bottom)
+        assertThat(addJob.left).isEqualTo(row.left)
+        assertThat(addJob.right).isAtMost(row.right)
     }
 
     @Test
