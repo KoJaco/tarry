@@ -106,14 +106,16 @@ class StackedTimeLabelsTest {
     }
 
     @Test
-    fun stackedHourMinorAndMarkerLabelsAreComposedBeforeTheBlocks_soTheyDrawUnderThem() {
+    fun stackedMinorAndMarkerLabelsDrawUnderTheBlocks_hourLabelsDrawOverThem() {
         show(2f, markers = listOf(TrackingMarker(at(7, 30), null)))
         // Semantics ids are handed out in composition order, which is the draw order: earlier is underneath.
         val blockId = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().id
         val hourIds = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true).fetchSemanticsNodes().map { it.id }
         val markerId = composeRule.onNodeWithTag("timeline_tracking_marker").fetchSemanticsNode().id
         assertThat(hourIds).isNotEmpty()
-        hourIds.forEach { assertThat(it).isLessThan(blockId) }
+        // The 10 am label falls inside the 9–11 visit: it must stay readable, so every hour label is drawn after the block.
+        // (Minor labels, shown only when zoomed in, stay in the loop before the blocks.)
+        hourIds.forEach { assertThat(it).isGreaterThan(blockId) }
         assertThat(markerId).isLessThan(blockId)
     }
 }

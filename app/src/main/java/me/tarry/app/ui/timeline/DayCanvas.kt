@@ -443,20 +443,17 @@ fun DayCanvas(
                 onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onDeclineSuggestion = onDeclineSuggestion, onCreateJob = onCreateJob,
                 onJobRangeChange = onJobRangeChange, snapMinutes = jobSnapMinutes,
             )
-            // Collapsed time column (large fonts): hour and minor labels sit just above their lines on a card
-            // backdrop, UNDER the blocks (composed before them), so they only show in free space and never cover a block.
+            // Collapsed time column (large fonts): hour and minor labels sit just above their lines on a card backdrop.
+            // Minor labels go UNDER the blocks (composed before them), so they only show in free space. Hour labels are
+            // composed after the blocks (below) so a long visit never hides which hour it is (owner, 2026-11-09).
             // A tracking marker label or the now-pill wins over a label it would collide with.
+            fun stackedLabelCovered(top: Float, height: Float): Boolean =
+                hourLabelCoveredByNowPill(top + height / 2, layout.nowDp, fontScale) ||
+                    placedMarkers.any { hourLabelCoveredByMarker(top + height / 2, it, height / 2) }
             if (stacked) {
-                fun lineDp(style: TextStyle) = metrics.lineDp(style)
                 val minorStyle = MaterialTheme.typography.labelSmall
-                val minorLine = lineDp(minorStyle)
-                fun covered(top: Float, height: Float): Boolean =
-                    hourLabelCoveredByNowPill(top + height / 2, layout.nowDp, fontScale) ||
-                        placedMarkers.any { hourLabelCoveredByMarker(top + height / 2, it, height / 2) }
-                layout.hourMarks.forEachIndexed { i, mark ->
-                    val top = (mark.topDp - hourLineDp).coerceAtLeast(0f)
-                    if (!covered(top, hourLineDp)) StackedTimeLabel(hourLabels[i], hourStyle, top, HourLabelTag)
-                }
+                val minorLine = metrics.lineDp(minorStyle)
+                fun covered(top: Float, height: Float) = stackedLabelCovered(top, height)
                 layout.minorLabels.forEachIndexed { i, mark ->
                     val top = (mark.topDp - minorLine).coerceAtLeast(0f)
                     if (!covered(top, minorLine)) StackedTimeLabel(minorLabels[i], minorStyle, top, MinorLabelTag)
@@ -522,6 +519,13 @@ fun DayCanvas(
                         enabled = !selecting,
                         iconOnly = placed.iconOnly,
                     ) { onOpenTrip(placed.trip.id) }
+                }
+            }
+            // Large-font hour labels, over the blocks on their card backdrop (resize handles still win, composed after).
+            if (stacked) {
+                layout.hourMarks.forEachIndexed { i, mark ->
+                    val top = (mark.topDp - hourLineDp).coerceAtLeast(0f)
+                    if (!stackedLabelCovered(top, hourLineDp)) StackedTimeLabel(hourLabels[i], hourStyle, top, HourLabelTag)
                 }
             }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
