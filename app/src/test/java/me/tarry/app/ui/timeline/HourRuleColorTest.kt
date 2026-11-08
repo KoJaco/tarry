@@ -30,4 +30,12 @@ class HourRuleColorTest {
             assertThat(ratio(minorTickColor(colors), colors.card)).isLessThan(ratio(hourRuleColor(colors), colors.card))
         }
     }
+
+    @Test
+    fun zoomPillIsInsetInBothThemes_notTheCardItSitsOn() {
+        for (colors in listOf(LightTarryColors, DarkTarryColors)) {
+            assertThat(zoomPillColor(colors)).isEqualTo(colors.inset)
+            assertThat(zoomPillColor(colors)).isNotEqualTo(colors.card)
+        }
+    }
 }
