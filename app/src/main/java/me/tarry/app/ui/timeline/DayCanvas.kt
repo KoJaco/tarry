@@ -171,8 +171,6 @@ private object DayCanvasDefaults {
     const val HatchStepDp = 8f
     const val HatchAlpha = 0.25f
 
-    /** Height of one `bodySmall` line (per unit of font scale) in a tracking marker label in the time column. */
-    const val MarkerLabelLineDp = 16f
     val MarkerLabelGap = 2.dp
 
     /** The side column once it has collapsed to the rail (large fonts): room for the hour ticks either side of the rail line. */
@@ -258,7 +256,7 @@ fun DayCanvas(
     }
     // The time column grows to the widest hour label, marker label or now-pill text, so none is ever clipped at large font sizes.
     val stacked = stackedTimeLabels(fontScale)
-    // The real height of one label line at this font scale: the collapsed layout puts a label's bottom exactly on its line.
+    // The real height of one label line at this font scale (never a literal): the collapsed layout puts a label's bottom exactly on its line, and marker labels keep clear of the now-pill by its real extent.
     val hourLineDp = with(density) { measurer.measure("Ag", hourStyle).size.height.toDp().value }
     val timeColumn = if (stacked) DayCanvasDefaults.RailColumn else remember(hourLabels, markerLineTexts, now, formats, zone, hourStyle, density, layout.nowDp != null) {
         val texts = hourLabels.map { it to hourStyle } + markerLineTexts.values.flatten().map { it to hourStyle } +
@@ -277,11 +275,11 @@ fun DayCanvas(
     val handleStart = timeColumn + DayCanvasDefaults.BlockInset
     val placedMarkers = remember(markerLineTexts, layout, fontScale, stacked, hourLineDp) {
         // The now-pill sits in the time column too; a marker label never goes under it.
-        val pillHalf = DayCanvasDefaults.NowPillHalfHeight.value * fontScale
+        val pillHalf = (hourLineDp + DayCanvasDefaults.PillPaddingV.value * 2) / 2
         val pill = layout.nowDp?.let { (it - pillHalf)..(it + pillHalf) }
         placeTrackingMarkers(
             trackingMarkers, layout.canvasStart, layout.canvasEnd, layout.scale, layout.heightDp,
-            if (stacked) hourLineDp else DayCanvasDefaults.MarkerLabelLineDp * fontScale, DayCanvasDefaults.MarkerLabelGap.value,
+            hourLineDp, DayCanvasDefaults.MarkerLabelGap.value,
             lineCount = { markerLineTexts[it]?.size ?: 2 },
             avoid = pill,
             above = stacked,
