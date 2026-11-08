@@ -417,15 +417,40 @@ class TimelineEditingUiTest {
     }
 
     @Test
-    fun needsReviewToggleReportsItsStateAsASwitch() {
+    fun needsReviewChipIsTheFilterAndReportsItsStateAsACheckbox() {
         show(listOf(review, labelled))
         tag("timeline_filter_review").assertIsOff().assertHasClickAction()
-        assertThat(tag("timeline_filter_review").fetchSemanticsNode().config[SemanticsProperties.Role]).isEqualTo(Role.Switch)
+        assertThat(tag("timeline_filter_review").fetchSemanticsNode().config[SemanticsProperties.Role]).isEqualTo(Role.Checkbox)
         composeRule.onAllNodesWithText("Needs review").onFirst().assertIsDisplayed()
         tag("timeline_filter_review").performClick()
         tag("timeline_filter_review").assertIsOn()
         tag("timeline_filter_review").performClick()
         tag("timeline_filter_review").assertIsOff()
+    }
+
+    @Test
+    fun reviewChipIsOnlyThereWhileSomethingNeedsReviewAndTheFilterResetsWhenItGoes() {
+        var items by mutableStateOf(listOf(review, labelled))
+        composeRule.setContent {
+            TarryTheme { TimelineContent(date, items, {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = {}) }
+        }
+        tag("timeline_filter_review").assertIsOff().performClick()
+        tag("timeline_filter_review").assertIsOn()
+        items = listOf(labelled)
+        composeRule.waitForIdle()
+        tag("timeline_filter_review").assertDoesNotExist()
+        assertThat(dimmed("timeline_row_labelled")).isFalse()
+        items = listOf(review, labelled)
+        composeRule.waitForIdle()
+        tag("timeline_filter_review").assertIsOff()
+    }
+
+    @Test
+    fun reviewChipShowsACheckAndHasA48dpTouchTargetWhenOn() {
+        show(listOf(review, labelled))
+        tag("timeline_filter_review").assertHeightIsAtLeast(48.dp)
+        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").assertIsOn()
     }
 
     @Test

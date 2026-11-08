@@ -39,11 +39,11 @@ class ReviewRowTest {
 
     private var showMap by mutableStateOf(false)
 
-    private fun show(width: Dp, showToggle: Boolean = true) {
+    private fun show(width: Dp) {
         composeRule.setContent {
             TarryTheme {
                 ReviewRow(
-                    reviewOnly = false, showToggle = showToggle, onReviewOnlyChange = {}, onAddJob = {},
+                    onAddJob = {},
                     showMap = showMap, onShowMapChange = { showMap = it },
                     modifier = Modifier.width(width),
                 )
@@ -52,18 +52,15 @@ class ReviewRowTest {
     }
 
     @Test
-    fun wideRowShowsTheLabelledToggleThenAddJobThenTheFilter() {
+    fun wideRowShowsTheLabelledToggleThenAddJob() {
         show(560.dp)
         composeRule.onNodeWithText("Timeline").assertExists()
         composeRule.onNodeWithText("Map").assertExists()
         composeRule.onNodeWithText("Add job").assertExists()
-        composeRule.onNodeWithText("Needs review").assertExists()
 
         val toggleRight = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot.right
         val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
-        val filterLeft = composeRule.onNodeWithTag("timeline_filter_review").fetchSemanticsNode().boundsInRoot.left
         assertThat(addJob.left).isAtLeast(toggleRight)
-        assertThat(filterLeft).isAtLeast(addJob.right)
     }
 
     @Test
@@ -72,7 +69,6 @@ class ReviewRowTest {
         composeRule.onNodeWithTag("timeline_review_row").assert(hasScrollAction())
         composeRule.onNodeWithText("Add job").assertExists()
         composeRule.onNodeWithContentDescription("Add job").assertDoesNotExist()
-        composeRule.onNodeWithText("Needs review").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -84,13 +80,19 @@ class ReviewRowTest {
     }
 
     @Test
-    fun toggleSwitchesToTheMapAndHidesTheReviewFilter() {
+    fun toggleSwitchesToTheMap() {
         show(560.dp)
         composeRule.onNode(hasText("Timeline") and hasClickAction()).assertIsSelected()
         composeRule.onNode(hasText("Map") and hasClickAction()).assertHeightIsAtLeast(48.dp).performClick()
         assertThat(showMap).isTrue()
         composeRule.onNode(hasText("Map") and hasClickAction()).assertIsSelected()
+    }
+
+    @Test
+    fun rowNoLongerCarriesTheReviewFilter() {
+        show(560.dp)
         composeRule.onNodeWithTag("timeline_filter_review").assertDoesNotExist()
+        composeRule.onNodeWithText("Needs review").assertDoesNotExist()
     }
 
     @Test

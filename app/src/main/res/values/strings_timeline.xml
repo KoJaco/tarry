@@ -80,7 +80,6 @@
     <string name="timeline_job_shorten">Shorten %1$d minutes</string>
     <string name="timeline_job_overflow_title">Jobs at this time</string>
     <string name="timeline_undo_visit_times">Visit times changed</string>
-    <string name="timeline_filter_needs_review">Needs review</string>
 
     <string name="timeline_cluster_row">Patchy tracking · %1$s · %2$s</string>
     <plurals name="timeline_cluster_outages">

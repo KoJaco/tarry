@@ -145,9 +145,6 @@ fun TimelineContent(
         DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate, gutter)
         WeekStrip(date, today, onSelectDate, gutter)
         ReviewRow(
-            reviewOnly = reviewOnly,
-            showToggle = !items.isNullOrEmpty(),
-            onReviewOnlyChange = { reviewOnly = it },
             onAddJob = onAddJob,
             showMap = showMap,
             onShowMapChange = onShowMapChange,
@@ -233,7 +230,10 @@ fun TimelineContent(
                             zoom = zoomState.zoom,
                         )
                     }
-                    SummaryCard(summarize(items, bounds), isToday)
+                    val summary = summarize(items, bounds)
+                    // Nothing left to review: the filter has nothing to show, so it turns itself off.
+                    LaunchedEffect(summary.needsReview) { if (summary.needsReview == 0) reviewOnly = false }
+                    SummaryCard(summary, isToday, reviewOnly = reviewOnly, onReviewOnlyChange = { reviewOnly = it })
                     DayCanvas(
                         layout, bounds.first, bounds.second, zone, now,
                         dimNonReview = reviewOnly,
