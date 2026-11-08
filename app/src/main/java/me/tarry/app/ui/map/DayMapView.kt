@@ -34,6 +34,7 @@ import me.tarry.app.map.circlePolygon
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.geojson.Polygon
 import me.tarry.app.map.VisitPin
+import me.tarry.app.map.groupCoincidentPins
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryColors
 import me.tarry.app.ui.theme.TarryTheme
@@ -297,11 +298,13 @@ private fun Style.setMarker(marker: GeoPoint?, colors: TarryColors) {
 
 /** Pins carry their own colours as properties so job colours need no per-job layers. */
 private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boolean) {
-    val features = pins.map { pin ->
+    val features = groupCoincidentPins(pins).map { group ->
+        val pin = group.first
         val job = pin.jobId?.let { JobPalette.lookup(pin.jobColorArgb, it).colors(dark) }
         Feature.fromGeometry(pin.position.toPoint()).apply {
             addStringProperty("id", pin.visitId)
-            addStringProperty("n", pin.number.toString())
+            addStringProperty("n", group.label)
+            addNumberProperty("r", group.radius)
             addStringProperty("fill", mapColor((job?.container ?: colors.card).toArgb()))
             addStringProperty("stroke", mapColor((job?.border ?: colors.outline).toArgb()))
             addStringProperty("text", mapColor((job?.text ?: colors.ink).toArgb()))
@@ -311,7 +314,7 @@ private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boole
     if (getLayer(PinCircleLayer) == null) {
         addBelowMarker(
             CircleLayer(PinCircleLayer, "$PinsId-src").withProperties(
-                PropertyFactory.circleRadius(13f),
+                PropertyFactory.circleRadius(Expression.get("r")),
                 PropertyFactory.circleColor(Expression.toColor(Expression.get("fill"))),
                 PropertyFactory.circleStrokeColor(Expression.toColor(Expression.get("stroke"))),
                 PropertyFactory.circleStrokeWidth(2f),

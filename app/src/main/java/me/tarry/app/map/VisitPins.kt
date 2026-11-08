@@ -57,3 +57,24 @@ fun placesNear(
     places.map { (id, p) -> id to haversineMeters(pin.lat, pin.lng, p.lat, p.lng) }
         .filter { it.second <= withinM }
         .sortedBy { it.second }
+
+/** One drawn marker: the visits (in number order) whose pins share a spot. Takes the first visit's id and colours. */
+data class PinGroup(val first: VisitPin, val numbers: List<Int>) {
+    /** "6" for a lone visit, "6, 7" for visits at the same spot. */
+    val label: String get() = numbers.joinToString(", ")
+
+    /** Marker radius in px at the map's scale: the single-pin radius, widened so a longer label stays inside the circle. */
+    val radius: Float get() = if (label.length <= 2) PinRadius else PinRadius + (label.length - 2) * PinRadiusPerChar
+}
+
+private const val PinRadius = 13f
+private const val PinRadiusPerChar = 3.5f
+
+/**
+ * Pins at the same spot (the same place centre, to about 10 cm) become one [PinGroup] so their numbers are not printed over
+ * each other. Groups follow the order of their first pin; a lone pin is a group of one.
+ */
+fun groupCoincidentPins(pins: List<VisitPin>): List<PinGroup> =
+    pins.groupBy { Math.round(it.position.lat * 1e6) to Math.round(it.position.lng * 1e6) }
+        .values
+        .map { PinGroup(it.first(), it.map { pin -> pin.number }) }
