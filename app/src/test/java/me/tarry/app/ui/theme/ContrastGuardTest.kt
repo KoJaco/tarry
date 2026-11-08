@@ -42,6 +42,7 @@ class ContrastGuardTest {
         Pairing("success on card", { it.success }, { it.card }, 7.7, 11.5),
         // UI component pair: 3:1 minimum rather than the text 4.5:1.
         Pairing("outline on paper", { it.outline }, { it.paper }, 3.1, 3.9, minimum = 3.0),
+        Pairing("outline on card", { it.outline }, { it.card }, 3.5, 3.5, minimum = 3.0),
     )
 
     @Test

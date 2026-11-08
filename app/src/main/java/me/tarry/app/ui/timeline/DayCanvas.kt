@@ -81,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.rememberReducedMotion
+import me.tarry.app.ui.theme.TarryColors
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.TripMode
 import java.time.ZoneId
@@ -139,6 +140,9 @@ private object DayCanvasDefaults {
 
     /** Half-length of a 15-minute tick, centred on the rail. */
     val QuarterTickHalf = 3.dp
+
+    /** Half-length of an hour tick, centred on the rail. */
+    val HourTickHalf = 6.dp
 
     /** Alpha of a 15-minute tick relative to the hour rule (both `divider`). */
     const val QuarterTickAlpha = 0.6f
@@ -275,17 +279,20 @@ fun DayCanvas(
                 .then(canvasModifier)
                 .drawBehind {
                     val stroke = DayCanvasDefaults.RuleWidth.toPx()
+                    val hourTick = DayCanvasDefaults.HourTickHalf.toPx()
                     val railX = timeColumn.toPx()
                     layout.hourMarks.forEach { mark ->
                         // No rule at the very top edge: hour rules only separate hours.
                         if (mark.topDp <= 0f) return@forEach
                         val y = mark.topDp.dp.toPx()
-                        drawLine(c.divider, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
+                        drawLine(hourRuleColor(c), Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
+                        // The hour tick crosses the rail, longer than the minor ticks, so hours read at a glance.
+                        drawLine(hourRuleColor(c), Offset(railX - hourTick, y), Offset(railX + hourTick, y), strokeWidth = stroke)
                     }
                     drawLine(c.divider, Offset(railX, 0f), Offset(railX, size.height), strokeWidth = stroke)
                     // Minor ticks on the rail (every 15, 10 or 5 min by zoom): drawn only, so they are neither focusable nor spoken.
                     val tick = DayCanvasDefaults.QuarterTickHalf.toPx()
-                    val tickColor = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
+                    val tickColor = minorTickColor(c)
                     layout.minorMarks.forEach { dp ->
                         val y = dp.dp.toPx()
                         drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
@@ -979,3 +986,9 @@ private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, order
         }
     }
 }
+
+/** Hour rules and hour ticks: `outline`, which is at least 3:1 on `card` in both themes. */
+internal fun hourRuleColor(c: TarryColors): Color = c.outline
+
+/** Minor marks (15, 10 and 5 minutes) stay the quiet `divider` (the `line` colour at 0.8) so they never compete with the hours. */
+internal fun minorTickColor(c: TarryColors): Color = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
