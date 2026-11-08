@@ -3,9 +3,14 @@ package me.tarry.app.ui.timeline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -38,7 +43,6 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 
 private val CellMinHeight = 56.dp
-private const val WrappedPerRow = 4
 
 /** From this font scale the weekday label is the single narrow letter. */
 private const val NarrowFontScale = 1.5f
@@ -58,8 +62,19 @@ internal fun weekOf(date: LocalDate, locale: Locale): List<LocalDate> {
 }
 
 /**
- * Seven equal day cells. The selected day is an `ink` block, today has an accent dot and days after [today]
- * are muted and not selectable. At large font scales the strip wraps onto two rows.
+ * Least width of a day cell (the strip is 7 of them and 6 gaps). At font scale 1 it is the plain 40 dp the equal cells have
+ * always had; above 1 the cell must hold the larger day number, so it grows with the font (never below a 48 dp touch target).
+ */
+internal fun weekCellMinWidth(fontScale: Float): Dp =
+    if (fontScale <= 1f) 40.dp else maxOf(48.dp, (24f + 16f * fontScale).dp)
+
+/** True when seven cells at [weekCellMinWidth] and the gaps between them fit in [available]. */
+internal fun weekFits(available: Dp, fontScale: Float, gap: Dp): Boolean = available >= weekCellMinWidth(fontScale) * 7 + gap * 6
+
+/**
+ * Seven day cells in one row, never wrapped. The selected day is an `ink` block, today has an accent dot and days after
+ * [today] are muted and not selectable. When seven cells do not fit (large font scales) the row scrolls sideways and
+ * keeps the selected day in view; otherwise the cells share the width equally.
  */
 @Composable
 fun WeekStrip(
@@ -70,15 +85,29 @@ fun WeekStrip(
 ) {
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
     val days = weekOf(selected, locale)
-    val perRow = if (LocalDensity.current.fontScale >= WrapFontScale) WrappedPerRow else 7
-    Column(modifier.fillMaxWidth().selectableGroup(), verticalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
-        for (row in days.chunked(perRow)) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
-                for (day in row) {
-                    DayCell(day, day == selected, day == today, day > today, locale, perRow, onSelect, Modifier.weight(1f))
-                }
-                // Keep the cells of a short last row the same width as the full rows.
-                repeat(perRow - row.size) { Spacer(Modifier.weight(1f)) }
+    val fontScale = LocalDensity.current.fontScale
+    val gap = TarryTheme.space.xs
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val fits = weekFits(maxWidth, fontScale, gap)
+        val cellWidth = weekCellMinWidth(fontScale)
+        val scroll = rememberScrollState()
+        val density = LocalDensity.current
+        if (!fits) {
+            // Keep the selected day in view (centred as far as the ends allow), also when the week or the font changes.
+            LaunchedEffect(selected, cellWidth, maxWidth) {
+                val index = days.indexOf(selected).coerceAtLeast(0)
+                val cell = with(density) { cellWidth.toPx() }
+                val step = cell + with(density) { gap.toPx() }
+                val view = with(density) { maxWidth.toPx() }
+                scroll.scrollTo((index * step - (view - cell) / 2).toInt().coerceAtLeast(0))
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().then(if (fits) Modifier else Modifier.horizontalScroll(scroll)).selectableGroup().testTag("timeline_week_strip"),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            for (day in days) {
+                DayCell(day, day == selected, day == today, day > today, locale, onSelect, if (fits) Modifier.weight(1f) else Modifier.width(cellWidth))
             }
         }
     }
@@ -91,7 +120,6 @@ private fun DayCell(
     isToday: Boolean,
     future: Boolean,
     locale: Locale,
-    perRow: Int,
     onSelect: (LocalDate) -> Unit,
     modifier: Modifier,
 ) {
@@ -99,7 +127,7 @@ private fun DayCell(
     val full = day.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL).withLocale(locale))
     val description = if (isToday) stringResource(R.string.timeline_day_today, full) else full
     val fontScale = LocalDensity.current.fontScale
-    val label = weekdayLabel(day.dayOfWeek, locale, narrow = fontScale >= NarrowFontScale || perRow < 7)
+    val label = weekdayLabel(day.dayOfWeek, locale, narrow = fontScale >= NarrowFontScale)
     val textColor = when {
         selected -> c.onInk
         future -> c.muted

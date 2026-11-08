@@ -351,10 +351,10 @@ class TimelineContentTest {
         val dateBottom = composeRule.onNodeWithTag("timeline_date").fetchSemanticsNode().boundsInRoot.bottom
         val previousTop = composeRule.onNodeWithTag("timeline_previous").fetchSemanticsNode().boundsInRoot.top
         assertThat(previousTop).isAtLeast(dateBottom)
-        // The week strip wraps onto two rows.
+        // The week strip stays on one row (it scrolls sideways instead of wrapping).
         val firstRow = composeRule.onNodeWithTag("timeline_week_${date.minusDays(2)}").fetchSemanticsNode().boundsInRoot.top
         val lastDay = composeRule.onNodeWithTag("timeline_week_${date.plusDays(3)}").fetchSemanticsNode().boundsInRoot.top
-        assertThat(lastDay).isNotEqualTo(firstRow)
+        assertThat(lastDay).isEqualTo(firstRow)
     }
 
     @Test
