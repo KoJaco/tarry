@@ -441,6 +441,26 @@ fun DayCanvas(
                 onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onDeclineSuggestion = onDeclineSuggestion, onCreateJob = onCreateJob,
                 onJobRangeChange = onJobRangeChange, snapMinutes = jobSnapMinutes,
             )
+            // Collapsed time column (large fonts): hour and minor labels sit just above their lines on a card
+            // backdrop, UNDER the blocks (composed before them), so they only show in free space and never cover a block.
+            // A tracking marker label or the now-pill wins over a label it would collide with.
+            if (stacked) {
+                fun lineDp(style: TextStyle) = with(density) { measurer.measure("Ag", style).size.height.toDp().value }
+                val minorStyle = MaterialTheme.typography.labelSmall
+                val minorLine = lineDp(minorStyle)
+                fun covered(top: Float, height: Float): Boolean =
+                    hourLabelCoveredByNowPill(top + height / 2, layout.nowDp, fontScale) ||
+                        placedMarkers.any { hourLabelCoveredByMarker(top + height / 2, it, height / 2) }
+                layout.hourMarks.forEachIndexed { i, mark ->
+                    val top = (mark.topDp - hourLineDp).coerceAtLeast(0f)
+                    if (!covered(top, hourLineDp)) StackedTimeLabel(hourLabels[i], hourStyle, top, HourLabelTag)
+                }
+                layout.minorLabels.forEachIndexed { i, mark ->
+                    val top = (mark.topDp - minorLine).coerceAtLeast(0f)
+                    if (!covered(top, minorLine)) StackedTimeLabel(minorLabels[i], minorStyle, top, MinorLabelTag)
+                }
+            }
+            placedMarkers.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
             // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.
             ordered.withIndex().sortedBy { it.value is PlacedTrip }.forEach { (index, placed) ->
@@ -502,25 +522,6 @@ fun DayCanvas(
                     ) { onOpenTrip(placed.trip.id) }
                 }
             }
-            // Collapsed time column (large fonts): hour and minor labels sit just above their lines, over the blocks on a card
-            // background. A tracking marker label or the now-pill wins over a label it would collide with.
-            if (stacked) {
-                fun lineDp(style: TextStyle) = with(density) { measurer.measure("Ag", style).size.height.toDp().value }
-                val minorStyle = MaterialTheme.typography.labelSmall
-                val minorLine = lineDp(minorStyle)
-                fun covered(top: Float, height: Float): Boolean =
-                    hourLabelCoveredByNowPill(top + height / 2, layout.nowDp, fontScale) ||
-                        placedMarkers.any { hourLabelCoveredByMarker(top + height / 2, it, height / 2) }
-                layout.hourMarks.forEachIndexed { i, mark ->
-                    val top = (mark.topDp - hourLineDp).coerceAtLeast(0f)
-                    if (!covered(top, hourLineDp)) StackedTimeLabel(hourLabels[i], hourStyle, top, HourLabelTag)
-                }
-                layout.minorLabels.forEachIndexed { i, mark ->
-                    val top = (mark.topDp - minorLine).coerceAtLeast(0f)
-                    if (!covered(top, minorLine)) StackedTimeLabel(minorLabels[i], minorStyle, top, MinorLabelTag)
-                }
-            }
-            placedMarkers.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
             val selectedBlock = selectedVisitId?.takeUnless { selecting }?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
             val selectedVisit = selectedBlock?.item as? TimelineItem.Visit
