@@ -149,4 +149,27 @@ class TrackingMarkersTest {
         val pair = TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5))
         assertThat(markerLines(pair, words, ::time)).containsExactly("Off", "12:05–12:20").inOrder()
     }
+
+    @Test
+    fun aboveModePutsTheLabelJustAboveItsFirstTime_andBelowItAtTheVeryTop() {
+        val markers = listOf(TrackingMarker(null, at(10, 0)), TrackingMarker(at(8, 0), null))
+        val placed = placeTrackingMarkers(
+            markers, at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f, above = true,
+        )
+        // 8:00 is the canvas top: no room above, so the label starts just below it. 10:00 (120 dp) ends 2 dp above its tick.
+        assertThat(placed[0].labelTopDp).isEqualTo(2f)
+        assertThat(placed[1].labelTopDp).isEqualTo(120f - 2f - 32f)
+        assertThat(placed[1].labelTopDp).isAtLeast(placed[0].labelTopDp + placed[0].labelHeightDp + 2f - 0.001f)
+    }
+
+    @Test
+    fun aboveModeStillKeepsClearOfTheNowPill() {
+        val placed = placeTrackingMarkers(
+            listOf(TrackingMarker(at(10, 5), null)), at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f,
+            lineHeightDp = 16f, gapDp = 2f, avoid = 100f..130f, above = true,
+        ).single()
+        assertThat(top(placed, 100f..130f)).isTrue()
+    }
+
+    private fun top(p: PlacedMarker, pill: ClosedFloatingPointRange<Float>) = p.labelTopDp + p.labelHeightDp <= pill.start || p.labelTopDp >= pill.endInclusive
 }

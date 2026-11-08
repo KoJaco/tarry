@@ -105,7 +105,7 @@ internal const val MinorLabelTag = "timeline_minor_label"
 
 /** Sizes and offsets of the day canvas (dp unless noted). Text-linked offsets are multiplied by the font scale. */
 private object DayCanvasDefaults {
-    /** Minimum width of the time column; it grows to fit the widest hour label and the now-pill. */
+    /** Minimum width of the time column; it grows to fit the widest hour label and the now-pill (below [StackedTimeLabelsFontScale]). */
     val TimeColumn = 44.dp
     val BlockInset = 4.dp
     val BorderWidth = 1.5.dp
@@ -167,6 +167,12 @@ private object DayCanvasDefaults {
     /** Height of one `bodySmall` line (per unit of font scale) in a tracking marker label in the time column. */
     const val MarkerLabelLineDp = 16f
     val MarkerLabelGap = 2.dp
+
+    /** The side column once it has collapsed to the rail (large fonts): room for the hour ticks either side of the rail line. */
+    val RailColumn = 12.dp
+
+    /** Horizontal padding of a time label drawn over the canvas on a `card` background (large fonts). */
+    val StackedLabelPadding = 2.dp
 
     /** One line of the card's own text (per unit of font scale): a card shorter than this plus a handle's 48 dp gets its handles outside. */
     const val HandleCardTextDp = 28f
@@ -244,7 +250,10 @@ fun DayCanvas(
         trackingMarkers.associateWith { m -> markerLines(m, markerWords, { formats.time(it, zone) }) }
     }
     // The time column grows to the widest hour label, marker label or now-pill text, so none is ever clipped at large font sizes.
-    val timeColumn = remember(hourLabels, markerLineTexts, now, formats, zone, hourStyle, density, layout.nowDp != null) {
+    val stacked = stackedTimeLabels(fontScale)
+    // The real height of one label line at this font scale: the collapsed layout puts a label's bottom exactly on its line.
+    val hourLineDp = with(density) { measurer.measure("Ag", hourStyle).size.height.toDp().value }
+    val timeColumn = if (stacked) DayCanvasDefaults.RailColumn else remember(hourLabels, markerLineTexts, now, formats, zone, hourStyle, density, layout.nowDp != null) {
         val texts = hourLabels.map { it to hourStyle } + markerLineTexts.values.flatten().map { it to hourStyle } +
             if (layout.nowDp != null) listOf(formats.time(now, zone) to nowStyle) else emptyList()
         val widest = texts.maxOfOrNull { (text, style) ->
@@ -259,15 +268,16 @@ fun DayCanvas(
     val dpPerMs = layout.scale / MsPerHour
     val visitItems = remember(layout) { layout.blocks.mapNotNull { it.item as? TimelineItem.Visit }.sortedBy { it.start } }
     val handleStart = timeColumn + DayCanvasDefaults.BlockInset
-    val placedMarkers = remember(markerLineTexts, layout, fontScale) {
+    val placedMarkers = remember(markerLineTexts, layout, fontScale, stacked, hourLineDp) {
         // The now-pill sits in the time column too; a marker label never goes under it.
         val pillHalf = DayCanvasDefaults.NowPillHalfHeight.value * fontScale
         val pill = layout.nowDp?.let { (it - pillHalf)..(it + pillHalf) }
         placeTrackingMarkers(
             trackingMarkers, layout.canvasStart, layout.canvasEnd, layout.scale, layout.heightDp,
-            DayCanvasDefaults.MarkerLabelLineDp * fontScale, DayCanvasDefaults.MarkerLabelGap.value,
+            if (stacked) hourLineDp else DayCanvasDefaults.MarkerLabelLineDp * fontScale, DayCanvasDefaults.MarkerLabelGap.value,
             lineCount = { markerLineTexts[it]?.size ?: 2 },
             avoid = pill,
+            above = stacked,
         )
     }
 
@@ -297,12 +307,22 @@ fun DayCanvas(
                         val y = dp.dp.toPx()
                         drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
                     }
+                    // Collapsed time column (large fonts): a tick at each tracking marker, with its label just above it.
+                    if (stacked) {
+                        placedMarkers.forEach { pm ->
+                            pm.marker.ruleTimes.forEach { t ->
+                                val y = ((t - layout.canvasStart) * dpPerMs).dp.toPx()
+                                drawLine(hourRuleColor(c), Offset(railX - hourTick, y), Offset(railX + hourTick, y), strokeWidth = stroke)
+                            }
+                        }
+                    }
                 }
                 .semantics { isTraversalGroup = true },
         ) {
             // Time column | visits and trips | job column. The visit column ends [visitEnd] short of the right edge.
             val jobWidth = maxOf((maxWidth - timeColumn) * DayColumns.jobFraction(fontScale), DayColumns.MinJobWidth)
             val visitEnd = jobWidth + DayColumns.Gap
+            if (!stacked) {
             layout.hourMarks.forEachIndexed { i, mark ->
                 if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed
                 // A tracking marker label in the time column wins over an hour label it would collide with.
@@ -345,6 +365,7 @@ fun DayCanvas(
                             testTag = MinorLabelTag
                         },
                 )
+            }
             }
             JobColumn(
                 layout, dayStart, dayEnd, zone, jobWidth, fontScale, ordered, enabled = !selecting,
@@ -412,7 +433,25 @@ fun DayCanvas(
                     ) { onOpenTrip(placed.trip.id) }
                 }
             }
-            placedMarkers.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone) }
+            // Collapsed time column (large fonts): hour and minor labels sit just above their lines, over the blocks on a card
+            // background. A tracking marker label or the now-pill wins over a label it would collide with.
+            if (stacked) {
+                fun lineDp(style: TextStyle) = with(density) { measurer.measure("Ag", style).size.height.toDp().value }
+                val minorStyle = MaterialTheme.typography.labelSmall
+                val minorLine = lineDp(minorStyle)
+                fun covered(top: Float, height: Float): Boolean =
+                    hourLabelCoveredByNowPill(top + height / 2, layout.nowDp, fontScale) ||
+                        placedMarkers.any { hourLabelCoveredByMarker(top + height / 2, it, height / 2) }
+                layout.hourMarks.forEachIndexed { i, mark ->
+                    val top = (mark.topDp - hourLineDp).coerceAtLeast(0f)
+                    if (!covered(top, hourLineDp)) StackedTimeLabel(hourLabels[i], hourStyle, top, HourLabelTag)
+                }
+                layout.minorLabels.forEachIndexed { i, mark ->
+                    val top = (mark.topDp - minorLine).coerceAtLeast(0f)
+                    if (!covered(top, minorLine)) StackedTimeLabel(minorLabels[i], minorStyle, top, MinorLabelTag)
+                }
+            }
+            placedMarkers.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
             val selectedBlock = selectedVisitId?.takeUnless { selecting }?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
             val selectedVisit = selectedBlock?.item as? TimelineItem.Visit
@@ -942,7 +981,7 @@ private fun Modifier.innerGapDots(innerGaps: List<InnerGap>): Modifier {
  * order between the blocks it falls between.
  */
 @Composable
-private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, ordered: List<Placed>, timeColumn: Dp, labelGap: Dp, zone: ZoneId) {
+private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, ordered: List<Placed>, timeColumn: Dp, labelGap: Dp, zone: ZoneId, stacked: Boolean) {
     val formats = rememberTimeFormats()
     val m = placed.marker
     val stopped = m.stoppedMs?.let { formats.time(it, zone) }
@@ -963,10 +1002,11 @@ private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, order
     }
     val traversal = ordered.count { (if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start) < m.timeMs } - 0.5f
     Column(
-        horizontalAlignment = Alignment.End,
+        horizontalAlignment = if (stacked) Alignment.Start else Alignment.End,
         modifier = Modifier
             .offset(y = placed.labelTopDp.dp)
-            .width(timeColumn - labelGap)
+            // Collapsed time column: the label is as wide as its text, over the canvas on a card background.
+            .then(if (stacked) Modifier.background(TarryTheme.colors.card).padding(horizontal = DayCanvasDefaults.StackedLabelPadding) else Modifier.width(timeColumn - labelGap))
             .clearAndSetSemantics {
                 contentDescription = spoken
                 traversalIndex = traversal
@@ -978,7 +1018,7 @@ private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, order
                 text = line,
                 style = MaterialTheme.typography.bodySmall,
                 color = TarryTheme.colors.muted,
-                textAlign = TextAlign.End,
+                textAlign = if (stacked) TextAlign.Start else TextAlign.End,
                 maxLines = 1,
                 softWrap = false,
                 modifier = Modifier.testTag("timeline_tracking_marker_line"),
@@ -992,3 +1032,24 @@ internal fun hourRuleColor(c: TarryColors): Color = c.outline
 
 /** Minor marks (15, 10 and 5 minutes) stay the quiet `divider` (the `line` colour at 0.8) so they never compete with the hours. */
 internal fun minorTickColor(c: TarryColors): Color = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
+
+/** An hour or minor time label of the collapsed time column: just above its line at the canvas's left padding, on `card` so it reads over blocks. */
+@Composable
+private fun StackedTimeLabel(text: String, style: TextStyle, topDp: Float, tag: String) {
+    Text(
+        text = text,
+        style = style,
+        color = TarryTheme.colors.muted,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier
+            .offset(y = topDp.dp)
+            .background(TarryTheme.colors.card)
+            .padding(horizontal = DayCanvasDefaults.StackedLabelPadding)
+            // Decorative: the blocks carry their own times.
+            .semantics {
+                hideFromAccessibility()
+                testTag = tag
+            },
+    )
+}

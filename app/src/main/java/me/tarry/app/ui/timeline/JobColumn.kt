@@ -90,7 +90,14 @@ internal object DayColumns {
     val MinJobWidth = 48.dp
 
     /** [JobFraction] at font scale 1, shrinking in proportion to the font scale (never below [MinJobFraction]). */
-    fun jobFraction(fontScale: Float): Float = (JobFraction / maxOf(1f, fontScale)).coerceAtLeast(MinJobFraction)
+    fun jobFraction(fontScale: Float): Float =
+        if (stackedTimeLabels(fontScale)) StackedJobFraction else (JobFraction / maxOf(1f, fontScale)).coerceAtLeast(MinJobFraction)
+
+    /**
+     * Share of the job column once the time column has collapsed (large fonts): the freed width is split so job names (which
+     * grow with the font) stay readable at 2x, about 100 dp on a 360 dp phone, without starving the visits.
+     */
+    const val StackedJobFraction = 0.35f
 }
 
 private object JobColumnDefaults {

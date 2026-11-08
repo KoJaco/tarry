@@ -314,15 +314,15 @@ class JobColumnTest {
     }).fetchSemanticsNodes().map { it.config[SemanticsProperties.TestTag] }
 
     @Test
-    fun threeOverlappingLanesAtFontScale2KeepEveryTouchTargetAtLeast48dpWideAndFoldIntoAnOverflowTile() {
+    fun threeOverlappingLanesAtFontScale2KeepEveryTouchTargetAtLeast48dpWideAndFoldTheRestIntoAnOverflowTile() {
         show(threeOverlapping, fontScale = 2f)
 
         val tags = jobNodeTags()
         assertThat(tags).contains("timeline_job_overflow_0")
         assertThat(tags).hasSize(tags.toSet().size)
         tags.forEach { composeRule.onNodeWithTag(it).assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp) }
-        assertThat(description("timeline_job_overflow_0")).isEqualTo("3 more jobs") // one lane fits: all three are hidden
-        composeRule.onNodeWithTag("timeline_job_a").assertDoesNotExist()
+        assertThat(description("timeline_job_overflow_0")).isEqualTo("2 more jobs") // the collapsed time column leaves room for two lanes
+        composeRule.onNodeWithTag("timeline_job_a").assertExists()
     }
 
     @Test

@@ -283,14 +283,14 @@ class TimelineContentTest {
         )
         composeRule.onNodeWithText("Tracked today").assertExists()
         composeRule.onNodeWithTag("timeline_summary_total").assertTextContains("2 h 30 min")
-        composeRule.onNodeWithTag("timeline_summary_review").assertTextContains("1 visit needs review")
+        composeRule.onNodeWithTag("timeline_filter_review").assertTextContains("1 visit needs review")
         composeRule.onNodeWithTag("timeline_summary_caption").assertTextContains("2 visits · 1 trip · 1 gap")
     }
 
     @Test
     fun summaryHasNoReviewChipWhenEveryVisitHasAJob() {
         show(listOf(TimelineItem.Visit("v", at(9, 0), at(10, 0), "A")))
-        composeRule.onNodeWithTag("timeline_summary_review").assertDoesNotExist()
+        composeRule.onNodeWithTag("timeline_filter_review").assertDoesNotExist()
     }
 
     @Test
@@ -412,10 +412,8 @@ class TimelineContentTest {
         composeRule.onNodeWithText("Rose Bay Marina", useUnmergedTree = true).assertNotTruncated()
         val labels = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true)
         assertThat(labels.fetchSemanticsNodes()).isNotEmpty()
-        // The pill sits in the time column, left of the blocks, and the labels never overflow it.
-        val pill = composeRule.onNodeWithTag("timeline_now_line").fetchSemanticsNode().boundsInRoot
+        // At 2x the time column is just the rail: the labels sit above their lines at the canvas's left padding, over the blocks.
         val block = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().boundsInRoot
-        assertThat(pill.right).isAtMost(block.left)
-        labels.fetchSemanticsNodes().forEach { assertThat(it.boundsInRoot.right).isAtMost(block.left) }
+        labels.fetchSemanticsNodes().forEach { assertThat(it.boundsInRoot.left).isAtMost(block.left) }
     }
 }

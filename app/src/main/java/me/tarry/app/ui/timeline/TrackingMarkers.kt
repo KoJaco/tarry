@@ -68,7 +68,8 @@ data class PlacedMarker(val marker: TrackingMarker, val anchorDp: Float, val lab
  * `lineCount(marker) * lineHeightDp` tall and centred on its time (a collapsed pair on the middle of its two times),
  * kept inside `0..canvasHeightDp`; a label that would overlap the previous one is pushed down below it, [gapDp] apart.
  * A label that would overlap [avoid] (the now-pill's span) moves just above it, or just below it when above would
- * collide with the previous label or leave the top of the canvas. Markers outside the canvas are dropped.
+ * collide with the previous label or leave the top of the canvas. Markers outside the canvas are dropped. With [above]
+ * (large fonts) the label ends [gapDp] above the marker's first time instead of being centred on it.
  */
 fun placeTrackingMarkers(
     markers: List<TrackingMarker>,
@@ -80,18 +81,26 @@ fun placeTrackingMarkers(
     gapDp: Float,
     lineCount: (TrackingMarker) -> Int = { 2 },
     avoid: ClosedFloatingPointRange<Float>? = null,
+    /** Large-font layout: the label sits just above its (first) time instead of centred on it; see [stackedTimeLabels]. */
+    above: Boolean = false,
 ): List<PlacedMarker> {
     var prevBottom = Float.NEGATIVE_INFINITY
     return markers.filter { it.timeMs in canvasStart..canvasEnd }.sortedBy { it.timeMs }.map { m ->
         val anchor = m.ruleTimes.map { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }.average().toFloat()
         val height = lineCount(m) * lineHeightDp
-        val natural = (anchor - height / 2f).coerceIn(0f, maxOf(0f, canvasHeightDp - height))
+        val first = m.ruleTimes.minOf { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }
+        val natural = if (above) {
+            // Just above its tick; at the very top of the canvas there is no room above, so just below.
+            (first - height - gapDp).takeIf { it >= 0f } ?: (first + gapDp)
+        } else {
+            (anchor - height / 2f).coerceIn(0f, maxOf(0f, canvasHeightDp - height))
+        }
         var top = maxOf(natural, prevBottom + gapDp)
         if (avoid != null && top < avoid.endInclusive + gapDp && top + height > avoid.start - gapDp) {
-            val above = avoid.start - gapDp - height
+            val clearAbove = avoid.start - gapDp - height
             // Below is not clamped to the canvas: a label running into the card's bottom padding stays readable, while
             // clamping or squeezing it above would overlap the pill or the previous label.
-            top = if (above >= 0f && above >= prevBottom + gapDp) above else avoid.endInclusive + gapDp
+            top = if (clearAbove >= 0f && clearAbove >= prevBottom + gapDp) clearAbove else avoid.endInclusive + gapDp
         }
         prevBottom = top + height
         PlacedMarker(m, anchor, top, height)

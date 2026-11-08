@@ -100,8 +100,7 @@ private fun ReviewChip(count: Int, on: Boolean, onChange: (Boolean) -> Unit) {
             modifier = Modifier
                 .clip(TarryTheme.shapes.pill)
                 .background(if (on) c.accent else c.accentSoft)
-                .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.xs)
-                .testTag("timeline_summary_review"),
+                .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.xs),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs),
         ) {

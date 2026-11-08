@@ -468,3 +468,11 @@ fun layoutDay(
         suggestions = placedSuggestions,
     )
 }
+
+/**
+ * From this font scale the side time column collapses to just the rail: each hour label (and tracking marker label) is
+ * drawn just above its line on a `card` background, and the visits and job column get the freed width.
+ */
+internal const val StackedTimeLabelsFontScale = 1.5f
+
+internal fun stackedTimeLabels(fontScale: Float): Boolean = fontScale >= StackedTimeLabelsFontScale
