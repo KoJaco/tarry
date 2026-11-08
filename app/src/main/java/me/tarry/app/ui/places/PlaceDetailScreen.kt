@@ -55,6 +55,7 @@ import me.tarry.app.ui.drawer.JobPickerSheet
 import me.tarry.app.ui.drawer.NameDialog
 import me.tarry.app.ui.drawer.PlacePickerSheet
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.timeline.keepWhole
 import me.tarry.core.data.repository.MergePreview
 import me.tarry.core.data.repository.PlaceLimits
 import kotlin.math.roundToInt
@@ -122,8 +123,8 @@ fun PlaceDetailContent(
         )
         val sub = buildList {
             if (ui.name != null && ui.address != null) add(ui.address)
-            add(pluralStringResource(R.plurals.places_visit_count, ui.visitCount, ui.visitCount))
-        }.joinToString(" · ")
+            add(pluralStringResource(R.plurals.places_visit_count, ui.visitCount, ui.visitCount).keepWhole())
+        }.joinToString(PartSeparator)
         Text(sub, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
 
         val nameTitle = stringResource(R.string.place_name_row)
@@ -140,7 +141,10 @@ fun PlaceDetailContent(
             switchRow(ignoreTitle, checked = ui.ignored, onCheckedChange = onSetIgnored, subtitle = ignoreSub)
             row(radiusTitle, onClick = { dialog = PlaceDialog.RADIUS }, subtitle = radiusValue)
         }
-        Text(stringResource(R.string.place_defaults_hint), style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
+        // The hint is about the default job, so it only shows once one is set.
+        if (ui.defaultJob != null) {
+            Text(stringResource(R.string.place_defaults_hint), style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
+        }
         SecondaryButton(
             stringResource(R.string.place_merge_action),
             onClick = { dialog = PlaceDialog.MERGE_PICK },
@@ -220,3 +224,6 @@ private fun mergeBody(targetLabel: String, preview: MergePreview?): String {
     val cap = if (preview?.capped == true) stringResource(R.string.place_merge_capped, PlaceLimits.RADIUS_MAX_M.roundToInt()) else null
     return listOfNotNull(head, cap, stringResource(R.string.place_merge_defaults_note)).joinToString("\n\n")
 }
+
+/** Joins the parts of the subtitle: the line breaks after a dot, never before it and never inside a part's own count and noun. */
+internal const val PartSeparator = " · "

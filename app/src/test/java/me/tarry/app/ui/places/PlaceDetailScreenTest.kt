@@ -28,6 +28,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+private const val NBSP = " "
+
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
 class PlaceDetailScreenTest {
@@ -76,6 +78,23 @@ class PlaceDetailScreenTest {
         composeRule.onNodeWithText("Ignore this place").assertExists()
         composeRule.onNodeWithText("75 m").assertExists()
         composeRule.onNodeWithText("Merge into…").performScrollTo().assertIsEnabled()
+    }
+
+    @Test
+    fun theCountKeepsItsNounAndTheLineBreaksOnlyAfterTheDot() {
+        show()
+
+        composeRule.onNodeWithText("1 Main St${NBSP}· 3${NBSP}visits").assertExists()
+    }
+
+    @Test
+    fun theDefaultsHintShowsOnlyWithADefaultJob() {
+        show()
+        composeRule.onNodeWithText("New visits here are suggested for this job.").assertDoesNotExist()
+
+        load = PlaceDetailLoad.Ready(ui.copy(defaultJob = me.tarry.app.ui.drawer.JobOption("j", "Alpha", 0xFF336699.toInt())))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("New visits here are suggested for this job.").assertExists()
     }
 
     @Test
