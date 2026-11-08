@@ -116,6 +116,13 @@
     - Run an internal test track (licence testers) anyway, to test billing.
 - **Landing page:** separate from the app, built by the owner from the brand doc. It hosts the privacy policy, support and the Play badge. The app's privacy rules do not bind the site (owner, 2026-11-01): it handles no location data, so Google Fonts and ordinary site tooling are fine. The privacy promise is about the app.
 
+## Owner decisions, 2026-11-08 (supersede the matching items above and below)
+- **ADR 0005 is done:** the repo is FSL-1.1-ALv2 (`LICENSE.md`, licensor Kori Jacobsen), shipped in `chore/relicence-fsl`. No GitHub Releases APKs; Play is the only channel.
+- **The Play organisation account is verified,** D-U-N-S included. It is no longer on the critical path. Still verify the closed-test exemption in Play Console.
+- **Launch countries:** worldwide, English-first (made in Australia). The app is English-only at launch.
+- **Refunds:** Play's standard policy.
+- **Price:** still to be decided.
+
 ## Questions for the owner (ask while planning, rule 12)
 1. **When the trial ends,** what locks? The recommendation is tracking only, never data access.
 2. **The price:** final AUD price, and whether to let Play convert it per country or set a few by hand.
