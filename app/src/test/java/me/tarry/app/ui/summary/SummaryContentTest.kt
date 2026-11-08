@@ -378,6 +378,16 @@ class SummaryContentTest {
         composeRule.onNodeWithTag(SummaryTags.piece("a1", day)).assertExists()
     }
 
+    @Test
+    fun selectedRangeChip_isFullyInsideTheRow_atFontScaleTwo() {
+        show(state(preset = RangePreset.THIS_WEEK), fontScale = 2f)
+        composeRule.waitForIdle()
+        val row = composeRule.onNodeWithTag(SummaryTags.Chips).fetchSemanticsNode().boundsInRoot
+        val chip = composeRule.onNodeWithTag("summary_chip_THIS_WEEK").fetchSemanticsNode().boundsInRoot
+        assertThat(chip.left).isAtLeast(row.left)
+        assertThat(chip.right).isAtMost(row.right)
+    }
+
     // ---- export ------------------------------------------------------------------------------------------------
 
     @Test

@@ -81,6 +81,7 @@ import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SegmentedControl
+import me.tarry.app.ui.components.scrollIntoViewWhenSelected
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.theme.JobPalette
@@ -367,7 +368,7 @@ private fun RangeChips(preset: RangePreset?, onPreset: (RangePreset) -> Unit) {
                 text = stringResource(p.labelRes()),
                 selected = p == preset,
                 onClick = { onPreset(p) },
-                modifier = Modifier.testTag("summary_chip_${p.name}"),
+                modifier = Modifier.scrollIntoViewWhenSelected(p == preset).testTag("summary_chip_${p.name}"),
             )
         }
     }
