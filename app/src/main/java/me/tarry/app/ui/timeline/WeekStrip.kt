@@ -44,15 +44,19 @@ import java.util.Locale
 
 private val CellMinHeight = 56.dp
 
-/** From this font scale the weekday label is the single narrow letter. */
+/** From this font scale the weekday label is the two-letter form. */
 private const val NarrowFontScale = 1.5f
 
-/** "Mon" style label (trailing "." stripped; short form if the standalone one is a number), or the narrow letter. */
+/**
+ * "Mon" style label (trailing "." stripped; short form if the standalone one is a number), or with [narrow] its first two
+ * letters ("Mo"): one narrow letter is ambiguous (T, T / S, S) and the locale's short name gives two that are not.
+ */
 internal fun weekdayLabel(dow: java.time.DayOfWeek, locale: Locale, narrow: Boolean): String {
-    if (narrow) return dow.getDisplayName(TextStyle.NARROW_STANDALONE, locale)
     val standalone = dow.getDisplayName(TextStyle.SHORT_STANDALONE, locale)
-    val name = if (standalone.any { it.isDigit() }) dow.getDisplayName(TextStyle.SHORT, locale) else standalone
-    return name.trimEnd('.')
+    val name = (if (standalone.any { it.isDigit() }) dow.getDisplayName(TextStyle.SHORT, locale) else standalone).trimEnd('.')
+    if (!narrow) return name
+    val end = name.offsetByCodePoints(0, minOf(2, name.codePointCount(0, name.length)))
+    return name.substring(0, end)
 }
 
 /** The seven days of the week containing [date], starting on the locale's first day. */

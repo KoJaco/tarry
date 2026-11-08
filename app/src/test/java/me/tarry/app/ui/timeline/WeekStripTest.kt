@@ -52,8 +52,9 @@ class WeekStripTest {
     }
 
     @Test
-    fun narrowLabelIsOneLetter() {
-        assertThat(weekdayLabel(DayOfWeek.MONDAY, au, narrow = true)).isEqualTo("M")
+    fun narrowLabelIsTwoLetters() {
+        assertThat(DayOfWeek.values().map { weekdayLabel(it, au, narrow = true) })
+            .containsExactly("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su").inOrder()
     }
 
     @Test
@@ -63,9 +64,9 @@ class WeekStripTest {
     }
 
     @Test
-    fun stripShowsNarrowLetterAtLargeScale() {
+    fun stripShowsTwoLetterNamesAtLargeScale() {
         show(2f)
-        composeRule.onNodeWithText("M", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithText("Mo", useUnmergedTree = true).assertIsDisplayed()
     }
 
     private fun cell(day: LocalDate) = composeRule.onNodeWithTag("timeline_week_$day")
