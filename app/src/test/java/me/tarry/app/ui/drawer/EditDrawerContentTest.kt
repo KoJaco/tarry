@@ -329,6 +329,18 @@ class EditDrawerContentTest {
     }
 
     @Test
+    fun changingThePlaceOrATimeClearsAShownError() {
+        var cleared = 0
+        show(newVisitWithCentres().copy(error = EditError.OVERLAP), EditDrawerActions(onClearError = { cleared++ }))
+        composeRule.onNodeWithText("Choose place").performClick()
+        composeRule.onNodeWithText("Depot").performClick()
+        assertThat(cleared).isEqualTo(1)
+        composeRule.onNodeWithText("Start").performClick()
+        composeRule.onNodeWithText("OK").performClick()
+        assertThat(cleared).isEqualTo(2)
+    }
+
+    @Test
     fun newVisitShowsEditorErrorsInlineAndKeepsTheForm() {
         show(newVisit(error = EditError.OVERLAP))
         composeRule.onNodeWithText("That would overlap another visit.").assertExists()

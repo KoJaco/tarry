@@ -202,6 +202,7 @@ fun EditDrawerContent(
             places = state.places,
             onSelect = {
                 newPlaceId = it
+                actions.onClearError()
                 newPin = null
                 dialog = null
             },
@@ -215,6 +216,7 @@ fun EditDrawerContent(
             places = state.places,
             chosenCentre = pin?.let { GeoPoint(it[0], it[1]) } ?: state.places.firstOrNull { it.id == newPlaceId }?.centre,
             onPick = { pick ->
+                actions.onClearError()
                 when (pick) {
                     is PlacePick.Known -> {
                         newPlaceId = pick.placeId
@@ -242,7 +244,10 @@ fun EditDrawerContent(
                 val picked = if (state.kind == EditKind.JOB) instantNear(hour, minute, zone, anchor, state.start, state.end) else instantNear(hour, minute, zone, anchor)
                 if (state.kind == EditKind.JOB) {
                     if (isStart) actions.onBlockStart(picked) else actions.onBlockEnd(picked)
-                } else if (isStart) newStart = picked else newEnd = picked
+                } else {
+                    if (isStart) newStart = picked else newEnd = picked
+                    actions.onClearError()
+                }
                 dialog = null
             },
             onDismiss = { dialog = null },

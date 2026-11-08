@@ -110,7 +110,13 @@ class EditDrawerViewModel @Inject constructor(
     fun load(newTarget: EditTarget) {
         if (target.value == newTarget) return
         error.value = null
+        savingManual = false
         target.value = newTarget
+    }
+
+    /** Drops a shown validation error, e.g. as soon as the new-visit form changes. */
+    fun clearError() {
+        error.value = null
     }
 
     // region annotations
@@ -279,9 +285,23 @@ class EditDrawerViewModel @Inject constructor(
         editor.createManualAtNewPlace(lat, lng, start, end, ZoneId.systemDefault().id)
     }
 
-    private fun saveManual(op: suspend () -> EditResult) = viewModelScope.launch {
-        if (target.value !is EditTarget.NewVisit) return@launch
-        val result = op()
+    /** True from the first Save until it fails or the drawer retargets: a double tap must not insert twice (and flash "Overlap"). */
+    private var savingManual = false
+
+    private fun saveManual(op: suspend () -> EditResult) {
+        if (savingManual || target.value !is EditTarget.NewVisit) return
+        savingManual = true
+        viewModelScope.launch { runSaveManual(op) }
+    }
+
+    private suspend fun runSaveManual(op: suspend () -> EditResult) {
+        val result = try {
+            op()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            savingManual = false
+            throw e
+        }
+        if (result !is EditResult.Ok) savingManual = false
         if (result is EditResult.Ok) {
             result.undo?.let { undoEvents.offer(UndoEvent(R.string.edit_undo_visit_added, it)) }
             scheduler.enqueueNow()

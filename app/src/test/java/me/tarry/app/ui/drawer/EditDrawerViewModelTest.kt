@@ -427,6 +427,47 @@ class EditDrawerViewModelTest {
         assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).isEmpty()
     }
 
+    @Test
+    fun twoQuickSavesInsertOnceAndShowNoError() = runBlocking<Unit> {
+        places.save(place())
+        viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
+        awaitState()
+
+        viewModel.createManual("p", base + 5 * minute, base + 25 * minute)
+        viewModel.createManual("p", base + 5 * minute, base + 25 * minute)
+
+        withTimeout(10_000) { viewModel.events.first() }
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).hasSize(1)
+        assertThat(viewModel.state.value?.error).isNull()
+    }
+
+    @Test
+    fun aFailedSaveCanBeRetriedAfterFixingTheForm() = runBlocking<Unit> {
+        places.save(place())
+        viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
+        awaitState()
+
+        viewModel.createManual("p", base + 20 * minute, base + 10 * minute)
+        assertThat(awaitState { it.error != null }.error).isEqualTo(EditError.EMPTY_RANGE)
+        viewModel.createManual("p", base + 5 * minute, base + 25 * minute)
+
+        withTimeout(10_000) { viewModel.events.first() }
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).hasSize(1)
+    }
+
+    @Test
+    fun clearErrorDropsTheShownManualVisitError() = runBlocking<Unit> {
+        places.save(place())
+        viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
+        awaitState()
+        viewModel.createManual("p", base + 20 * minute, base + 10 * minute)
+        awaitState { it.error != null }
+
+        viewModel.clearError()
+
+        assertThat(awaitState { it.error == null }.error).isNull()
+    }
+
     // region job blocks (phase 6b T5)
 
     private fun block(id: String, jobId: String, startMin: Int, endMin: Int, billable: Boolean = true, notes: String? = null) =

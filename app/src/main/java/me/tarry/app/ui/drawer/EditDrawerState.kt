@@ -118,4 +118,6 @@ class EditDrawerActions(
     val onCreateManual: (String, Long, Long) -> Unit = { _, _, _ -> },
     /** New-visit form, place picked as a new place at a map pin: (lat, lng, start, end). */
     val onCreateManualAtNewPlace: (Double, Double, Long, Long) -> Unit = { _, _, _, _ -> },
+    /** New-visit form: the user changed the start, end or place, so a shown error is stale. */
+    val onClearError: () -> Unit = {},
 )
