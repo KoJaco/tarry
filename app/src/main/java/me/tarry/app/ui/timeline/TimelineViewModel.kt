@@ -315,8 +315,10 @@ class TimelineViewModel internal constructor(
 
     /**
      * The selected day for the Map tab: route from that day's pings, pins at place centroids. Null while loading.
-     * Only collected while the Map tab shows (WhileSubscribed), so nothing runs for it otherwise. New pings while
-     * tracking are throttled (`MapConfig.liveRefreshMs`) and the route is rebuilt off the main thread.
+     * Combines the day's rows ([rowsIn]), the throttled pings (`MapConfig.liveRefreshMs`), the job blocks and a second
+     * `places.observeLabels()` subscription (the rows carry labels but not centroids or radii); [rowsIn] has its own
+     * places subscription, so a place edit is seen by both. Only collected while the Map tab shows (WhileSubscribed),
+     * and the route is rebuilt off the main thread.
      */
     val dayMap: StateFlow<DayMap?> = _selectedDate
         .flatMapLatest { date ->
