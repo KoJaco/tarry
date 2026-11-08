@@ -233,6 +233,18 @@ class SummaryContentTest {
     }
 
     @Test
+    fun rangeLine_hasNoSpacesAroundTheDash_andBreaksOnlyThere() {
+        show(state())
+        val text = composeRule.onNodeWithTag("summary_range_text").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
+        val (from, to) = text.split("–​")
+        assertThat(from).isNotEmpty()
+        assertThat(to).isNotEmpty()
+        assertThat(from).doesNotContain(" ")
+        assertThat(to).doesNotContain(" ")
+    }
+
+    @Test
     fun totals_singleDayRangeShowsOneDate() {
         val one = SummaryRange(day, day)
         val r = calculateSummary(SummaryInput(one, zone, blocks.take(1), listOf(alpha, bravo), emptyList(), emptyList(), emptySet(), BillingRules()))
@@ -269,7 +281,9 @@ class SummaryContentTest {
             .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
         val description = composeRule.onNodeWithTag(SummaryTags.Totals).fetchSemanticsNode()
             .config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].joinToString()
-        assertThat(description).isEqualTo("Total, $rangeText. Billed 3 hours, on the clock 4 hours")
+        // The spoken sentence keeps the plain spaced-dash wording; the screen line has whole dates and a break hint after the dash.
+        val spoken = rangeText.filter { it.code != 0x200B }.replace("–", " – ").replace(0xA0.toChar(), ' ')
+        assertThat(description).isEqualTo("Total, $spoken. Billed 3 hours, on the clock 4 hours")
     }
 
     @Test

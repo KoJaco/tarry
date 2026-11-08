@@ -88,7 +88,9 @@ import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.theme.surfaceEdgeStroke
 import me.tarry.app.ui.theme.tabular
+import me.tarry.app.ui.timeline.breakAfterDash
 import me.tarry.app.ui.timeline.formatDuration
+import me.tarry.app.ui.timeline.keepWhole
 import me.tarry.app.ui.timeline.rememberTimeFormats
 import me.tarry.app.ui.timeline.spokenDuration
 import java.time.Instant
@@ -393,13 +395,14 @@ internal fun dateFormatter(skeleton: String): DateTimeFormatter {
     }
 }
 
+/** The range for the screen: "2 Nov 2026–8 Nov 2026" whole dates, breaking only after the dash. [spoken] keeps the plain " – " wording. */
 @Composable
-private fun rangeText(range: SummaryRange): String {
+private fun rangeText(range: SummaryRange, spoken: Boolean = false): String {
     val format = dateFormatter("dMMMy")
-    return if (range.from == range.to) {
-        format.format(range.from)
-    } else {
-        stringResource(R.string.summary_range_from_to, format.format(range.from), format.format(range.to))
+    return when {
+        range.from == range.to -> format.format(range.from).let { if (spoken) it else it.keepWhole() }
+        spoken -> stringResource(R.string.summary_range_from_to, format.format(range.from), format.format(range.to))
+        else -> stringResource(R.string.timeline_time_range, format.format(range.from).keepWhole(), format.format(range.to).keepWhole()).breakAfterDash()
     }
 }
 
@@ -560,7 +563,7 @@ private fun DaySectionItem(section: DaySection, onRow: (JobSummary) -> Unit) {
 private fun TotalsCard(result: SummaryResult, range: SummaryRange) {
     val billed = summaryDuration(result.billedMs)
     val clock = summaryDuration(result.onClockMs)
-    val description = stringResource(R.string.summary_totals_description, rangeText(range), summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
+    val description = stringResource(R.string.summary_totals_description, rangeText(range, spoken = true), summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
     TarryCard(
         modifier = Modifier
             .fillMaxWidth()
