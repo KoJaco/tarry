@@ -6,6 +6,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.height
@@ -59,5 +60,23 @@ class NavLabelScaleTest {
         val atCap = slots[0].getUnclippedBoundsInRoot().height.value
         val atTwice = slots[1].getUnclippedBoundsInRoot().height.value
         assertThat(atTwice).isWithin(0.5f).of(atCap)
+    }
+
+    @Test
+    fun navLabel_keepsItsFullLineHeightAndRoomBelowItAtTwiceTheFontSize() {
+        composeRule.setContent {
+            val d = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(d.density, 2.0f)) {
+                TarryTheme {
+                    TarryBottomBar(TrackingState.IDLE, timelineSelected = true, settingsSelected = false, {}, {}, {})
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        val label = composeRule.onAllNodesWithText("Summary", useUnmergedTree = true)[0].getUnclippedBoundsInRoot()
+        val slot = composeRule.onAllNodesWithTag(BottomBarTags.SummarySlot)[0].getUnclippedBoundsInRoot()
+        // Capped at 1.3x of the 18 sp line height: 23.4 dp, never squeezed below it.
+        assertThat(label.height.value).isAtLeast(23.4f - 0.5f)
+        assertThat((slot.bottom - label.bottom).value).isAtLeast(4f)
     }
 }
