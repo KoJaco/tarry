@@ -239,7 +239,7 @@ fun EditDrawerContent(
             zone = zone,
             is24Hour = is24Hour,
             onConfirm = { hour, minute ->
-                val picked = instantNear(hour, minute, zone, anchor)
+                val picked = if (state.kind == EditKind.JOB) instantNear(hour, minute, zone, anchor, state.start, state.end) else instantNear(hour, minute, zone, anchor)
                 if (state.kind == EditKind.JOB) {
                     if (isStart) actions.onBlockStart(picked) else actions.onBlockEnd(picked)
                 } else if (isStart) newStart = picked else newEnd = picked
@@ -706,7 +706,7 @@ private fun DrawerDialogs(
             zone = zone,
             is24Hour = is24Hour,
             onConfirm = { hour, minute ->
-                apply(instantNear(hour, minute, zone, anchor))
+                apply(instantNear(hour, minute, zone, anchor, state.start, state.end))
                 onClose()
             },
             onDismiss = onClose,
