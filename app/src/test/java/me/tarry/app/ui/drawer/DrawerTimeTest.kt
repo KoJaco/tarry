@@ -17,17 +17,29 @@ class DrawerTimeTest {
     }
 
     @Test
-    fun aSegmentInsideOneDayNeverMovesToTheNextDayNearMidnight() {
+    fun aPickedEndBeforeTheStartResolvesToTheNextDay() {
         val start = at(day, 22, 0)
         val end = at(day, 23, 50)
-        assertThat(instantNear(0, 10, zone, end, start, end)).isEqualTo(at(day, 0, 10))
+        assertThat(instantForEdge(0, 10, zone, end, TimeEdge.END, start, start, end)).isEqualTo(at(day.plusDays(1), 0, 10))
     }
 
     @Test
-    fun aSegmentInsideOneDayNeverMovesToThePreviousDayNearMidnight() {
+    fun aPickedStartAfterTheEndResolvesToThePreviousDay() {
         val start = at(day, 0, 10)
         val end = at(day, 2, 0)
-        assertThat(instantNear(23, 50, zone, start, start, end)).isEqualTo(at(day, 23, 50))
+        assertThat(instantForEdge(23, 50, zone, start, TimeEdge.START, end, start, end)).isEqualTo(at(day.minusDays(1), 23, 50))
+    }
+
+    @Test
+    fun anEdgePickThatKeepsTheOrderNeverChangesDay() {
+        val start = at(day, 9, 0)
+        val end = at(day, 17, 0)
+        assertThat(instantForEdge(18, 0, zone, end, TimeEdge.END, start, start, end)).isEqualTo(at(day, 18, 0))
+        assertThat(instantForEdge(8, 0, zone, start, TimeEdge.START, end, start, end)).isEqualTo(at(day, 8, 0))
+        // New-visit form: only the anchor, no segment range.
+        assertThat(instantForEdge(23, 50, zone, at(day, 22, 0), TimeEdge.END, at(day, 22, 0))).isEqualTo(at(day, 23, 50))
+        assertThat(instantForEdge(0, 10, zone, at(day, 23, 50), TimeEdge.END, at(day, 22, 0))).isEqualTo(at(day.plusDays(1), 0, 10))
+        assertThat(instantForEdge(23, 0, zone, at(day, 0, 10), TimeEdge.START, at(day, 2, 0))).isEqualTo(at(day.minusDays(1), 23, 0))
     }
 
     @Test
@@ -43,6 +55,7 @@ class DrawerTimeTest {
         val start = at(day, 22, 0)
         val end = at(day.plusDays(1), 0, 0)
         assertThat(instantNear(0, 30, zone, end, start, end)).isEqualTo(at(day, 0, 30))
+        assertThat(instantForEdge(0, 30, zone, end, TimeEdge.END, start, start, end)).isEqualTo(at(day.plusDays(1), 0, 30))
     }
 
     @Test

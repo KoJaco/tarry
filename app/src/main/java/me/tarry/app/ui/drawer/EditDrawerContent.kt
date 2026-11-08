@@ -241,7 +241,12 @@ fun EditDrawerContent(
             zone = zone,
             is24Hour = is24Hour,
             onConfirm = { hour, minute ->
-                val picked = if (state.kind == EditKind.JOB) instantNear(hour, minute, zone, anchor, state.start, state.end) else instantNear(hour, minute, zone, anchor)
+                val edge = if (isStart) TimeEdge.START else TimeEdge.END
+                val picked = if (state.kind == EditKind.JOB) {
+                    instantForEdge(hour, minute, zone, anchor, edge, if (isStart) state.end else state.start, state.start, state.end)
+                } else {
+                    instantForEdge(hour, minute, zone, anchor, edge, if (isStart) newEnd else newStart)
+                }
                 if (state.kind == EditKind.JOB) {
                     if (isStart) actions.onBlockStart(picked) else actions.onBlockEnd(picked)
                 } else {
@@ -698,20 +703,24 @@ private fun DrawerDialogs(
         )
     }
     val timeDialog = when (dialog) {
-        DrawerDialog.TrimStart -> Triple(R.string.edit_time_picker_trim_start, state.start, actions.onTrimStart)
-        DrawerDialog.TrimEnd -> Triple(R.string.edit_time_picker_trim_end, state.end, actions.onTrimEnd)
-        DrawerDialog.Split -> Triple(R.string.edit_time_picker_split, state.start + (state.end - state.start) / 2, actions.onSplit)
+        DrawerDialog.TrimStart -> Triple(R.string.edit_time_picker_trim_start, state.start, actions.onTrimStart) to TimeEdge.START
+        DrawerDialog.TrimEnd -> Triple(R.string.edit_time_picker_trim_end, state.end, actions.onTrimEnd) to TimeEdge.END
+        DrawerDialog.Split -> Triple(R.string.edit_time_picker_split, state.start + (state.end - state.start) / 2, actions.onSplit) to null
         else -> null
     }
     if (timeDialog != null) {
-        val (titleRes, anchor, apply) = timeDialog
+        val (parts, edge) = timeDialog
+        val (titleRes, anchor, apply) = parts
         TimePickerDialog(
             title = stringResource(titleRes),
             initialMs = anchor,
             zone = zone,
             is24Hour = is24Hour,
             onConfirm = { hour, minute ->
-                apply(instantNear(hour, minute, zone, anchor, state.start, state.end))
+                apply(
+                    if (edge == null) instantNear(hour, minute, zone, anchor, state.start, state.end)
+                    else instantForEdge(hour, minute, zone, anchor, edge, if (edge == TimeEdge.START) state.end else state.start, state.start, state.end),
+                )
                 onClose()
             },
             onDismiss = onClose,

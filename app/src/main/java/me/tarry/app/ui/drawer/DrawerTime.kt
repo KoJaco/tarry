@@ -30,3 +30,31 @@ internal fun instantNear(
         .map { it.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli() }
         .minBy { abs(it - anchorMs) }
 }
+
+/** Which edge of a segment a time picker is editing; a split point is neither. */
+internal enum class TimeEdge { START, END }
+
+/**
+ * [instantNear] for a picker that edits one [edge] of a segment whose other edge is [otherEdgeMs]. Times stay on the
+ * segment's own local date, except when they must not: a picked END at or before the start resolves to the next day
+ * (the segment crosses midnight), and a picked START at or after the end resolves to the previous day.
+ */
+internal fun instantForEdge(
+    hour: Int,
+    minute: Int,
+    zone: ZoneId,
+    anchorMs: Long,
+    edge: TimeEdge,
+    otherEdgeMs: Long,
+    rangeStartMs: Long = anchorMs,
+    rangeEndMs: Long = anchorMs,
+): Long {
+    val near = instantNear(hour, minute, zone, anchorMs, rangeStartMs, rangeEndMs)
+    val shift = when {
+        edge == TimeEdge.END && near <= otherEdgeMs -> 1L
+        edge == TimeEdge.START && near >= otherEdgeMs -> -1L
+        else -> return near
+    }
+    val date = Instant.ofEpochMilli(near).atZone(zone).toLocalDate().plusDays(shift)
+    return date.atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
+}
