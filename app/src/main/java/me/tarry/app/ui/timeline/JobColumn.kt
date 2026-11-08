@@ -59,6 +59,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick as semanticsOnClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -250,6 +254,8 @@ internal fun BoxScope.JobColumn(
     /** The settled zoom level's step: drags and the accessibility move/resize actions snap to it. A mid-pinch zoom never reaches here. */
     snapMinutes: Int = baseConfig.snapMinutes,
 ) {
+    val measurer = rememberTextMeasurer()
+    val textDensity = LocalDensity.current
     val config = remember(baseConfig, snapMinutes) { baseConfig.copy(snapMinutes = snapMinutes) }
     val formats = rememberTimeFormats()
     val haptics = LocalHapticFeedback.current
@@ -391,6 +397,25 @@ internal fun BoxScope.JobColumn(
                 // A done job says so at the top, quietly; the grey style alone would rely on colour.
                 val showDone = b.done && placed.heightDp >= JobColumnDefaults.DurationMinDp * fontScale
                 val doneDp = if (showDone) JobColumnDefaults.DoneLineDp else 0f
+                // The name takes the lines left over by the quieter texts below it (real heights and wrapping), and only
+                // ends in an ellipsis when it truly does not fit.
+                val showDuration = placed.heightDp >= (JobColumnDefaults.DurationMinDp + doneDp) * fontScale
+                val showBillable = placed.heightDp >= (JobColumnDefaults.BillableMinDp + doneDp) * fontScale
+                val nameLines = run {
+                    val laneWidth = (width - JobColumnDefaults.LaneGap * (placed.laneCount - 1)) / placed.laneCount
+                    val textWidthPx = with(textDensity) { (maxOf(laneWidth, JobColumnDefaults.Touch) - JobColumnDefaults.PaddingH * 2).roundToPx() }.coerceAtLeast(0)
+                    fun lineDp(style: TextStyle) = with(textDensity) { measurer.measure("Ag", style).size.height.toDp().value }
+                    val nameStyle = MaterialTheme.typography.labelLarge
+                    val nameLine = lineDp(nameStyle)
+                    val others = (if (showDone) lineDp(MaterialTheme.typography.labelSmall) else 0f) +
+                        (if (showDuration) lineDp(MaterialTheme.typography.bodySmall) else 0f) +
+                        (if (showBillable) maxOf(lineDp(MaterialTheme.typography.labelSmall), JobColumnDefaults.MarkSize.value) else 0f)
+                    allocateLines(
+                        extraDp = placed.heightDp - 2 * JobColumnDefaults.PaddingV.value - nameLine - others,
+                        lineDps = listOf(nameLine),
+                        needs = listOf(measurer.measure(b.jobName, nameStyle, constraints = Constraints(maxWidth = textWidthPx)).lineCount),
+                    ).first()
+                }
                 if (showDone) {
                     Text(
                         text = stringResource(R.string.timeline_job_done),
@@ -404,10 +429,10 @@ internal fun BoxScope.JobColumn(
                     text = b.jobName,
                     style = MaterialTheme.typography.labelLarge,
                     color = textColor,
-                    maxLines = 1,
+                    maxLines = nameLines,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (placed.heightDp >= (JobColumnDefaults.DurationMinDp + doneDp) * fontScale) {
+                if (showDuration) {
                     Text(
                         text = formatDuration(end - start),
                         style = MaterialTheme.typography.bodySmall,
@@ -416,7 +441,7 @@ internal fun BoxScope.JobColumn(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (placed.heightDp >= (JobColumnDefaults.BillableMinDp + doneDp) * fontScale) {
+                if (showBillable) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
                         val mark = Modifier.size(JobColumnDefaults.MarkSize).clip(CircleShape)
                         Box(if (b.billable) mark.background(textColor) else mark.border(JobColumnDefaults.MarkRing, textColor, CircleShape))

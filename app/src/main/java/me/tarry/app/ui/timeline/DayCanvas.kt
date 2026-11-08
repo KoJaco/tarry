@@ -71,6 +71,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -143,14 +145,6 @@ private object DayCanvasDefaults {
     val InnerGapIconSize = 16.dp
     /** Radius of the outage dot that sits on a visit block's left border. */
     val InnerGapDotRadius = 2.5.dp
-
-    /** Height of the "Includes N min not tracked" line (per unit of font scale). */
-    const val SummaryLineDp = 20f
-
-    /** Line heights of `titleMedium`, `bodyMedium` and `labelMedium`, to work out how many lines fit in a block. */
-    const val TitleLineDp = 22f
-    const val DetailLineDp = 20f
-    const val ChipLineDp = 18f
 
     /** The chip's own vertical padding (2 x 3 dp) plus the gap above it (4 dp). */
     const val ChipExtraDp = 10f
@@ -381,7 +375,7 @@ fun DayCanvas(
                         }
                         when (val item = placed.item) {
                             is TimelineItem.Visit -> VisitBlock(
-                                item, shown as? PlacedBlock ?: placed, times, description, index, fontScale, dimmed, position,
+                                item, shown as? PlacedBlock ?: placed, times, description, index, fontScale, dimmed, position, blockWidth = maxWidth - timeColumn - DayCanvasDefaults.BlockInset - visitEnd,
                                 selected = if (selecting) item.id in selectedIds else item.id == selectedVisitId,
                                 selecting = selecting,
                                 onSelect = { onSelectVisit(item.id) },
@@ -477,6 +471,7 @@ private fun VisitBlock(
     fontScale: Float,
     dimmed: Boolean,
     modifier: Modifier,
+    blockWidth: Dp,
     selected: Boolean,
     selecting: Boolean,
     onSelect: () -> Unit,
@@ -498,15 +493,43 @@ private fun VisitBlock(
     val title = visit.placeLabel ?: unknown
     val oneLine = placed.compact || placed.heightDp < DayCanvasDefaults.OneLineBelowDp * fontScale
     val showChip = !oneLine && visit.needsReview && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
-    val (titleLines, detailLines) = textLines(placed.heightDp, fontScale, showChip)
 
     // Outage dots sit on top of the left border, outside the block clip.
     val dots = Modifier.innerGapDots(placed.innerGaps)
     val notTracked = notTrackedText(placed.innerGaps, times)
     val d = DayCanvasDefaults
-    val summaryRoom = d.BlockPaddingV.value * 2 + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale +
-        (if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f) + d.SummaryLineDp * fontScale
-    val summary = notTracked?.takeIf { !oneLine && placed.heightDp >= summaryRoom }
+    // How many lines each text gets: real line heights for this font scale, real wrapping at this width. Everything shown
+    // keeps one line first; the height left over goes to the title, then the times, then the warning (see [allocateLines]).
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val typography = MaterialTheme.typography
+    val textWidthPx = with(density) {
+        (blockWidth - TarryTheme.space.m * 2 - (if (selected && selecting) d.CheckBadge + TarryTheme.space.xs else 0.dp)).roundToPx()
+    }.coerceAtLeast(0)
+    fun lineDp(style: TextStyle) = with(density) { measurer.measure("Ag", style).size.height.toDp().value }
+    fun linesNeeded(text: String, style: TextStyle, widthPx: Int = textWidthPx) =
+        measurer.measure(text, style, constraints = Constraints(maxWidth = widthPx)).lineCount
+    val titleLine = lineDp(typography.titleMedium)
+    val detailLine = lineDp(typography.bodyMedium)
+    val warnLine = lineDp(typography.bodySmall)
+    val chipHeight = if (showChip) lineDp(typography.labelMedium) + d.ChipExtraDp else 0f
+    val roomForSummary = d.BlockPaddingV.value * 2 + titleLine + detailLine + chipHeight + warnLine
+    val summary = notTracked?.takeIf { !oneLine && placed.heightDp >= roomForSummary }
+    val summaryText = summary?.replaceFirstChar { it.uppercase() }
+    val summaryWidthPx = with(density) { (d.InnerGapIconSize + TarryTheme.space.xs).roundToPx() }
+    val shownLines = if (oneLine) listOf(1, 1, 1) else {
+        val fixed = d.BlockPaddingV.value * 2 + titleLine + detailLine + chipHeight + (if (summary != null) warnLine else 0f)
+        allocateLines(
+            extraDp = placed.heightDp - fixed,
+            lineDps = listOf(titleLine, detailLine, warnLine),
+            needs = listOf(
+                linesNeeded(title, typography.titleMedium),
+                linesNeeded(times.range, typography.bodyMedium),
+                if (summaryText != null) linesNeeded(summaryText, typography.bodySmall, (textWidthPx - summaryWidthPx).coerceAtLeast(0)) else 1,
+            ),
+        )
+    }
+    val (titleLines, detailLines, summaryLines) = shownLines
     var focused by remember { mutableStateOf(false) }
     // A visit no job block covers keeps the dashed "needs review" outline; a covered one is a plain card.
     val look = if (visit.needsReview) {
@@ -611,10 +634,10 @@ private fun VisitBlock(
                         modifier = Modifier.size(DayCanvasDefaults.InnerGapIconSize),
                     )
                     Text(
-                        text = summary.replaceFirstChar { it.uppercase() },
+                        text = summaryText.orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = c.onAlertSoft,
-                        maxLines = 1,
+                        maxLines = summaryLines,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -660,22 +683,22 @@ private fun VisitBlock(
 
 
 /**
- * How many lines the title and the time line of a block may use. At normal font size both stay on one line and
- * ellipsize (tokens.md). Once the font is scaled up the text no longer fits one line, so a block that has the height
- * gives the title up to two lines and the time line up to three, instead of ellipsizing.
+ * Splits a block's spare height over its texts. Every text starts with one line; [extraDp] (the height left once those
+ * are counted, and anything else fixed) then goes to the first text until it has the lines it [needs] or the next line
+ * would not fit, then to the second, and so on. A text therefore only ends in an ellipsis when the block truly has no
+ * more room for it.
  */
-private fun textLines(heightDp: Float, fontScale: Float, showChip: Boolean): Pair<Int, Int> {
-    if (fontScale <= 1f) return 1 to 1
-    val d = DayCanvasDefaults
-    val titleLine = d.TitleLineDp * fontScale
-    val detailLine = d.DetailLineDp * fontScale
-    val chip = if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f
-    val spare = heightDp - 2 * d.BlockPaddingV.value - chip
-    val title = if (spare >= 2 * titleLine + detailLine) 2 else 1
-    val detail = ((spare - title * titleLine) / detailLine).toInt().coerceIn(1, 3)
-    return title to detail
+internal fun allocateLines(extraDp: Float, lineDps: List<Float>, needs: List<Int>): List<Int> {
+    val lines = MutableList(lineDps.size) { 1 }
+    var left = extraDp
+    for (i in lineDps.indices) {
+        while (lines[i] < needs[i] && lineDps[i] > 0f && left >= lineDps[i]) {
+            lines[i]++
+            left -= lineDps[i]
+        }
+    }
+    return lines
 }
-
 @Composable
 private fun GapBlock(
     gap: TimelineItem.Gap,

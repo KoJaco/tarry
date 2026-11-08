@@ -488,4 +488,13 @@ class DayCanvasTest {
         // Block padding is 6 dp; allow 2 dp for the text's own leading.
         assertThat((title.top - block.top).value).isAtMost(6f + 2f)
     }
+
+    @Test
+    fun allocateLinesFillsTheTitleFirstThenTheTimesAndNeverPastWhatIsNeeded() {
+        assertThat(allocateLines(0f, listOf(22f, 20f, 16f), listOf(3, 2, 2))).containsExactly(1, 1, 1).inOrder()
+        assertThat(allocateLines(44f, listOf(22f, 20f, 16f), listOf(3, 2, 2))).containsExactly(3, 1, 1).inOrder()
+        assertThat(allocateLines(100f, listOf(22f, 20f, 16f), listOf(2, 2, 2))).containsExactly(2, 2, 2).inOrder()
+        assertThat(allocateLines(-10f, listOf(22f), listOf(4))).containsExactly(1)
+        assertThat(allocateLines(21f, listOf(22f, 20f), listOf(2, 2))).containsExactly(1, 2).inOrder()
+    }
 }
