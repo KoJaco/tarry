@@ -152,10 +152,13 @@ private fun PermissionRow(entry: PermissionItem, actions: PermissionsActions) {
                     Text(stringResource(step.titleRes()), style = MaterialTheme.typography.titleSmall, color = colors.ink)
                     Text(stringResource(step.bodyRes()), style = MaterialTheme.typography.bodyMedium, color = colors.muted)
                     if (step.requiredForScheduled) {
+                        // The amber warning only while the permission is missing; once granted it is a quiet reminder.
+                        val granted = entry.status == StepStatus.GRANTED
                         Text(
-                            stringResource(R.string.permissions_required_note),
+                            stringResource(if (granted) R.string.permissions_required_note_granted else R.string.permissions_required_note),
                             style = MaterialTheme.typography.labelMedium,
-                            color = colors.accentStrong,
+                            color = if (granted) colors.muted else colors.accentStrong,
+                            modifier = Modifier.testTag("permission_required_note_${step.name}"),
                         )
                     }
                     if (entry.status == StepStatus.SKIPPED) {
