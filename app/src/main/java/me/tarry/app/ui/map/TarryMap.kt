@@ -61,10 +61,10 @@ internal val MapAttributionClearance = MinTouch
 /** The credit line grows with the font scale only up to this, so it stays one line over the map (the dialog it opens scales fully). */
 private const val AttributionMaxFontScale = 1.3f
 
-/** Multiplier for the credit line's sp size so its rendered scale is the user's, capped at [AttributionMaxFontScale]. */
 /** The credit pill's fill: `paper` at 0.85 alpha, so `ink` text on it reads over any tile colour. */
 internal fun attributionBackdrop(colors: me.tarry.app.ui.theme.TarryColors): androidx.compose.ui.graphics.Color = colors.paper.copy(alpha = 0.85f)
 
+/** Multiplier for the credit line's sp size so its rendered scale is the user's, capped at [AttributionMaxFontScale]. */
 internal fun attributionFontFactor(fontScale: Float): Float = if (fontScale <= AttributionMaxFontScale) 1f else AttributionMaxFontScale / fontScale
 
 /** Token name to ARGB for [MapStyle.build]; the names match `docs/design/tokens.md` and the template placeholders. */

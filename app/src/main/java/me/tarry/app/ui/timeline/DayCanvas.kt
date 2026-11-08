@@ -276,7 +276,7 @@ fun DayCanvas(
     val handleStart = timeColumn + DayCanvasDefaults.BlockInset
     val placedMarkers = remember(markerLineTexts, layout, fontScale, stacked, hourLineDp) {
         // The now-pill sits in the time column too; a marker label never goes under it.
-        val pillHalf = (hourLineDp + DayCanvasDefaults.PillPaddingV.value * 2) / 2
+        val pillHalf = nowPillHalfHeightDp(hourLineDp)
         val pill = layout.nowDp?.let { (it - pillHalf)..(it + pillHalf) }
         placeTrackingMarkers(
             trackingMarkers, layout.canvasStart, layout.canvasEnd, layout.scale, layout.heightDp,
@@ -578,7 +578,7 @@ fun DayCanvas(
             // A large-font label with blocks on both sides of its tick is drawn over them, on its card backdrop.
             placedMarkers.filter { it.overBlocks }.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             layout.nowDp?.let { nowDp ->
-                NowLine(nowDp, now, zone, ordered.count { it.topDp < nowDp } - 0.5f, timeColumn, fontScale)
+                NowLine(nowDp, now, zone, ordered.count { it.topDp < nowDp } - 0.5f, timeColumn, nowPillHalfHeightDp(hourLineDp).dp)
             }
             overlay()
         }
@@ -958,8 +958,11 @@ internal fun hourLabelCoveredByNowPill(markDp: Float, nowDp: Float?, fontScale: 
     return abs(markDp - nowDp) < reach
 }
 
+/** Half the now-pill's real height: one text line plus its vertical padding. Marker labels keep clear of this span and the pill is drawn with it. */
+internal fun nowPillHalfHeightDp(lineDp: Float): Float = (lineDp + DayCanvasDefaults.PillPaddingV.value * 2) / 2
+
 @Composable
-private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, timeColumn: Dp, fontScale: Float) {
+private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, timeColumn: Dp, pillHalf: Dp) {
     val c = TarryTheme.colors
     val time = rememberTimeFormats().time(now, zone)
     val description = stringResource(R.string.timeline_now_description, time)
@@ -977,7 +980,7 @@ private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, tim
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .offset(y = nowDp.dp - DayCanvasDefaults.NowPillHalfHeight * fontScale)
+            .offset(y = nowDp.dp - pillHalf)
             .widthIn(min = timeColumn)
             .clip(TarryTheme.shapes.pill)
             .background(c.accent)
