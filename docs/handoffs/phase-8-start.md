@@ -33,7 +33,7 @@
   - block text fills its height, and time ranges break only after the dash;
   - short-visit handles sit outside the card;
   - hour rules are in `outline`;
-  - from 1.5× font, labels move above their lines and draw under the blocks;
+  - from 1.5× font, labels move above their lines; minor and marker labels draw under the blocks, and hour labels draw over them on a `card` backing so a long visit never hides the hour (owner, 9 Nov);
   - trips have a dotted connector;
   - off stretches are hatched "Not tracking", and the canvas starts at the first Start;
   - the zoom pill is `inset`;
@@ -64,8 +64,18 @@
 - **Docs:** `ui-rules.md` is new, and `tokens.md` is updated.
 
 ## Carry-overs (not done; pick up in phase 8 where they touch a screen)
-- **Dark mode was not checked on the device** after 7.7. The owner's app theme is Light. Ask the owner before switching it, then do a dark pass of every screen (`ui-reviewer`).
-- **Large font:** the timeline at 2× hasn't been scrolled on the device past the first screen. Check the stacked labels under blocks and the hatch.
+- **Device checks done 9 Nov (final 7.7 build):**
+  - in dark: Timeline, Map, Summary, Settings, Schedule, Permissions, Sessions, Jobs, Places and Place detail all look right (theme set back to Light);
+  - at 2×: a full timeline scroll, the R fixes and the marker labels.
+  - **Not covered:** the visit drawer in dark, the "6, 7" shared marker and the "Billed" caption (no matching data that day; unit tests cover them).
+  - **Dark detail to look at:** a visit's "Includes … not tracked" line is red-brown text in light but `ink` text with a pink icon in dark. Check that this is the intended dark token.
+- **Edge case: a 1-minute "Off" during a live visit (9 Nov).**
+  - **What happened:** `installDebug` at 9:00 killed the scheduled session (Sessions: "7:30 am–9:00 am, Scheduled, Killed"), and a new one opened at 9:01. The timeline then showed an "Off 9:00 am–9:01 am" marker and a hatch across the still-growing Home visit, while the pill said Tracking.
+  - **Check:**
+    - should a session killed by the system (or an app update) read as "Stopped unexpectedly" rather than "Off";
+    - should a gap under a minute that is followed by a restart inside the schedule draw a marker at all;
+    - should the hatch be drawn across a visit that continues on both sides of it.
+  - Reproduce on the emulator by reinstalling during a scheduled window.
 - **Nine classic Material Icons drawables** are still to swap (`ui-rules.md` §6).
 - **Nits from the final review** (owner didn't pick them for 7.7):
   - Jobs and Places rows are tappable but have no chevron;
