@@ -204,4 +204,31 @@ class TrackingMarkersTest {
         assertThat(firstTrackingStart(markers)).isEqualTo(at(7, 30))
         assertThat(firstTrackingStart(listOf(TrackingMarker(null, at(17, 0))))).isNull()
     }
+
+    @Test
+    fun stackedSlotPrefersAboveThenBelowThenOverTheBlocks() {
+        // Tick at 100, label 32 tall, gap 2: above is 66..98, below is 102..134.
+        assertThat(stackedMarkerSlot(100f, 32f, 2f, emptyList())).isEqualTo(MarkerSlot.Above)
+        assertThat(stackedMarkerSlot(100f, 32f, 2f, listOf(70f..90f))).isEqualTo(MarkerSlot.Below)
+        assertThat(stackedMarkerSlot(100f, 32f, 2f, listOf(70f..90f, 110f..140f))).isEqualTo(MarkerSlot.OverBlocks)
+        // A block that only touches the label's space edge does not cover it.
+        assertThat(stackedMarkerSlot(100f, 32f, 2f, listOf(0f..66f, 134f..200f))).isEqualTo(MarkerSlot.Above)
+        // No room above at the top of the canvas.
+        assertThat(stackedMarkerSlot(10f, 32f, 2f, emptyList())).isEqualTo(MarkerSlot.Below)
+    }
+
+    @Test
+    fun stackedPlacementPutsTheLabelOnTheFreeSideAndFlagsOverBlocks() {
+        val tick = listOf(TrackingMarker(at(9, 0), null)) // 60 dp from 8:00
+        fun place(blocks: List<ClosedFloatingPointRange<Float>>) = placeTrackingMarkers(
+            tick, at(8, 0), at(11, 0), dpPerHour = 60f, canvasHeightDp = 180f, lineHeightDp = 16f, gapDp = 2f, above = true, blocks = blocks,
+        ).single()
+        assertThat(place(emptyList()).labelTopDp).isEqualTo(26f) // 60 - 32 - 2
+        val below = place(listOf(20f..58f))
+        assertThat(below.labelTopDp).isEqualTo(62f)
+        assertThat(below.overBlocks).isFalse()
+        val both = place(listOf(20f..58f, 62f..120f))
+        assertThat(both.labelTopDp).isEqualTo(26f)
+        assertThat(both.overBlocks).isTrue()
+    }
 }

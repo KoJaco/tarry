@@ -283,6 +283,7 @@ fun DayCanvas(
             lineCount = { markerLineTexts[it]?.size ?: 2 },
             avoid = pill,
             above = stacked,
+            blocks = layout.blocks.map { it.topDp..(it.topDp + it.heightDp) },
         )
     }
 
@@ -460,7 +461,7 @@ fun DayCanvas(
                     if (!covered(top, minorLine)) StackedTimeLabel(minorLabels[i], minorStyle, top, MinorLabelTag)
                 }
             }
-            placedMarkers.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
+            placedMarkers.filterNot { it.overBlocks }.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
             // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.
             ordered.withIndex().sortedBy { it.value is PlacedTrip }.forEach { (index, placed) ->
@@ -573,6 +574,8 @@ fun DayCanvas(
                     ResizeLabel(formats.time(d.edgeMs, zone), edgeDp, handleStart, visitEnd)
                 }
             }
+            // A large-font label with blocks on both sides of its tick is drawn over them, on its card backdrop.
+            placedMarkers.filter { it.overBlocks }.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             layout.nowDp?.let { nowDp ->
                 NowLine(nowDp, now, zone, ordered.count { it.topDp < nowDp } - 0.5f, timeColumn, fontScale)
             }

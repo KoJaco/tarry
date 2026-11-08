@@ -61,7 +61,14 @@ fun trackingMarkers(
 }
 
 /** A [marker] and where its label sits in the time column: [anchorDp] is its true time position, [labelTopDp] the label's top. */
-data class PlacedMarker(val marker: TrackingMarker, val anchorDp: Float, val labelTopDp: Float, val labelHeightDp: Float)
+data class PlacedMarker(
+    val marker: TrackingMarker,
+    val anchorDp: Float,
+    val labelTopDp: Float,
+    val labelHeightDp: Float,
+    /** Large-font layout only: both sides of the tick are covered by blocks, so the label is drawn over them on its card backdrop. */
+    val overBlocks: Boolean = false,
+)
 
 /**
  * Positions [markers] for the time column of a canvas starting at [canvasStart] with [dpPerHour]. A label is
@@ -83,15 +90,24 @@ fun placeTrackingMarkers(
     avoid: ClosedFloatingPointRange<Float>? = null,
     /** Large-font layout: the label sits just above its (first) time instead of centred on it; see [stackedTimeLabels]. */
     above: Boolean = false,
+    /** With [above]: the vertical spans (dp) of the day's blocks; a label prefers the free side of its tick, see [stackedMarkerSlot]. */
+    blocks: List<ClosedFloatingPointRange<Float>> = emptyList(),
 ): List<PlacedMarker> {
     var prevBottom = Float.NEGATIVE_INFINITY
     return markers.filter { it.timeMs in canvasStart..canvasEnd }.sortedBy { it.timeMs }.map { m ->
+        var overBlocks = false
         val anchor = m.ruleTimes.map { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }.average().toFloat()
         val height = lineCount(m) * lineHeightDp
         val first = m.ruleTimes.minOf { ((it - canvasStart) / 3_600_000.0 * dpPerHour).toFloat() }
         val natural = if (above) {
-            // Just above its tick; at the very top of the canvas there is no room above, so just below.
-            (first - height - gapDp).takeIf { it >= 0f } ?: (first + gapDp)
+            // On the free side of its tick: above if no block is there, else below; both covered: over the blocks, still
+            // above when there is room (at the very top of the canvas there is none, so below).
+            val aboveTop = (first - height - gapDp).takeIf { it >= 0f }
+            when (stackedMarkerSlot(first, height, gapDp, blocks)) {
+                MarkerSlot.Above -> aboveTop ?: (first + gapDp)
+                MarkerSlot.Below -> first + gapDp
+                MarkerSlot.OverBlocks -> { overBlocks = true; aboveTop ?: (first + gapDp) }
+            }
         } else {
             (anchor - height / 2f).coerceIn(0f, maxOf(0f, canvasHeightDp - height))
         }
@@ -103,7 +119,7 @@ fun placeTrackingMarkers(
             top = if (clearAbove >= 0f && clearAbove >= prevBottom + gapDp) clearAbove else avoid.endInclusive + gapDp
         }
         prevBottom = top + height
-        PlacedMarker(m, anchor, top, height)
+        PlacedMarker(m, anchor, top, height, overBlocks)
     }
 }
 
@@ -147,3 +163,21 @@ fun offStretches(markers: List<TrackingMarker>, dayEnd: Long, now: Long?): List<
 
 /** The earliest time tracking started on the day (the first marker that carries a start), or null when no marker does. */
 fun firstTrackingStart(markers: List<TrackingMarker>): Long? = markers.filter { it.startedMs != null }.minOfOrNull { it.timeMs }
+
+/** Where a large-font tracking label goes relative to its tick. */
+enum class MarkerSlot { Above, Below, OverBlocks }
+
+/**
+ * The side of the tick at [tickDp] a stacked label [heightDp] tall (with [gapDp] to the tick) goes: above when no block
+ * spans that space, otherwise below when that is free, otherwise [MarkerSlot.OverBlocks] (drawn on top of the blocks).
+ * Above is also not free at the very top of the canvas (negative top).
+ */
+fun stackedMarkerSlot(tickDp: Float, heightDp: Float, gapDp: Float, blocks: List<ClosedFloatingPointRange<Float>>): MarkerSlot {
+    fun free(top: Float) = blocks.none { it.start < top + heightDp && it.endInclusive > top }
+    val aboveTop = tickDp - heightDp - gapDp
+    return when {
+        aboveTop >= 0f && free(aboveTop) -> MarkerSlot.Above
+        free(tickDp + gapDp) -> MarkerSlot.Below
+        else -> MarkerSlot.OverBlocks
+    }
+}
