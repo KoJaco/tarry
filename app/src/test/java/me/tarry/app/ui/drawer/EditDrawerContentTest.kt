@@ -264,11 +264,19 @@ class EditDrawerContentTest {
     }
 
     @Test
+    fun newPlaceHereIsDisabledUntilThePinHasARealPosition() {
+        show(newVisit())
+        composeRule.onNodeWithText("Pick on map").performClick()
+        composeRule.onNodeWithText("New place here").assertIsNotEnabled()
+        composeRule.onNodeWithText("Pan the map to place the pin.").assertExists()
+    }
+
+    @Test
     fun pickingNewPlaceHereShowsTheCoordinatesAndSaveSendsThePinAndTimes() {
         val saved = mutableListOf<List<Number>>()
         val known = mutableListOf<String>()
         show(
-            newVisit(),
+            newVisitWithCentres(),
             EditDrawerActions(
                 onCreateManual = { p, _, _ -> known += p },
                 onCreateManualAtNewPlace = { lat, lng, s, e -> saved += listOf(lat, lng, s, e) },
@@ -277,10 +285,10 @@ class EditDrawerContentTest {
         composeRule.onNodeWithText("Pick on map").performClick()
         composeRule.onNodeWithText("New place here").assertHasClickAction().performClick()
 
-        composeRule.onNodeWithText("New place at 20.00000, 0.00000").assertExists()
+        composeRule.onNodeWithText("New place at -33.90000, 151.20000").assertExists()
         composeRule.onNodeWithText("Choose a place to save this visit.").assertDoesNotExist()
         composeRule.onNodeWithText("Save visit").performScrollTo().assertIsEnabled().performClick()
-        assertThat(saved).containsExactly(listOf(20.0, 0.0, at(10), at(11)))
+        assertThat(saved).containsExactly(listOf(-33.9, 151.2, at(10), at(11)))
         assertThat(known).isEmpty()
     }
 
@@ -300,13 +308,13 @@ class EditDrawerContentTest {
     @Test
     fun choosingAPlaceFromSearchClearsAPinAndViceVersa() {
         val saved = mutableListOf<Triple<String, Long, Long>>()
-        show(newVisit(), EditDrawerActions(onCreateManual = { p, s, e -> saved += Triple(p, s, e) }))
+        show(newVisitWithCentres(), EditDrawerActions(onCreateManual = { p, s, e -> saved += Triple(p, s, e) }))
         composeRule.onNodeWithText("Pick on map").performClick()
         composeRule.onNodeWithText("New place here").performClick()
         composeRule.onNodeWithText("Choose place").performClick()
         composeRule.onNodeWithText("Depot").performClick()
 
-        composeRule.onNodeWithText("New place at 20.00000, 0.00000").assertDoesNotExist()
+        composeRule.onNodeWithText("New place at -33.90000, 151.20000").assertDoesNotExist()
         composeRule.onNodeWithText("Save visit").performScrollTo().performClick()
         assertThat(saved).containsExactly(Triple("p2", at(10), at(11)))
     }
