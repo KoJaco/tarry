@@ -244,6 +244,7 @@ fun DayCanvas(
     val hourStyle = MaterialTheme.typography.bodySmall
     val nowStyle = hourStyle.copy(fontWeight = FontWeight.SemiBold)
     val measurer = rememberTextMeasurer()
+    val metrics = rememberTextMetrics()
     val density = LocalDensity.current
     val hourLabels = remember(layout.hourMarks, formats, zone) { layout.hourMarks.map { formats.hour(it.epochMs, zone) } }
     val minorLabels = remember(layout.minorLabels, formats, zone) { layout.minorLabels.map { formats.minute(it.epochMs, zone) } }
@@ -257,7 +258,7 @@ fun DayCanvas(
     // The time column grows to the widest hour label, marker label or now-pill text, so none is ever clipped at large font sizes.
     val stacked = stackedTimeLabels(fontScale)
     // The real height of one label line at this font scale (never a literal): the collapsed layout puts a label's bottom exactly on its line, and marker labels keep clear of the now-pill by its real extent.
-    val hourLineDp = with(density) { measurer.measure("Ag", hourStyle).size.height.toDp().value }
+    val hourLineDp = metrics.lineDp(hourStyle)
     val timeColumn = if (stacked) DayCanvasDefaults.RailColumn else remember(hourLabels, markerLineTexts, now, formats, zone, hourStyle, density, layout.nowDp != null) {
         val texts = hourLabels.map { it to hourStyle } + markerLineTexts.values.flatten().map { it to hourStyle } +
             if (layout.nowDp != null) listOf(formats.time(now, zone) to nowStyle) else emptyList()
@@ -288,7 +289,7 @@ fun DayCanvas(
     }
 
     // "Not tracking" stretches (stop to next start; only past time): a faint hatch under everything, with a label if it fits.
-    val offLabelHeightDp = with(density) { measurer.measure("Ag", MaterialTheme.typography.labelSmall).size.height.toDp().value }
+    val offLabelHeightDp = metrics.lineDp(MaterialTheme.typography.labelSmall)
     val offStretches = remember(trackingMarkers, layout, dayEnd, now, dayStart) {
         val isToday = now in dayStart until dayEnd
         offStretches(trackingMarkers, dayEnd, if (isToday) now else null).mapNotNull { s ->
@@ -446,7 +447,7 @@ fun DayCanvas(
             // backdrop, UNDER the blocks (composed before them), so they only show in free space and never cover a block.
             // A tracking marker label or the now-pill wins over a label it would collide with.
             if (stacked) {
-                fun lineDp(style: TextStyle) = with(density) { measurer.measure("Ag", style).size.height.toDp().value }
+                fun lineDp(style: TextStyle) = metrics.lineDp(style)
                 val minorStyle = MaterialTheme.typography.labelSmall
                 val minorLine = lineDp(minorStyle)
                 fun covered(top: Float, height: Float): Boolean =
@@ -623,15 +624,15 @@ private fun VisitBlock(
     val d = DayCanvasDefaults
     // How many lines each text gets: real line heights for this font scale, real wrapping at this width. Everything shown
     // keeps one line first; the height left over goes to the title, then the times, then the warning (see [allocateLines]).
-    val measurer = rememberTextMeasurer()
+    val metrics = rememberTextMetrics()
     val density = LocalDensity.current
     val typography = MaterialTheme.typography
     val textWidthPx = with(density) {
         (blockWidth - TarryTheme.space.m * 2 - (if (selected && selecting) d.CheckBadge + TarryTheme.space.xs else 0.dp)).roundToPx()
     }.coerceAtLeast(0)
-    fun lineDp(style: TextStyle) = with(density) { measurer.measure("Ag", style).size.height.toDp().value }
+    fun lineDp(style: TextStyle) = metrics.lineDp(style)
     fun linesNeeded(text: String, style: TextStyle, widthPx: Int = textWidthPx) =
-        measurer.measure(text, style, constraints = Constraints(maxWidth = widthPx)).lineCount
+        metrics.lineCount(text, style, widthPx)
     val titleLine = lineDp(typography.titleMedium)
     val detailLine = lineDp(typography.bodyMedium)
     val warnLine = lineDp(typography.bodySmall)

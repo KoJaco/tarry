@@ -262,7 +262,7 @@ internal fun BoxScope.JobColumn(
     /** The settled zoom level's step: drags and the accessibility move/resize actions snap to it. A mid-pinch zoom never reaches here. */
     snapMinutes: Int = baseConfig.snapMinutes,
 ) {
-    val measurer = rememberTextMeasurer()
+    val metrics = rememberTextMetrics()
     val textDensity = LocalDensity.current
     val config = remember(baseConfig, snapMinutes) { baseConfig.copy(snapMinutes = snapMinutes) }
     val formats = rememberTimeFormats()
@@ -412,7 +412,7 @@ internal fun BoxScope.JobColumn(
                 val nameLines = run {
                     val laneWidth = (width - JobColumnDefaults.LaneGap * (placed.laneCount - 1)) / placed.laneCount
                     val textWidthPx = with(textDensity) { (maxOf(laneWidth, JobColumnDefaults.Touch) - JobColumnDefaults.PaddingH * 2).roundToPx() }.coerceAtLeast(0)
-                    fun lineDp(style: TextStyle) = with(textDensity) { measurer.measure("Ag", style).size.height.toDp().value }
+                    fun lineDp(style: TextStyle) = metrics.lineDp(style)
                     val nameStyle = MaterialTheme.typography.labelLarge
                     val nameLine = lineDp(nameStyle)
                     val others = (if (showDone) lineDp(MaterialTheme.typography.labelSmall) else 0f) +
@@ -421,7 +421,7 @@ internal fun BoxScope.JobColumn(
                     allocateLines(
                         extraDp = placed.heightDp - 2 * JobColumnDefaults.PaddingV.value - nameLine - others,
                         lineDps = listOf(nameLine),
-                        needs = listOf(measurer.measure(b.jobName, nameStyle, constraints = Constraints(maxWidth = textWidthPx)).lineCount),
+                        needs = listOf(metrics.lineCount(b.jobName, nameStyle, textWidthPx)),
                     ).first()
                 }
                 if (showDone) {
