@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -457,6 +458,7 @@ internal fun BoxScope.JobColumn(
                 }
             }
         }
+        val c0 = TarryTheme.colors
         plan.suggestions.forEach { placed ->
             val s = placed.item
             val colors = JobPalette.lookup(s.jobColorArgb, s.suggestion.jobId).colors(TarryTheme.isDark)
@@ -469,7 +471,7 @@ internal fun BoxScope.JobColumn(
                 description = stringResource(R.string.timeline_job_suggestion_description, s.jobName, spoken),
                 clickLabel = stringResource(R.string.timeline_review_suggestion),
                 enabled = enabled,
-                container = Color.Transparent, border = colors.border, dashed = true,
+                container = Color.Transparent, border = suggestionBorder(colors.border, c0), dashed = true,
                 tag = "timeline_suggestion_${s.suggestion.visitId}",
                 onClick = {},
                 onDoubleClick = { reviewing = s.suggestion.visitId to s.suggestion.jobId },
@@ -922,3 +924,19 @@ private fun Modifier.blockDragGesture(
         }
     }
 }
+
+/** Least contrast a non-text outline needs against the surface it is drawn on (WCAG 1.4.11). */
+private const val OutlineContrast = 3.0
+
+internal fun contrastRatio(a: Color, b: Color): Double {
+    val la = a.luminance().toDouble()
+    val lb = b.luminance().toDouble()
+    return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
+}
+
+/**
+ * The dashed outline of a suggestion, which has no fill and so sits straight on `card`: the job's own border colour when
+ * that already reaches 3:1 there, else the theme's `outline` (about 3.5:1 in both themes).
+ */
+internal fun suggestionBorder(jobBorder: Color, colors: me.tarry.app.ui.theme.TarryColors): Color =
+    if (contrastRatio(jobBorder, colors.card) >= OutlineContrast) jobBorder else colors.outline
