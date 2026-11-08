@@ -285,7 +285,7 @@ class EditDrawerViewModel @Inject constructor(
         editor.createManualAtNewPlace(lat, lng, start, end, ZoneId.systemDefault().id)
     }
 
-    /** True from the first Save until it fails or the drawer retargets: a double tap must not insert twice (and flash "Overlap"). */
+    /** True only while a Save is in flight: a double tap must not insert twice (and flash "Overlap"). */
     private var savingManual = false
 
     private fun saveManual(op: suspend () -> EditResult) {
@@ -296,17 +296,16 @@ class EditDrawerViewModel @Inject constructor(
 
     private suspend fun runSaveManual(op: suspend () -> EditResult) {
         val result = try {
-            op()
-        } catch (e: kotlinx.coroutines.CancellationException) {
+            val r = op()
+            if (r is EditResult.Ok) {
+                r.undo?.let { undoEvents.offer(UndoEvent(R.string.edit_undo_visit_added, it)) }
+                scheduler.enqueueNow()
+            }
+            finish(r)
+            r
+        } finally {
             savingManual = false
-            throw e
         }
-        if (result !is EditResult.Ok) savingManual = false
-        if (result is EditResult.Ok) {
-            result.undo?.let { undoEvents.offer(UndoEvent(R.string.edit_undo_visit_added, it)) }
-            scheduler.enqueueNow()
-        }
-        finish(result)
         val newId = (result as? EditResult.Ok)?.id
         if (newId != null) eventChannel.send(EditDrawerEvent.Retarget(EditTarget.Visit(newId)))
     }

@@ -442,6 +442,23 @@ class EditDrawerViewModelTest {
     }
 
     @Test
+    fun sequentialSavesOnTheSameTargetAfterSuccessBothInsert() = runBlocking<Unit> {
+        places.save(place())
+        viewModel.load(EditTarget.NewVisit(base, base + 60 * minute))
+        awaitState()
+
+        viewModel.createManual("p", base + 5 * minute, base + 15 * minute)
+        withTimeout(10_000) { viewModel.events.first() }
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).hasSize(1)
+
+        // The drawer is still on the same NewVisit target (as after Save -> Undo -> same gap).
+        viewModel.createManual("p", base + 30 * minute, base + 40 * minute)
+        withTimeout(10_000) { while (timeline.visitsInRange(base - minute, base + 100 * minute).size < 2) delay(20) }
+
+        assertThat(timeline.visitsInRange(base - minute, base + 100 * minute)).hasSize(2)
+    }
+
+    @Test
     fun aFailedSaveCanBeRetriedAfterFixingTheForm() = runBlocking<Unit> {
         places.save(place())
         viewModel.load(EditTarget.NewVisit(base, base + 30 * minute))
