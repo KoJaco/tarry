@@ -164,6 +164,9 @@ private object DayCanvasDefaults {
     const val MarkerLabelLineDp = 16f
     val MarkerLabelGap = 2.dp
 
+    /** One line of the card's own text (per unit of font scale): a card shorter than this plus a handle's 48 dp gets its handles outside. */
+    const val HandleCardTextDp = 28f
+
     val DashOn = 8.dp
     val DashOff = 5.dp
 }
@@ -421,6 +424,7 @@ fun DayCanvas(
                         visitId = selectedVisit.id,
                         edgeDp = edgeDp,
                         shiftDp = if (live != null) (live.edgeMs - live.originMs) * dpPerMs else 0f,
+                        outside = handlesOutside(selectedBlock.heightDp, DayCanvasDefaults.HandleCardTextDp * fontScale),
                         start = handleStart,
                         end = visitEnd,
                         onDragStart = { drag = ResizeDrag(selectedVisit.id, edge, originMs, originMs) },

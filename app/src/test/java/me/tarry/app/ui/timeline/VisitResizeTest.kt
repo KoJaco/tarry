@@ -54,4 +54,12 @@ class VisitResizeTest {
         assertThat(end(100_000.0, next = null)).isEqualTo(dayEnd)
         assertThat(start(-100_000.0, prev = null)).isEqualTo(dayStart)
     }
+
+    @Test
+    fun handlesGoOutsideACardTooShortForTwoHandlesAndALineOfText() {
+        assertThat(handlesOutside(40f, 28f)).isTrue()
+        assertThat(handlesOutside(75.9f, 28f)).isTrue()
+        assertThat(handlesOutside(76f, 28f)).isFalse()
+        assertThat(handlesOutside(76f, 56f)).isTrue()
+    }
 }

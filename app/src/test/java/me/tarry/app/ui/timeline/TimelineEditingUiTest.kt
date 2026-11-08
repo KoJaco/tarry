@@ -205,6 +205,28 @@ class TimelineEditingUiTest {
     }
 
     @Test
+    fun shortCardGetsItsHandlesOutsideWithoutOverlap_tallCardKeepsThemOnTheEdges() {
+        val short = TimelineItem.Visit("short", at(9), at(9, 20), "Yard")
+        val tall = TimelineItem.Visit("tall", at(11), at(13), "Depot")
+        show(listOf(short, tall))
+        select("short")
+        val card = tag("timeline_row_short").fetchSemanticsNode().boundsInRoot
+        val top = handle(ResizeEdge.Start, "short").fetchSemanticsNode().boundsInRoot
+        val bottom = handle(ResizeEdge.End, "short").fetchSemanticsNode().boundsInRoot
+        assertThat(top.bottom).isWithin(1f).of(card.top)
+        assertThat(bottom.top).isWithin(1f).of(card.bottom)
+        assertThat(top.bottom).isAtMost(bottom.top)
+        assertThat(top.width).isWithin(1f).of(bottom.width)
+        assertThat(top.center.x).isWithin(1f).of(card.center.x)
+        handle(ResizeEdge.Start, "short").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+
+        select("tall")
+        val tallCard = tag("timeline_row_tall").fetchSemanticsNode().boundsInRoot
+        val tallTop = handle(ResizeEdge.Start, "tall").fetchSemanticsNode().boundsInRoot
+        assertThat(tallTop.center.y).isWithin(1f).of(tallCard.top)
+    }
+
+    @Test
     fun tappingElsewhereDeselects() {
         show(listOf(review, trip))
         select("review")
