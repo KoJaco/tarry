@@ -130,4 +130,15 @@ class DayMapModelTest {
         assertThat(fit.fit(day, bounds)).isFalse() // new data later in the day keeps the user's camera
         assertThat(fit.fit(day.plusDays(1), bounds)).isTrue()
     }
+
+    @Test
+    fun aStyleReloadWithTheSameMarkerKeepsTheUsersCamera() {
+        // A light/dark switch reloads the style and re-runs the marker effect with the same marker: no re-centre.
+        val day = LocalDate.of(2026, 10, 24)
+        val follow = MarkerFollow()
+        follow.follow(day, home)
+        assertThat(follow.follow(day, site)).isTrue()
+        assertThat(follow.follow(day, site)).isFalse() // same marker again: theme switch
+        assertThat(follow.follow(day, home)).isTrue() // a real scrub still follows
+    }
 }
