@@ -134,11 +134,13 @@ private fun TarryMapView(
     val currentOnStyleLoaded by rememberUpdatedState(onStyleLoaded)
     val compassTopPx = with(LocalDensity.current) { (MinTouch + TarryTheme.space.xs).roundToPx() }
     val compassEndPx = with(LocalDensity.current) { TarryTheme.space.s.roundToPx() }
-    val mapView = remember {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    // Keyed on the owner too: a new owner gets a fresh MapView that follows that owner's lifecycle.
+    val mapView = remember(lifecycleOwner) {
         MapLibreInit.ensure(context)
         MapView(context, tarryMapOptions(context)).apply { onCreate(null) }
     }
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifecycle = lifecycleOwner.lifecycle
     DisposableEffect(lifecycle, mapView) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
