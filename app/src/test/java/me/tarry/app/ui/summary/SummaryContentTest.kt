@@ -246,6 +246,7 @@ class SummaryContentTest {
     @Test
     fun jobRow_keepsTheBilledFigureBesideTheNameBelowFontScale1_5() {
         show(state(), fontScale = 1.4f)
+        composeRule.onNodeWithTag(SummaryTags.rowBilledLabel("A"), useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag(SummaryTags.rowBilled("A"), useUnmergedTree = true).assertDoesNotExist()
     }
 
@@ -253,6 +254,7 @@ class SummaryContentTest {
     fun jobRow_stacksTheBilledFigureUnderTheCaptionFromFontScale1_5() {
         show(state(), fontScale = 1.5f)
         composeRule.onNodeWithTag(SummaryTags.rowBilled("A"), useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag(SummaryTags.rowBilledLabel("A"), useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNode(hasText("Billed 3 h")).assertExists()
         // Spoken description is the same as in the side-by-side layout.
         val description = composeRule.onNodeWithTag(SummaryTags.row("A")).fetchSemanticsNode()

@@ -109,6 +109,7 @@ object SummaryTags {
     fun exportFormat(format: SummaryExportFormat) = "summary_export_${format.name}"
     fun row(jobId: String) = "summary_row_$jobId"
     fun rowBilled(jobId: String) = "summary_row_billed_$jobId"
+    fun rowBilledLabel(jobId: String) = "summary_row_billed_label_$jobId"
     fun piece(blockId: String, date: LocalDate) = "summary_piece_${blockId}_$date"
 }
 
@@ -510,12 +511,21 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
             }
         }
         if (!stacked) {
-            Text(
-                summaryDuration(row.billedMs),
-                style = MaterialTheme.typography.titleMedium.tabular(),
-                fontWeight = FontWeight.Bold,
-                color = TarryTheme.colors.ink,
-            )
+            // The caption says what the right-hand figure is (the stacked layout says "Billed <time>" in one string).
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    stringResource(R.string.summary_row_billed_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TarryTheme.colors.muted,
+                    modifier = Modifier.testTag(SummaryTags.rowBilledLabel(row.jobId)),
+                )
+                Text(
+                    summaryDuration(row.billedMs),
+                    style = MaterialTheme.typography.titleMedium.tabular(),
+                    fontWeight = FontWeight.Bold,
+                    color = TarryTheme.colors.ink,
+                )
+            }
         }
     }
 }

@@ -332,6 +332,7 @@
     <string name="summary_unlabelled_description">Unlabelled: on site %1$s, travel %2$s</string>
     <string name="summary_day_billed">Billed %1$s</string>
     <string name="summary_row_billed">Billed %1$s</string>
+    <string name="summary_row_billed_label">Billed</string>
     <string name="summary_duration_zero">0 min</string>
     <string name="summary_spoken_zero">0 minutes</string>
     <string name="summary_piece_not_billable">Not billable</string>
