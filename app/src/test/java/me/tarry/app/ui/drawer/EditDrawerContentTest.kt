@@ -7,6 +7,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.layout.positionInRoot
+
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsEnabled
@@ -19,6 +21,7 @@ import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -136,12 +139,37 @@ class EditDrawerContentTest {
 
 
     @Test
-    fun sectionsAreOrderedNotesTime() {
+    fun sectionsAreOrderedJobPlaceTimeNotes() {
         show(visit())
         val order = composeRule.onAllNodes(heading()).fetchSemanticsNodes()
             .mapNotNull { it.config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull() }
-            .filter { it in setOf("Notes", "Time") }
-        assertThat(order).containsExactly("Notes", "Time").inOrder()
+            .filter { it in setOf("Job", "Place", "Time", "Notes") }
+        assertThat(order).containsExactly("Job", "Place", "Time", "Notes").inOrder()
+    }
+
+    private fun topOf(text: String, vararg useHeading: Boolean): Float {
+        val matcher = if (useHeading.isNotEmpty()) hasContentDescription(text).and(heading()) else hasText(text).and(hasClickAction())
+        return composeRule.onNode(matcher).fetchSemanticsNode().positionInRoot.y
+    }
+
+    @Test
+    fun changePlaceLivesUnderPlaceAndNotUnderTime() {
+        show(visit().copy(jobs = listOf(acme)))
+        val place = topOf("Place", true)
+        val time = topOf("Time", true)
+        val change = topOf("Change place")
+        assertThat(change).isGreaterThan(place)
+        assertThat(change).isLessThan(time)
+        assertThat(topOf("Usual job here")).isGreaterThan(change)
+        assertThat(topOf("Usual job here")).isLessThan(time)
+        assertThat(topOf("Trim start")).isGreaterThan(time)
+    }
+
+    @Test
+    fun placelessVisitKeepsChangePlaceButHasNoUsualJob() {
+        show(visit().copy(hasPlace = false, placeLabel = null))
+        composeRule.onNodeWithText("Change place").assertHasClickAction()
+        composeRule.onNodeWithText("Usual job here").assertDoesNotExist()
     }
 
     // Note: a TextField inside a dialog never goes idle under Robolectric, so the dialogs themselves are not opened here.
@@ -447,8 +475,9 @@ class EditDrawerContentTest {
     fun visitDrawerWithoutBlocksSaysSoAndOffersAddToJob() {
         val added = mutableListOf<String>()
         show(visitWithBlocks(blocks = emptyList()), EditDrawerActions(onAddToJob = { added += it }))
-        composeRule.onNodeWithText("Not in a job yet.").assertExists()
-        composeRule.onNodeWithText("Add to job").performClick()
+        composeRule.onNodeWithText("Not in a job yet.").assertDoesNotExist()
+        composeRule.onNodeWithTag("drawer_add_to_job").assertHasClickAction().assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("Add to job").performScrollTo().performClick()
         composeRule.onNodeWithText("Beta").performClick()
         assertThat(added).containsExactly("k")
     }
@@ -462,22 +491,22 @@ class EditDrawerContentTest {
         )
         show(trip, EditDrawerActions(onAddToJob = { added += it }))
         composeRule.onNodeWithTag("drawer_block_b1").assertExists()
-        composeRule.onNodeWithText("Add to job").performClick()
+        composeRule.onNodeWithText("Add to job").performScrollTo().performClick()
         composeRule.onNodeWithText("Beta").performClick()
         assertThat(added).containsExactly("k")
-        composeRule.onNode(hasText("Default job for", substring = true)).assertDoesNotExist()
+        composeRule.onNode(hasText("Usual job here")).assertDoesNotExist()
     }
 
     @Test
     fun visitDrawerShowsThePlaceDefaultJobRowWithItsHelperAndCanClearIt() {
         val defaults = mutableListOf<String?>()
         show(visitWithBlocks(defaultJob = acme), EditDrawerActions(onSetPlaceDefaultJob = { defaults += it }))
-        composeRule.onNodeWithText("Default job for Rose Bay Marina").assertHasClickAction()
-        composeRule.onNodeWithText("Suggests this job for new visits here.").assertExists()
+        composeRule.onNodeWithText("Usual job here").assertHasClickAction()
+        composeRule.onNodeWithText("New visits here are suggested for this job.").assertExists()
 
-        composeRule.onNodeWithText("Default job for Rose Bay Marina").performClick()
+        composeRule.onNodeWithText("Usual job here").performClick()
         composeRule.onNodeWithText("None").performClick()
-        composeRule.onNodeWithText("Default job for Rose Bay Marina").performClick()
+        composeRule.onNodeWithText("Usual job here").performClick()
         composeRule.onNodeWithText("Beta").performClick()
         assertThat(defaults).containsExactly(null, "k").inOrder()
     }
@@ -485,7 +514,7 @@ class EditDrawerContentTest {
     @Test
     fun placeDefaultRowIsHiddenForAnIgnoredPlace() {
         show(visitWithBlocks().copy(placeIgnored = true))
-        composeRule.onNode(hasText("Default job for", substring = true)).assertDoesNotExist()
+        composeRule.onNode(hasText("Usual job here")).assertDoesNotExist()
     }
 
     @Test

@@ -7,6 +7,7 @@
 
     <string name="edit_section_notes">Notes</string>
     <string name="edit_section_time">Time</string>
+    <string name="edit_section_place">Place</string>
 
     <string name="edit_job_new">New job…</string>
     <string name="edit_job_new_title">New job</string>
@@ -34,10 +35,9 @@
         <item quantity="one">%d trip</item>
         <item quantity="other">%d trips</item>
     </plurals>
-    <string name="edit_segment_no_jobs">Not in a job yet.</string>
     <string name="edit_segment_add_to_job">Add to job</string>
     <string name="edit_segment_block_chip">%1$s, %2$s</string>
-    <string name="edit_place_default_job_row">Default job for %1$s</string>
+    <string name="edit_place_default_job_row">Usual job here</string>
     <string name="edit_place_default_job_none">None</string>
     <string name="edit_place_default_job_picker">Default job</string>
 

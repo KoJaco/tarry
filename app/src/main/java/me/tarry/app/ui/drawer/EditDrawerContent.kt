@@ -2,6 +2,7 @@ package me.tarry.app.ui.drawer
 
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -146,8 +147,9 @@ fun EditDrawerContent(
             }
             EditKind.VISIT -> {
                 SegmentJobSection(state, actions, onOpen = { dialog = it })
-                NotesSection(state, actions)
+                PlaceSection(state, onOpen = { dialog = it })
                 TimeSection(state, actions, onOpen = { dialog = it })
+                NotesSection(state, actions)
             }
             EditKind.JOB -> {
                 ErrorBanner(state.error)
@@ -385,44 +387,71 @@ private fun CoversLine(state: EditDrawerState) {
 }
 
 /**
- * The visit or trip's Job section: chips for the blocks overlapping it (tap opens the block), "Add to job", and for a
- * visit at a live, non-ignored place the place's default job.
+ * The visit or trip's Job section: chips for the blocks overlapping it (tap opens the block) followed by the
+ * "+ Add to job" chip, which sits alone when there are none.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SegmentJobSection(state: EditDrawerState, actions: EditDrawerActions, onOpen: (DrawerDialog) -> Unit) {
     val formats = rememberTimeFormats()
     val zone = rememberZone(state.zoneId)
-    val addToJob = stringResource(R.string.edit_segment_add_to_job)
     Section(R.string.edit_section_job) {
-        if (state.blocks.isEmpty()) {
-            Text(
-                stringResource(R.string.edit_segment_no_jobs),
-                style = MaterialTheme.typography.bodyMedium,
-                color = TarryTheme.colors.muted,
-            )
-        } else {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-                verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-            ) {
-                state.blocks.forEach { chip ->
-                    val range = stringResource(R.string.timeline_time_range, formats.time(chip.start, zone), formats.time(chip.end, zone))
-                    BlockChipView(chip, stringResource(R.string.edit_segment_block_chip, chip.job.name, range)) { actions.onOpenBlock(chip.id) }
-                }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+            verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+        ) {
+            state.blocks.forEach { chip ->
+                val range = stringResource(R.string.timeline_time_range, formats.time(chip.start, zone), formats.time(chip.end, zone))
+                BlockChipView(chip, stringResource(R.string.edit_segment_block_chip, chip.job.name, range)) { actions.onOpenBlock(chip.id) }
             }
+            AddToJobChip(onClick = { onOpen(DrawerDialog.JobPicker(JobPurpose.ADD_TO_JOB)) })
         }
-        SettingsGroup { row(addToJob, onClick = { onOpen(DrawerDialog.JobPicker(JobPurpose.ADD_TO_JOB)) }) }
-        if (state.kind == EditKind.VISIT && state.hasPlace && !state.placeIgnored) {
-            val rowTitle = stringResource(R.string.edit_place_default_job_row, state.placeLabel ?: stringResource(R.string.timeline_unknown_place))
-            val none = stringResource(R.string.edit_place_default_job_none)
-            SettingsGroup {
+    }
+}
+
+/** The unselected-style "+ Add to job" chip: 1 dp `line` border, 48 dp touch target. */
+@Composable
+private fun AddToJobChip(onClick: () -> Unit) {
+    val c = TarryTheme.colors
+    Row(
+        modifier = Modifier
+            .testTag("drawer_add_to_job")
+            .heightIn(min = ChipMinHeight)
+            .clip(TarryTheme.shapes.pill)
+            .background(c.card)
+            .border(1.dp, c.line, TarryTheme.shapes.pill)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = TarryTheme.space.l, vertical = TarryTheme.space.s),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+    ) {
+        Icon(painter = painterResource(R.drawable.ic_plus), contentDescription = null, tint = c.ink, modifier = Modifier.size(18.dp))
+        Text(stringResource(R.string.edit_segment_add_to_job), style = MaterialTheme.typography.labelLarge, color = c.ink)
+    }
+}
+
+/**
+ * A visit's Place section: "Change place" (always valid) and, for a live, non-ignored place, "Usual job here" with
+ * its hint.
+ */
+@Composable
+private fun PlaceSection(state: EditDrawerState, onOpen: (DrawerDialog) -> Unit) {
+    val changePlace = stringResource(R.string.edit_time_change_place)
+    val hasDefault = state.hasPlace && !state.placeIgnored
+    val rowTitle = stringResource(R.string.edit_place_default_job_row)
+    val none = stringResource(R.string.edit_place_default_job_none)
+    Section(R.string.edit_section_place) {
+        SettingsGroup {
+            row(changePlace, onClick = { onOpen(DrawerDialog.PlacePicker) })
+            if (hasDefault) {
                 row(
                     rowTitle,
                     onClick = { onOpen(DrawerDialog.JobPicker(JobPurpose.PLACE_DEFAULT)) },
                     value = state.placeDefaultJob?.name ?: none,
                 )
             }
+        }
+        if (hasDefault) {
             Text(
                 stringResource(R.string.place_defaults_hint),
                 style = MaterialTheme.typography.bodySmall,
@@ -554,7 +583,6 @@ private fun TimeSection(state: EditDrawerState, actions: EditDrawerActions, onOp
         val split = stringResource(R.string.edit_time_split)
         val mergePrevious = stringResource(R.string.edit_time_merge_previous)
         val mergeNext = stringResource(R.string.edit_time_merge_next)
-        val changePlace = stringResource(R.string.edit_time_change_place)
         val startText = formats.time(state.start, zone)
         val endText = formats.time(state.end, zone)
         SettingsGroup {
@@ -563,7 +591,6 @@ private fun TimeSection(state: EditDrawerState, actions: EditDrawerActions, onOp
             row(split, onClick = { onOpen(DrawerDialog.Split) })
             row(mergePrevious, onClick = { actions.onMerge(MergeDirection.PREVIOUS) })
             row(mergeNext, onClick = { actions.onMerge(MergeDirection.NEXT) })
-            row(changePlace, onClick = { onOpen(DrawerDialog.PlacePicker) })
         }
         if (state.canReset) {
             SecondaryButton(

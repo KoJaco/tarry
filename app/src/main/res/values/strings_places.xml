@@ -27,7 +27,7 @@
     <string name="place_default_job_none">No default</string>
     <string name="place_default_job_picker_title">Default job</string>
     <string name="place_default_job_none_option">No default job</string>
-    <string name="place_defaults_hint">Suggests this job for new visits here.</string>
+    <string name="place_defaults_hint">New visits here are suggested for this job.</string>
     <string name="place_ignore_row">Ignore this place</string>
     <string name="place_ignore_subtitle">Visits here never ask for review.</string>
     <string name="place_radius_row">Radius</string>
