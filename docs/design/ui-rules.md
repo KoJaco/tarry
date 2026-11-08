@@ -25,6 +25,7 @@
 ## 2. Writing
 - **Voice:** see `docs/brand/brand-and-copy.md` § Voice. Plain, warm, direct, Australian English. No exclamation marks, no hype, no surveillance words ("monitor", "spy").
 - **Case:** sentence case everywhere, including titles, buttons, chips and settings rows.
+  - the one deliberate exception: section headers (`SectionHeader`, and the Summary By day date headers, which use it) are uppercase `labelSmall` in `muted`. The text is uppercased in code (`text.uppercase()`), so write the string in sentence case; TalkBack still gets the original case.
 - **Full stops:**
   - titles, buttons, chips, row titles and empty-state titles have none;
   - sentences (intros, hints, empty-state bodies, errors) end with one.
