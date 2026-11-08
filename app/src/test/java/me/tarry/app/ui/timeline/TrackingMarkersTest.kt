@@ -172,4 +172,36 @@ class TrackingMarkersTest {
     }
 
     private fun top(p: PlacedMarker, pill: ClosedFloatingPointRange<Float>) = p.labelTopDp + p.labelHeightDp <= pill.start || p.labelTopDp >= pill.endInclusive
+
+    private val dayEnd = bounds.second
+
+    @Test
+    fun offStretchRunsFromAStopToTheNextStart() {
+        val stretches = offStretches(
+            listOf(TrackingMarker(at(7, 0), null), TrackingMarker(null, at(12, 0)), TrackingMarker(at(13, 0), null)),
+            dayEnd, now = null,
+        )
+        assertThat(stretches).containsExactly(OffStretch(at(12, 0), at(13, 0)))
+    }
+
+    @Test
+    fun aStopNeverFollowedByAStartRunsToNowTodayAndToTheDayEndOnAPastDay() {
+        val stop = listOf(TrackingMarker(null, at(17, 0)))
+        assertThat(offStretches(stop, dayEnd, now = at(20, 0))).containsExactly(OffStretch(at(17, 0), at(20, 0)))
+        assertThat(offStretches(stop, dayEnd, now = null)).containsExactly(OffStretch(at(17, 0), dayEnd))
+    }
+
+    @Test
+    fun aCollapsedPairIsItsOwnShortStretch_andPlainStartsMakeNone() {
+        val pair = TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5))
+        assertThat(offStretches(listOf(pair), dayEnd, null)).containsExactly(OffStretch(at(12, 5), at(12, 20)))
+        assertThat(offStretches(listOf(TrackingMarker(at(7, 0), null)), dayEnd, now = at(20))).isEmpty()
+    }
+
+    @Test
+    fun firstTrackingStartIgnoresStopsAndTakesTheEarliestStart() {
+        val markers = listOf(TrackingMarker(null, at(0, 5)), TrackingMarker(at(7, 30), null), TrackingMarker(at(13, 0), null))
+        assertThat(firstTrackingStart(markers)).isEqualTo(at(7, 30))
+        assertThat(firstTrackingStart(listOf(TrackingMarker(null, at(17, 0))))).isNull()
+    }
 }

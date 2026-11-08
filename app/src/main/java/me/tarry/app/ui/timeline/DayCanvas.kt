@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.focusable
@@ -287,6 +288,16 @@ fun DayCanvas(
         )
     }
 
+    // "Not tracking" stretches (stop to next start; only past time): a faint hatch under everything, with a label if it fits.
+    val offLabelHeightDp = with(density) { measurer.measure("Ag", MaterialTheme.typography.labelSmall).size.height.toDp().value }
+    val offStretches = remember(trackingMarkers, layout, dayEnd, now, dayStart) {
+        val isToday = now in dayStart until dayEnd
+        offStretches(trackingMarkers, dayEnd, if (isToday) now else null).mapNotNull { s ->
+            val a = maxOf(s.start, layout.canvasStart)
+            val b = minOf(s.end, layout.canvasEnd)
+            if (b <= a) null else PlacedOff(s, ((a - layout.canvasStart) * dpPerMs), ((b - a) * dpPerMs))
+        }
+    }
     // Each trip is joined to its visits by a dotted line through the trip icon's centre, drawn under the blocks.
     val connectorX = timeColumn + DayCanvasDefaults.BlockInset + TarryTheme.space.m + DayCanvasDefaults.TripIconBackdrop + DayCanvasDefaults.TripIconSize / 2
     val connectors = remember(layout) { layout.trips.map { tripConnector(it, layout.blocks) } }
@@ -301,6 +312,19 @@ fun DayCanvas(
                     val stroke = DayCanvasDefaults.RuleWidth.toPx()
                     val hourTick = DayCanvasDefaults.HourTickHalf.toPx()
                     val railX = timeColumn.toPx()
+                    // Off stretches: the gap-hatch style, in the quiet `line` colour, right of the rail.
+                    offStretches.forEach { off ->
+                        val top = off.topDp.dp.toPx()
+                        val bottom = top + off.heightDp.dp.toPx()
+                        clipRect(left = railX, top = top, right = size.width, bottom = bottom) {
+                            val step = DayCanvasDefaults.HatchStepDp.dp.toPx()
+                            var x = railX - (bottom - top)
+                            while (x < size.width) {
+                                drawLine(c.line, Offset(x, bottom), Offset(x + (bottom - top), top), strokeWidth = stroke)
+                                x += step
+                            }
+                        }
+                    }
                     layout.hourMarks.forEach { mark ->
                         // No rule at the very top edge: hour rules only separate hours.
                         if (mark.topDp <= 0f) return@forEach
@@ -340,6 +364,35 @@ fun DayCanvas(
             // Time column | visits and trips | job column. The visit column ends [visitEnd] short of the right edge.
             val jobWidth = maxOf((maxWidth - timeColumn) * DayColumns.jobFraction(fontScale), DayColumns.MinJobWidth)
             val visitEnd = jobWidth + DayColumns.Gap
+            // The off stretches, behind everything: one node each for TalkBack ("Not tracking, 7:00 AM to 7:30 AM"), with the label if it fits.
+            val offLabel = stringResource(R.string.timeline_off_label)
+            offStretches.forEach { off ->
+                val description = stringResource(R.string.timeline_off_description, formats.time(off.stretch.start, zone), formats.time(off.stretch.end, zone))
+                val traversal = ordered.count { (if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start) < off.stretch.start } - 0.4f
+                Box(
+                    Modifier
+                        .offset(y = off.topDp.dp)
+                        .padding(start = timeColumn + DayCanvasDefaults.BlockInset)
+                        .fillMaxWidth()
+                        .height(off.heightDp.dp)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = description
+                            traversalIndex = traversal
+                        }
+                        .testTag("timeline_off_stretch"),
+                ) {
+                    if (offLabelFits(off, offLabelHeightDp, ordered)) {
+                        Text(
+                            text = offLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = TarryTheme.space.s, top = OffLabelInsetDp.dp),
+                        )
+                    }
+                }
+            }
             if (!stacked) {
             layout.hourMarks.forEachIndexed { i, mark ->
                 if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed
@@ -1084,3 +1137,18 @@ internal fun tripConnector(trip: PlacedTrip, blocks: List<PlacedBlock>): ClosedF
     val after = visits.filter { it.topDp >= centre }.minOfOrNull { it.topDp }
     return minOf(trip.topDp, before ?: trip.topDp)..maxOf(trip.topDp + trip.heightDp, after ?: (trip.topDp + trip.heightDp))
 }
+
+/** An [OffStretch] clamped to the canvas: where it sits (dp from the canvas top) and how tall it is. */
+internal data class PlacedOff(val stretch: OffStretch, val topDp: Float, val heightDp: Float)
+
+/**
+ * Whether the "Not tracking" label fits at the top of [off]: the stretch is tall enough for it, and no visit, gap or
+ * trip covers the label's rows (a gap wins over the stretch, so the label never sits on one).
+ */
+internal fun offLabelFits(off: PlacedOff, labelHeightDp: Float, placed: List<Placed>): Boolean {
+    val top = off.topDp + OffLabelInsetDp
+    val bottom = top + labelHeightDp
+    return off.heightDp >= labelHeightDp + 2 * OffLabelInsetDp && placed.none { it.topDp < bottom && it.topDp + it.heightDp > top }
+}
+
+private const val OffLabelInsetDp = 2f

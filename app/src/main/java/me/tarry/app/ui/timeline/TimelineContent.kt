@@ -226,6 +226,7 @@ fun TimelineContent(
                         layoutDay(
                             items, bounds, zone, if (isToday) now else -1L, fontScale,
                             extraInstants = trackingMarkers.flatMap { it.ruleTimes },
+                            firstStartMs = firstTrackingStart(trackingMarkers),
                             jobBlocks = jobBlocks, jobSuggestions = jobSuggestions,
                             zoom = zoomState.zoom,
                         )

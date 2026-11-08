@@ -125,4 +125,6 @@
     <string name="timeline_tracking_interrupted">Tracking interrupted %1$s</string>
     <string name="timeline_tracking_no_permission">Tracking stopped, no permission %1$s</string>
     <string name="timeline_tracking_restarted">Tracking stopped %1$s · started %2$s</string>
+    <string name="timeline_off_label">Not tracking</string>
+    <string name="timeline_off_description">Not tracking, %1$s to %2$s</string>
 </resources>

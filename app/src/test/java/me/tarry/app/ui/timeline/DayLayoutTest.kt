@@ -766,4 +766,27 @@ class DayLayoutTest {
         )
         assertThat(l.jobs.single().heightDp).isWithin(eps).of(28f)
     }
+
+    @Test
+    fun canvasStartsAtTheHourOfTheFirstTrackingStart_notAtAnEarlierOffMarker() {
+        val items = listOf(visit("v", at(9, 10), at(10, 0)))
+        val marks = listOf(at(0, 5), at(7, 30), at(10, 0))
+        val trimmed = layoutDay(items, bounds, zone, pastNow, 1f, extraInstants = marks, firstStartMs = at(7, 30))
+        assertThat(trimmed.canvasStart).isEqualTo(at(7))
+        // Without the rule (or without a start) the old behaviour holds.
+        assertThat(layoutDay(items, bounds, zone, pastNow, 1f, extraInstants = marks).canvasStart).isEqualTo(at(0))
+    }
+
+    @Test
+    fun anItemEarlierThanTheFirstStartKeepsTheCanvasReachingIt() {
+        val items = listOf(visit("early", at(5, 15), at(6, 0)), visit("v", at(9, 10), at(10, 0)))
+        val l = layoutDay(items, bounds, zone, pastNow, 1f, extraInstants = listOf(at(0, 5), at(7, 30)), firstStartMs = at(7, 30))
+        assertThat(l.canvasStart).isEqualTo(at(5))
+    }
+
+    @Test
+    fun anEmptyDayWhoseOnlyMarkersAreTrimmedFallsBackToTheDefaultWindow() {
+        val l = layoutDay(emptyList(), bounds, zone, pastNow, 1f, extraInstants = listOf(at(0, 5)), firstStartMs = at(7, 30))
+        assertThat(l.canvasStart).isEqualTo(at(7))
+    }
 }

@@ -127,3 +127,23 @@ fun markerLines(marker: TrackingMarker, words: MarkerWords, time: (Long) -> Stri
         else -> listOf(words.start, started.orEmpty())
     }
 }
+
+/** A stretch of the day when tracking was off, drawn as a faint hatch. Visual only: gaps (which are about missing data) are separate. */
+data class OffStretch(val start: Long, val end: Long)
+
+/**
+ * The stretches between a stop and the next start. A collapsed pair is its own short stretch. A stop never followed by a
+ * start runs to [now] on today (only past time is hatched), or to [dayEnd] on a past day. Stretches are not clamped
+ * to the canvas here.
+ */
+fun offStretches(markers: List<TrackingMarker>, dayEnd: Long, now: Long?): List<OffStretch> {
+    val sorted = markers.sortedBy { it.timeMs }
+    return sorted.mapIndexedNotNull { i, m ->
+        val stop = m.stoppedMs ?: return@mapIndexedNotNull null
+        val end = m.startedMs ?: sorted.getOrNull(i + 1)?.timeMs ?: minOf(now ?: dayEnd, dayEnd)
+        if (end > stop) OffStretch(stop, end) else null
+    }
+}
+
+/** The earliest time tracking started on the day (the first marker that carries a start), or null when no marker does. */
+fun firstTrackingStart(markers: List<TrackingMarker>): Long? = markers.filter { it.startedMs != null }.minOfOrNull { it.timeMs }
