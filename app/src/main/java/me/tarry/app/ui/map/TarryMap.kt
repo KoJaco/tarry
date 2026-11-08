@@ -62,6 +62,9 @@ internal val MapAttributionClearance = MinTouch
 private const val AttributionMaxFontScale = 1.3f
 
 /** Multiplier for the credit line's sp size so its rendered scale is the user's, capped at [AttributionMaxFontScale]. */
+/** The credit pill's fill: `paper` at 0.85 alpha, so `ink` text on it reads over any tile colour. */
+internal fun attributionBackdrop(colors: me.tarry.app.ui.theme.TarryColors): androidx.compose.ui.graphics.Color = colors.paper.copy(alpha = 0.85f)
+
 internal fun attributionFontFactor(fontScale: Float): Float = if (fontScale <= AttributionMaxFontScale) 1f else AttributionMaxFontScale / fontScale
 
 /** Token name to ARGB for [MapStyle.build]; the names match `docs/design/tokens.md` and the template placeholders. */
@@ -180,7 +183,7 @@ private fun TarryMapView(
 
 /** The compact credit line over the map; tapping it opens the credits with links (OSM attribution guidelines). */
 @Composable
-private fun MapAttribution(modifier: Modifier = Modifier) {
+internal fun MapAttribution(modifier: Modifier = Modifier) {
     var open by rememberSaveable { mutableStateOf(false) }
     val c = TarryTheme.colors
     val action = stringResource(R.string.map_attribution_action)
@@ -197,7 +200,7 @@ private fun MapAttribution(modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.labelSmall.let { it.copy(fontSize = it.fontSize * attributionFontFactor(LocalDensity.current.fontScale)) },
             color = c.ink,
             modifier = Modifier
-                .background(c.paper.copy(alpha = 0.85f), TarryTheme.shapes.pill)
+                .background(attributionBackdrop(c), TarryTheme.shapes.pill)
                 .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.xs),
         )
     }
