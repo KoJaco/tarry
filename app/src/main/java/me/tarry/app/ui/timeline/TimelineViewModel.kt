@@ -54,6 +54,7 @@ import me.tarry.core.data.repository.JobBlockRepository
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.PlaceRepository
 import me.tarry.core.data.repository.TimelineRepository
+import me.tarry.core.data.settings.SettingsRepository
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
@@ -187,6 +188,10 @@ class TimelineViewModel internal constructor(
     /** The wall clock, for "Add job" on today. */
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val blockConfig: JobBlockConfig = JobBlockConfig(),
+    /** The saved timeline zoom step in minutes (15, 10 or 5), live. */
+    zoomMinutes: Flow<Int> = flowOf(ZoomLevel.Q15.snapMinutes),
+    /** Saves the timeline zoom step in minutes. */
+    private val saveZoomMinutes: suspend (Int) -> Unit = {},
 ) : ViewModel() {
     @Inject
     constructor(
@@ -200,6 +205,7 @@ class TimelineViewModel internal constructor(
         tracking: TrackingRepository,
         jobBlocks: JobBlockRepository,
         declined: DeclinedSuggestionStore,
+        settings: SettingsRepository,
     ) :
         this(
             timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
@@ -216,6 +222,8 @@ class TimelineViewModel internal constructor(
             rememberDeclined = declined::decline,
             pruneDeclined = { declined.prune { id -> timeline.visit(id)?.deleted == false } },
             createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
+            zoomMinutes = settings.settings.map { it.timelineZoomMinutes },
+            saveZoomMinutes = settings::setTimelineZoomMinutes,
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -493,6 +501,16 @@ class TimelineViewModel internal constructor(
                 inFlight.remove(key)
             }
         }
+    }
+
+    /** The saved zoom level; null until the setting has loaded. An unknown stored value reads as 15 min. */
+    val zoomLevel: StateFlow<ZoomLevel?> = zoomMinutes
+        .map { ZoomLevel.fromMinutes(it) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Saves the settled zoom level (kept across days and restarts). */
+    fun setZoomLevel(level: ZoomLevel) {
+        viewModelScope.launch { saveZoomMinutes(level.snapMinutes) }
     }
 
     /** Decline on a suggested block: it is not suggested again (the pair is remembered across restarts). */

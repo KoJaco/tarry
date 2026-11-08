@@ -22,10 +22,14 @@ import java.util.Locale
 internal class TimeFormats(locale: Locale, val is24Hour: Boolean) {
     private val hourFormat = formatter(locale, if (is24Hour) "HH" else "ha")
     private val timeFormat = formatter(locale, if (is24Hour) "Hm" else "hm")
+    private val minuteFormat = DateTimeFormatter.ofPattern(":mm", locale)
 
     fun hour(epochMs: Long, zone: ZoneId): String = hourFormat.format(Instant.ofEpochMilli(epochMs).atZone(zone))
 
     fun time(epochMs: Long, zone: ZoneId): String = timeFormat.format(Instant.ofEpochMilli(epochMs).atZone(zone))
+
+    /** A minor mark's label: the minutes past the hour with a leading colon (":30"). */
+    fun minute(epochMs: Long, zone: ZoneId): String = minuteFormat.format(Instant.ofEpochMilli(epochMs).atZone(zone))
 
     private fun formatter(locale: Locale, skeleton: String): DateTimeFormatter =
         DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale)

@@ -282,7 +282,8 @@ class DayCanvasTest {
         assertThat(targets).isEmpty()
         composeRule.onNodeWithTag("timeline_row_b")
             .assert(SemanticsMatcher("selected") { it.config[SemanticsProperties.Selected] })
-        composeRule.onNodeWithTag("timeline_row_t").performClick()
+        // The selected visit's resize handle now sits centred on the visit card, over the middle of the trip row, so tap the trip's left end.
+        composeRule.onNodeWithTag("timeline_row_t").performTouchInput { click(Offset(8f, height / 2f)) }
         assertThat(targets).containsExactly(EditTarget.Trip("t"))
     }
 
@@ -302,6 +303,8 @@ class DayCanvasTest {
         composeRule.waitForIdle()
         val handle = composeRule.onNodeWithTag(handleTag(ResizeEdge.Start, "b"))
         handle.assertExists()
+        // 48 dp wide, so it covers no more of the trip row than the touch-target minimum needs.
+        assertThat(handle.getUnclippedBoundsInRoot().width.value).isWithin(0.5f).of(48f)
         // The b start handle sits inside the trip's 48 dp touch band; it is composed above the trip.
         val trip = composeRule.onNodeWithTag("timeline_row_t").fetchSemanticsNode().boundsInRoot
         val h = handle.fetchSemanticsNode().boundsInRoot

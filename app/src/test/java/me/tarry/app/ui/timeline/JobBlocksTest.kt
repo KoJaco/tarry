@@ -505,4 +505,31 @@ class JobBlocksTest {
     }
 
     // endregion
+
+    // region snap follows zoom
+
+    private val ten = JobBlockConfig(snapMinutes = 10)
+    private val five = JobBlockConfig(snapMinutes = 5)
+
+    @Test
+    fun dragCreateSnapsToTheZoomStep() {
+        assertThat(dragJobRange((9 * 60 + 6) * min, (10 * 60 + 38) * min, 0L, dayEnd, ten)).isEqualTo(range(9 * 60 + 10, 10 * 60 + 40))
+        assertThat(dragJobRange((9 * 60 + 6) * min, (10 * 60 + 38) * min, 0L, dayEnd, five)).isEqualTo(range(9 * 60 + 5, 10 * 60 + 40))
+    }
+
+    @Test
+    fun moveSnapsToTheZoomStep() {
+        assertThat(moveRange(60 * min, 150 * min, 22 * min, 0, 600 * min, ten)).isEqualTo(Span(80 * min, 170 * min))
+        assertThat(moveRange(60 * min, 150 * min, 22 * min, 0, 600 * min, five)).isEqualTo(Span(80 * min, 170 * min))
+        assertThat(moveRange(60 * min, 150 * min, 23 * min, 0, 600 * min, five)).isEqualTo(Span(85 * min, 175 * min))
+    }
+
+    @Test
+    fun resizeSnapsToTheZoomStepAndKeepsOneStepMinimum() {
+        assertThat(resizeRange(ResizeEdge.End, 60 * min, 120 * min, 142 * min, 0, 600 * min, ten)).isEqualTo(Span(60 * min, 140 * min))
+        assertThat(resizeRange(ResizeEdge.Start, 60 * min, 120 * min, 38 * min, 0, 600 * min, five)).isEqualTo(Span(40 * min, 120 * min))
+        assertThat(resizeRange(ResizeEdge.End, 60 * min, 120 * min, 10 * min, 0, 600 * min, five)).isEqualTo(Span(60 * min, 65 * min))
+    }
+
+    // endregion
 }

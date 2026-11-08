@@ -74,7 +74,8 @@ internal fun resizedEdge(
 }
 
 private val HandleTouchHeight = 48.dp
-private val HandleTouchWidth = 96.dp
+/** The 48 dp minimum and no wider: the handle is centred on the visit card, over the middle of an adjacent trip row. */
+private val HandleTouchWidth = 48.dp
 private val PillWidth = 40.dp
 private val PillHeight = 6.dp
 
@@ -91,6 +92,7 @@ internal fun ResizeHandle(
     edgeDp: Float,
     shiftDp: Float,
     start: Dp,
+    end: Dp,
     onDragStart: () -> Unit,
     onDragTo: (totalDp: Float) -> Unit,
     onDragEnd: () -> Unit,
@@ -104,7 +106,7 @@ internal fun ResizeHandle(
     Box(
         modifier = Modifier
             .offset(y = edgeDp.dp - HandleTouchHeight / 2)
-            .padding(start = start)
+            .padding(start = start, end = end)
             .fillMaxWidth()
             .height(HandleTouchHeight),
         contentAlignment = Alignment.Center,
@@ -143,11 +145,11 @@ internal fun ResizeHandle(
 
 /** The floating time label next to the dragged edge. */
 @Composable
-internal fun ResizeLabel(text: String, edgeDp: Float, start: Dp) {
+internal fun ResizeLabel(text: String, edgeDp: Float, start: Dp, end: Dp) {
     Box(
         modifier = Modifier
             .offset(y = edgeDp.dp - HandleTouchHeight / 2)
-            .padding(start = start, end = TarryTheme.space.s)
+            .padding(start = start, end = end + TarryTheme.space.s)
             .fillMaxWidth()
             .height(HandleTouchHeight),
         contentAlignment = Alignment.CenterEnd,

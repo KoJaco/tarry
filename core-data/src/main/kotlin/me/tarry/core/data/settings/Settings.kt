@@ -21,6 +21,8 @@ data class Settings(
     val stayGeofenceRadiusM: Int = DEFAULT_STAY_RADIUS_M,
     /** One of [ALLOWED_WINDOW_END_GRACE_MIN]. Longest the session may stay open past the schedule end; 0 = stop on time. */
     val windowEndGraceMaxMin: Int = DEFAULT_WINDOW_END_GRACE_MIN,
+    /** One of [ALLOWED_TIMELINE_ZOOM_MINUTES]: the timeline's tick and job-snap step in minutes (15, 10 or 5). */
+    val timelineZoomMinutes: Int = DEFAULT_TIMELINE_ZOOM_MINUTES,
     /** When the last user-initiated backup finished (UTC epoch ms); null if none yet. */
     val lastBackupMs: Long? = null,
 ) {
@@ -30,6 +32,7 @@ data class Settings(
         const val LAST_BACKUP_KEY = "last_backup_ms"
         const val DEFAULT_STAY_RADIUS_M = 100
         const val DEFAULT_WINDOW_END_GRACE_MIN = 60
+        const val DEFAULT_TIMELINE_ZOOM_MINUTES = 15
 
         /** 300 m was an option before dogfood 1; a stored 300 now reads as [MAX_STAY_RADIUS_M]. */
         const val LEGACY_STAY_RADIUS_M = 300
@@ -40,5 +43,6 @@ data class Settings(
         val ALLOWED_RETENTION_DAYS = setOf(30, 90, 365)
         val ALLOWED_STAY_RADII_M = setOf(50, 75, 100, 150, 200)
         val ALLOWED_WINDOW_END_GRACE_MIN = listOf(0, 15, 30, 60)
+        val ALLOWED_TIMELINE_ZOOM_MINUTES = setOf(15, 10, 5)
     }
 }
