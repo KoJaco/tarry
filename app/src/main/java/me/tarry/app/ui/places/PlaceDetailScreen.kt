@@ -226,4 +226,4 @@ private fun mergeBody(targetLabel: String, preview: MergePreview?): String {
 }
 
 /** Joins the parts of the subtitle: the line breaks after a dot, never before it and never inside a part's own count and noun. */
-internal const val PartSeparator = " · "
+internal val PartSeparator = Char(0x00A0) + "· "

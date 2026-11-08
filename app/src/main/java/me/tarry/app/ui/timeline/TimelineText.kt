@@ -175,8 +175,8 @@ internal fun GapCause.labelRes(): Int = when (this) {
     GapCause.LOCATION_OFF -> R.string.timeline_gap_location_off
 }
 
-private const val ZeroWidthSpace = "​"
-private const val NoBreakSpace = " "
+private val ZeroWidthSpace = Char(0x200B).toString()
+private val NoBreakSpace = Char(0x00A0).toString()
 
 /**
  * Helpers for a time range drawn on a block. Each time stays whole (plain spaces become non-breaking) and the only
