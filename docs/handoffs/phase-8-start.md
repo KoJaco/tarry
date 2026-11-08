@@ -53,7 +53,9 @@
   - coincident markers share one "6, 7" marker.
 - **Fixes:**
   - manual-visit save has an in-flight guard, and its error clears;
-  - **an edited time stays on the segment's own local date** (behaviour change: a visit can no longer be extended past midnight by editing);
+  - **an edited time stays on the segment's own local date**, except that a picked end at or before the start means the next day, and a picked start at or after the end means the previous day (`instantForEdge` in `DrawerTime.kt`; owner: "allow when it must"). Split still uses the plain same-day rule;
+  - from 1.5× font, tracking-marker labels sit on the free side of their tick, or over the blocks when both sides are taken;
+  - outside resize handles fall back to centred at the canvas edges, and text measurements are cached (`TextMetrics.kt`);
   - Summary range chips scroll into view, and the billed value has a "Billed" caption at 1×;
   - Place detail counts stay whole, and its hint only shows with a default job set;
   - the Permissions amber note only shows when the permission is missing;
