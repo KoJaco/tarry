@@ -42,6 +42,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -143,6 +144,11 @@ private object DayCanvasDefaults {
 
     /** Half-length of an hour tick, centred on the rail. */
     val HourTickHalf = 6.dp
+
+    /** The dotted line joining a trip to its visits: dot size, and the gap between dots as a multiple of it. */
+    val TripIconBackdrop = 2.dp
+    val ConnectorWidth = 1.5.dp
+    const val ConnectorGapFactor = 3f
 
     /** Alpha of a 15-minute tick relative to the hour rule (both `divider`). */
     const val QuarterTickAlpha = 0.6f
@@ -281,6 +287,10 @@ fun DayCanvas(
         )
     }
 
+    // Each trip is joined to its visits by a dotted line through the trip icon's centre, drawn under the blocks.
+    val connectorX = timeColumn + DayCanvasDefaults.BlockInset + TarryTheme.space.m + DayCanvasDefaults.TripIconBackdrop + DayCanvasDefaults.TripIconSize / 2
+    val connectors = remember(layout) { layout.trips.map { tripConnector(it, layout.blocks) } }
+
     TarryCard(modifier = modifier, contentPadding = PaddingValues(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.l)) {
         BoxWithConstraints(
             Modifier
@@ -306,6 +316,14 @@ fun DayCanvas(
                     layout.minorMarks.forEach { dp ->
                         val y = dp.dp.toPx()
                         drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
+                    }
+                    val dotted = DayCanvasDefaults.ConnectorWidth.toPx()
+                    connectors.forEach { range ->
+                        drawLine(
+                            hourRuleColor(c), Offset(connectorX.toPx(), range.start.dp.toPx()), Offset(connectorX.toPx(), range.endInclusive.dp.toPx()),
+                            strokeWidth = dotted, cap = StrokeCap.Round,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.01f, dotted * DayCanvasDefaults.ConnectorGapFactor)),
+                        )
                     }
                     // Collapsed time column (large fonts): a tick at each tracking marker, with its label just above it.
                     if (stacked) {
@@ -855,7 +873,8 @@ private fun TripRow(
             painter = painterResource(trip.mode.iconRes()),
             contentDescription = null,
             tint = c.muted,
-            modifier = Modifier.size(DayCanvasDefaults.TripIconSize),
+            // A card-coloured disc behind the glyph breaks the connector line, so the line never runs through the icon.
+            modifier = Modifier.background(TarryTheme.colors.card, CircleShape).padding(DayCanvasDefaults.TripIconBackdrop).size(DayCanvasDefaults.TripIconSize),
         )
         if (!iconOnly) {
             Text(
@@ -1052,4 +1071,16 @@ private fun StackedTimeLabel(text: String, style: TextStyle, topDp: Float, tag: 
                 testTag = tag
             },
     )
+}
+
+/**
+ * The span (dp from the canvas top) of a trip's dotted connector: from the bottom of the visit before it to the top of
+ * the visit after it, never shorter than the trip's own slot. Without a visit on a side, the slot's edge ends it.
+ */
+internal fun tripConnector(trip: PlacedTrip, blocks: List<PlacedBlock>): ClosedFloatingPointRange<Float> {
+    val centre = trip.topDp + trip.heightDp / 2
+    val visits = blocks.filter { it.item is TimelineItem.Visit }
+    val before = visits.filter { it.topDp + it.heightDp <= centre }.maxOfOrNull { it.topDp + it.heightDp }
+    val after = visits.filter { it.topDp >= centre }.minOfOrNull { it.topDp }
+    return minOf(trip.topDp, before ?: trip.topDp)..maxOf(trip.topDp + trip.heightDp, after ?: (trip.topDp + trip.heightDp))
 }
