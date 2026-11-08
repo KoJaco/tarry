@@ -206,9 +206,11 @@ class TimelineEditingUiTest {
 
     @Test
     fun shortCardGetsItsHandlesOutsideWithoutOverlap_tallCardKeepsThemOnTheEdges() {
+        // Mid-canvas: next to the canvas edge the handles fall back to the edges (see handlesOutside).
+        val early = TimelineItem.Visit("early", at(8), at(8, 40), "Shed")
         val short = TimelineItem.Visit("short", at(9), at(9, 20), "Yard")
         val tall = TimelineItem.Visit("tall", at(11), at(13), "Depot")
-        show(listOf(short, tall))
+        show(listOf(early, short, tall))
         select("short")
         val card = tag("timeline_row_short").fetchSemanticsNode().boundsInRoot
         val top = handle(ResizeEdge.Start, "short").fetchSemanticsNode().boundsInRoot

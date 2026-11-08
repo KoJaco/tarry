@@ -84,8 +84,18 @@ private val OutsideGap = 2.dp
 /**
  * True when a visit card is too short for two handles centred on its edges plus a line of its own text, so the handles
  * sit outside it: the top one above the card, the bottom one below. [minTextDp] is that one line (font-scaled by the caller).
+ * When either outside handle would leave the canvas (`0..canvasHeightDp`, the clipped card), both stay centred on the
+ * edges instead, where the touch target is partly clipped but the pill stays visible.
  */
-internal fun handlesOutside(cardHeightDp: Float, minTextDp: Float): Boolean = cardHeightDp < HandleTouchHeight.value + minTextDp
+internal fun handlesOutside(
+    cardHeightDp: Float,
+    minTextDp: Float,
+    cardTopDp: Float = HandleTouchHeight.value,
+    canvasHeightDp: Float = Float.POSITIVE_INFINITY,
+): Boolean =
+    cardHeightDp < HandleTouchHeight.value + minTextDp &&
+        cardTopDp >= HandleTouchHeight.value &&
+        cardTopDp + cardHeightDp + HandleTouchHeight.value <= canvasHeightDp
 
 /**
  * A drag handle on a selected visit's edge: a visible pill with a 48 dp touch target centred on [edgeDp] (the canvas

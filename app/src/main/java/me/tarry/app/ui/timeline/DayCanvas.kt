@@ -541,7 +541,7 @@ fun DayCanvas(
                         visitId = selectedVisit.id,
                         edgeDp = edgeDp,
                         shiftDp = if (live != null) (live.edgeMs - live.originMs) * dpPerMs else 0f,
-                        outside = handlesOutside(selectedBlock.heightDp, DayCanvasDefaults.HandleCardTextDp * fontScale),
+                        outside = handlesOutside(selectedBlock.heightDp, DayCanvasDefaults.HandleCardTextDp * fontScale, selectedBlock.topDp, layout.heightDp),
                         start = handleStart,
                         end = visitEnd,
                         onDragStart = { drag = ResizeDrag(selectedVisit.id, edge, originMs, originMs) },

@@ -62,4 +62,14 @@ class VisitResizeTest {
         assertThat(handlesOutside(76f, 28f)).isFalse()
         assertThat(handlesOutside(76f, 56f)).isTrue()
     }
+
+    @Test
+    fun handlesStayCentredWhenAnOutsideHandleWouldLeaveTheCanvas() {
+        // A 40 dp card on a 300 dp canvas: fine in the middle, not within 48 dp of the top or the bottom.
+        assertThat(handlesOutside(40f, 28f, cardTopDp = 100f, canvasHeightDp = 300f)).isTrue()
+        assertThat(handlesOutside(40f, 28f, cardTopDp = 48f, canvasHeightDp = 300f)).isTrue()
+        assertThat(handlesOutside(40f, 28f, cardTopDp = 10f, canvasHeightDp = 300f)).isFalse()
+        assertThat(handlesOutside(40f, 28f, cardTopDp = 212f, canvasHeightDp = 300f)).isTrue()
+        assertThat(handlesOutside(40f, 28f, cardTopDp = 230f, canvasHeightDp = 300f)).isFalse()
+    }
 }
