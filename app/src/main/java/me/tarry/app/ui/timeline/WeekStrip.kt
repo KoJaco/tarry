@@ -45,7 +45,7 @@ import java.util.Locale
 private val CellMinHeight = 56.dp
 
 /** From this font scale the weekday label is the two-letter form. */
-private const val NarrowFontScale = 1.5f
+internal const val NarrowFontScale = 1.5f
 
 /**
  * "Mon" style label (trailing "." stripped; short form if the standalone one is a number), or with [narrow] its first two
