@@ -99,6 +99,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setRoundDailyTotalPerJob(enabled) }
     }
 
+    /** Null keeps raw locations forever. Pruning itself runs daily (RetentionWorker). */
+    fun setRawPingRetentionDays(days: Int?) {
+        viewModelScope.launch { repository.setRawPingRetentionDays(days) }
+    }
+
     /** The zone dates are shown in (the capture clock's), not a second opinion from the system default. */
     val zone: java.time.ZoneId get() = clock.zone()
 

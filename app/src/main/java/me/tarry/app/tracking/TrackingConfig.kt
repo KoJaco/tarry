@@ -76,6 +76,8 @@ data class TrackingConfig(
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,
+    /** How often old raw pings are pruned (RetentionWorker). */
+    val retentionWorkerPeriodHours: Long = 24L,
     /** How long a due session may take to appear before "service not running" is reported. */
     val serviceStartGraceMs: Long = 2 * 60_000L,
     /** Health Gaps of the same cause closer together than this are merged into one. */

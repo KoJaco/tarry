@@ -6,6 +6,7 @@ import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import me.tarry.app.segmentation.RetentionWorker
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.segmentation.SegmentationUpgrade
 import me.tarry.app.tracking.CaptureScope
@@ -36,6 +37,7 @@ class TarryApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         HealthCheckWorker.enqueue(this, trackingConfig)
+        RetentionWorker.enqueue(this, trackingConfig)
         segmentationScheduler.ensureDaily()
         // After an upgrade that changed segmentation, re-run over the retention window (frozen rows stay untouched).
         // A failure leaves the version unrecorded, so the next start tries again.

@@ -205,6 +205,8 @@
     <string name="settings_round_daily_total">Round per day, per job</string>
     <string name="settings_round_daily_total_subtitle">Add up each job\'s blocks for the day before dropping seconds, rounding and the minimum.</string>
     <string name="settings_ping_retention">Raw location retention</string>
+    <string name="settings_ping_retention_explanation">Older days keep their visits and trips. Their route lines on the map are removed.</string>
+    <string name="settings_one_year">1 year</string>
     <string name="settings_review_reminder">Review reminder</string>
     <string name="settings_review_reminder_time">Review reminder time</string>
     <string name="settings_theme">Theme</string>

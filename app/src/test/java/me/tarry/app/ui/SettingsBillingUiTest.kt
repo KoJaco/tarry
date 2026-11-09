@@ -178,12 +178,11 @@ class SettingsBillingUiTest {
     }
 
     @Test
-    fun movedRowsStayDisplayOnly() {
+    fun movedRowsShowTheirValues() {
         show(Settings(reviewReminderEnabled = true, reviewReminderMinuteOfDay = 20 * 60 + 5, rawPingRetentionDays = null))
         composeRule.onNode(hasText("Review reminder") and hasText("On")).assertExists()
         composeRule.onNode(hasText("Review reminder time") and hasText("20:05")).assertExists()
         composeRule.onNode(hasText("Raw location retention") and hasText("Forever")).assertExists()
         composeRule.onNode(hasText("Review reminder time")).assertHasNoClickAction()
-        composeRule.onNode(hasText("Raw location retention")).assertHasNoClickAction()
     }
 }

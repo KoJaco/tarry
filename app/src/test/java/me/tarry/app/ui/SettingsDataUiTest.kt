@@ -146,5 +146,20 @@ class SettingsDataUiTest {
 
         composeRule.onNodeWithText("This replaces everything on this phone.").assertIsDisplayed()
     }
-}
 
+    @Test
+    fun retentionRowOpensThePickerAndSelectingCallsTheSetter() {
+        val chosen = mutableListOf<Int?>()
+        composeRule.setContent {
+            SettingsContent(Settings(rawPingRetentionDays = 90), onRetentionSelected = { chosen += it })
+        }
+
+        composeRule.onNodeWithText("Raw location retention").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+
+        composeRule.onNodeWithText("Older days keep their visits and trips. Their route lines on the map are removed.").assertIsDisplayed()
+        composeRule.onNodeWithText("30 days").assertIsDisplayed()
+        composeRule.onNodeWithText("1 year").assertIsDisplayed()
+        composeRule.onNodeWithText("Forever").performClick()
+        assertThat(chosen).containsExactly(null)
+    }
+}

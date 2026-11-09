@@ -117,11 +117,12 @@ fun SettingsScreen(
         onRoundingModeSelected = viewModel::setRoundingMode,
         onMinBillableSelected = viewModel::setMinBillableMinutes,
         onRoundDailyTotalChange = viewModel::setRoundDailyTotalPerJob,
+        onRetentionSelected = viewModel::setRawPingRetentionDays,
         modifier = modifier,
     )
 }
 
-private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE }
+private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE, RETENTION }
 
 /** Stateless sectioned settings; the stop radius, theme and the billing rounding rows are the editable ones. */
 @Composable
@@ -140,6 +141,7 @@ fun SettingsContent(
     onRoundingModeSelected: (RoundingMode) -> Unit = {},
     onMinBillableSelected: (Int) -> Unit = {},
     onRoundDailyTotalChange: (Boolean) -> Unit = {},
+    onRetentionSelected: (Int?) -> Unit = {},
     data: DataUiState = DataUiState(),
     zone: ZoneId = ZoneId.systemDefault(),
     onBackUp: () -> Unit = {},
@@ -152,10 +154,7 @@ fun SettingsContent(
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
-    val retentionValue = settings?.let { s ->
-        s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
-            ?: stringResource(R.string.settings_forever)
-    }
+    val retentionValue = settings?.let { retentionLabel(it.rawPingRetentionDays) }
 
     if (settings != null) {
         when (picker) {
@@ -228,6 +227,17 @@ fun SettingsContent(
                 current = settings.minBillableMinutes,
                 onSelect = {
                     onMinBillableSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.RETENTION -> PickerSheet(
+                title = stringResource(R.string.settings_ping_retention),
+                explanation = stringResource(R.string.settings_ping_retention_explanation),
+                options = RETENTION_OPTIONS.map { it to retentionLabel(it) },
+                current = settings.rawPingRetentionDays,
+                onSelect = {
+                    onRetentionSelected(it)
                     picker = null
                 },
                 onDismiss = { picker = null },
@@ -312,7 +322,7 @@ fun SettingsContent(
                 row(reminderTimeTitle, icon = R.drawable.ic_schedule, value = reminderTimeValue)
             }
         }
-        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore)
+        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore, onRetention = { picker = Picker.RETENTION })
     }
     // Hidden (not dropped) while "Back up current data first" runs, so it comes back when that finishes.
     if (data.prompt != null && data.busy == null) {
@@ -322,7 +332,7 @@ fun SettingsContent(
 
 /** Settings → Data: back up, restore, and a progress row while either runs. */
 @Composable
-private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit) {
+private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit, onRetention: () -> Unit) {
     val space = TarryTheme.space
     val busy = data.busy != null
     SectionHeader(stringResource(R.string.settings_section_data), Modifier.padding(top = space.m))
@@ -334,7 +344,7 @@ private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?
     SettingsGroup {
         row(backUpTitle, onClick = onBackUp, icon = R.drawable.ic_backup, subtitle = lastBackup, enabled = !busy)
         row(restoreTitle, onClick = onRestore, icon = R.drawable.ic_settings_backup_restore, enabled = !busy)
-        if (retentionValue != null) row(retentionTitle, icon = R.drawable.ic_history, value = retentionValue)
+        if (retentionValue != null) row(retentionTitle, onClick = onRetention, icon = R.drawable.ic_history, subtitle = retentionValue, enabled = !busy)
         if (working != null) item { WorkingRow(working) }
     }
     Text(
@@ -434,6 +444,16 @@ internal fun dataEventMessage(resources: Resources, event: DataEvent): String = 
             BackupError.RESTORE_FAILED -> R.string.data_error_restore
         },
     )
+}
+
+private val RETENTION_OPTIONS: List<Int?> = Settings.ALLOWED_RETENTION_DAYS.sorted() + listOf(null)
+
+/** "30 days", "90 days", "1 year", "Forever". */
+@Composable
+private fun retentionLabel(days: Int?): String = when (days) {
+    null -> stringResource(R.string.settings_forever)
+    365 -> stringResource(R.string.settings_one_year)
+    else -> pluralStringResource(R.plurals.settings_days_value, days, days)
 }
 
 @Composable
