@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import me.tarry.app.tracking.TrackingConfig
 import java.util.concurrent.TimeUnit
 
@@ -22,7 +23,7 @@ class RetentionWorker @AssistedInject constructor(
     override suspend fun doWork(): Result = try {
         retention.prune()
         Result.success()
-    } catch (e: kotlinx.coroutines.CancellationException) {
+    } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
         Result.retry()
