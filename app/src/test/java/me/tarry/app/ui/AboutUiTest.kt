@@ -7,6 +7,9 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
@@ -112,6 +115,20 @@ class AboutUiTest {
         composeRule.onNodeWithText("MapLibre Native").performClick()
 
         composeRule.onNodeWithText("TEXT OF BSD-2-MapLibre.txt").assertIsDisplayed()
+    }
+
+    @Test
+    fun licenceTextIsLoadedOffTheCompositionThreadAndTheListNamesOkHttp() {
+        composeRule.setContent {
+            LicencesContent(OssNotices, textFor = { withContext(Dispatchers.Default) { "LOADED ${it.assetFile}" } })
+        }
+
+        composeRule.onNodeWithText("Apache-2.0", substring = true).performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("OkHttp (Square)", substring = true).assertExists()
+        composeRule.onNodeWithText("Nunito Sans").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) {
+            composeRule.onAllNodesWithText("LOADED OFL-NunitoSans.txt").fetchSemanticsNodes().isNotEmpty()
+        }
     }
 
     @Test

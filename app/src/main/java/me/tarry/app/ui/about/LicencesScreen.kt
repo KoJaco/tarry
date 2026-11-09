@@ -16,6 +16,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -24,28 +25,39 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import me.tarry.app.R
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.TarrySheet
 import me.tarry.app.ui.theme.TarryTheme
+import java.io.IOException
 
 /** Wired entry point: reads each notice from `assets/licenses/` when its row is opened. */
 @Composable
 fun LicencesScreen(modifier: Modifier = Modifier) {
-    val assets = LocalContext.current.assets
+    val context = LocalContext.current
     LicencesContent(
         notices = OssNotices,
-        textFor = { notice -> assets.open("licenses/${notice.assetFile}").bufferedReader().use { it.readText() } },
+        textFor = { notice ->
+            withContext(Dispatchers.IO) {
+                try {
+                    context.assets.open("licenses/${notice.assetFile}").bufferedReader().use { it.readText() }
+                } catch (e: IOException) {
+                    context.getString(R.string.licences_open_failed)
+                }
+            }
+        },
         modifier = modifier,
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 /** Stateless licences list. A row opens the full notice in a scrollable sheet. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LicencesContent(
     notices: List<OssNotice>,
-    textFor: (OssNotice) -> String,
+    textFor: suspend (OssNotice) -> String,
     modifier: Modifier = Modifier,
 ) {
     val space = TarryTheme.space
@@ -93,7 +105,8 @@ fun LicencesContent(
                 verticalArrangement = Arrangement.spacedBy(space.s),
             ) {
                 Text(stringResource(notice.nameRes), style = MaterialTheme.typography.titleLarge, color = colors.ink)
-                Text(textFor(notice), style = MaterialTheme.typography.bodyMedium, color = colors.ink)
+                val text by produceState<String?>(null, notice) { value = textFor(notice) }
+                Text(text.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = colors.ink)
             }
         }
     }

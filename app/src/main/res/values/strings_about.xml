@@ -29,8 +29,9 @@
     <string name="licences_maplibre">MapLibre Native</string>
     <string name="licences_osm">OpenStreetMap data</string>
     <string name="licences_android_libs">Android and Google libraries</string>
+    <string name="licences_open_failed">Couldn\'t open this licence.</string>
     <string name="licences_ofl">OFL-1.1</string>
     <string name="licences_bsd2">BSD-2-Clause</string>
     <string name="licences_odbl">ODbL-1.0</string>
-    <string name="licences_apache_libs">Apache-2.0 · Material Symbols, AndroidX, Kotlin, Hilt and Dagger, Google Play services, kotlinx</string>
+    <string name="licences_apache_libs">Apache-2.0 · Material Symbols, AndroidX, Kotlin, Hilt and Dagger, Google Play services, kotlinx, OkHttp (Square)</string>
 </resources>
