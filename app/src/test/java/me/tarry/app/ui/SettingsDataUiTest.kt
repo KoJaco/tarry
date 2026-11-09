@@ -4,6 +4,13 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.remember
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -161,5 +168,70 @@ class SettingsDataUiTest {
         composeRule.onNodeWithText("1 year").assertIsDisplayed()
         composeRule.onNodeWithText("Forever").performClick()
         assertThat(chosen).containsExactly(null)
+    }
+
+    private fun deleteDialogButtonMatcher() = hasText("Delete all data") and hasClickAction()
+
+    @Test
+    fun deleteAllNeedsTheWordTypedBeforeTheConfirmButtonWorks() {
+        val calls = mutableListOf<String>()
+        composeRule.setContent { SettingsContent(Settings(), onDeleteAll = { calls += "delete" }) }
+
+        composeRule.onNodeWithText("Delete all data").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithText("Type delete to confirm").assertIsDisplayed()
+        composeRule.onNodeWithText(
+            "This removes every visit, trip, place, job and location point from this phone. Settings and your schedule stay. " +
+                "Back up first if you might want them. This can't be undone.",
+        ).assertIsDisplayed()
+        // The dialog's confirm button is the second "Delete all data" (the first is the Settings row behind it).
+        val confirm = composeRule.onAllNodes(deleteDialogButtonMatcher())[1]
+        confirm.assertIsNotEnabled().performClick()
+        assertThat(calls).isEmpty()
+
+        composeRule.onNode(hasSetTextAction()).performTextInput("dele")
+        composeRule.onAllNodes(deleteDialogButtonMatcher())[1].assertIsNotEnabled()
+        composeRule.onNode(hasSetTextAction()).performTextInput("te ")
+        composeRule.onAllNodes(deleteDialogButtonMatcher())[1].assertIsEnabled().performClick()
+
+        assertThat(calls).containsExactly("delete")
+        composeRule.onNodeWithText("Type delete to confirm").assertDoesNotExist()
+    }
+
+    @Test
+    fun deleteAllIsCaseInsensitiveAndCancelChangesNothing() {
+        val calls = mutableListOf<String>()
+        composeRule.setContent { SettingsContent(Settings(), onDeleteAll = { calls += "delete" }) }
+
+        composeRule.onNodeWithText("Delete all data").performScrollTo().performClick()
+        composeRule.onNode(hasSetTextAction()).performTextInput("DELETE")
+        composeRule.onAllNodes(deleteDialogButtonMatcher())[1].assertIsEnabled()
+        composeRule.onNodeWithText("Cancel").assertHeightIsAtLeast(48.dp).performClick()
+
+        assertThat(calls).isEmpty()
+        composeRule.onNodeWithText("Type delete to confirm").assertDoesNotExist()
+    }
+
+    @Test
+    fun deleteAllRowIsOffWhileAnOperationRuns() {
+        composeRule.setContent { SettingsContent(Settings(), data = DataUiState(busy = DataBusy.DELETING)) }
+
+        composeRule.onNodeWithText("Deleting…").performScrollTo().assertIsDisplayed()
+        composeRule.onNode(deleteDialogButtonMatcher()).performScrollTo().assertIsNotEnabled()
+    }
+
+    @Test
+    fun theDeleteDialogFitsAtTwiceTheFontSize() {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                SettingsContent(Settings())
+            }
+        }
+
+        composeRule.onNodeWithText("Delete all data").performScrollTo().performClick()
+
+        composeRule.onNodeWithText("Type delete to confirm").assertIsDisplayed()
+        composeRule.onAllNodes(deleteDialogButtonMatcher())[1].performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("Cancel").performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
     }
 }

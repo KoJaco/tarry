@@ -172,6 +172,24 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** "Delete all data", after the typed confirmation. Ignored while another operation runs. */
+    fun deleteAll() {
+        if (_data.value.busy != null) return
+        viewModelScope.launch {
+            _data.update { it.copy(busy = DataBusy.DELETING) }
+            try {
+                backup.deleteAll()
+                _events.send(DataEvent.Deleted)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _events.send(DataEvent.Failed((e as? BackupException)?.error ?: BackupError.DELETE_FAILED))
+            } finally {
+                _data.update { it.copy(busy = null) }
+            }
+        }
+    }
+
     /** "Cancel": forgets the pending backup. */
     fun cancelRestore() {
         pending = null

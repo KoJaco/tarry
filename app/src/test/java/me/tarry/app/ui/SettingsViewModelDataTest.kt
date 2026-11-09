@@ -73,6 +73,13 @@ private class FakeBackup : DataBackup {
         maybeFail()
         return counts
     }
+
+    var deletes = 0
+
+    override suspend fun deleteAll() {
+        deletes++
+        maybeFail()
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -256,5 +263,31 @@ class SettingsViewModelDataTest {
         vm.setRoundDailyTotalPerJob(false)
         val off = withTimeout(5_000) { vm.settings.first { it != null && it.roundingIncrementMin == 0 && it.minBillableMinutes == 0 && !it.roundDailyTotalPerJob } }!!
         assertThat(off.roundingMode).isEqualTo(RoundingMode.UP)
+    }
+
+    @Test
+    fun deletingAllDataIsBusyThenReportsDeletedAndIgnoresASecondRequest() = runBlocking<Unit> {
+        backup.gate = CompletableDeferred()
+
+        vm.deleteAll()
+        assertThat(vm.data.value.busy).isEqualTo(DataBusy.DELETING)
+        vm.deleteAll()
+        vm.backUp(uri)
+        assertThat(backup.deletes).isEqualTo(1)
+        assertThat(backup.backUps).isEqualTo(0)
+
+        backup.gate!!.complete(Unit)
+        assertThat(vm.events.first()).isEqualTo(DataEvent.Deleted)
+        assertThat(vm.data.value.busy).isNull()
+    }
+
+    @Test
+    fun aFailedDeleteReportsItAndClearsTheBusyState() = runBlocking<Unit> {
+        backup.failure = BackupException(BackupError.DELETE_FAILED)
+
+        vm.deleteAll()
+
+        assertThat(vm.events.first()).isEqualTo(DataEvent.Failed(BackupError.DELETE_FAILED))
+        assertThat(vm.data.value.busy).isNull()
     }
 }

@@ -38,6 +38,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
@@ -118,6 +120,7 @@ fun SettingsScreen(
         onMinBillableSelected = viewModel::setMinBillableMinutes,
         onRoundDailyTotalChange = viewModel::setRoundDailyTotalPerJob,
         onRetentionSelected = viewModel::setRawPingRetentionDays,
+        onDeleteAll = viewModel::deleteAll,
         modifier = modifier,
     )
 }
@@ -142,6 +145,7 @@ fun SettingsContent(
     onMinBillableSelected: (Int) -> Unit = {},
     onRoundDailyTotalChange: (Boolean) -> Unit = {},
     onRetentionSelected: (Int?) -> Unit = {},
+    onDeleteAll: () -> Unit = {},
     data: DataUiState = DataUiState(),
     zone: ZoneId = ZoneId.systemDefault(),
     onBackUp: () -> Unit = {},
@@ -152,6 +156,7 @@ fun SettingsContent(
     modifier: Modifier = Modifier,
 ) {
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
+    var confirmDeleteAll by rememberSaveable { mutableStateOf(false) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
     val retentionValue = settings?.let { retentionLabel(it.rawPingRetentionDays) }
@@ -322,7 +327,16 @@ fun SettingsContent(
                 row(reminderTimeTitle, icon = R.drawable.ic_schedule, value = reminderTimeValue)
             }
         }
-        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore, onRetention = { picker = Picker.RETENTION })
+        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore, onRetention = { picker = Picker.RETENTION }, onDeleteAll = { confirmDeleteAll = true })
+    }
+    if (confirmDeleteAll) {
+        DeleteAllDialog(
+            onDelete = {
+                confirmDeleteAll = false
+                onDeleteAll()
+            },
+            onCancel = { confirmDeleteAll = false },
+        )
     }
     // Hidden (not dropped) while "Back up current data first" runs, so it comes back when that finishes.
     if (data.prompt != null && data.busy == null) {
@@ -332,7 +346,7 @@ fun SettingsContent(
 
 /** Settings → Data: back up, restore, and a progress row while either runs. */
 @Composable
-private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit, onRetention: () -> Unit) {
+private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit, onRetention: () -> Unit, onDeleteAll: () -> Unit) {
     val space = TarryTheme.space
     val busy = data.busy != null
     SectionHeader(stringResource(R.string.settings_section_data), Modifier.padding(top = space.m))
@@ -351,6 +365,12 @@ private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?
         text = stringResource(R.string.settings_data_privacy),
         style = MaterialTheme.typography.bodyMedium,
         color = TarryTheme.colors.muted,
+    )
+    DestructiveButton(
+        stringResource(R.string.delete_all_title),
+        onClick = onDeleteAll,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !busy,
     )
 }
 
@@ -409,12 +429,64 @@ private fun RestoreDialog(prompt: RestorePrompt, zone: ZoneId, onReplace: () -> 
     )
 }
 
+/** Type-to-confirm before everything recorded is removed. The confirm button stays off until the word matches. */
+@Composable
+private fun DeleteAllDialog(onDelete: () -> Unit, onCancel: () -> Unit) {
+    val colors = TarryTheme.colors
+    val space = TarryTheme.space
+    val word = stringResource(R.string.delete_all_word)
+    var typed by rememberSaveable { mutableStateOf("") }
+    AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
+        onDismissRequest = onCancel,
+        shape = TarryTheme.shapes.container,
+        containerColor = colors.card,
+        title = { Text(stringResource(R.string.delete_all_title), style = MaterialTheme.typography.titleLarge, color = colors.ink) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(space.s),
+            ) {
+                Text(stringResource(R.string.delete_all_body), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                OutlinedTextField(
+                    value = typed,
+                    onValueChange = { typed = it },
+                    label = { Text(stringResource(R.string.delete_all_field_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = TarryTheme.shapes.container,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = colors.ink,
+                        unfocusedTextColor = colors.ink,
+                        focusedBorderColor = colors.ink,
+                        unfocusedBorderColor = colors.outline,
+                        focusedLabelColor = colors.muted,
+                        unfocusedLabelColor = colors.muted,
+                        cursorColor = colors.ink,
+                    ),
+                )
+                Column(Modifier.padding(top = space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
+                    DestructiveButton(
+                        stringResource(R.string.delete_all_title),
+                        onClick = onDelete,
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = typed.trim().equals(word, ignoreCase = true),
+                    )
+                    TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {},
+    )
+}
+
 private const val BACKUP_MIME_TYPE = "application/gzip"
 
 private fun DataBusy.labelRes(): Int = when (this) {
     DataBusy.BACKING_UP -> R.string.data_working_backup
     DataBusy.READING -> R.string.data_working_read
     DataBusy.RESTORING -> R.string.data_working_restore
+    DataBusy.DELETING -> R.string.data_working_delete
 }
 
 /** "2 Nov 2026" in the phone's language and the capture clock's zone. */
@@ -434,6 +506,7 @@ internal fun formatCounts(resources: Resources, counts: BackupCounts): String {
 internal fun dataEventMessage(resources: Resources, event: DataEvent): String = when (event) {
     is DataEvent.BackedUp -> resources.getString(R.string.data_backed_up, formatCounts(resources, event.counts))
     is DataEvent.Restored -> resources.getString(R.string.data_restored, formatCounts(resources, event.counts))
+    DataEvent.Deleted -> resources.getString(R.string.data_deleted)
     is DataEvent.Failed -> resources.getString(
         when (event.error) {
             BackupError.CANNOT_OPEN -> R.string.data_error_cannot_open
@@ -442,6 +515,7 @@ internal fun dataEventMessage(resources: Resources, event: DataEvent): String = 
             BackupError.DAMAGED -> R.string.data_error_damaged
             BackupError.WRITE_FAILED -> R.string.data_error_write
             BackupError.RESTORE_FAILED -> R.string.data_error_restore
+            BackupError.DELETE_FAILED -> R.string.data_error_delete
         },
     )
 }

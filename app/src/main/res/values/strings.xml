@@ -255,6 +255,13 @@
     <string name="data_error_damaged">That backup is damaged. Nothing was changed.</string>
     <string name="data_error_write">Couldn\'t save the backup.</string>
     <string name="data_error_restore">Restore failed. Your data is unchanged.</string>
+    <string name="data_error_delete">Couldn\'t delete your data. Nothing was removed.</string>
+    <string name="data_deleted">All data deleted</string>
+    <string name="data_working_delete">Deleting…</string>
+    <string name="delete_all_title">Delete all data</string>
+    <string name="delete_all_body">This removes every visit, trip, place, job and location point from this phone. Settings and your schedule stay. Back up first if you might want them. This can\'t be undone.</string>
+    <string name="delete_all_field_label">Type delete to confirm</string>
+    <string name="delete_all_word">delete</string>
     <string name="restore_dialog_title">Restore this backup?</string>
     <string name="restore_dialog_body">This replaces everything on this phone.</string>
     <string name="restore_dialog_backup_counts">Backup from %1$s: %2$s</string>

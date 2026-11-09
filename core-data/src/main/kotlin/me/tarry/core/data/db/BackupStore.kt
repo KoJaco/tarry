@@ -116,20 +116,9 @@ class BackupStore(private val db: TarryDatabase) {
         backupCreatedAt: Long? = null,
         pings: suspend (insert: suspend (List<LocationPing>) -> Unit) -> Unit,
     ) = db.withTransaction {
-        // Children first, so no cascade or FK check fires on the way out.
-        dao.deletePings()
-        dao.deleteJobBlocks()
-        dao.deleteSessions()
-        dao.deleteJobs()
-        dao.deletePlaces()
-        dao.deleteVisits()
-        dao.deleteTrips()
-        dao.deleteExcludedRanges()
-        dao.deleteGaps()
+        deleteRecorded()
         dao.deleteScheduleTemplates()
         dao.deleteScheduleOverrides()
-        dao.deleteManualOverrides()
-        dao.deleteCheckpoints()
 
         // Manual overrides still active when the backup was made end then: the restored phone follows only the schedule
         // until the user acts. Ones that had already ended are untouched.
@@ -154,6 +143,28 @@ class BackupStore(private val db: TarryDatabase) {
         snapshot.scheduleOverrides.chunked(CHUNK).forEach { dao.insertScheduleOverrides(it) }
         overrides.chunked(CHUNK).forEach { dao.insertManualOverrides(it) }
         snapshot.checkpoints.chunked(CHUNK).forEach { dao.insertCheckpoints(it) }
+    }
+
+    /**
+     * Removes everything the user recorded or labelled, in one transaction: pings, sessions, visits, trips, places,
+     * jobs, job blocks, excluded ranges, gaps, manual overrides and the segmentation checkpoint. The schedule
+     * (templates and overrides) stays, like the settings; so does the schema.
+     */
+    suspend fun deleteAll() = db.withTransaction { deleteRecorded() }
+
+    /** Children first, so no cascade or FK check fires on the way out. Call inside a transaction. */
+    private suspend fun deleteRecorded() {
+        dao.deletePings()
+        dao.deleteJobBlocks()
+        dao.deleteSessions()
+        dao.deleteJobs()
+        dao.deletePlaces()
+        dao.deleteVisits()
+        dao.deleteTrips()
+        dao.deleteExcludedRanges()
+        dao.deleteGaps()
+        dao.deleteManualOverrides()
+        dao.deleteCheckpoints()
     }
 
     private companion object {

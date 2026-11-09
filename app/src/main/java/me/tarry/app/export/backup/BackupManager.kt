@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import dagger.Binds
 import dagger.Module
@@ -63,6 +64,9 @@ interface DataBackup {
     suspend fun backUp(uri: Uri): BackupCounts
     suspend fun preview(uri: Uri): RestorePreview
     suspend fun restore(preview: RestorePreview): BackupCounts
+
+    /** Removes every visit, trip, place, job and location from this phone. Settings and the schedule stay. */
+    suspend fun deleteAll()
 }
 
 @Module
@@ -263,6 +267,30 @@ class BackupManager @Inject constructor(
             // The data is restored. The segmentation upgrade check runs again at the next app start.
         }
         preview.counts
+    }
+
+    /**
+     * Deletes all recorded data ([BackupStore.deleteAll]) with tracking suspended, as a restore does: capture stops
+     * (closing any open session), Room is cleared in one transaction, then tracking reconciles and resumes per the
+     * schedule. Settings, the schedule and the `last_backup_ms` stamp are kept; the declined suggestions (they name
+     * deleted visits and places) are cleared with the data. Cannot be cancelled half way. Throws
+     * [BackupError.DELETE_FAILED] if the delete fails; Room has then rolled back and nothing was removed.
+     */
+    override suspend fun deleteAll() = withContext(Dispatchers.IO + NonCancellable) {
+        try {
+            hooks.captureSuspended {
+                store.deleteAll()
+                // Only a hint list: a failure here must not report the delete as failed.
+                runCatching { declinedStore.updateData { _ -> emptyPreferences() } }
+            }
+        } catch (e: Exception) {
+            throw BackupException(BackupError.DELETE_FAILED, e)
+        }
+        try {
+            hooks.afterRestore()
+        } catch (e: Exception) {
+            // The data is deleted. The segmentation upgrade check runs again at the next app start.
+        }
     }
 
     private companion object {

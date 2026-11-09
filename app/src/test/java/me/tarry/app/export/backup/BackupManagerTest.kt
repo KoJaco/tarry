@@ -330,4 +330,57 @@ class BackupManagerTest {
         assertThat(discarded).isTrue()
         assertThat(settingsRepo.settings.first().lastBackupMs).isNull()
     }
+
+    @Test
+    fun deleteAllStopsTrackingThenDeletesThenResumesAndKeepsTheSettings() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("a"))
+        settingsRepo.setTheme(ThemeMode.DARK)
+        settingsRepo.setRoundingMode(RoundingMode.UP)
+        settingsRepo.setLastBackupMs(5L)
+        declinedStore.edit { it[declinedKey] = "v1|j1" }
+        val events = mutableListOf<String>()
+        val ordered = object : RestoreHooks {
+            override suspend fun <T> captureSuspended(block: suspend () -> T): T {
+                events += "stop (rows: ${store.counts().locations})"
+                return block().also { events += "resume (rows: ${store.counts().locations})" }
+            }
+
+            override suspend fun afterRestore() {
+                events += "after"
+            }
+        }
+        val deleting = BackupManager(
+            ApplicationProvider.getApplicationContext<Context>(), store, settingsStore, declinedStore, settingsRepo, ordered,
+            FakeClock(now = 1_700_000_000_000L),
+        )
+
+        deleting.deleteAll()
+
+        assertThat(events).containsExactly("stop (rows: 3)", "resume (rows: 0)", "after").inOrder()
+        val snapshot = store.snapshot()
+        assertThat(snapshot.copy(scheduleTemplates = emptyList(), scheduleOverrides = emptyList())).isEqualTo(BackupSnapshot())
+        val s = settingsRepo.settings.first()
+        assertThat(s.theme).isEqualTo(ThemeMode.DARK)
+        assertThat(s.roundingMode).isEqualTo(RoundingMode.UP)
+        assertThat(s.lastBackupMs).isEqualTo(5L)
+        assertThat(declinedStore.data.first()[declinedKey]).isNull()
+    }
+
+    @Test
+    fun deleteAllFailureIsReportedAndLeavesTheDataAlone() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("a"))
+        val failing = object : RestoreHooks {
+            override suspend fun <T> captureSuspended(block: suspend () -> T): T = throw java.io.IOException("cannot stop")
+            override suspend fun afterRestore() = Unit
+        }
+        val deleting = BackupManager(
+            ApplicationProvider.getApplicationContext<Context>(), store, settingsStore, declinedStore, settingsRepo, failing,
+            FakeClock(now = 1_700_000_000_000L),
+        )
+
+        val e = assertThrows(BackupException::class.java) { runBlocking { deleting.deleteAll() } }
+
+        assertThat(e.error).isEqualTo(BackupError.DELETE_FAILED)
+        assertThat(store.counts().locations).isEqualTo(3)
+    }
 }
