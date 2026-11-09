@@ -81,9 +81,11 @@ data class EditDrawerState(
     /** JOB: live visits and trips the block overlaps. */
     val coveredVisits: Int = 0,
     val coveredTrips: Int = 0,
+    /** VISIT: starts before the rewind floor, where the raw pings are gone, so it cannot be re-detected. */
+    val beforeRewindFloor: Boolean = false,
 ) {
-    /** "Reset to detected" exists only for frozen visits that were not created by hand. */
-    val canReset: Boolean get() = kind == EditKind.VISIT && frozen && origin != null && origin != VisitOrigin.MANUAL
+    /** "Reset to detected" exists only for frozen visits that were not created by hand and still have their pings. */
+    val canReset: Boolean get() = kind == EditKind.VISIT && frozen && origin != null && origin != VisitOrigin.MANUAL && !beforeRewindFloor
 }
 
 /** What the drawer can ask for. Defaults are no-ops so tests and previews set only what they check. */

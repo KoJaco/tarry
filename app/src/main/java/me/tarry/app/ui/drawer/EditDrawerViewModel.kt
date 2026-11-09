@@ -45,6 +45,7 @@ import me.tarry.core.data.repository.JobBlockRepository
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.MergeDirection
 import me.tarry.core.data.repository.PlaceRepository
+import me.tarry.core.data.repository.RewindFloor
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.core.data.repository.TimelineRepository
 import java.time.ZoneId
@@ -86,6 +87,7 @@ class EditDrawerViewModel @Inject constructor(
     private val scheduler: SegmentationScheduler,
     private val jobs: JobRepository,
     private val jobBlocks: JobBlockRepository,
+    private val rewindFloor: RewindFloor,
 ) : ViewModel() {
     private val target = MutableStateFlow<EditTarget?>(null)
     private val reload = MutableStateFlow(0)
@@ -398,6 +400,7 @@ class EditDrawerViewModel @Inject constructor(
                 notes = v.freeNotes, frozen = v.frozen, origin = v.origin, error = inputs.error,
                 jobs = catalog.pickable(setOfNotNull(place?.defaultJobId)),
                 blocks = chipsFor(v.start, v.end, catalog),
+                beforeRewindFloor = v.start < rewindFloor.floorMs(),
                 placeDefaultJob = place?.takeIf { !it.deleted && !it.ignored }?.let { catalog.option(it.defaultJobId) },
             )
         }
