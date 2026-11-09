@@ -12,7 +12,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import me.tarry.app.export.backup.BackupError
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -61,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.BuildConfig
 import me.tarry.app.R
 import me.tarry.app.ui.components.SectionHeader
+import me.tarry.app.ui.about.versionLabel
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.scheduleSummaryText
@@ -338,8 +342,9 @@ fun SettingsContent(
         DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore, onRetention = { picker = Picker.RETENTION }, onDeleteAll = { confirmDeleteAll = true })
         SectionHeader(stringResource(R.string.settings_section_about), Modifier.padding(top = space.m))
         val aboutTitle = stringResource(R.string.settings_about_row)
+        val aboutVersion = versionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
         SettingsGroup {
-            row(aboutTitle, onClick = onOpenAbout, subtitle = BuildConfig.VERSION_NAME)
+            row(aboutTitle, onClick = onOpenAbout, icon = R.drawable.ic_info, subtitle = aboutVersion)
         }
     }
     pendingRetention?.let { days ->
@@ -381,14 +386,16 @@ private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?
     SettingsGroup {
         row(backUpTitle, onClick = onBackUp, icon = R.drawable.ic_backup, subtitle = lastBackup, enabled = !busy)
         row(restoreTitle, onClick = onRestore, icon = R.drawable.ic_settings_backup_restore, enabled = !busy)
-        if (retentionValue != null) row(retentionTitle, onClick = onRetention, icon = R.drawable.ic_history, subtitle = retentionValue, enabled = !busy)
-        if (working != null) item { WorkingRow(working) }
     }
     Text(
         text = stringResource(R.string.settings_data_privacy),
         style = MaterialTheme.typography.bodyMedium,
         color = TarryTheme.colors.muted,
     )
+    if (retentionValue != null || working != null) SettingsGroup {
+        if (retentionValue != null) row(retentionTitle, onClick = onRetention, icon = R.drawable.ic_history, subtitle = retentionValue, enabled = !busy)
+        if (working != null) item { WorkingRow(working) }
+    }
     DestructiveButton(
         stringResource(R.string.delete_all_title),
         onClick = onDeleteAll,
@@ -458,25 +465,28 @@ private fun DeleteAllDialog(onDelete: () -> Unit, onCancel: () -> Unit) {
     val colors = TarryTheme.colors
     val space = TarryTheme.space
     val word = stringResource(R.string.delete_all_word)
+    val fieldLabel = stringResource(R.string.delete_all_field_label)
     var typed by rememberSaveable { mutableStateOf("") }
     AlertDialog(
         modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
+        properties = DialogProperties(decorFitsSystemWindows = false),
         onDismissRequest = onCancel,
         shape = TarryTheme.shapes.container,
         containerColor = colors.card,
         title = { Text(stringResource(R.string.delete_all_title), style = MaterialTheme.typography.titleLarge, color = colors.ink) },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
+                modifier = Modifier.imePadding().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(space.s),
             ) {
                 Text(stringResource(R.string.delete_all_body), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                // The label is plain text above the field: a floating label would sit on the border and overlap the body at large font sizes.
+                Text(fieldLabel, style = MaterialTheme.typography.labelLarge, color = colors.ink)
                 OutlinedTextField(
                     value = typed,
                     onValueChange = { typed = it },
-                    label = { Text(stringResource(R.string.delete_all_field_label)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = fieldLabel },
                     shape = TarryTheme.shapes.container,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = colors.ink,

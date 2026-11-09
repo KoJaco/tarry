@@ -54,6 +54,11 @@ fun AboutScreen(
     )
 }
 
+/** "1.0 (1)": the version as About and the Settings About row show it. */
+@Composable
+fun versionLabel(versionName: String, versionCode: Int): String =
+    stringResource(R.string.about_version_value, versionName, versionCode)
+
 /** Stateless About screen. Link taps go out through [onOpenLink] and [onEmailSupport] so tests need no activity. */
 @Composable
 fun AboutContent(
@@ -87,7 +92,7 @@ fun AboutContent(
 
         SectionHeader(stringResource(R.string.about_section_app), Modifier.padding(top = space.m))
         val versionTitle = stringResource(R.string.about_version)
-        val versionValue = stringResource(R.string.about_version_value, versionName, versionCode)
+        val versionValue = versionLabel(versionName, versionCode)
         val sourceTitle = stringResource(R.string.about_source)
         val sourceSubtitle = stringResource(R.string.about_source_subtitle)
         SettingsGroup {

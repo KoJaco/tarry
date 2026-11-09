@@ -106,7 +106,7 @@ fun LicencesContent(
                 verticalArrangement = Arrangement.spacedBy(space.s),
             ) {
                 Text(stringResource(notice.nameRes), style = MaterialTheme.typography.titleLarge, color = colors.ink)
-                val text by produceState<String?>(null, notice) { value = textFor(notice) }
+                val text by produceState<String?>(null, notice) { value = reflowLicenceText(textFor(notice)) }
                 Text(text.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = colors.ink)
             }
         }

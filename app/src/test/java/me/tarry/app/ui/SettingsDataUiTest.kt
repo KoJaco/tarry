@@ -321,5 +321,33 @@ class SettingsDataUiTest {
         composeRule.onNodeWithText("Type delete to confirm").assertIsDisplayed()
         composeRule.onAllNodes(deleteDialogButtonMatcher())[1].performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
         composeRule.onNodeWithText("Cancel").performScrollTo().assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        composeRule.onNode(hasSetTextAction()).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun deleteDialogFieldAndConfirmAreReachableAtNormalFontSize() {
+        composeRule.setContent { SettingsContent(Settings()) }
+        composeRule.onNodeWithText("Delete all data").performScrollTo().performClick()
+        composeRule.onNode(hasSetTextAction()).performScrollTo().assertIsDisplayed()
+        composeRule.onAllNodes(deleteDialogButtonMatcher())[1].performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun privacyLineSitsUnderTheBackupRowsAndAboveRetention() {
+        composeRule.setContent { SettingsContent(Settings()) }
+
+        composeRule.onNodeWithText("Raw location retention").performScrollTo()
+        val restoreBottom = composeRule.onNodeWithText("Restore from backup").fetchSemanticsNode().boundsInRoot.bottom
+        val hint = composeRule.onNodeWithText("The file contains your full location history. Keep it somewhere private.").fetchSemanticsNode().boundsInRoot
+        val retentionTop = composeRule.onNodeWithText("Raw location retention").fetchSemanticsNode().boundsInRoot.top
+        assertThat(hint.top).isAtLeast(restoreBottom)
+        assertThat(hint.bottom).isAtMost(retentionTop)
+    }
+
+    @Test
+    fun aboutRowShowsTheVersionTheAboutScreenUses() {
+        composeRule.setContent { SettingsContent(Settings()) }
+
+        composeRule.onNodeWithText("1.0 (1)").performScrollTo().assertIsDisplayed()
     }
 }
