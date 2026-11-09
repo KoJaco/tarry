@@ -10,6 +10,8 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasText
@@ -288,6 +290,36 @@ class TimelineContentTest {
         composeRule.onNodeWithTag("timeline_summary_caption").assertTextContains("2 visits · 1 trip · 1 gap")
     }
 
+
+    @Test
+    fun aReviewOnlyRequestTurnsTheNeedsReviewFilterOnAndIsHandledOnce() {
+        var handled = 0
+        composeRule.setContent {
+            TarryTheme {
+                TimelineContent(
+                    date,
+                    listOf(
+                        TimelineItem.Visit("v1", at(9, 0), at(10, 30), "A", needsReview = true),
+                        TimelineItem.Visit("v2", at(11, 0), at(12, 0), "B"),
+                    ),
+                    { previous++ }, { next++ },
+                    today = date, zone = zone, nowMs = at(20, 0),
+                    reviewOnlyRequested = true, onReviewOnlyRequestHandled = { handled++ },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag("timeline_filter_review").assertIsOn()
+        assertThat(handled).isEqualTo(1)
+    }
+
+    @Test
+    fun withoutARequestTheFilterStaysOff() {
+        show(listOf(TimelineItem.Visit("v1", at(9, 0), at(10, 30), "A", needsReview = true)))
+
+        composeRule.onNodeWithTag("timeline_filter_review").assertIsOff()
+    }
     @Test
     fun summaryHasNoReviewChipWhenEveryVisitHasAJob() {
         show(listOf(TimelineItem.Visit("v", at(9, 0), at(10, 0), "A")))

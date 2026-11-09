@@ -55,8 +55,12 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // A rotation or process restart replays the launching intent; only a fresh launch acts on it.
-        if (savedInstanceState == null) openReview = intent.getBooleanExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW, false)
+        // A rotation or process restart replays the launching intent, so only a fresh launch reads it; a request not yet handled is carried in the saved state.
+        openReview = if (savedInstanceState == null) {
+            intent.getBooleanExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW, false)
+        } else {
+            savedInstanceState.getBoolean(STATE_OPEN_REVIEW, false)
+        }
         setContent {
             val themeFlow = remember { settingsRepository.settings.map { it.theme } }
             // Null until the stored theme loads: TarryRoot composes nothing (the paper window background shows).
@@ -71,6 +75,11 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_OPEN_REVIEW, openReview)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -107,5 +116,9 @@ class MainActivity : ComponentActivity() {
         }
         // Also catches a restore from backup, which changes the schedule and the reminder setting behind the app's back.
         captureScope.launch { reviewReminder.rearm() }
+    }
+
+    private companion object {
+        const val STATE_OPEN_REVIEW = "open_review"
     }
 }
