@@ -58,6 +58,7 @@ import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.tarry.app.BuildConfig
 import me.tarry.app.R
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
@@ -78,6 +79,7 @@ fun SettingsScreen(
     onOpenSchedule: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     snackbarHostState: SnackbarHostState? = null,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -112,6 +114,7 @@ fun SettingsScreen(
         onOpenSessions = onOpenSessions,
         onOpenJobs = onOpenJobs,
         onOpenPlaces = onOpenPlaces,
+        onOpenAbout = onOpenAbout,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onGraceSelected = viewModel::setWindowEndGraceMaxMin,
         onThemeSelected = viewModel::setTheme,
@@ -137,6 +140,7 @@ fun SettingsContent(
     onOpenSessions: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onGraceSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
@@ -328,6 +332,11 @@ fun SettingsContent(
             }
         }
         DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore, onRetention = { picker = Picker.RETENTION }, onDeleteAll = { confirmDeleteAll = true })
+        SectionHeader(stringResource(R.string.settings_section_about), Modifier.padding(top = space.m))
+        val aboutTitle = stringResource(R.string.settings_about_row)
+        SettingsGroup {
+            row(aboutTitle, onClick = onOpenAbout, subtitle = BuildConfig.VERSION_NAME)
+        }
     }
     if (confirmDeleteAll) {
         DeleteAllDialog(
