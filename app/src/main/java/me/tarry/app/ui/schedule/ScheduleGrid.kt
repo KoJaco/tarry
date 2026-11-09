@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.timeline.NarrowFontScale
 import me.tarry.app.ui.timeline.weekdayLabel
+import me.tarry.app.ui.timeline.weekdayPrefix
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.Schedule
 import java.time.DayOfWeek
@@ -109,7 +110,7 @@ fun ScheduleGrid(
     val fontScale = LocalDensity.current.fontScale
     var oneLetter by remember(fontScale, locale) { mutableStateOf(false) }
     val shortNames = remember(locale, fontScale) { DayOfWeek.entries.map { weekdayLabel(it, locale, narrow = fontScale >= NarrowFontScale) } }
-    val narrowNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.NARROW, locale) } }
+    val narrowNames = remember(locale) { DayOfWeek.entries.map { weekdayPrefix(it, locale, 1) } }
     val fullNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.FULL, locale) } }
     val labelWidth = hourLabelWidth()
     Column(modifier) {

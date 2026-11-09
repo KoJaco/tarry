@@ -48,14 +48,16 @@ private val CellMinHeight = 56.dp
 internal const val NarrowFontScale = 1.5f
 
 /**
- * "Mon" style label (trailing "." stripped; short form if the standalone one is a number), or with [narrow] its first two
- * letters ("Mo"): one narrow letter is ambiguous (T, T / S, S) and the locale's short name gives two that are not.
+ * "Mon" style label, or with [narrow] its first two letters ("Mo"): one narrow letter is ambiguous (T, T / S, S).
+ * Built from the full name with any "." removed, so a locale's abbreviation punctuation ("M.", "Tu.") never reaches the screen.
  */
-internal fun weekdayLabel(dow: java.time.DayOfWeek, locale: Locale, narrow: Boolean): String {
-    val standalone = dow.getDisplayName(TextStyle.SHORT_STANDALONE, locale)
-    val name = (if (standalone.any { it.isDigit() }) dow.getDisplayName(TextStyle.SHORT, locale) else standalone).trimEnd('.')
-    if (!narrow) return name
-    val end = name.offsetByCodePoints(0, minOf(2, name.codePointCount(0, name.length)))
+internal fun weekdayLabel(dow: java.time.DayOfWeek, locale: Locale, narrow: Boolean): String =
+    weekdayPrefix(dow, locale, if (narrow) 2 else 3)
+
+/** The first [letters] letters of the day's full name, with no dots. */
+internal fun weekdayPrefix(dow: java.time.DayOfWeek, locale: Locale, letters: Int): String {
+    val name = dow.getDisplayName(TextStyle.FULL_STANDALONE, locale).replace(".", "")
+    val end = name.offsetByCodePoints(0, minOf(letters, name.codePointCount(0, name.length)))
     return name.substring(0, end)
 }
 
