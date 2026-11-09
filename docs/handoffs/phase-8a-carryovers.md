@@ -1,0 +1,22 @@
+# Handoff: phase 8a.1 — 7.7 carry-overs (UI only)
+
+**From:** Claude (planner, `phase-8`) → **To:** implementer · **Date:** 2026-11-09 · **Branch:** `feat/phase-8-launch` (checked out; never main).
+
+Read first: `AGENTS.md`, `docs/design/ui-rules.md`, `docs/design/tokens.md`, `docs/handoffs/phase-8-start.md` § Carry-overs. Each item is a separate commit. Small diffs; anything else you notice goes in your report, not the code.
+
+## 1. Icon swaps (ui-rules §6 "Known gap")
+Replace `ic_route`, `ic_session_complete`, `ic_session_killed`, `ic_session_open`, `ic_stat_tracking`, `ic_summary`, `ic_table`, `ic_zoom_in`, `ic_zoom_out` (in `app/src/main/res/drawable/`) with Material Symbols Rounded, weight 300, grade 0, opsz 24, from `google/material-design-icons` (Apache-2.0). Look at how the already-swapped ones (map, work, location, delete) were imported and copy that exact format, including the source comment at the top. Fetch the SVGs from the GitHub repo (`symbols/web/<name>/materialsymbolsrounded/<name>_wght300_24px.svg` or the path the existing comments cite) and convert to vector drawables keeping `android:viewportWidth/Height="960"` and the existing tint/size conventions. Pick the closest symbol (e.g. route → `route`, summary → `summarize` or `bar_chart`, table → `table`, zoom → `zoom_in`/`zoom_out`, session complete/killed/open → `check_circle`/`cancel`/`radio_button_checked` or whatever matches current meaning; stat_tracking must stay a monochrome status-bar icon). Keep file names so call sites don't change. Then delete the "Known gap" bullet from `ui-rules.md` §6.
+
+## 2. Sessions screen without dev text in release
+- `SessionsContent.kt:422` / `strings.xml` `sessions_row_activity`: activity type names show as enum names (STILL, IN_VEHICLE…). Map them to words via string resources ("still", "walking", "in a vehicle", "on a bike", "running", "on foot", "unknown"). Reword the string to plain language: "Activity changes: %1$d (%2$d skipped as late). Last: %3$s at %4$s, received %5$s". Keep it in debug and release.
+- Check every other row on the Sessions screen for dev-only wording; list what you find. Humanise obvious ones the same way; anything that only makes sense to a developer goes behind `BuildConfig.DEBUG` (like "Start test window" already is — confirm that is still gated).
+
+## 3. Small nits
+- **Jobs and Places rows:** tappable rows get the trailing chevron like other tappable rows (ui-rules §3 Lists). Reuse the existing row component's chevron.
+- **Empty day reason:** when the Timeline day has no blocks, the empty state body should say why, using existing state: today outside the schedule → "Not tracking: outside your schedule."; today with tracking off/paused → "Not tracking: tracking is off."; a past day with no data → keep the current text; a future day → "This day hasn't happened yet." Find the empty state in `TimelineContent.kt` / `components/States.kt` and the data the ViewModel already has (schedule, tracking state). Don't add new data sources beyond what's already injected; if the needed info isn't available, report instead.
+- **Permissions status icons** don't scale at 2× font: size them in `sp`-derived dp (e.g. via `LocalDensity` `fontScale`, or match how other screens size inline status icons) so they stay in proportion with their text.
+- **Schedule header abbreviations at 2×** are inconsistent (some days one letter, some two, or similar). Make all headers use the same form at a given font scale (follow the week strip's rule: two-letter days at large font).
+- **Dark token check:** a visit's "Includes … not tracked" line is a red-brown text in light but `ink` text with a pink icon in dark. Find which tokens it uses; if the dark mapping is just the token's dark value, report which and leave it; if it's a code path that picks a different token in dark, make it consistent with light and report.
+
+## Rules
+Tokens only, strings in resources, sentence case, 48 dp, TalkBack one node per row. Tests for each behaviour change (Robolectric Compose, font 1.0 and 2.0 where layout changes; JVM for the empty-reason logic). Run `gradlew.bat testDebugUnitTest lintDebug assembleDebug` until green. Commit each item separately with explicit paths (include this handoff file in the first commit), never `.idea/`, each ending with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (exactly this line). No phone installs, no `connectedDebugAndroidTest`. Report files, tests, decisions, skips.
