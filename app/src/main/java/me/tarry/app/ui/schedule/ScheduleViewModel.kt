@@ -1,5 +1,6 @@
 package me.tarry.app.ui.schedule
 
+import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -188,7 +189,8 @@ class ScheduleViewModel @Inject constructor(
                 reviewReminder.rearm()
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.w("ScheduleViewModel", "Review reminder re-arm failed after a schedule save", e)
             }
             load()
         }

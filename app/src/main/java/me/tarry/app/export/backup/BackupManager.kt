@@ -18,6 +18,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import me.tarry.app.BuildConfig
+import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.segmentation.SegmentationUpgrade
 import me.tarry.segmentation.SegmentationParams
 import me.tarry.app.tracking.TrackingClock
@@ -52,10 +53,23 @@ interface RestoreHooks {
     suspend fun afterRestore()
 }
 
+/**
+ * What follows a restore or a delete-all: the segmentation upgrade check, then (even if that throws) the review reminder
+ * re-arm, because the restore may have replaced the reminder setting and the schedule behind the alarm's back.
+ */
+internal suspend fun afterRestoreSteps(upgrade: suspend () -> Unit, reviewReminder: ReviewReminderScheduler) {
+    try {
+        upgrade()
+    } finally {
+        reviewReminder.rearm()
+    }
+}
+
 /** [RestoreHooks] over the real controller. */
 class TrackingRestoreHooks @Inject constructor(
     private val controller: TrackingController,
     private val upgrade: SegmentationUpgrade,
+    private val reviewReminder: ReviewReminderScheduler,
 ) : RestoreHooks {
     override suspend fun <T> captureSuspended(block: suspend () -> T): T = controller.withCaptureSuspended(block)
 
@@ -63,7 +77,7 @@ class TrackingRestoreHooks @Inject constructor(
         controller.withCaptureSuspendedKeeping(block)
 
     override suspend fun afterRestore() {
-        upgrade.runIfNeeded()
+        afterRestoreSteps({ upgrade.runIfNeeded() }, reviewReminder)
     }
 }
 

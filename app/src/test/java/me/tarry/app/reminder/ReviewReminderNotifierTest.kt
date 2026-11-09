@@ -116,18 +116,36 @@ class ReviewReminderNotifierTest {
         assertThat(intent.getBooleanExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW, false)).isTrue()
     }
 
-    @Test
-    fun theReceiverRearmsFirstAndPostsOnlyWhenTheDayStillHasItems() {
-        val scheduler = FakeReviewReminderScheduler()
-        val counter = FakeCounter(0)
-        val clock = FakeClock(now = ZonedDateTime.of(2026, 11, 9, 17, 31, 0, 0, sydney).toInstant().toEpochMilli(), zone = sydney)
-        val receiver = ReviewReminderReceiver().also {
+    private val settings by lazy {
+        me.tarry.core.data.settings.SettingsRepository(
+            androidx.datastore.preferences.core.PreferenceDataStoreFactory.create(scope = ioScope) { folder.root.resolve("s.preferences_pb") },
+        )
+    }
+    private var scheduledToday = true
+    private val scheduledDays = object : ScheduledDays {
+        override suspend fun among(first: LocalDate, lookAheadDays: Int, zone: ZoneId): Set<LocalDate> =
+            if (scheduledToday) setOf(first) else emptySet()
+    }
+    private val scheduler = FakeReviewReminderScheduler()
+    private val firedAt = ZonedDateTime.of(2026, 11, 9, 17, 31, 0, 0, sydney).toInstant().toEpochMilli()
+
+    private fun receiver(counter: ReviewItemCounter, enabled: Boolean = true): ReviewReminderReceiver {
+        runBlocking { settings.setReviewReminderEnabled(enabled) }
+        return ReviewReminderReceiver().also {
             it.scheduler = scheduler
             it.notifier = ReviewReminderNotifier(context, counter)
             it.statusStore = status
-            it.clock = clock
+            it.settings = settings
+            it.scheduledDays = scheduledDays
+            it.clock = FakeClock(now = firedAt, zone = sydney)
             it.scope = scope
         }
+    }
+
+    @Test
+    fun theReceiverRearmsFirstAndPostsOnlyWhenTheDayStillHasItems() {
+        val counter = FakeCounter(0)
+        val receiver = receiver(counter)
 
         deliver(receiver)
         assertThat(scheduler.rearms).isEqualTo(1)
@@ -142,22 +160,81 @@ class ReviewReminderNotifierTest {
     }
 
     @Test
-    fun theReceiverStillRearmsWhenReadingTheDayFails() {
-        val scheduler = FakeReviewReminderScheduler()
-        val failing = ReviewItemCounter { _, _ -> error("db closed") }
-        val receiver = ReviewReminderReceiver().also {
-            it.scheduler = scheduler
-            it.notifier = ReviewReminderNotifier(context, failing)
-            it.statusStore = status
-            it.clock = FakeClock(zone = sydney)
-            it.scope = scope
-        }
+    fun theReceiverPostsNothingWhenTheReminderWasTurnedOffMeanwhileButStillRearms() {
+        val counter = FakeCounter(5)
 
-        runCatching { deliver(receiver) }
+        deliver(receiver(counter, enabled = false))
+
+        assertThat(posted()).isEmpty()
+        assertThat(counter.asked).isEmpty()
+        assertThat(scheduler.rearms).isEqualTo(1)
+    }
+
+    @Test
+    fun theReceiverPostsNothingWhenTodayIsNoLongerAScheduledDay() {
+        scheduledToday = false
+        val counter = FakeCounter(5)
+
+        deliver(receiver(counter))
+
+        assertThat(posted()).isEmpty()
+        assertThat(counter.asked).isEmpty()
+        assertThat(scheduler.rearms).isEqualTo(1)
+    }
+
+    @Test
+    fun theRecheckActionOnlyRecomputes_itNeverPostsOrMarksTheDay() {
+        val counter = FakeCounter(5)
+
+        deliver(receiver(counter), Intent(AndroidReviewReminderScheduler.ACTION_RECHECK))
+
+        assertThat(scheduler.rearms).isEqualTo(1)
+        assertThat(posted()).isEmpty()
+        assertThat(counter.asked).isEmpty()
+        assertThat(runBlocking { status.current().lastReviewReminderDate }).isNull()
+    }
+
+    @Test
+    fun theReceiverStillRearmsWhenReadingTheDayFails() {
+        val failing = ReviewItemCounter { _, _ -> error("db closed") }
+
+        runCatching { deliver(receiver(failing)) }
 
         assertThat(scheduler.rearms).isEqualTo(1)
     }
 
+    @Test
+    fun theReviewChannelTurnedOffCountsAsNotificationsOff() {
+        assertThat(ReviewReminderNotifier.isBlocked(context)).isFalse()
+
+        ReviewReminderNotifier.ensureChannel(context)
+        assertThat(notifications.getNotificationChannel(ReviewReminderNotifier.CHANNEL_ID)).isNotNull()
+        assertThat(ReviewReminderNotifier.isBlocked(context)).isFalse()
+
+        notifications.createNotificationChannel(
+            android.app.NotificationChannel(ReviewReminderNotifier.CHANNEL_ID, "Review reminders", NotificationManager.IMPORTANCE_NONE),
+        )
+        shadowOf(notifications).setNotificationsEnabled(true)
+        assertThat(ReviewReminderNotifier.isBlocked(context)).isTrue()
+    }
+
+    @Test
+    fun notificationsOffForTheAppCountAsBlocked() {
+        shadowOf(notifications).setNotificationsEnabled(false)
+
+        assertThat(ReviewReminderNotifier.isBlocked(context)).isTrue()
+    }
+
+    @Test
+    fun afterARestoreOrDeleteAllTheReminderRearmsEvenIfTheUpgradeCheckThrows() = runBlocking<Unit> {
+        var upgraded = 0
+        me.tarry.app.export.backup.afterRestoreSteps({ upgraded++ }, scheduler)
+        assertThat(upgraded).isEqualTo(1)
+        assertThat(scheduler.rearms).isEqualTo(1)
+
+        runCatching { me.tarry.app.export.backup.afterRestoreSteps({ error("rewind failed") }, scheduler) }
+        assertThat(scheduler.rearms).isEqualTo(2)
+    }
     @Test
     fun theCounterAgreesWithTheTimelinePredicate() = runBlocking<Unit> {
         val zone = sydney
@@ -181,7 +258,7 @@ class ReviewReminderNotifierTest {
     }
 
     /** Delivers to [receiver] as the system would (with a pending result for goAsync) and waits for the async work. */
-    private fun deliver(receiver: BroadcastReceiver) {
+    private fun deliver(receiver: BroadcastReceiver, intent: Intent = Intent()) {
         // Hilt_* base classes inject on first receive; mark them injected so the hand-set fakes stay in place.
         generateSequence<Class<*>>(receiver.javaClass) { it.superclass }
             .mapNotNull { c -> runCatching { c.getDeclaredField("injected") }.getOrNull() }
@@ -195,7 +272,7 @@ class ReviewReminderNotifierTest {
         )
         create.isAccessible = true
         setPendingResult.invoke(receiver, create.invoke(null, 0, null, null, false))
-        receiver.onReceive(context, Intent())
+        receiver.onReceive(context, intent)
         runBlocking { scope.coroutineContext[kotlinx.coroutines.Job]!!.children.toList().forEach { it.join() } }
     }
 }

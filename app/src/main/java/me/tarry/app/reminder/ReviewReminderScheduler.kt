@@ -25,16 +25,16 @@ import javax.inject.Singleton
  * does not exist (a DST gap) moves forward by the gap, one that happens twice takes the first.
  *
  * Today still counts while it has not fired ([lastFiredDate] is not today) and [now] is before the reminder time plus
- * [windowMs] (the alarm's delivery window): before the time that is the time, inside the window it is [now] itself, so a
- * re-arm in the window (opening the app at 5:33 pm) fires promptly instead of cancelling today's reminder. Past the
- * window without a fire (phone off) today is skipped. Later days only count if their time is after [now].
+ * [graceMs]: before the time that is the time, after it (a late delivery, a re-arm at 5:33 pm) it is [now] itself, so a
+ * re-arm cannot cancel today's reminder and it still arrives promptly. Past the grace without a fire (phone off) today is
+ * skipped. Later days only count if their time is after [now].
  */
 fun nextReviewReminderAt(
     now: Instant,
     zone: ZoneId,
     minuteOfDay: Int,
     lookAheadDays: Int,
-    windowMs: Long,
+    graceMs: Long,
     lastFiredDate: LocalDate?,
     isScheduledDay: (LocalDate) -> Boolean,
 ): Instant? {
@@ -45,7 +45,7 @@ fun nextReviewReminderAt(
         if (!isScheduledDay(date)) continue
         val at = date.atTime(time).atZone(zone).toInstant()
         if (offset == 0) {
-            if (date != lastFiredDate && now.toEpochMilli() < at.toEpochMilli() + windowMs) return maxOf(at, now)
+            if (date != lastFiredDate && now.toEpochMilli() < at.toEpochMilli() + graceMs) return maxOf(at, now)
         } else if (at > now) {
             return at
         }
@@ -83,7 +83,9 @@ class InputsScheduledDays @Inject constructor(
 
 /**
  * One inexact alarm ([AlarmManager.setWindow], no exact-alarm permission) at the reminder time on the next scheduled day.
- * No timers: the OS delivers the alarm; [rearm] runs on every event that can move it (setting, schedule, boot, clock).
+ * When no day in the look-ahead is scheduled, a "recheck" alarm just past the look-ahead recomputes (and never posts), so
+ * the reminder cannot stay disarmed for good. No timers: the OS delivers the alarms; [rearm] runs on every event that
+ * can move them (setting, schedule, restore, boot, clock, a scheduled window starting).
  */
 @Singleton
 class AndroidReviewReminderScheduler @Inject constructor(
@@ -97,28 +99,39 @@ class AndroidReviewReminderScheduler @Inject constructor(
     private val alarmManager: AlarmManager = context.getSystemService(AlarmManager::class.java)
 
     override suspend fun rearm() {
-        val pending = pendingIntent(context)
-        alarmManager.cancel(pending)
+        val reminder = pendingIntent(context, recheck = false)
+        val recheck = pendingIntent(context, recheck = true)
+        alarmManager.cancel(reminder)
+        alarmManager.cancel(recheck)
         val current = settings.settings.first()
         if (!current.reviewReminderEnabled) return
         val now = Instant.ofEpochMilli(clock.nowMs())
         val zone = clock.zone()
         val lookAhead = config.scheduleLookAheadDays.toInt()
-        val days = scheduledDays.among(now.atZone(zone).toLocalDate(), lookAhead, zone)
+        val firstDay = now.atZone(zone).toLocalDate()
+        val days = scheduledDays.among(firstDay, lookAhead, zone)
         val lastFired = statusStore.current().lastReviewReminderDate
         val at = nextReviewReminderAt(
-            now, zone, current.reviewReminderMinuteOfDay, lookAhead, config.reviewReminderWindowMs, lastFired,
-        ) { it in days } ?: return
-        alarmManager.setWindow(AlarmManager.RTC_WAKEUP, at.toEpochMilli(), config.reviewReminderWindowMs, pending)
+            now, zone, current.reviewReminderMinuteOfDay, lookAhead, config.reviewReminderGraceMs, lastFired,
+        ) { it in days }
+        if (at != null) {
+            alarmManager.setWindow(AlarmManager.RTC_WAKEUP, at.toEpochMilli(), config.reviewReminderWindowMs, reminder)
+        } else {
+            val beyond = firstDay.plusDays(lookAhead + 1L).atStartOfDay(zone).toInstant()
+            alarmManager.setWindow(AlarmManager.RTC_WAKEUP, beyond.toEpochMilli(), config.reviewReminderWindowMs, recheck)
+        }
     }
 
     internal companion object {
         private const val REQUEST_CODE = 7
+        private const val RECHECK_REQUEST_CODE = 9
+        const val ACTION_RECHECK = "me.tarry.app.action.REVIEW_REMINDER_RECHECK"
 
-        fun pendingIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
+        /** The reminder itself, or with [recheck] the recompute-only alarm (a distinct action, so both can be armed). */
+        fun pendingIntent(context: Context, recheck: Boolean): PendingIntent = PendingIntent.getBroadcast(
             context,
-            REQUEST_CODE,
-            Intent(context, ReviewReminderReceiver::class.java),
+            if (recheck) RECHECK_REQUEST_CODE else REQUEST_CODE,
+            Intent(context, ReviewReminderReceiver::class.java).also { if (recheck) it.setAction(ACTION_RECHECK) },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
     }

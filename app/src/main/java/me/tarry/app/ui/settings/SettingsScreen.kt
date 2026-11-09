@@ -7,7 +7,7 @@ import android.content.res.Resources
 import android.os.Build
 import android.text.format.DateFormat
 import androidx.compose.runtime.remember
-import androidx.core.app.NotificationManagerCompat
+import me.tarry.app.reminder.ReviewReminderNotifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
@@ -117,13 +117,13 @@ fun SettingsScreen(
         viewModel.events.collect { event -> snackbarHostState?.showSnackbar(dataEventMessage(context.resources, event)) }
     }
     // The setting stays on if the user refuses; the Reminders group then says notifications are off (AGENTS rule 6).
-    var notificationsBlocked by remember { mutableStateOf(!NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    var notificationsBlocked by remember { mutableStateOf(ReviewReminderNotifier.isBlocked(context)) }
     val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        notificationsBlocked = !NotificationManagerCompat.from(context).areNotificationsEnabled()
+        notificationsBlocked = ReviewReminderNotifier.isBlocked(context)
     }
     // Back from the system notification settings (or the permission dialog): look again.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
-        notificationsBlocked = !NotificationManagerCompat.from(context).areNotificationsEnabled()
+        notificationsBlocked = ReviewReminderNotifier.isBlocked(context)
     }
     val startBackup = { createBackup.launch("tarry-backup-${LocalDate.now()}.json.gz") }
     SettingsContent(

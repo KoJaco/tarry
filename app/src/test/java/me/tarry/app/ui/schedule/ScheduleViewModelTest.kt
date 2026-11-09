@@ -217,6 +217,19 @@ class ScheduleViewModelTest {
     }
 
     @Test
+    fun aFailingReminderRearmDoesNotMakeTheSaveFail() = runBlocking<Unit> {
+        reminder.failure = IllegalStateException("alarm service gone")
+        awaitState { it.loaded }
+        viewModel.clearAll()
+
+        viewModel.save()
+        val s = awaitState { it.saved == Schedule.EMPTY && !it.saving }
+
+        assertThat(s.saveFailed).isFalse()
+        assertThat(scheduleRepo.template()).isEqualTo(Schedule.EMPTY)
+    }
+
+    @Test
     fun savingInWeekModeWritesThatWeeksOverrideOnly() = runBlocking {
         awaitState { it.loaded }
         viewModel.setMode(ScheduleMode.WEEK)

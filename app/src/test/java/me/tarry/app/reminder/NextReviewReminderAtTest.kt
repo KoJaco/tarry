@@ -17,7 +17,7 @@ class NextReviewReminderAtTest {
     private fun inSydney(y: Int, m: Int, d: Int, h: Int, min: Int = 0): Instant =
         ZonedDateTime.of(y, m, d, h, min, 0, 0, sydney).toInstant()
 
-    private val window = 10 * 60_000L
+    private val grace = 2 * 60 * 60_000L
 
     private fun next(
         now: Instant,
@@ -27,7 +27,7 @@ class NextReviewReminderAtTest {
         lastFired: LocalDate? = null,
         scheduled: (LocalDate) -> Boolean = monFri,
     ) =
-        nextReviewReminderAt(now, zone, minute, ahead, window, lastFired, scheduled)
+        nextReviewReminderAt(now, zone, minute, ahead, grace, lastFired, scheduled)
 
     // 2026-11-09 is a Monday.
     @Test
@@ -37,7 +37,7 @@ class NextReviewReminderAtTest {
 
     @Test
     fun afterTheTimeFiresOnTheNextScheduledDay() {
-        assertThat(next(inSydney(2026, 11, 9, 18))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
+        assertThat(next(inSydney(2026, 11, 9, 19, 31))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
     }
 
     @Test
@@ -46,7 +46,7 @@ class NextReviewReminderAtTest {
     }
 
     @Test
-    fun openingTheAppInsideTheWindowBeforeItFiredKeepsTodayAndFiresPromptly() {
+    fun openingTheAppAfterTheTimeBeforeItFiredKeepsTodayAndFiresPromptly() {
         // 17:33, the alarm (17:30 + up to 10 min) has not run: arm at now, not tomorrow.
         val now = inSydney(2026, 11, 9, 17, 33)
         assertThat(next(now)).isEqualTo(now)
@@ -65,14 +65,14 @@ class NextReviewReminderAtTest {
     }
 
     @Test
-    fun pastTheWindowWithoutAFireSkipsToTheNextScheduledDay() {
-        // 17:41 with the phone off through 17:30-17:40: today's reminder is not shown late.
-        assertThat(next(inSydney(2026, 11, 9, 17, 41))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
+    fun pastTheGraceWithoutAFireSkipsToTheNextScheduledDay() {
+        // 19:31, one minute past the 2 h grace, with the phone off all evening: today's reminder is not shown late.
+        assertThat(next(inSydney(2026, 11, 9, 19, 31))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
     }
 
     @Test
-    fun lastWindowMinuteStillCounts() {
-        val now = inSydney(2026, 11, 9, 17, 39)
+    fun theLastGraceMinuteStillCounts() {
+        val now = inSydney(2026, 11, 9, 19, 29)
         assertThat(next(now)).isEqualTo(now)
     }
 
@@ -83,7 +83,7 @@ class NextReviewReminderAtTest {
     }
 
     @Test
-    fun aUnscheduledTodayInsideTheWindowIsStillSkipped() {
+    fun anUnscheduledTodayInsideTheGraceIsStillSkipped() {
         // Saturday 17:33 on a Mon-Fri schedule.
         assertThat(next(inSydney(2026, 11, 14, 17, 33))).isEqualTo(inSydney(2026, 11, 16, 17, 30))
     }
@@ -91,7 +91,7 @@ class NextReviewReminderAtTest {
     @Test
     fun skipsUnscheduledDays() {
         // Friday evening: Saturday and Sunday have no work window, so Monday.
-        assertThat(next(inSydney(2026, 11, 13, 18))).isEqualTo(inSydney(2026, 11, 16, 17, 30))
+        assertThat(next(inSydney(2026, 11, 13, 19, 31))).isEqualTo(inSydney(2026, 11, 16, 17, 30))
         // A Saturday morning on a Mon-Fri schedule.
         assertThat(next(inSydney(2026, 11, 14, 8))).isEqualTo(inSydney(2026, 11, 16, 17, 30))
     }
@@ -139,11 +139,20 @@ class NextReviewReminderAtTest {
 
     @Test
     fun aTimeZoneChangeRecomputesFromTheSameInstant() {
-        // 07:00 UTC on Monday 9 Nov 2026: 18:00 in Sydney (past 17:30), 15:00 in Perth (before it).
-        val now = Instant.parse("2026-11-09T07:00:00Z")
+        // 08:31 UTC on Monday 9 Nov 2026: 19:31 in Sydney (past 17:30 and its 2 h grace), 16:31 in Perth (before it).
+        val now = Instant.parse("2026-11-09T08:31:00Z")
         val perth = ZoneId.of("Australia/Perth")
 
         assertThat(next(now, sydney)).isEqualTo(inSydney(2026, 11, 10, 17, 30))
         assertThat(next(now, perth)).isEqualTo(ZonedDateTime.of(2026, 11, 9, 17, 30, 0, 0, perth).toInstant())
+    }
+
+    @Test
+    fun aReArmAfterTheTimeStillGivesTodayWhenItIsLate() {
+        // 17:35 re-arm, then a 17:41 re-arm (the alarm was delayed): both still due today, at now.
+        val a = inSydney(2026, 11, 9, 17, 35)
+        val b = inSydney(2026, 11, 9, 17, 41)
+        assertThat(next(a)).isEqualTo(a)
+        assertThat(next(b)).isEqualTo(b)
     }
 }

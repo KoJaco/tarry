@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
@@ -84,9 +85,7 @@ class ReviewReminderNotifier @Inject constructor(
     suspend fun postIfNeeded(date: LocalDate, zone: ZoneId): Int {
         val count = counter.count(date, zone)
         if (count <= 0 || !manager.areNotificationsEnabled()) return count
-        manager.createNotificationChannel(
-            NotificationChannel(CHANNEL_ID, context.getString(R.string.review_reminder_channel_name), NotificationManager.IMPORTANCE_DEFAULT),
-        )
+        ensureChannel(context)
         val text = context.resources.getQuantityString(R.plurals.review_reminder_text, count, count)
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_tracking)
@@ -102,6 +101,21 @@ class ReviewReminderNotifier @Inject constructor(
     }
 
     companion object {
+        /** Creates the channel (idempotent); also called at app start so it shows in the system settings before the first reminder. */
+        fun ensureChannel(context: Context) {
+            context.getSystemService(NotificationManager::class.java).createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID, context.getString(R.string.review_reminder_channel_name), NotificationManager.IMPORTANCE_DEFAULT,
+                ),
+            )
+        }
+
+        /** Reminders cannot show: notifications are off for the app, or the user turned the review channel off. */
+        fun isBlocked(context: Context): Boolean {
+            val manager = NotificationManagerCompat.from(context)
+            return !manager.areNotificationsEnabled() || manager.getNotificationChannel(CHANNEL_ID)?.importance == NotificationManager.IMPORTANCE_NONE
+        }
+
         const val NOTIFICATION_ID = 1003
         const val CHANNEL_ID = "review_reminder"
     }

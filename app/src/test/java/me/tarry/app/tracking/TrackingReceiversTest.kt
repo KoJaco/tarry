@@ -168,6 +168,7 @@ class TrackingReceiversTest {
     @Test
     fun scheduleAlarmReceiverReconcilesAsAlarmAndStartsDirectly() {
         val receiver = ScheduleAlarmReceiver().also {
+            it.reviewReminder = reminder
             it.controller = controller
             it.scope = captureScope
         }
@@ -176,6 +177,8 @@ class TrackingReceiversTest {
 
         assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
         assertThat(alarms.armed.last()).isEqualTo(mondayAt(17))
+        // A scheduled window starting also recomputes the review reminder.
+        assertThat(reminder.rearms).isEqualTo(1)
     }
 
     @Test

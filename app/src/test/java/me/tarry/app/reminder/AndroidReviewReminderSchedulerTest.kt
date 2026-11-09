@@ -113,11 +113,43 @@ class AndroidReviewReminderSchedulerTest {
         assertThat(alarms().map { it.triggerAtMs }).containsExactly(at(9, 19))
     }
 
+    private fun actionOf(alarm: org.robolectric.shadows.ShadowAlarmManager.ScheduledAlarm): String? =
+        shadowOf(alarm.operation).savedIntent.action
+
     @Test
-    fun noScheduledDaysLeavesNoAlarm() = runBlocking<Unit> {
+    fun noScheduledDayInTheLookAheadArmsARecomputeOnlyAlarmJustPastIt() = runBlocking<Unit> {
         settings.setReviewReminderEnabled(true)
-        scheduler.rearm()
         weekdays.days = { false }
+
+        scheduler.rearm()
+
+        val alarm = alarms().single()
+        // Monday 9 Nov + 9 look-ahead days: the first day not yet looked at is 19 Nov, from midnight.
+        assertThat(alarm.triggerAtMs).isEqualTo(at(19, 0))
+        assertThat(alarm.windowLengthMs).isEqualTo(config.reviewReminderWindowMs)
+        assertThat(actionOf(alarm)).isEqualTo(AndroidReviewReminderScheduler.ACTION_RECHECK)
+    }
+
+    @Test
+    fun theRecheckIsReplacedByTheReminderOnceADayIsScheduledAgain() = runBlocking<Unit> {
+        settings.setReviewReminderEnabled(true)
+        weekdays.days = { false }
+        scheduler.rearm()
+        weekdays.days = { it.dayOfWeek.value <= DayOfWeek.FRIDAY.value }
+
+        scheduler.rearm()
+
+        val alarm = alarms().single()
+        assertThat(alarm.triggerAtMs).isEqualTo(at(9, 17, 30))
+        assertThat(actionOf(alarm)).isNull()
+    }
+
+    @Test
+    fun turningItOffCancelsTheRecheckToo() = runBlocking<Unit> {
+        settings.setReviewReminderEnabled(true)
+        weekdays.days = { false }
+        scheduler.rearm()
+        settings.setReviewReminderEnabled(false)
 
         scheduler.rearm()
 
@@ -125,9 +157,20 @@ class AndroidReviewReminderSchedulerTest {
     }
 
     @Test
+    fun aLateReArmAtFivePastTheTimeStillMeansToday() = runBlocking<Unit> {
+        settings.setReviewReminderEnabled(true)
+        clock.now = at(9, 17, 35)
+        scheduler.rearm()
+        clock.now = at(9, 17, 41) // the app is opened; the alarm was delayed
+
+        scheduler.rearm()
+
+        assertThat(alarms().single().triggerAtMs).isEqualTo(at(9, 17, 41))
+    }
+    @Test
     fun afterTheReminderTimeItMovesToTheNextScheduledDay() = runBlocking<Unit> {
         settings.setReviewReminderEnabled(true)
-        clock.now = at(13, 17, 41) // Friday past the 17:30 reminder and its 10 min window
+        clock.now = at(13, 19, 31) // Friday past the 17:30 reminder and its 2 h grace
 
         scheduler.rearm()
 
@@ -149,7 +192,7 @@ class AndroidReviewReminderSchedulerTest {
     }
 
     @Test
-    fun reArmingInsideTheWindowBeforeItFiredKeepsTodayAndArmsAtOnce() = runBlocking<Unit> {
+    fun reArmingAfterTheTimeBeforeItFiredKeepsTodayAndArmsAtOnce() = runBlocking<Unit> {
         settings.setReviewReminderEnabled(true)
         clock.now = at(9, 17, 33) // the app is opened: MainActivity.onStart re-arms
 
@@ -170,9 +213,9 @@ class AndroidReviewReminderSchedulerTest {
     }
 
     @Test
-    fun reArmingPastTheWindowWithoutAFireMovesToTomorrow() = runBlocking<Unit> {
+    fun reArmingPastTheGraceWithoutAFireMovesToTomorrow() = runBlocking<Unit> {
         settings.setReviewReminderEnabled(true)
-        clock.now = at(9, 18, 0)
+        clock.now = at(9, 19, 31)
 
         scheduler.rearm()
 

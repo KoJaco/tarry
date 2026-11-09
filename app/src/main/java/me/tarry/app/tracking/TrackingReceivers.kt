@@ -85,10 +85,13 @@ class TrackingActionReceiver : BroadcastReceiver() {
 class ScheduleAlarmReceiver : BroadcastReceiver() {
     @Inject lateinit var controller: TrackingController
 
+    @Inject lateinit var reviewReminder: ReviewReminderScheduler
+
     @Inject @CaptureScope lateinit var scope: CoroutineScope
 
     override fun onReceive(context: Context, intent: Intent) {
-        runAsync(scope) { controller.reconcile(ReconcileSource.ALARM) }
+        // A scheduled window starting also recomputes the review reminder (covers a schedule that had no day in its look-ahead).
+        runAsync(scope) { try { controller.reconcile(ReconcileSource.ALARM) } finally { reviewReminder.rearm() } }
     }
 }
 

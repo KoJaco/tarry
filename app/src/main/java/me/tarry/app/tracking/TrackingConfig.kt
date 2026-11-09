@@ -109,6 +109,8 @@ data class TrackingConfig(
     val startFailurePersistTimeoutMs: Long = 3_000L,
     /** Delivery window of the inexact review-reminder alarm (no exact-alarm permission): it fires within this long after the reminder time. */
     val reviewReminderWindowMs: Long = 10 * 60_000L,
+    /** How long after the reminder time today's reminder is still due (a late delivery, a re-arm after the time); after that the day is skipped. */
+    val reviewReminderGraceMs: Long = 2 * 60 * 60_000L,
     // Manual controls.
     val pauseShortMin: Long = 30L,
     val pauseLongMin: Long = 60L,
