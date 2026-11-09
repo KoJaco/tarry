@@ -42,6 +42,13 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.semantics.heading
+import me.tarry.app.ui.theme.surfaceEdgeStroke
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -533,50 +540,65 @@ private fun DeleteAllDialog(onDelete: () -> Unit, onCancel: () -> Unit) {
     val word = stringResource(R.string.delete_all_word)
     val fieldLabel = stringResource(R.string.delete_all_field_label)
     var typed by rememberSaveable { mutableStateOf("") }
-    AlertDialog(
-        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
-        properties = DialogProperties(decorFitsSystemWindows = false),
+    // Our own window layout instead of AlertDialog: the dialog window is edge to edge and its root keeps clear of the system bars and
+    // the keyboard (imePadding), so the card can only be as tall as the visible area and its content scrolls. With the platform
+    // default the window was only panned, which at large font sizes pushed the buttons behind the keyboard.
+    Dialog(
         onDismissRequest = onCancel,
-        shape = TarryTheme.shapes.container,
-        containerColor = colors.card,
-        title = { Text(stringResource(R.string.delete_all_title), style = MaterialTheme.typography.titleLarge, color = colors.ink) },
-        text = {
-            Column(
-                modifier = Modifier.imePadding().verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(space.s),
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = space.xxl, vertical = space.l),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = TarryTheme.shapes.container,
+                color = colors.card,
+                border = surfaceEdgeStroke(),
+                modifier = Modifier.widthIn(max = 560.dp),
             ) {
-                Text(stringResource(R.string.delete_all_body), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
-                // The label is plain text above the field: a floating label would sit on the border and overlap the body at large font sizes.
-                Text(fieldLabel, style = MaterialTheme.typography.labelLarge, color = colors.ink)
-                OutlinedTextField(
-                    value = typed,
-                    onValueChange = { typed = it },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().semantics { contentDescription = fieldLabel },
-                    shape = TarryTheme.shapes.container,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = colors.ink,
-                        unfocusedTextColor = colors.ink,
-                        focusedBorderColor = colors.ink,
-                        unfocusedBorderColor = colors.outline,
-                        focusedLabelColor = colors.muted,
-                        unfocusedLabelColor = colors.muted,
-                        cursorColor = colors.ink,
-                    ),
-                )
-                Column(Modifier.padding(top = space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
-                    DestructiveButton(
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(space.xxl),
+                    verticalArrangement = Arrangement.spacedBy(space.s),
+                ) {
+                    Text(
                         stringResource(R.string.delete_all_title),
-                        onClick = onDelete,
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = typed.trim().equals(word, ignoreCase = true),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = colors.ink,
+                        modifier = Modifier.semantics { heading() },
                     )
-                    TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.delete_all_body), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                    // The label is plain text above the field: a floating label would sit on the border and overlap the body at large font sizes.
+                    Text(fieldLabel, style = MaterialTheme.typography.labelLarge, color = colors.ink)
+                    OutlinedTextField(
+                        value = typed,
+                        onValueChange = { typed = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = fieldLabel },
+                        shape = TarryTheme.shapes.container,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = colors.ink,
+                            unfocusedTextColor = colors.ink,
+                            focusedBorderColor = colors.ink,
+                            unfocusedBorderColor = colors.outline,
+                            focusedLabelColor = colors.muted,
+                            unfocusedLabelColor = colors.muted,
+                            cursorColor = colors.ink,
+                        ),
+                    )
+                    Column(Modifier.padding(top = space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
+                        DestructiveButton(
+                            stringResource(R.string.delete_all_title),
+                            onClick = onDelete,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = typed.trim().equals(word, ignoreCase = true),
+                        )
+                        TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                    }
                 }
             }
-        },
-        confirmButton = {},
-    )
+        }
+    }
 }
 
 /** Forever counts as the longest. */
