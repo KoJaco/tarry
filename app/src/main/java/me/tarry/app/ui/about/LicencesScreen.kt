@@ -36,15 +36,16 @@ import java.io.IOException
 /** Wired entry point: reads each notice from `assets/licenses/` when its row is opened. */
 @Composable
 fun LicencesScreen(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
+    val assets = LocalContext.current.assets
+    val failed = stringResource(R.string.licences_open_failed)
     LicencesContent(
         notices = OssNotices,
         textFor = { notice ->
             withContext(Dispatchers.IO) {
                 try {
-                    context.assets.open("licenses/${notice.assetFile}").bufferedReader().use { it.readText() }
+                    assets.open("licenses/${notice.assetFile}").bufferedReader().use { it.readText() }
                 } catch (e: IOException) {
-                    context.getString(R.string.licences_open_failed)
+                    failed
                 }
             }
         },
