@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.R
+import me.tarry.app.ui.components.Chevron
 import me.tarry.app.ui.components.EmptyState
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.TarryCard
@@ -118,6 +120,7 @@ private fun PlaceListRow(row: PlaceRow, nowMs: Long, zone: ZoneId, onClick: () -
                     .padding(horizontal = space.m, vertical = space.xs),
             )
         }
+        Chevron(Modifier.testTag("row_chevron"))
     }
 }
 

@@ -165,12 +165,12 @@ private fun RowFrame(
 }
 
 @Composable
-internal fun Chevron() {
+internal fun Chevron(modifier: Modifier = Modifier) {
     Icon(
         painter = painterResource(R.drawable.ic_chevron_right),
         contentDescription = null,
         tint = TarryTheme.colors.muted,
-        modifier = Modifier.size(24.dp),
+        modifier = modifier.size(24.dp),
     )
 }
 

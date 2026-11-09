@@ -14,7 +14,9 @@ import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -93,6 +95,13 @@ class JobsScreenTest {
         composeRule.onNodeWithText("Save").performClick()
 
         assertThat(created).containsExactly("Beta")
+    }
+
+    @Test
+    fun everyTappableJobRowEndsWithAChevron() {
+        show(state(acme, old))
+
+        composeRule.onAllNodesWithTag("row_chevron", useUnmergedTree = true).assertCountEquals(2)
     }
 
     @Test
