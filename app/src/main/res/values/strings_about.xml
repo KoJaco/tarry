@@ -18,7 +18,7 @@
     <string name="about_support_subject">Tarry support</string>
     <string name="about_section_credits">Credits</string>
     <string name="about_map_data">Map data</string>
-    <string name="about_map_data_value">© OpenStreetMap contributors. Tiles by OpenFreeMap.</string>
+    <string name="about_map_data_value">© OpenStreetMap contributors · © OpenMapTiles · Tiles by OpenFreeMap.</string>
     <string name="about_licences">Open-source licences</string>
     <string name="about_no_email_app">No email app found. Write to %1$s.</string>
     <string name="about_no_browser">No app found to open this link.</string>

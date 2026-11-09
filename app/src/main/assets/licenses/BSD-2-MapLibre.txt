@@ -1,9 +1,9 @@
 MapLibre Native
 https://github.com/maplibre/maplibre-native
 
-Copyright (c) 2014-2020, Mapbox
-Copyright (c) 2020 MapLibre contributors
-All rights reserved.
+Copyright (c) 2021 MapLibre contributors
+Copyright (c) 2018-2021 MapTiler.com
+Copyright (c) 2014-2020 Mapbox
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are met:
