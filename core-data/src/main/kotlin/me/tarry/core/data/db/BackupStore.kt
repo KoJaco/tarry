@@ -148,9 +148,13 @@ class BackupStore(private val db: TarryDatabase) {
     /**
      * Removes everything the user recorded or labelled, in one transaction: pings, sessions, visits, trips, places,
      * jobs, job blocks, excluded ranges, gaps, manual overrides and the segmentation checkpoint. The schedule
-     * (templates and overrides) stays, like the settings; so does the schema.
+     * (templates and overrides) stays, like the settings; so does the schema. [keepOverrides] (the user's active pause or
+     * manual start from before the delete) are written back after the wipe, so tracking state is unchanged by it.
      */
-    suspend fun deleteAll() = db.withTransaction { deleteRecorded() }
+    suspend fun deleteAll(keepOverrides: List<ManualOverride> = emptyList()) = db.withTransaction {
+        deleteRecorded()
+        keepOverrides.chunked(CHUNK).forEach { dao.insertManualOverrides(it) }
+    }
 
     /** Children first, so no cascade or FK check fires on the way out. Call inside a transaction. */
     private suspend fun deleteRecorded() {

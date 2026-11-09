@@ -28,6 +28,7 @@ import me.tarry.app.tracking.FakeSegmentationTrigger
 import me.tarry.app.tracking.FakeStayRadius
 import me.tarry.app.tracking.FakeWindowEndGrace
 import me.tarry.app.tracking.HealthGapRecorder
+import me.tarry.app.tracking.PauseKind
 import me.tarry.app.tracking.ReconcileSource
 import me.tarry.app.tracking.ScheduleAlarmScheduler
 import me.tarry.app.tracking.ScheduleInputsProvider
@@ -39,6 +40,7 @@ import me.tarry.core.data.db.BackupSnapshot
 import me.tarry.core.data.db.BackupStore
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.LocationPing
+import me.tarry.core.data.db.entity.ManualOverride
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.core.data.model.ManualOverrideType
@@ -261,5 +263,63 @@ class BackupRestoreTrackingTest {
         assertThat(rows.getValue(2).end).isEqualTo(createdAt)
         assertThat(rows.getValue(2).active).isFalse()
         assertThat(rows.getValue(3)).isEqualTo(snapshot.manualOverrides[2])
+    }
+
+    private fun deleteAllManager() = BackupManager(
+        ApplicationProvider.getApplicationContext(), BackupStore(db),
+        PreferenceDataStoreFactory.create(scope = ioScope) { folder.root.resolve("settings.preferences_pb") },
+        PreferenceDataStoreFactory.create(scope = ioScope) { folder.root.resolve("declined.preferences_pb") },
+        SettingsRepository(PreferenceDataStoreFactory.create(scope = ioScope) { folder.root.resolve("settings.preferences_pb") }),
+        object : RestoreHooks {
+            override suspend fun <T> captureSuspended(block: suspend () -> T): T = controller.withCaptureSuspended(block)
+            override suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+                controller.withCaptureSuspendedKeeping(block)
+            override suspend fun afterRestore() = Unit
+        },
+        clock,
+    )
+
+    @Test
+    fun deleteAllKeepsAUserPauseInsideAWindow() = runBlocking<Unit> {
+        controller.reconcile(ReconcileSource.ALARM)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        controller.pause(PauseKind.UNTIL_NEXT_WINDOW)
+        val pause = activeOverrides().single()
+        launcher.started.clear()
+
+        deleteAllManager().deleteAll()
+
+        assertThat(activeOverrides()).containsExactly(pause)
+        assertThat(launcher.started).isEmpty()
+        assertThat(BackupStore(db).snapshot().sessions).isEmpty()
+    }
+
+    @Test
+    fun deleteAllLeavesNoStrayPauseWhenTheUserHadNone() = runBlocking<Unit> {
+        controller.reconcile(ReconcileSource.ALARM)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        assertThat(activeOverrides()).isEmpty()
+        launcher.started.clear()
+
+        deleteAllManager().deleteAll()
+
+        assertThat(activeOverrides()).isEmpty()
+        assertThat(BackupStore(db).snapshot().manualOverrides).isEmpty()
+        // Still inside the window and nothing suppresses it, so tracking starts again.
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+    }
+
+    @Test
+    fun deleteAllKeepsAnActiveManualStart() = runBlocking<Unit> {
+        clock.now = at(19, 20).toEpochMilli() // outside the window
+        controller.start(ManualOverrideEndMode.UNTIL_STOPPED)
+        coordinator.begin(SessionTrigger.MANUAL)
+        val start = activeOverrides().single()
+        launcher.started.clear()
+
+        deleteAllManager().deleteAll()
+
+        assertThat(activeOverrides()).containsExactly(start)
+        assertThat(launcher.started).containsExactly(SessionTrigger.MANUAL)
     }
 }

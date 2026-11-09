@@ -25,6 +25,7 @@ import me.tarry.app.ui.timeline.DeclinedSuggestionsDataStore
 import me.tarry.core.data.db.BackupCounts
 import me.tarry.core.data.db.BackupSnapshot
 import me.tarry.core.data.db.BackupStore
+import me.tarry.core.data.db.entity.ManualOverride
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.SettingsRepository
 import java.io.IOException
@@ -42,6 +43,10 @@ interface RestoreHooks {
      */
     suspend fun <T> captureSuspended(block: suspend () -> T): T
 
+    /** As [captureSuspended], with the manual overrides that were active before capture was stopped, for a caller that wipes them and must put them back. */
+    suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+        captureSuspended { block(emptyList()) }
+
     /** After the data is replaced and tracking reconciled: the segmentation upgrade check. */
     suspend fun afterRestore()
 }
@@ -52,6 +57,9 @@ class TrackingRestoreHooks @Inject constructor(
     private val upgrade: SegmentationUpgrade,
 ) : RestoreHooks {
     override suspend fun <T> captureSuspended(block: suspend () -> T): T = controller.withCaptureSuspended(block)
+
+    override suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+        controller.withCaptureSuspendedKeeping(block)
 
     override suspend fun afterRestore() {
         upgrade.runIfNeeded()
@@ -272,14 +280,14 @@ class BackupManager @Inject constructor(
     /**
      * Deletes all recorded data ([BackupStore.deleteAll]) with tracking suspended, as a restore does: capture stops
      * (closing any open session), Room is cleared in one transaction, then tracking reconciles and resumes per the
-     * schedule. Settings, the schedule and the `last_backup_ms` stamp are kept; the declined suggestions (they name
+     * schedule. Manual overrides active before the delete (a pause, a manual start) survive it. Settings, the schedule and the `last_backup_ms` stamp are kept; the declined suggestions (they name
      * deleted visits and places) are cleared with the data. Cannot be cancelled half way. Throws
      * [BackupError.DELETE_FAILED] if the delete fails; Room has then rolled back and nothing was removed.
      */
     override suspend fun deleteAll() = withContext(Dispatchers.IO + NonCancellable) {
         try {
-            hooks.captureSuspended {
-                store.deleteAll()
+            hooks.captureSuspendedKeepingOverrides { activeBefore ->
+                store.deleteAll(keepOverrides = activeBefore)
                 // Only a hint list: a failure here must not report the delete as failed.
                 runCatching { declinedStore.updateData { _ -> emptyPreferences() } }
             }
