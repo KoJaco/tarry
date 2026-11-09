@@ -1,6 +1,11 @@
 package me.tarry.app.ui
 
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -84,6 +89,23 @@ class PermissionsUiTest {
 
     private fun text(tag: String) = composeRule.onNodeWithTag(tag, useUnmergedTree = true)
         .fetchSemanticsNode().config[SemanticsProperties.Text].single().text
+
+    private fun assertStatusIconSize(scale: Float, size: androidx.compose.ui.unit.Dp) {
+        val ui = buildPermissionsUiState(PermissionSnapshot(fineLocation = true), emptySet())
+        composeRule.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, fontScale = scale)) {
+                PermissionsContent(ui, noop)
+            }
+        }
+        composeRule.onNodeWithTag("permission_status_icon_LOCATION", useUnmergedTree = true)
+            .assertWidthIsEqualTo(size).assertHeightIsEqualTo(size)
+    }
+
+    @Test
+    fun statusIconKeepsItsSizeAtDefaultFont() = assertStatusIconSize(1f, 18.dp)
+
+    @Test
+    fun statusIconGrowsAtFontScaleTwo() = assertStatusIconSize(2f, 30.dp) // 18 sp on the platform's non-linear 2.0 curve
 
     @Test
     fun everyCardIsOneButton_exceptALockedStep() {
