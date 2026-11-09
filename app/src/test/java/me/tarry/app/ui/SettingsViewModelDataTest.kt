@@ -93,6 +93,7 @@ class SettingsViewModelDataTest {
     private lateinit var db: TarryDatabase
     private lateinit var backup: FakeBackup
     private lateinit var vm: SettingsViewModel
+    private val reminder = me.tarry.app.reminder.FakeReviewReminderScheduler()
     private lateinit var settingsRepo: SettingsRepository
     @Volatile private var reconciles = 0
     private val reconcile = me.tarry.app.tracking.ReconcileTrigger { reconciles++ }
@@ -107,7 +108,7 @@ class SettingsViewModelDataTest {
         backup = FakeBackup()
         val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("s.preferences_pb") })
         settingsRepo = settings
-        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, scope)
+        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, scope, reminder)
     }
 
     @After
@@ -121,7 +122,7 @@ class SettingsViewModelDataTest {
     fun changingTheWindowEndGraceSavesItAndReconcilesAtOnce() = runBlocking<Unit> {
         val captureJob = SupervisorJob()
         val capturing = SettingsViewModel(
-            settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, CoroutineScope(Dispatchers.IO + captureJob),
+            settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, CoroutineScope(Dispatchers.IO + captureJob), reminder,
         )
         capturing.setWindowEndGraceMaxMin(15)
 
@@ -140,7 +141,7 @@ class SettingsViewModelDataTest {
         val captureJob = SupervisorJob()
         val gated = SettingsViewModel(
             settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup,
-            { gate.await(); reconciles++ }, CoroutineScope(Dispatchers.IO + captureJob),
+            { gate.await(); reconciles++ }, CoroutineScope(Dispatchers.IO + captureJob), reminder,
         )
         gated.setWindowEndGraceMaxMin(30)
 

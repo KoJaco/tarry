@@ -218,6 +218,14 @@
     <string name="settings_one_year">1 year</string>
     <string name="settings_review_reminder">Review reminder</string>
     <string name="settings_review_reminder_time">Review reminder time</string>
+    <string name="settings_review_reminder_subtitle">Scheduled days at %1$s, if something needs review</string>
+    <string name="settings_review_reminder_notifications_off">Notifications are off for Tarry. Turn them on to get reminders.</string>
+    <string name="review_reminder_channel_name">Review reminders</string>
+    <string name="review_reminder_title">Review your day</string>
+    <plurals name="review_reminder_text">
+        <item quantity="one">%d item needs review</item>
+        <item quantity="other">%d items need review</item>
+    </plurals>
     <string name="settings_theme">Theme</string>
     <string name="settings_on">On</string>
     <string name="settings_off">Off</string>

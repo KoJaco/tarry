@@ -74,6 +74,9 @@ private enum class AssignStep { NONE, PICK, NEW }
 /** Hilt-wired root. Owns the back stack and connects ViewModels to [TarryAppContent]. */
 @Composable
 fun TarryApp(
+    /** The review-reminder notification was tapped: go to today's Timeline with Needs review on, then call [onOpenReviewHandled]. */
+    openReview: Boolean = false,
+    onOpenReviewHandled: () -> Unit = {},
     shellViewModel: ShellViewModel = hiltViewModel(),
     statusViewModel: ShellStatusViewModel = hiltViewModel(),
     // Owned here, not by the Timeline entry, so the shell can swap its bottom bar while visits are selected.
@@ -100,6 +103,13 @@ fun TarryApp(
     LaunchedEffect(trackingState) { if (trackingState == TrackingState.ATTENTION) customSheetVisible = false }
     val context = LocalContext.current
     val openPermissions = { if (backStack.lastOrNull() != PermissionsRoute) backStack.add(PermissionsRoute) }
+    LaunchedEffect(openReview) {
+        if (openReview) {
+            backStack.navigateTopLevel(TimelineRoute)
+            timelineViewModel.showNeedsReviewToday()
+            onOpenReviewHandled()
+        }
+    }
     var initialChecked by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!initialChecked) {

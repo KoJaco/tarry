@@ -90,6 +90,7 @@ class ScheduleViewModelTest {
     private lateinit var stateRepo: CountingStateRepository
     private lateinit var controller: TrackingController
     private lateinit var viewModel: ScheduleViewModel
+    private val reminder = me.tarry.app.reminder.FakeReviewReminderScheduler()
 
     @Before
     fun setUp() {
@@ -118,7 +119,7 @@ class ScheduleViewModelTest {
         )
         stateRepo = CountingStateRepository()
         runBlocking { scheduleRepo.saveTemplate(Schedule.MON_FRI_7_TO_17, 0) }
-        viewModel = ScheduleViewModel(scheduleRepo, controller, stateRepo, clock, captureScope)
+        viewModel = ScheduleViewModel(scheduleRepo, controller, stateRepo, clock, captureScope, reminder)
     }
 
     @After
@@ -212,6 +213,7 @@ class ScheduleViewModelTest {
         assertThat(scheduleRepo.template()).isEqualTo(Schedule.EMPTY)
         assertThat(scheduleRepo.override(thisWeek.toString())).isNull()
         assertThat(stateRepo.refreshes).isEqualTo(1)
+        assertThat(reminder.rearms).isEqualTo(1)
     }
 
     @Test
@@ -288,7 +290,7 @@ class ScheduleViewModelTest {
     @Test
     fun useEveryWeekScheduleClearsTheOverride() = runBlocking {
         scheduleRepo.saveOverride(thisWeek.toString(), Schedule.EMPTY, 0)
-        viewModel = ScheduleViewModel(scheduleRepo, controller, stateRepo, clock, captureScope)
+        viewModel = ScheduleViewModel(scheduleRepo, controller, stateRepo, clock, captureScope, reminder)
         awaitState { it.loaded }
         viewModel.setMode(ScheduleMode.WEEK)
         awaitLoaded(ScheduleMode.WEEK, thisWeek)

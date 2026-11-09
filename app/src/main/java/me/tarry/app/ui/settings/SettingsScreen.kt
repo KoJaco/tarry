@@ -1,6 +1,20 @@
 package me.tarry.app.ui.settings
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Resources
+import android.os.Build
+import android.text.format.DateFormat
+import androidx.compose.runtime.remember
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import java.time.ZoneOffset
+import me.tarry.app.ui.drawer.TimePickerDialog
+import me.tarry.app.ui.permissions.PermissionIntents
+import me.tarry.app.ui.timeline.rememberTimeFormats
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -102,6 +116,15 @@ fun SettingsScreen(
     LaunchedEffect(viewModel, snackbarHostState) {
         viewModel.events.collect { event -> snackbarHostState?.showSnackbar(dataEventMessage(context.resources, event)) }
     }
+    // The setting stays on if the user refuses; the Reminders group then says notifications are off (AGENTS rule 6).
+    var notificationsBlocked by remember { mutableStateOf(!NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsBlocked = !NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+    // Back from the system notification settings (or the permission dialog): look again.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        notificationsBlocked = !NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
     val startBackup = { createBackup.launch("tarry-backup-${LocalDate.now()}.json.gz") }
     SettingsContent(
         settings = settings,
@@ -128,11 +151,23 @@ fun SettingsScreen(
         onRoundDailyTotalChange = viewModel::setRoundDailyTotalPerJob,
         onRetentionSelected = viewModel::setRawPingRetentionDays,
         onDeleteAll = viewModel::deleteAll,
+        onReviewReminderChange = { enabled ->
+            viewModel.setReviewReminderEnabled(enabled)
+            if (enabled && needsNotificationPermission(context)) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        },
+        onReviewReminderTimeSelected = viewModel::setReviewReminderMinuteOfDay,
+        notificationsBlocked = notificationsBlocked,
+        onOpenNotificationSettings = { context.startActivity(PermissionIntents.notificationSettings(context)) },
         modifier = modifier,
     )
 }
 
-private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE, RETENTION }
+private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE, RETENTION, REMINDER_TIME }
+
+/** Android 13 and later ask for the notification permission at runtime; before that there is nothing to ask. */
+private fun needsNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
 
 /** Stateless sectioned settings; the stop radius, theme and the billing rounding rows are the editable ones. */
 @Composable
@@ -154,6 +189,11 @@ fun SettingsContent(
     onRoundDailyTotalChange: (Boolean) -> Unit = {},
     onRetentionSelected: (Int?) -> Unit = {},
     onDeleteAll: () -> Unit = {},
+    onReviewReminderChange: (Boolean) -> Unit = {},
+    onReviewReminderTimeSelected: (Int) -> Unit = {},
+    /** Notifications are off for Tarry; with the reminder on, the Reminders group says so and links to the system settings. */
+    notificationsBlocked: Boolean = false,
+    onOpenNotificationSettings: () -> Unit = {},
     data: DataUiState = DataUiState(),
     zone: ZoneId = ZoneId.systemDefault(),
     onBackUp: () -> Unit = {},
@@ -259,6 +299,18 @@ fun SettingsContent(
                 },
                 onDismiss = { picker = null },
             )
+            Picker.REMINDER_TIME -> TimePickerDialog(
+                title = stringResource(R.string.settings_review_reminder_time),
+                // Minutes since midnight are the same number in any zone, so UTC keeps the picker free of DST gaps.
+                initialMs = settings.reviewReminderMinuteOfDay * 60_000L,
+                zone = ZoneOffset.UTC,
+                is24Hour = DateFormat.is24HourFormat(LocalContext.current),
+                onConfirm = { hour, minute ->
+                    onReviewReminderTimeSelected(hour * 60 + minute)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
             null -> Unit
         }
     }
@@ -331,12 +383,26 @@ fun SettingsContent(
             }
             SectionHeader(stringResource(R.string.settings_section_reminders), Modifier.padding(top = space.m))
             val reminderTitle = stringResource(R.string.settings_review_reminder)
-            val reminderValue = if (settings.reviewReminderEnabled) on else off
             val reminderTimeTitle = stringResource(R.string.settings_review_reminder_time)
-            val reminderTimeValue = "%02d:%02d".format(settings.reviewReminderMinuteOfDay / 60, settings.reviewReminderMinuteOfDay % 60)
+            val reminderTimeValue = rememberTimeFormats().time(settings.reviewReminderMinuteOfDay * 60_000L, ZoneOffset.UTC)
+            val reminderSubtitle = if (settings.reviewReminderEnabled) {
+                stringResource(R.string.settings_review_reminder_subtitle, reminderTimeValue)
+            } else {
+                null
+            }
+            val notificationsOffText = stringResource(R.string.settings_review_reminder_notifications_off)
             SettingsGroup {
-                row(reminderTitle, icon = R.drawable.ic_notifications, value = reminderValue)
-                row(reminderTimeTitle, icon = R.drawable.ic_schedule, value = reminderTimeValue)
+                switchRow(
+                    reminderTitle, settings.reviewReminderEnabled, onReviewReminderChange,
+                    subtitle = reminderSubtitle, icon = R.drawable.ic_notifications,
+                )
+                row(
+                    reminderTimeTitle, onClick = { picker = Picker.REMINDER_TIME }, icon = R.drawable.ic_schedule,
+                    value = reminderTimeValue, enabled = settings.reviewReminderEnabled,
+                )
+                if (settings.reviewReminderEnabled && notificationsBlocked) {
+                    row(notificationsOffText, onClick = onOpenNotificationSettings, icon = R.drawable.ic_notifications)
+                }
             }
         }
         DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore, onRetention = { picker = Picker.RETENTION }, onDeleteAll = { confirmDeleteAll = true })

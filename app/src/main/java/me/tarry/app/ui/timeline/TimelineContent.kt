@@ -109,6 +109,9 @@ fun TimelineContent(
     onCreateJob: (start: Long, end: Long) -> Unit = { _, _ -> },
     /** A job block was moved or resized by drag (or accessibility action): its new snapped range. The host saves it. */
     onJobRangeChange: (id: String, start: Long, end: Long) -> Unit = { _, _, _ -> },
+    /** The host asks for the Needs review filter to be on (the reminder notification was tapped); [onReviewOnlyRequestHandled] once it is. */
+    reviewOnlyRequested: Boolean = false,
+    onReviewOnlyRequestHandled: () -> Unit = {},
     /** The saved zoom level: the canvas starts at its factor and follows it when it changes from outside. */
     zoomLevel: ZoomLevel = ZoomLevel.Q15,
     /** The zoom settled on a level (a pinch released, or the Zoom menu): the host saves it. */
@@ -124,6 +127,12 @@ fun TimelineContent(
     LaunchedEffect(scroll) { snapshotFlow { scroll.isScrollInProgress }.filter { it }.collect { selectedVisit = null } }
     val zoomState = rememberZoomState(scroll, zoomLevel, onZoomLevelChange) { selectedVisit = null }
     var reviewOnly by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(reviewOnlyRequested) {
+        if (reviewOnlyRequested) {
+            reviewOnly = true
+            onReviewOnlyRequestHandled()
+        }
+    }
     var gapSheetId by rememberSaveable { mutableStateOf<String?>(null) }
     val isToday = date == today
     // Only today has a now-line, and only a started screen needs it to move.

@@ -24,6 +24,7 @@ import me.tarry.app.export.backup.BackupError
 import me.tarry.app.export.backup.BackupException
 import me.tarry.app.export.backup.DataBackup
 import me.tarry.app.export.backup.RestorePreview
+import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.ReconcileTrigger
 import me.tarry.app.tracking.TrackingClock
@@ -48,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     private val reconcile: ReconcileTrigger,
     // The reconcile after a grace change must finish even if the user leaves Settings right after picking.
     @param:CaptureScope private val captureScope: CoroutineScope,
+    private val reviewReminder: ReviewReminderScheduler,
 ) : ViewModel() {
     /** Null until the first DataStore read completes. */
     val settings: StateFlow<Settings?> = repository.settings
@@ -76,6 +78,21 @@ class SettingsViewModel @Inject constructor(
         captureScope.launch {
             repository.setWindowEndGraceMaxMin(minutes)
             reconcile.reconcileNow()
+        }
+    }
+
+    /** Saves the switch and re-arms (or cancels) the reminder alarm; app-lifetime scope so a quick back-out cannot leave them out of step. */
+    fun setReviewReminderEnabled(enabled: Boolean) {
+        captureScope.launch {
+            repository.setReviewReminderEnabled(enabled)
+            reviewReminder.rearm()
+        }
+    }
+
+    fun setReviewReminderMinuteOfDay(minuteOfDay: Int) {
+        captureScope.launch {
+            repository.setReviewReminderMinuteOfDay(minuteOfDay)
+            reviewReminder.rearm()
         }
     }
 

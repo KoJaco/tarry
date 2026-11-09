@@ -107,6 +107,8 @@ data class TrackingConfig(
     val deferredStartDelayMs: Long = 5_000L,
     /** Upper bound for persisting a failed foreground start before the service stops itself (must stay well under the ANR limit). */
     val startFailurePersistTimeoutMs: Long = 3_000L,
+    /** Delivery window of the inexact review-reminder alarm (no exact-alarm permission): it fires within this long after the reminder time. */
+    val reviewReminderWindowMs: Long = 10 * 60_000L,
     // Manual controls.
     val pauseShortMin: Long = 30L,
     val pauseLongMin: Long = 60L,

@@ -379,6 +379,21 @@ class TimelineViewModel internal constructor(
         setDate(if (date > _today.value) _today.value else date)
     }
 
+    private val _reviewOnlyRequested = MutableStateFlow(false)
+
+    /** True from [showNeedsReviewToday] until the Timeline has switched its Needs review filter on ([consumeReviewOnlyRequest]). */
+    val reviewOnlyRequested: StateFlow<Boolean> = _reviewOnlyRequested
+
+    /** The reminder notification's tap: select today and ask the Timeline to turn its Needs review filter on. */
+    fun showNeedsReviewToday() {
+        setDate(_today.value)
+        _reviewOnlyRequested.value = true
+    }
+
+    fun consumeReviewOnlyRequest() {
+        _reviewOnlyRequested.value = false
+    }
+
     /** Changing the day always leaves multi-select mode. */
     private fun setDate(date: LocalDate) {
         if (date != _selectedDate.value) _selection.value = emptySet()
