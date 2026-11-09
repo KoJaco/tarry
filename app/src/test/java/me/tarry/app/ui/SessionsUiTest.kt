@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
@@ -56,8 +57,8 @@ class SessionsUiTest {
     @Test
     fun listsSessionDetails() {
         composeRule.setContent { SessionsContent(listOf(session), false, null, actions) }
-        composeRule.onNodeWithText("Scheduled, Window ended").assertExists()
-        composeRule.onNodeWithText("42 pings").assertExists()
+        composeRule.onNodeWithText("Scheduled, window ended").assertExists()
+        composeRule.onNodeWithText("42 location points").assertExists()
     }
 
     @Test
@@ -65,8 +66,8 @@ class SessionsUiTest {
         composeRule.setContent {
             SessionsContent(listOf(session.copy(end = null, endReason = null, pingCount = 1)), false, null, actions)
         }
-        composeRule.onNodeWithText("Scheduled, Still open").assertExists()
-        composeRule.onNodeWithText("1 ping").assertExists()
+        composeRule.onNodeWithText("Scheduled, still open").assertExists()
+        composeRule.onNodeWithText("1 location point").assertExists()
     }
 
     @Test
@@ -176,7 +177,7 @@ class SessionsUiTest {
     @Test
     fun exportResultIsAnnounced() {
         composeRule.setContent { SessionsContent(emptyList(), false, ExportResult.Done(3), actions) }
-        composeRule.onNodeWithText("Exported 3 pings").assertExists()
+        composeRule.onNodeWithText("Exported 3 location points").assertExists()
     }
 
     @Test
@@ -244,12 +245,53 @@ class SessionsUiTest {
     }
 
     @Test
-    fun rangeExportActionsAreOneScrollingRow_keepingTheirTargetsAndTags() {
+    fun dateChipsScrollAndTheExportActionsSitOnTheirOwnLine() {
         composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
         composeRule.onNodeWithTag("range_export_row").assert(androidx.compose.ui.test.hasScrollAction())
-        for (tag in listOf("range_from", "range_to", "range_export_GPX", "range_export_CSV")) {
+        for (tag in listOf("range_from", "range_to")) {
             composeRule.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp)
             composeRule.onNode(hasTestTag(tag) and hasAnyAncestor(hasTestTag("range_export_row"))).assertExists()
         }
+        for (tag in listOf("range_export_GPX", "range_export_CSV")) {
+            composeRule.onNodeWithTag(tag).assertHeightIsAtLeast(48.dp)
+            composeRule.onNode(hasTestTag(tag) and hasAnyAncestor(hasTestTag("range_export_actions"))).assertExists()
+            composeRule.onNode(hasTestTag(tag) and hasAnyAncestor(hasTestTag("range_export_row"))).assertDoesNotExist()
+        }
+        val chipsBottom = composeRule.onNodeWithTag("range_export_row").fetchSemanticsNode().boundsInRoot.bottom
+        val actionsTop = composeRule.onNodeWithTag("range_export_actions").fetchSemanticsNode().boundsInRoot.top
+        assertThat(actionsTop).isAtLeast(chipsBottom)
+    }
+
+    @Test
+    fun exportActionsAreFullyVisibleAtTwiceTheFontSize() {
+        composeRule.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = 2f),
+            ) { SessionsContent(emptyList(), false, null, actions) }
+        }
+        for (tag in listOf("range_export_GPX", "range_export_CSV")) {
+            composeRule.onNodeWithTag(tag).assertIsDisplayed().assertHeightIsAtLeast(48.dp)
+        }
+    }
+
+    @Test
+    fun exportRangeHeadingIsASectionHeader() {
+        composeRule.setContent { SessionsContent(emptyList(), false, null, actions) }
+        composeRule.onNodeWithText("EXPORT A DATE RANGE").assertExists()
+    }
+
+    @Test
+    fun largeCountsAreGroupedByLocale() {
+        composeRule.setContent { SessionsContent(listOf(session.copy(pingCount = 10_952)), false, null, actions) }
+        composeRule.onNodeWithText("10,952 location points").assertExists()
+    }
+
+    @Test
+    fun statusSentenceHasALowerCaseSecondPart() {
+        composeRule.setContent {
+            SessionsContent(listOf(session.copy(endReason = SessionEndReason.KILLED)), false, null, actions)
+        }
+        composeRule.onNodeWithText("Scheduled, ended unexpectedly").assertExists()
     }
 }

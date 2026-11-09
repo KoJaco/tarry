@@ -42,6 +42,7 @@ import me.tarry.app.export.ExportFormat
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.tracking.ArSessionLog
 import me.tarry.app.ui.components.FadingScrollRow
+import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.TarryCard
@@ -145,7 +146,7 @@ fun SessionsContent(
 private fun ExportResultText(result: ExportResult?, onDismiss: () -> Unit) {
     val text = when (result) {
         null -> return
-        is ExportResult.Done -> pluralStringResource(R.plurals.sessions_export_done, result.pingCount, result.pingCount)
+        is ExportResult.Done -> pluralStringResource(R.plurals.sessions_export_done, result.pingCount, formatCount(result.pingCount))
         ExportResult.Failed -> stringResource(R.string.sessions_export_failed)
     }
     Row(
@@ -217,7 +218,7 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
                     )
                     Text(detail, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
                     Text(
-                        pluralStringResource(R.plurals.sessions_row_pings, session.pingCount, session.pingCount),
+                        pluralStringResource(R.plurals.sessions_row_pings, session.pingCount, formatCount(session.pingCount)),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TarryTheme.colors.muted,
                         modifier = Modifier.testTag("session_pings_${session.id}"),
@@ -257,13 +258,8 @@ private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
     val to = LocalDate.ofEpochDay(toDay)
     val dateFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 
-    Text(
-        stringResource(R.string.sessions_export_range_title),
-        style = MaterialTheme.typography.titleMedium,
-        color = TarryTheme.colors.ink,
-        modifier = Modifier.padding(top = TarryTheme.space.l),
-    )
-    // One sideways-scrolling row (From, To, GPX, CSV): never wraps; the edges fade while more lies that way.
+    SectionHeader(stringResource(R.string.sessions_export_range_title), Modifier.padding(top = TarryTheme.space.l))
+    // The date chips scroll sideways and never wrap; the export actions sit on their own line below so they are never clipped.
     FadingScrollRow(modifier = Modifier.fillMaxWidth().testTag("range_export_row"), horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
         val fromText = from.format(dateFormat)
         val toText = to.format(dateFormat)
@@ -283,6 +279,11 @@ private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
                 .semantics { contentDescription = toDescription }
                 .testTag("range_to"),
         )
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().testTag("range_export_actions"),
+        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+    ) {
         for (format in ExportFormat.entries) {
             SecondaryButton(
                 text = stringResource(
@@ -293,7 +294,7 @@ private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
                     val last = maxOf(from, to)
                     onExport(ExportRequest.Range(first, last, ZoneId.systemDefault(), format))
                 },
-                modifier = Modifier.testTag("range_export_${format.name}"),
+                modifier = Modifier.weight(1f).testTag("range_export_${format.name}"),
             )
         }
     }
@@ -430,3 +431,6 @@ private fun activityLogText(log: ArSessionLog?, zoneId: String): String {
     val receipt = ArTimeFormat.format(Instant.ofEpochMilli(log.lastReceiptMs).atZone(zone))
     return stringResource(R.string.sessions_row_activity, log.count, log.ignored, stringResource(log.lastType.labelRes()), event, receipt)
 }
+
+/** A count with the locale's digit grouping ("10,952"). */
+internal fun formatCount(count: Int, locale: Locale = Locale.getDefault()): String = java.text.NumberFormat.getIntegerInstance(locale).format(count)
