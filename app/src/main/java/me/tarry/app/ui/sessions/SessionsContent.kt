@@ -47,6 +47,7 @@ import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TertiaryButton
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import java.time.DateTimeException
@@ -355,6 +356,14 @@ fun formatSessionRange(startMs: Long, endMs: Long, zoneId: String, locale: Local
     return "${formatSessionStart(startMs, zoneId, locale)}–${endText.keepWhole()}".breakAfterDash()
 }
 
+private fun ActivityType.labelRes(): Int = when (this) {
+    ActivityType.STILL -> R.string.sessions_activity_still
+    ActivityType.WALKING -> R.string.sessions_activity_walking
+    ActivityType.IN_VEHICLE -> R.string.sessions_activity_in_vehicle
+    ActivityType.ON_BICYCLE -> R.string.sessions_activity_on_bicycle
+    ActivityType.UNKNOWN -> R.string.sessions_activity_unknown
+}
+
 private fun SessionTrigger.labelRes(): Int = when (this) {
     SessionTrigger.SCHEDULE -> R.string.sessions_trigger_schedule
     SessionTrigger.MANUAL -> R.string.sessions_trigger_manual
@@ -419,5 +428,5 @@ private fun activityLogText(log: ArSessionLog?, zoneId: String): String {
     }
     val event = ArTimeFormat.format(Instant.ofEpochMilli(log.lastEventMs).atZone(zone))
     val receipt = ArTimeFormat.format(Instant.ofEpochMilli(log.lastReceiptMs).atZone(zone))
-    return stringResource(R.string.sessions_row_activity, log.count, log.ignored, log.lastType.name, event, receipt)
+    return stringResource(R.string.sessions_row_activity, log.count, log.ignored, stringResource(log.lastType.labelRes()), event, receipt)
 }

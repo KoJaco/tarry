@@ -20,12 +20,14 @@ import com.google.common.truth.Truth.assertThat
 import me.tarry.app.export.ExportFormat
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.export.suggestedFileName
+import me.tarry.app.tracking.ArSessionLog
 import me.tarry.app.tracking.SegmentationError
 import me.tarry.app.ui.sessions.ExportResult
 import me.tarry.app.ui.sessions.SegmentationUi
 import me.tarry.app.ui.sessions.SessionListItem
 import me.tarry.app.ui.sessions.SessionsActions
 import me.tarry.app.ui.sessions.SessionsContent
+import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import org.junit.Rule
@@ -118,7 +120,14 @@ class SessionsUiTest {
     @Test
     fun killedSessionHasAKilledIcon() {
         showOne(session.copy(endReason = SessionEndReason.KILLED))
-        composeRule.onNode(hasContentDescription("Session was killed")).assertExists()
+        composeRule.onNode(hasContentDescription("Session ended unexpectedly")).assertExists()
+    }
+
+    @Test
+    fun activityLineUsesPlainWordsNotEnumNames() {
+        val log = ArSessionLog(count = 3, ignored = 1, lastType = ActivityType.IN_VEHICLE, lastEventMs = 1_700_000_000_000, lastReceiptMs = 1_700_000_060_000)
+        showOne(session.copy(activityLog = log))
+        composeRule.onNodeWithTag("session_activity_7").assertTextContains("Activity changes: 3 (1 skipped as late). Last: in a vehicle at", substring = true)
     }
 
     @Test
