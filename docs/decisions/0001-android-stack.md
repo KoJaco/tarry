@@ -14,8 +14,8 @@ Tarry is a personal, on-device Android app that records location during schedule
 - **Location:** Play Services fused location, Activity Recognition transitions, Geofencing. Foreground service (type location) only inside windows; WorkManager for segmentation; exact AlarmManager alarm for window edges.
 - **Maps:** MapLibre Native + OpenFreeMap tiles (no key, no account).
 - **IDs:** UUID + `updatedAt` + soft delete on all derived entities; Long keys on pings and sessions only.
-- **Licence:** GPL-3.0.
-- **Distribution:** sideloaded signed APK via GitHub Releases for the MVP; Play Store post-MVP.
+- **Licence:** GPL-3.0 at first; source-available FSL-1.1-ALv2 since 2026-11-08 (ADR 0005).
+- **Distribution:** sideloaded signed APK via GitHub Releases for the MVP; Play Store post-MVP. (Superseded: Google Play is the only channel, see ADR 0005 and the phase 8 handoff.)
 
 ## Consequences
 - Requires Google Play Services; an F-Droid flavour is a later option.

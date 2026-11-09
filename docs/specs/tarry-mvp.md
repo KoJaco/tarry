@@ -5,7 +5,7 @@
 > Canonical source spec, saved as written. Intentional deviations agreed during planning (Job entity, UUID keys, extra tables, CSV ID columns, exact alarms) are in `docs/specs/build-plan.md` under "Spec deltas" and take precedence.
 
 ## Overview
-An Android app that passively records where you are during scheduled work hours, splits the day into on-site visits and travel, and lets you label it afterwards so invoicing is a lookup, not a reconstruction. All data stays on the device. The code is open source.
+An Android app that passively records where you are during scheduled work hours, splits the day into on-site visits and travel, and lets you label it afterwards so invoicing is a lookup, not a reconstruction. All data stays on the device. The code is source available (FSL-1.1-ALv2, ADR 0005).
 
 ## Principles
 - **Set and forget.** After the schedule is painted once, nothing is required day to day.
@@ -43,7 +43,7 @@ Native Kotlin with Jetpack Compose, single activity, local Room database. Captur
 | Maps | MapLibre Native with OpenStreetMap-based vector tiles; offline tile cache |
 | Reverse geocoding | Android Geocoder (on-device where available); result cached on the place |
 | Export | CSV via plain writer; PDF via Android PdfDocument |
-| Licence | Open source (choose before first public commit; check compatibility of any borrowed code) |
+| Licence | Source available, FSL-1.1-ALv2 (ADR 0005); check compatibility of any borrowed code |
 
 ### Modules
 - **core-data:** Room entities, DAOs, repositories
