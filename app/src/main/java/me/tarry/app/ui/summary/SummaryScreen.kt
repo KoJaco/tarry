@@ -81,13 +81,16 @@ import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SegmentedControl
+import me.tarry.app.ui.components.scrollIntoViewWhenSelected
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.TarryChip
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.theme.surfaceEdgeStroke
 import me.tarry.app.ui.theme.tabular
+import me.tarry.app.ui.timeline.breakAfterDash
 import me.tarry.app.ui.timeline.formatDuration
+import me.tarry.app.ui.timeline.keepWhole
 import me.tarry.app.ui.timeline.rememberTimeFormats
 import me.tarry.app.ui.timeline.spokenDuration
 import java.time.Instant
@@ -108,6 +111,7 @@ object SummaryTags {
     fun exportFormat(format: SummaryExportFormat) = "summary_export_${format.name}"
     fun row(jobId: String) = "summary_row_$jobId"
     fun rowBilled(jobId: String) = "summary_row_billed_$jobId"
+    fun rowBilledLabel(jobId: String) = "summary_row_billed_label_$jobId"
     fun piece(blockId: String, date: LocalDate) = "summary_piece_${blockId}_$date"
 }
 
@@ -367,7 +371,7 @@ private fun RangeChips(preset: RangePreset?, onPreset: (RangePreset) -> Unit) {
                 text = stringResource(p.labelRes()),
                 selected = p == preset,
                 onClick = { onPreset(p) },
-                modifier = Modifier.testTag("summary_chip_${p.name}"),
+                modifier = Modifier.scrollIntoViewWhenSelected(p == preset).testTag("summary_chip_${p.name}"),
             )
         }
     }
@@ -391,13 +395,14 @@ internal fun dateFormatter(skeleton: String): DateTimeFormatter {
     }
 }
 
+/** The range for the screen: "2 Nov 2026–8 Nov 2026" whole dates, breaking only after the dash. [spoken] keeps the plain " – " wording. */
 @Composable
-private fun rangeText(range: SummaryRange): String {
+private fun rangeText(range: SummaryRange, spoken: Boolean = false): String {
     val format = dateFormatter("dMMMy")
-    return if (range.from == range.to) {
-        format.format(range.from)
-    } else {
-        stringResource(R.string.summary_range_from_to, format.format(range.from), format.format(range.to))
+    return when {
+        range.from == range.to -> format.format(range.from).let { if (spoken) it else it.keepWhole() }
+        spoken -> stringResource(R.string.summary_range_from_to, format.format(range.from), format.format(range.to))
+        else -> stringResource(R.string.timeline_time_range, format.format(range.from).keepWhole(), format.format(range.to).keepWhole()).breakAfterDash()
     }
 }
 
@@ -509,12 +514,21 @@ private fun JobRowItem(row: JobSummary, onClick: () -> Unit) {
             }
         }
         if (!stacked) {
-            Text(
-                summaryDuration(row.billedMs),
-                style = MaterialTheme.typography.titleMedium.tabular(),
-                fontWeight = FontWeight.Bold,
-                color = TarryTheme.colors.ink,
-            )
+            // The caption says what the right-hand figure is (the stacked layout says "Billed <time>" in one string).
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    stringResource(R.string.summary_row_billed_label),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = TarryTheme.colors.muted,
+                    modifier = Modifier.testTag(SummaryTags.rowBilledLabel(row.jobId)),
+                )
+                Text(
+                    summaryDuration(row.billedMs),
+                    style = MaterialTheme.typography.titleMedium.tabular(),
+                    fontWeight = FontWeight.Bold,
+                    color = TarryTheme.colors.ink,
+                )
+            }
         }
     }
 }
@@ -549,7 +563,7 @@ private fun DaySectionItem(section: DaySection, onRow: (JobSummary) -> Unit) {
 private fun TotalsCard(result: SummaryResult, range: SummaryRange) {
     val billed = summaryDuration(result.billedMs)
     val clock = summaryDuration(result.onClockMs)
-    val description = stringResource(R.string.summary_totals_description, rangeText(range), summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
+    val description = stringResource(R.string.summary_totals_description, rangeText(range, spoken = true), summarySpoken(result.billedMs), summarySpoken(result.onClockMs))
     TarryCard(
         modifier = Modifier
             .fillMaxWidth()

@@ -205,6 +205,30 @@ class TimelineEditingUiTest {
     }
 
     @Test
+    fun shortCardGetsItsHandlesOutsideWithoutOverlap_tallCardKeepsThemOnTheEdges() {
+        // Mid-canvas: next to the canvas edge the handles fall back to the edges (see handlesOutside).
+        val early = TimelineItem.Visit("early", at(8), at(8, 40), "Shed")
+        val short = TimelineItem.Visit("short", at(9), at(9, 20), "Yard")
+        val tall = TimelineItem.Visit("tall", at(11), at(13), "Depot")
+        show(listOf(early, short, tall))
+        select("short")
+        val card = tag("timeline_row_short").fetchSemanticsNode().boundsInRoot
+        val top = handle(ResizeEdge.Start, "short").fetchSemanticsNode().boundsInRoot
+        val bottom = handle(ResizeEdge.End, "short").fetchSemanticsNode().boundsInRoot
+        assertThat(top.bottom).isWithin(1f).of(card.top)
+        assertThat(bottom.top).isWithin(1f).of(card.bottom)
+        assertThat(top.bottom).isAtMost(bottom.top)
+        assertThat(top.width).isWithin(1f).of(bottom.width)
+        assertThat(top.center.x).isWithin(1f).of(card.center.x)
+        handle(ResizeEdge.Start, "short").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+
+        select("tall")
+        val tallCard = tag("timeline_row_tall").fetchSemanticsNode().boundsInRoot
+        val tallTop = handle(ResizeEdge.Start, "tall").fetchSemanticsNode().boundsInRoot
+        assertThat(tallTop.center.y).isWithin(1f).of(tallCard.top)
+    }
+
+    @Test
     fun tappingElsewhereDeselects() {
         show(listOf(review, trip))
         select("review")
@@ -417,15 +441,40 @@ class TimelineEditingUiTest {
     }
 
     @Test
-    fun needsReviewToggleReportsItsStateAsASwitch() {
+    fun needsReviewChipIsTheFilterAndReportsItsStateAsACheckbox() {
         show(listOf(review, labelled))
         tag("timeline_filter_review").assertIsOff().assertHasClickAction()
-        assertThat(tag("timeline_filter_review").fetchSemanticsNode().config[SemanticsProperties.Role]).isEqualTo(Role.Switch)
+        assertThat(tag("timeline_filter_review").fetchSemanticsNode().config[SemanticsProperties.Role]).isEqualTo(Role.Checkbox)
         composeRule.onAllNodesWithText("Needs review").onFirst().assertIsDisplayed()
         tag("timeline_filter_review").performClick()
         tag("timeline_filter_review").assertIsOn()
         tag("timeline_filter_review").performClick()
         tag("timeline_filter_review").assertIsOff()
+    }
+
+    @Test
+    fun reviewChipIsOnlyThereWhileSomethingNeedsReviewAndTheFilterResetsWhenItGoes() {
+        var items by mutableStateOf(listOf(review, labelled))
+        composeRule.setContent {
+            TarryTheme { TimelineContent(date, items, {}, {}, today = date, zone = zone, nowMs = at(20), onEdit = {}) }
+        }
+        tag("timeline_filter_review").assertIsOff().performClick()
+        tag("timeline_filter_review").assertIsOn()
+        items = listOf(labelled)
+        composeRule.waitForIdle()
+        tag("timeline_filter_review").assertDoesNotExist()
+        assertThat(dimmed("timeline_row_labelled")).isFalse()
+        items = listOf(review, labelled)
+        composeRule.waitForIdle()
+        tag("timeline_filter_review").assertIsOff()
+    }
+
+    @Test
+    fun reviewChipShowsACheckAndHasA48dpTouchTargetWhenOn() {
+        show(listOf(review, labelled))
+        tag("timeline_filter_review").assertHeightIsAtLeast(48.dp)
+        tag("timeline_filter_review").performClick()
+        tag("timeline_filter_review").assertIsOn()
     }
 
     @Test

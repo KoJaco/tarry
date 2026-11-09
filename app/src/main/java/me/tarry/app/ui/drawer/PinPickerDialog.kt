@@ -45,6 +45,7 @@ import me.tarry.app.map.PlacePick
 import me.tarry.app.map.circlePolygon
 import me.tarry.app.map.formatPinCoordinates
 import me.tarry.app.map.nearbyPlaces
+import me.tarry.app.map.pinPosition
 import me.tarry.app.map.startCentre
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.SectionHeader
@@ -93,7 +94,9 @@ fun PinPickerDialog(
         places.mapNotNull { p -> p.centre?.let { PickPlace(p.id, p.label, it, p.lastVisitAt, p.radiusM) } }
     }
     val start = remember { startCentre(chosenCentre, pickPlaces) }
-    var centre by remember { mutableStateOf(start ?: config.fallbackCentre) }
+    // Null until the pin has a real position (see [pinPosition]); "New place here" stays disabled meanwhile.
+    var centre by remember { mutableStateOf(start) }
+    var userMoved by remember { mutableStateOf(false) }
     var loaded by remember { mutableStateOf<Style?>(null) }
     val colors = TarryTheme.colors
     val currentPlaces by rememberUpdatedState(pickPlaces)
@@ -135,7 +138,13 @@ fun PinPickerDialog(
                             map.moveCamera(
                                 CameraUpdateFactory.newLatLngZoom(at.toLatLng(), if (start != null) config.startZoom else config.fallbackZoom),
                             )
-                            map.addOnCameraIdleListener { map.cameraPosition.target?.let { centre = GeoPoint(it.latitude, it.longitude) } }
+                            map.addOnCameraMoveStartedListener { reason ->
+                                if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) userMoved = true
+                            }
+                            map.addOnCameraIdleListener {
+                                val target = map.cameraPosition.target?.let { GeoPoint(it.latitude, it.longitude) }
+                                centre = pinPosition(start, target, userMoved) ?: centre
+                            }
                         }
                         loaded = style
                     },
@@ -159,7 +168,8 @@ fun PinPickerDialog(
             LaunchedEffect(style, pickPlaces, colors) {
                 if (style != null && style.isFullyLoaded) style.showPlaces(currentPlaces, fill, outline, dot, stroke)
             }
-            val nearby = nearbyPlaces(centre, pickPlaces, config.snapM)
+            val pin = centre
+            val nearby = if (pin == null) emptyList() else nearbyPlaces(pin, pickPlaces, config.snapM)
             Column(
                 Modifier
                     .heightIn(max = ListMaxHeight)
@@ -168,12 +178,14 @@ fun PinPickerDialog(
                 verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
             ) {
                 val newHere = stringResource(R.string.edit_pin_new_here)
+                val panHint = stringResource(R.string.edit_pin_new_here_pan)
                 SettingsGroup {
                     row(
                         title = newHere,
-                        subtitle = formatPinCoordinates(centre.lat, centre.lng),
+                        subtitle = if (pin == null) panHint else formatPinCoordinates(pin.lat, pin.lng),
                         icon = R.drawable.ic_plus,
-                        onClick = { onPick(PlacePick.New(centre.lat, centre.lng)) },
+                        onClick = { if (pin != null) onPick(PlacePick.New(pin.lat, pin.lng)) },
+                        enabled = pin != null,
                     )
                 }
                 SectionHeader(stringResource(R.string.edit_pin_nearby_header), Modifier.semantics { heading() })

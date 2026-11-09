@@ -99,7 +99,7 @@
     <string name="tracking_sheet_fix_open_permissions">Fix permissions</string>
     <string name="tracking_sheet_fix_open_app_settings">Open app settings</string>
     <string name="tracking_attention_no_fine_location">Precise location permission is missing.</string>
-    <string name="tracking_attention_no_background_location">Location access is not set to \"Allow all the time\".</string>
+    <string name="tracking_attention_no_background_location">Location access is not set to “Allow all the time”.</string>
     <string name="tracking_attention_location_off">Location is turned off on this phone.</string>
     <string name="tracking_attention_service_not_running">Tracking should be running but is not.</string>
     <string name="tracking_attention_no_fix_while_moving">No location fixes are arriving while you move.</string>
@@ -109,6 +109,7 @@
     <string name="permissions_title">Permissions</string>
     <string name="permissions_intro">Tarry records your location during your work hours so you can label visits and trips later. Everything stays on this phone.</string>
     <string name="permissions_required_note">Required for scheduled tracking</string>
+    <string name="permissions_required_note_granted">Needed for scheduled tracking</string>
     <string name="permissions_status_granted">Granted</string>
     <string name="permissions_status_not_granted">Not granted</string>
     <string name="permissions_status_skipped">Skipped</string>
@@ -123,7 +124,7 @@
     <string name="permissions_step_location_body">Lets Tarry record where you are while tracking. Allow precise location while using the app.</string>
     <string name="permissions_step_location_degraded">Without precise location nothing can be recorded.</string>
     <string name="permissions_step_background">Location all the time</string>
-    <string name="permissions_step_background_body">Lets Tarry start recording at the beginning of your work hours without you opening the app. Choose \"Allow all the time\".</string>
+    <string name="permissions_step_background_body">Lets Tarry start recording at the beginning of your work hours without you opening the app. Choose “Allow all the time”.</string>
     <string name="permissions_step_background_degraded">Without it, scheduled tracking cannot start by itself.</string>
     <string name="permissions_step_activity">Physical activity</string>
     <string name="permissions_step_activity_body">Lets Tarry notice when you stop or start moving, which saves battery.</string>
@@ -139,7 +140,7 @@
     <string name="permissions_step_battery_degraded">Without it, the system may pause tracking to save battery.</string>
 
     <string name="permissions_disclosure_title">Location all the time</string>
-    <string name="permissions_disclosure_body">Tarry collects your phone\'s location (latitude, longitude, accuracy and speed) in the background during the work hours you schedule, even when the app is closed. It uses this to work out where you stopped and how you travelled, so you can label visits and trips for invoicing.\n\nThis data is stored only on this phone. It is never uploaded or shared. You can export it yourself at any time.\n\nNext, choose \"Allow all the time\" in the system settings.</string>
+    <string name="permissions_disclosure_body">Tarry collects your phone\'s location (latitude, longitude, accuracy and speed) in the background during the work hours you schedule, even when the app is closed. It uses this to work out where you stopped and how you travelled, so you can label visits and trips for invoicing.\n\nThis data is stored only on this phone. It is never uploaded or shared. You can export it yourself at any time.\n\nNext, choose “Allow all the time” in the system settings.</string>
     <string name="permissions_disclosure_continue">Continue</string>
     <string name="permissions_disclosure_cancel">Not now</string>
 
@@ -171,8 +172,6 @@
     <string name="sessions_end_user_pause">Paused</string>
     <string name="sessions_end_killed">Killed</string>
     <string name="sessions_end_permission_lost">Permission lost</string>
-    <string name="sessions_export_gpx">GPX</string>
-    <string name="sessions_export_csv">CSV</string>
     <string name="sessions_export_gpx_description">Export GPX for session %1$d</string>
     <string name="sessions_export_csv_description">Export CSV for session %1$d</string>
     <string name="sessions_export_range_title">Export a date range</string>
@@ -323,7 +322,6 @@
     </plurals>
     <string name="summary_row_caption">%1$s · %2$s</string>
     <string name="summary_row_description">%1$s, %2$s, total %3$s, billed %4$s</string>
-    <string name="summary_row_open_hint">Show blocks</string>
     <string name="summary_totals">Billed %1$s · on the clock %2$s</string>
     <string name="summary_totals_description">Total, %1$s. Billed %2$s, on the clock %3$s</string>
     <string name="summary_totals_title">Total, %1$s</string>
@@ -335,6 +333,7 @@
     <string name="summary_unlabelled_description">Unlabelled: on site %1$s, travel %2$s</string>
     <string name="summary_day_billed">Billed %1$s</string>
     <string name="summary_row_billed">Billed %1$s</string>
+    <string name="summary_row_billed_label">Billed</string>
     <string name="summary_duration_zero">0 min</string>
     <string name="summary_spoken_zero">0 minutes</string>
     <string name="summary_piece_not_billable">Not billable</string>

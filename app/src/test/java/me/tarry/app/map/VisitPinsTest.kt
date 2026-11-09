@@ -63,3 +63,32 @@ class VisitPinsTest {
         assertThat(placesNear(pin, places, withinM = 5_000.0).map { it.first }).containsExactly("near", "mid", "far").inOrder()
     }
 }
+
+class GroupCoincidentPinsTest {
+    private fun pin(id: String, number: Int, lat: Double, lng: Double) = VisitPin(id, number, GeoPoint(lat, lng), null, null)
+
+    @Test
+    fun visitsAtTheSameSpotShareOneMarkerLabelledWithBothNumbers() {
+        val groups = groupCoincidentPins(listOf(pin("a", 5, 1.0, 1.0), pin("b", 6, 2.0, 2.0), pin("c", 7, 2.0, 2.0)))
+        assertThat(groups.map { it.label }).containsExactly("5", "6, 7").inOrder()
+        assertThat(groups[1].first.visitId).isEqualTo("b")
+    }
+
+    @Test
+    fun spotsMoreThanAHairApartStaySeparate() {
+        val groups = groupCoincidentPins(listOf(pin("a", 1, 1.0, 1.0), pin("b", 2, 1.0001, 1.0)))
+        assertThat(groups.map { it.label }).containsExactly("1", "2").inOrder()
+    }
+
+    @Test
+    fun aSharedMarkerIsWiderThanALoneOne() {
+        val lone = groupCoincidentPins(listOf(pin("a", 7, 1.0, 1.0))).single()
+        val shared = groupCoincidentPins(listOf(pin("a", 6, 1.0, 1.0), pin("b", 7, 1.0, 1.0))).single()
+        assertThat(shared.radius).isGreaterThan(lone.radius)
+    }
+
+    @Test
+    fun noPinsNoGroups() {
+        assertThat(groupCoincidentPins(emptyList())).isEmpty()
+    }
+}

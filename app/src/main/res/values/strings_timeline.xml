@@ -34,7 +34,6 @@
     <string name="timeline_needs_review">Needs review</string>
     <string name="timeline_folded_trip">Also: %1$s</string>
     <string name="timeline_compact_line">%1$s · %2$s</string>
-    <string name="timeline_trip_row">%1$s · %2$s · %3$s</string>
     <string name="timeline_trip_compact">%1$s · %2$s</string>
     <string name="timeline_trip_row_drive">Vehicle</string>
     <string name="timeline_trip_row_walk">Walk</string>
@@ -80,7 +79,6 @@
     <string name="timeline_job_shorten">Shorten %1$d minutes</string>
     <string name="timeline_job_overflow_title">Jobs at this time</string>
     <string name="timeline_undo_visit_times">Visit times changed</string>
-    <string name="timeline_filter_needs_review">Needs review</string>
 
     <string name="timeline_cluster_row">Patchy tracking · %1$s · %2$s</string>
     <plurals name="timeline_cluster_outages">
@@ -126,4 +124,6 @@
     <string name="timeline_tracking_interrupted">Tracking interrupted %1$s</string>
     <string name="timeline_tracking_no_permission">Tracking stopped, no permission %1$s</string>
     <string name="timeline_tracking_restarted">Tracking stopped %1$s · started %2$s</string>
+    <string name="timeline_off_label">Not tracking</string>
+    <string name="timeline_off_description">Not tracking, %1$s to %2$s</string>
 </resources>

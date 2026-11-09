@@ -11,6 +11,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -149,6 +150,14 @@ class PermissionsUiTest {
         assertThat(title).isLessThan(required)
         assertThat(required).isLessThan(degraded)
         composeRule.onNodeWithTag("permissions_missing_required").assertExists()
+    }
+
+    @Test
+    fun requiredNoteIsAWarningOnlyWhileNotGranted() {
+        val ui = buildPermissionsUiState(PermissionSnapshot(fineLocation = true), emptySet())
+        composeRule.setContent { PermissionsContent(ui, noop) }
+        composeRule.onNodeWithTag("permission_required_note_LOCATION", useUnmergedTree = true).assertTextEquals("Needed for scheduled tracking")
+        composeRule.onNodeWithTag("permission_required_note_BACKGROUND_LOCATION", useUnmergedTree = true).assertTextEquals("Required for scheduled tracking")
     }
 
     @Test

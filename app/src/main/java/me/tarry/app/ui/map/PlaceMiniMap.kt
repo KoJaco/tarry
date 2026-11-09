@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
@@ -83,6 +84,8 @@ fun PlaceMiniMap(
                     .withStyleBuilder(builder)
                     .withRegion(radiusBounds(centre, config.fitRadiusM(radiusM)).toLatLngBounds())
                     .withLogo(false)
+                    // Drawn in Compose below (MapAttribution) so it uses the theme tokens; the baked-in one was faint in dark mode.
+                    .withAttribution(false)
                 val snapshotter = MapSnapshotter(context, options)
                 snapshotter.start(
                     { snapshot ->
@@ -96,7 +99,7 @@ fun PlaceMiniMap(
         }
         val frame = Modifier.fillMaxWidth().height(config.heightDp.dp).clip(shape)
         Box(frame.background(colors.inset).clearAndSetSemantics { contentDescription = description }) {
-            // The snapshot carries MapLibre's own credit line (bottom right), so none is drawn over it here.
+            // The snapshot has no credit line (withAttribution(false)): MapAttribution is drawn over it, outside the hidden semantics.
             bitmap?.let {
                 Image(
                     bitmap = it.asImageBitmap(),
@@ -106,5 +109,6 @@ fun PlaceMiniMap(
                 )
             }
         }
+        if (bitmap != null) MapAttribution(Modifier.align(Alignment.TopEnd))
     }
 }

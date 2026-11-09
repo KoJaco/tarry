@@ -1,6 +1,7 @@
 package me.tarry.app.ui.map
 
 import android.graphics.RectF
+import kotlin.math.hypot
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +35,7 @@ import me.tarry.app.map.circlePolygon
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.geojson.Polygon
 import me.tarry.app.map.VisitPin
+import me.tarry.app.map.groupCoincidentPins
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryColors
 import me.tarry.app.ui.theme.TarryTheme
@@ -96,6 +98,7 @@ fun DayMapView(
     val markerFollow = remember { MarkerFollow() }
     val openVisit by rememberUpdatedState(onOpenVisit)
     val touchPx = with(LocalDensity.current) { config.pinTouchDp.dp.toPx() }
+    val pxPerStyleUnit = LocalDensity.current.density
     val fitPaddingPx = with(LocalDensity.current) { FitPadding.toPx() }.toInt()
     val topInsetPx = with(LocalDensity.current) { MapAttributionClearance.toPx() }.toDouble()
 
@@ -109,10 +112,10 @@ fun DayMapView(
                         val p = map.projection.toScreenLocation(latLng)
                         val half = touchPx / 2
                         val hit = map.queryRenderedFeatures(RectF(p.x - half, p.y - half, p.x + half, p.y + half), PinCircleLayer)
-                        // Overlapping pins: the one nearest the tap, not whichever the query lists first.
+                        // Overlapping pins: the one whose circle edge (its real radius r, in style units) is nearest the tap, not whichever the query lists first.
                         val nearest = hit.minByOrNull { f ->
                             val at = (f.geometry() as? org.maplibre.geojson.Point)?.let { map.projection.toScreenLocation(org.maplibre.android.geometry.LatLng(it.latitude(), it.longitude())) }
-                            if (at == null) Float.MAX_VALUE else (at.x - p.x) * (at.x - p.x) + (at.y - p.y) * (at.y - p.y)
+                            if (at == null) Float.MAX_VALUE else pinEdgeDistancePx(hypot(at.x - p.x, at.y - p.y), f.getNumberProperty("r")?.toFloat() ?: 0f, pxPerStyleUnit)
                         }
                         val id = nearest?.getStringProperty("id") ?: return@addOnMapClickListener false
                         openVisit(id)
@@ -297,11 +300,13 @@ private fun Style.setMarker(marker: GeoPoint?, colors: TarryColors) {
 
 /** Pins carry their own colours as properties so job colours need no per-job layers. */
 private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boolean) {
-    val features = pins.map { pin ->
+    val features = groupCoincidentPins(pins).map { group ->
+        val pin = group.first
         val job = pin.jobId?.let { JobPalette.lookup(pin.jobColorArgb, it).colors(dark) }
         Feature.fromGeometry(pin.position.toPoint()).apply {
             addStringProperty("id", pin.visitId)
-            addStringProperty("n", pin.number.toString())
+            addStringProperty("n", group.label)
+            addNumberProperty("r", group.radius)
             addStringProperty("fill", mapColor((job?.container ?: colors.card).toArgb()))
             addStringProperty("stroke", mapColor((job?.border ?: colors.outline).toArgb()))
             addStringProperty("text", mapColor((job?.text ?: colors.ink).toArgb()))
@@ -311,7 +316,7 @@ private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boole
     if (getLayer(PinCircleLayer) == null) {
         addBelowMarker(
             CircleLayer(PinCircleLayer, "$PinsId-src").withProperties(
-                PropertyFactory.circleRadius(13f),
+                PropertyFactory.circleRadius(Expression.get("r")),
                 PropertyFactory.circleColor(Expression.toColor(Expression.get("fill"))),
                 PropertyFactory.circleStrokeColor(Expression.toColor(Expression.get("stroke"))),
                 PropertyFactory.circleStrokeWidth(2f),
@@ -329,3 +334,6 @@ private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boole
         )
     }
 }
+
+/** How far the tap is from a pin circle's edge ([distancePx] to its centre, radius [radiusStyle] in style units); negative inside the circle. */
+internal fun pinEdgeDistancePx(distancePx: Float, radiusStyle: Float, pxPerStyleUnit: Float): Float = distancePx - radiusStyle * pxPerStyleUnit

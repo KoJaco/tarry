@@ -64,7 +64,7 @@ internal fun clampedTimes(item: TimelineItem, dayStart: Long, dayEnd: Long, zone
     return ClampedTimes(
         start,
         end,
-        stringResource(R.string.timeline_time_range, startText, endText).withSuffix(),
+        stringResource(R.string.timeline_time_range, startText.keepWhole(), endText.keepWhole()).breakAfterDash().withSuffix(),
         stringResource(R.string.timeline_spoken_range, startText, endText).withSuffix(),
     )
 }
@@ -174,3 +174,15 @@ internal fun GapCause.labelRes(): Int = when (this) {
     GapCause.PERMISSION_LOST -> R.string.timeline_gap_permission_lost
     GapCause.LOCATION_OFF -> R.string.timeline_gap_location_off
 }
+
+private val ZeroWidthSpace = Char(0x200B).toString()
+private val NoBreakSpace = Char(0x00A0).toString()
+
+/**
+ * Helpers for a time range drawn on a block. Each time stays whole (plain spaces become non-breaking) and the only
+ * break point is right after the en dash (a zero-width space), so a narrow block wraps as "8:31 am–" / "11:06 am" and
+ * never mid-time. Visual only: TalkBack and exports keep the plain text.
+ */
+internal fun String.keepWhole(): String = replace(" ", NoBreakSpace)
+
+internal fun String.breakAfterDash(): String = replace("–", "–$ZeroWidthSpace")

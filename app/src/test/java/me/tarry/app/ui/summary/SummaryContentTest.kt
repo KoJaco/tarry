@@ -233,6 +233,18 @@ class SummaryContentTest {
     }
 
     @Test
+    fun rangeLine_hasNoSpacesAroundTheDash_andBreaksOnlyThere() {
+        show(state())
+        val text = composeRule.onNodeWithTag("summary_range_text").fetchSemanticsNode()
+            .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
+        val (from, to) = text.split("–​")
+        assertThat(from).isNotEmpty()
+        assertThat(to).isNotEmpty()
+        assertThat(from).doesNotContain(" ")
+        assertThat(to).doesNotContain(" ")
+    }
+
+    @Test
     fun totals_singleDayRangeShowsOneDate() {
         val one = SummaryRange(day, day)
         val r = calculateSummary(SummaryInput(one, zone, blocks.take(1), listOf(alpha, bravo), emptyList(), emptyList(), emptySet(), BillingRules()))
@@ -246,6 +258,7 @@ class SummaryContentTest {
     @Test
     fun jobRow_keepsTheBilledFigureBesideTheNameBelowFontScale1_5() {
         show(state(), fontScale = 1.4f)
+        composeRule.onNodeWithTag(SummaryTags.rowBilledLabel("A"), useUnmergedTree = true).assertIsDisplayed()
         composeRule.onNodeWithTag(SummaryTags.rowBilled("A"), useUnmergedTree = true).assertDoesNotExist()
     }
 
@@ -253,6 +266,7 @@ class SummaryContentTest {
     fun jobRow_stacksTheBilledFigureUnderTheCaptionFromFontScale1_5() {
         show(state(), fontScale = 1.5f)
         composeRule.onNodeWithTag(SummaryTags.rowBilled("A"), useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag(SummaryTags.rowBilledLabel("A"), useUnmergedTree = true).assertDoesNotExist()
         composeRule.onNode(hasText("Billed 3 h")).assertExists()
         // Spoken description is the same as in the side-by-side layout.
         val description = composeRule.onNodeWithTag(SummaryTags.row("A")).fetchSemanticsNode()
@@ -267,7 +281,9 @@ class SummaryContentTest {
             .config[androidx.compose.ui.semantics.SemanticsProperties.Text].joinToString { it.text }
         val description = composeRule.onNodeWithTag(SummaryTags.Totals).fetchSemanticsNode()
             .config[androidx.compose.ui.semantics.SemanticsProperties.ContentDescription].joinToString()
-        assertThat(description).isEqualTo("Total, $rangeText. Billed 3 hours, on the clock 4 hours")
+        // The spoken sentence keeps the plain spaced-dash wording; the screen line has whole dates and a break hint after the dash.
+        val spoken = rangeText.filter { it.code != 0x200B }.replace("–", " – ").replace(0xA0.toChar(), ' ')
+        assertThat(description).isEqualTo("Total, $spoken. Billed 3 hours, on the clock 4 hours")
     }
 
     @Test
@@ -376,6 +392,16 @@ class SummaryContentTest {
         composeRule.waitForIdle()
         composeRule.onNodeWithTag(SummaryTags.piece("a2", day.plusDays(1))).assertDoesNotExist()
         composeRule.onNodeWithTag(SummaryTags.piece("a1", day)).assertExists()
+    }
+
+    @Test
+    fun selectedRangeChip_isFullyInsideTheRow_atFontScaleTwo() {
+        show(state(preset = RangePreset.THIS_WEEK), fontScale = 2f)
+        composeRule.waitForIdle()
+        val row = composeRule.onNodeWithTag(SummaryTags.Chips).fetchSemanticsNode().boundsInRoot
+        val chip = composeRule.onNodeWithTag("summary_chip_THIS_WEEK").fetchSemanticsNode().boundsInRoot
+        assertThat(chip.left).isAtLeast(row.left)
+        assertThat(chip.right).isAtMost(row.right)
     }
 
     // ---- export ------------------------------------------------------------------------------------------------

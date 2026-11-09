@@ -38,3 +38,25 @@ class ScrollEdgeFadeBandsTest {
         assertThat(ChipsEdgeFadeWidth.value).isEqualTo(32f)
     }
 }
+
+class ScrollDeltaToRevealTest {
+    @Test
+    fun fullyInside_doesNotScroll() {
+        assertThat(scrollDeltaToReveal(10f, 90f, 100f)).isEqualTo(0f)
+    }
+
+    @Test
+    fun cutOffAtTheEnd_scrollsForwardByTheOverhang() {
+        assertThat(scrollDeltaToReveal(60f, 130f, 100f)).isEqualTo(30f)
+    }
+
+    @Test
+    fun cutOffAtTheStart_scrollsBack() {
+        assertThat(scrollDeltaToReveal(-25f, 40f, 100f)).isEqualTo(-25f)
+    }
+
+    @Test
+    fun widerThanTheViewport_putsItsStartFirst() {
+        assertThat(scrollDeltaToReveal(20f, 220f, 100f)).isEqualTo(20f)
+    }
+}

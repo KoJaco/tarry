@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.timeline.keepWhole
 import me.tarry.app.ui.timeline.HourLabelTag
 import me.tarry.app.ui.timeline.TimelineContent
 import me.tarry.app.ui.timeline.TimelineItem
@@ -120,7 +121,7 @@ class TimelineContentTest {
     fun visitBlockShowsPlaceAndRange() {
         show(listOf(TimelineItem.Visit("v", at(9, 12), at(11, 40), "12 Smith St")))
         composeRule.onNodeWithText("12 Smith St").assertExists()
-        composeRule.onNodeWithText("${t(9, 12)}–${t(11, 40)}").assertExists()
+        composeRule.onNodeWithText("${t(9, 12).keepWhole()}–​${t(11, 40).keepWhole()}").assertExists()
         composeRule.onNodeWithText("Nothing yet today").assertDoesNotExist()
     }
 
@@ -263,7 +264,7 @@ class TimelineContentTest {
 
         val dayStart = fmt(at(0, 0))
         val dayEnd = fmt(date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
-        composeRule.onNodeWithText("$dayStart–$dayEnd (from previous day) (continues)").assertExists()
+        composeRule.onNodeWithText("${dayStart.keepWhole()}–​${dayEnd.keepWhole()} (from previous day) (continues)").assertExists()
         description(
             "timeline_row_v",
             "Visit at Night shift, from $dayStart to $dayEnd (from previous day) (continues), 24 hours",
@@ -283,14 +284,14 @@ class TimelineContentTest {
         )
         composeRule.onNodeWithText("Tracked today").assertExists()
         composeRule.onNodeWithTag("timeline_summary_total").assertTextContains("2 h 30 min")
-        composeRule.onNodeWithTag("timeline_summary_review").assertTextContains("1 visit needs review")
+        composeRule.onNodeWithTag("timeline_filter_review").assertTextContains("1 visit needs review")
         composeRule.onNodeWithTag("timeline_summary_caption").assertTextContains("2 visits · 1 trip · 1 gap")
     }
 
     @Test
     fun summaryHasNoReviewChipWhenEveryVisitHasAJob() {
         show(listOf(TimelineItem.Visit("v", at(9, 0), at(10, 0), "A")))
-        composeRule.onNodeWithTag("timeline_summary_review").assertDoesNotExist()
+        composeRule.onNodeWithTag("timeline_filter_review").assertDoesNotExist()
     }
 
     @Test
@@ -351,10 +352,10 @@ class TimelineContentTest {
         val dateBottom = composeRule.onNodeWithTag("timeline_date").fetchSemanticsNode().boundsInRoot.bottom
         val previousTop = composeRule.onNodeWithTag("timeline_previous").fetchSemanticsNode().boundsInRoot.top
         assertThat(previousTop).isAtLeast(dateBottom)
-        // The week strip wraps onto two rows.
+        // The week strip stays on one row (it scrolls sideways instead of wrapping).
         val firstRow = composeRule.onNodeWithTag("timeline_week_${date.minusDays(2)}").fetchSemanticsNode().boundsInRoot.top
         val lastDay = composeRule.onNodeWithTag("timeline_week_${date.plusDays(3)}").fetchSemanticsNode().boundsInRoot.top
-        assertThat(lastDay).isNotEqualTo(firstRow)
+        assertThat(lastDay).isEqualTo(firstRow)
     }
 
     @Test
@@ -365,7 +366,7 @@ class TimelineContentTest {
     }
 
     private fun rangeTexts(tag: String): List<String> =
-        composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text.plain() }
+        composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Text].map { it.text.plain().replace("\u200B", "").replace("\u00A0", " ") }
 
     private fun hourLabels(): List<String> =
         composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true).fetchSemanticsNodes()
@@ -412,10 +413,8 @@ class TimelineContentTest {
         composeRule.onNodeWithText("Rose Bay Marina", useUnmergedTree = true).assertNotTruncated()
         val labels = composeRule.onAllNodesWithTag(HourLabelTag, useUnmergedTree = true)
         assertThat(labels.fetchSemanticsNodes()).isNotEmpty()
-        // The pill sits in the time column, left of the blocks, and the labels never overflow it.
-        val pill = composeRule.onNodeWithTag("timeline_now_line").fetchSemanticsNode().boundsInRoot
+        // At 2x the time column is just the rail: the labels sit above their lines at the canvas's left padding, over the blocks.
         val block = composeRule.onNodeWithTag("timeline_row_v").fetchSemanticsNode().boundsInRoot
-        assertThat(pill.right).isAtMost(block.left)
-        labels.fetchSemanticsNodes().forEach { assertThat(it.boundsInRoot.right).isAtMost(block.left) }
+        labels.fetchSemanticsNodes().forEach { assertThat(it.boundsInRoot.left).isAtMost(block.left) }
     }
 }

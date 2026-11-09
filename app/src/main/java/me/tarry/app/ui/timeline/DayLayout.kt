@@ -151,6 +151,11 @@ fun layoutDay(
     window: Pair<Long, Long>? = null,
     /** Instants (clamped to the day) the canvas must reach, e.g. tracking start/stop marks outside the visits. */
     extraInstants: List<Long> = emptyList(),
+    /**
+     * The first tracking start of the day. Instants in [extraInstants] earlier than it (and than any visit, trip, gap or job) do not
+     * pull the canvas up to them, so the canvas starts at the hour of that start, not at an off marker hours before it.
+     */
+    firstStartMs: Long? = null,
     /** The day's job blocks and suggestions: placed in the job column, and their ends extend the canvas like [extraInstants]. */
     jobBlocks: List<JobBlockItem> = emptyList(),
     jobSuggestions: List<JobSuggestionItem> = emptyList(),
@@ -243,13 +248,15 @@ fun layoutDay(
     val jobBlockSpans = jobBlocks.map { jobSpan(it.id, it.start, it.end) }.filter { it.end > it.start }
     val suggestionSpans = jobSuggestions.map { jobSpan(SuggestionLaneId + it.suggestion.visitId, it.suggestion.start, it.suggestion.end) }.filter { it.end > it.start }
     val jobSpans = jobBlockSpans + suggestionSpans
+    val contentStart = listOfNotNull(clamped.minOfOrNull { it.start }, bands.minOfOrNull { it.start }, jobSpans.minOfOrNull { it.start }).minOrNull() ?: Long.MAX_VALUE
+    val extras = if (firstStartMs == null) extraInstants else extraInstants.filter { it.coerceIn(dayStart, dayEnd) >= minOf(firstStartMs, contentStart) }
 
     val isToday = now >= dayStart && now < dayEnd
     val win = window?.let { it.first.coerceIn(dayStart, dayEnd) to it.second.coerceIn(dayStart, dayEnd) }
 
     var rawStart: Long
     var rawEnd: Long
-    if (clamped.isEmpty() && win == null && extraInstants.isEmpty() && jobSpans.isEmpty()) {
+    if (clamped.isEmpty() && win == null && extras.isEmpty() && jobSpans.isEmpty()) {
         val date = ZonedDateTime.ofInstant(Instant.ofEpochMilli(dayStart), zone).toLocalDate()
         rawStart = date.atTime(params.emptyDayStartHour, 0).atZone(zone).toInstant().toEpochMilli()
         rawEnd = date.atTime(params.emptyDayEndHour, 0).atZone(zone).toInstant().toEpochMilli()
@@ -268,7 +275,7 @@ fun layoutDay(
             rawStart = minOf(rawStart, it.start)
             rawEnd = maxOf(rawEnd, it.end)
         }
-        extraInstants.forEach {
+        extras.forEach {
             rawStart = minOf(rawStart, it.coerceIn(dayStart, dayEnd))
             rawEnd = maxOf(rawEnd, it.coerceIn(dayStart, dayEnd))
         }
@@ -468,3 +475,11 @@ fun layoutDay(
         suggestions = placedSuggestions,
     )
 }
+
+/**
+ * From this font scale the side time column collapses to just the rail: each hour label (and tracking marker label) is
+ * drawn just above its line on a `card` background, and the visits and job column get the freed width.
+ */
+internal const val StackedTimeLabelsFontScale = 1.5f
+
+internal fun stackedTimeLabels(fontScale: Float): Boolean = fontScale >= StackedTimeLabelsFontScale

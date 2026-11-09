@@ -56,6 +56,9 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import java.util.Locale
+import me.tarry.app.ui.timeline.breakAfterDash
+import me.tarry.app.ui.timeline.keepWhole
 
 /** What the sessions screen can ask for. The stateful wrapper opens the file chooser and calls the ViewModel. */
 data class SessionsActions(
@@ -176,8 +179,8 @@ private fun SessionListItem.state(): SessionState = when {
 
 @Composable
 private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Unit) {
-    val start = formatSessionInstant(session.start, session.zoneId)
-    val end = session.end?.let { formatSessionInstant(it, session.zoneId) } ?: stringResource(R.string.sessions_row_open)
+    val title = session.end?.let { formatSessionRange(session.start, it, session.zoneId) }
+        ?: stringResource(R.string.sessions_row_title, formatSessionStart(session.start, session.zoneId), stringResource(R.string.sessions_row_open))
     val detail = stringResource(
         R.string.sessions_row_detail,
         stringResource(session.trigger.labelRes()),
@@ -207,7 +210,7 @@ private fun SessionRow(session: SessionListItem, onExport: (ExportRequest) -> Un
                 )
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        stringResource(R.string.sessions_row_title, start, end),
+                        title,
                         style = MaterialTheme.typography.titleSmall,
                         color = TarryTheme.colors.ink,
                     )
@@ -325,15 +328,31 @@ private fun RangeExport(today: LocalDate, onExport: (ExportRequest) -> Unit) {
 private const val PICK_FROM = "from"
 private const val PICK_TO = "to"
 
-/** Formats [epochMs] in the zone the session was captured in; falls back to the phone's zone for a bad id. */
-fun formatSessionInstant(epochMs: Long, zoneId: String): String {
-    val zone = try {
-        ZoneId.of(zoneId)
-    } catch (e: DateTimeException) {
-        ZoneId.systemDefault()
+private fun zoneOrSystem(zoneId: String): ZoneId = try {
+    ZoneId.of(zoneId)
+} catch (e: DateTimeException) {
+    ZoneId.systemDefault()
+}
+
+/** "6 Nov 2026, 4:14 pm" in the zone the session was captured in (the phone's zone for a bad id), kept whole. */
+fun formatSessionStart(startMs: Long, zoneId: String, locale: Locale = Locale.getDefault()): String =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale)
+        .format(Instant.ofEpochMilli(startMs).atZone(zoneOrSystem(zoneId))).keepWhole()
+
+/**
+ * The session row's time range for the screen: "6 Nov 2026, 4:14 pm–4:30 pm", or with the end on another day
+ * "6 Nov 2026, 11:50 pm–7 Nov 2026, 12:10 am". The only break is after the dash. Screen text only; exports keep their formats.
+ */
+fun formatSessionRange(startMs: Long, endMs: Long, zoneId: String, locale: Locale = Locale.getDefault()): String {
+    val zone = zoneOrSystem(zoneId)
+    val end = Instant.ofEpochMilli(endMs).atZone(zone)
+    val sameDay = Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate() == end.toLocalDate()
+    val endText = if (sameDay) {
+        DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale).format(end)
+    } else {
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withLocale(locale).format(end)
     }
-    return DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.MEDIUM)
-        .format(Instant.ofEpochMilli(epochMs).atZone(zone))
+    return "${formatSessionStart(startMs, zoneId, locale)}–${endText.keepWhole()}".breakAfterDash()
 }
 
 private fun SessionTrigger.labelRes(): Int = when (this) {

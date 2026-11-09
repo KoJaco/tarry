@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.unit.Density
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.theme.TarryTheme
@@ -111,5 +112,39 @@ class TrackingMarkersCanvasTest {
     fun noMarkersMeansNoLabels() {
         show(emptyList())
         assertThat(composeRule.onAllNodesWithTag("timeline_tracking_marker").fetchSemanticsNodes()).isEmpty()
+    }
+
+    private fun showAtNow(markers: List<TrackingMarker>, nowMs: Long, fontScale: Float = 1f) {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
+                TarryTheme {
+                    TimelineContent(
+                        date, listOf(TimelineItem.Visit("v", at(9), at(14), "Marina")), {}, {}, today = date, zone = zone, nowMs = nowMs,
+                        trackingMarkers = markers, zoomLevel = ZoomLevel.Q15,
+                    )
+                }
+            }
+        }
+    }
+
+    private fun assertClearOfThePill() {
+        val marker = composeRule.onNodeWithTag("timeline_tracking_marker").getUnclippedBoundsInRoot()
+        val pill = composeRule.onNodeWithTag("timeline_now_line").getUnclippedBoundsInRoot()
+        assertThat(marker.bottom <= pill.top || marker.top >= pill.bottom).isTrue()
+    }
+
+    @Test
+    fun anOffMarkerUnderTheNowPillAt15MinuteZoomIsMovedClearAndStillShown() {
+        // Now (12:12) is inside the pause 12:05-12:20, so the label's natural spot is under the pill.
+        showAtNow(listOf(TrackingMarker(startedMs = at(12, 20), stoppedMs = at(12, 5), reason = SessionEndReason.USER_PAUSE)), at(12, 12))
+        assertClearOfThePill()
+        assertThat(lines()).containsExactly("Off", "12:05 PM–12:20 PM").inOrder()
+    }
+
+    @Test
+    fun aStopMarkerUnderTheNowPillIsMovedClearToo_atFontScale1Point3() {
+        showAtNow(listOf(TrackingMarker(null, at(12, 0), SessionEndReason.USER_PAUSE)), at(12, 2), fontScale = 1.3f)
+        assertClearOfThePill()
     }
 }

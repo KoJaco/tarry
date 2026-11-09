@@ -70,15 +70,20 @@ class DayFit {
 /**
  * Whether the day map's camera should follow a new scrubber marker. A day's first position is skipped so it doesn't undo
  * the fit to the whole day; it is the scrubber's starting point, not a user scrub. A null marker (the day still loading,
- * or the scrubber inside a break) neither moves the camera nor uses up that skip.
+ * or the scrubber inside a break) neither moves the camera nor uses up that skip. The same marker again (a style
+ * reload after a light/dark switch re-runs the effect) never moves the camera, so the user's view is kept.
  */
 class MarkerFollow {
     private var seenFor: LocalDate? = null
+    private var lastMarker: GeoPoint? = null
+    private var lastDay: LocalDate? = null
 
     fun follow(day: LocalDate, marker: GeoPoint?): Boolean {
         if (marker == null) return false
-        val follow = seenFor == day
+        val follow = seenFor == day && !(marker == lastMarker && lastDay == day)
         seenFor = day
+        lastMarker = marker
+        lastDay = day
         return follow
     }
 }

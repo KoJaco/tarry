@@ -73,6 +73,7 @@ fun EditDrawer(
             onSetPlaceDefaultJob = { viewModel.setPlaceDefaultJob(it) },
             onCreateManual = { placeId, start, end -> viewModel.createManual(placeId, start, end) },
             onCreateManualAtNewPlace = { lat, lng, start, end -> viewModel.createManualAtNewPlace(lat, lng, start, end) },
+            onClearError = { viewModel.clearError() },
             onAddStop = {
                 (target as? EditTarget.Trip)?.let { trip ->
                     state?.let { s -> currentRetarget(EditTarget.NewVisit(s.start, s.end, trip.id)) }

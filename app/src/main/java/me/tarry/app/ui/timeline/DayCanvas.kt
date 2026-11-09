@@ -42,7 +42,9 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.focusable
@@ -71,6 +73,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.TarryCard
 import me.tarry.app.ui.components.rememberReducedMotion
+import me.tarry.app.ui.theme.TarryColors
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.TripMode
 import java.time.ZoneId
@@ -102,7 +107,7 @@ internal const val MinorLabelTag = "timeline_minor_label"
 
 /** Sizes and offsets of the day canvas (dp unless noted). Text-linked offsets are multiplied by the font scale. */
 private object DayCanvasDefaults {
-    /** Minimum width of the time column; it grows to fit the widest hour label and the now-pill. */
+    /** Minimum width of the time column; it grows to fit the widest hour label and the now-pill (below [StackedTimeLabelsFontScale]). */
     val TimeColumn = 44.dp
     val BlockInset = 4.dp
     val BorderWidth = 1.5.dp
@@ -138,19 +143,19 @@ private object DayCanvasDefaults {
     /** Half-length of a 15-minute tick, centred on the rail. */
     val QuarterTickHalf = 3.dp
 
+    /** Half-length of an hour tick, centred on the rail. */
+    val HourTickHalf = 6.dp
+
+    /** The dotted line joining a trip to its visits: dot size, and the gap between dots as a multiple of it. */
+    val TripIconBackdrop = 2.dp
+    val ConnectorWidth = 1.5.dp
+    const val ConnectorGapFactor = 3f
+
     /** Alpha of a 15-minute tick relative to the hour rule (both `divider`). */
     const val QuarterTickAlpha = 0.6f
     val InnerGapIconSize = 16.dp
     /** Radius of the outage dot that sits on a visit block's left border. */
     val InnerGapDotRadius = 2.5.dp
-
-    /** Height of the "Includes N min not tracked" line (per unit of font scale). */
-    const val SummaryLineDp = 20f
-
-    /** Line heights of `titleMedium`, `bodyMedium` and `labelMedium`, to work out how many lines fit in a block. */
-    const val TitleLineDp = 22f
-    const val DetailLineDp = 20f
-    const val ChipLineDp = 18f
 
     /** The chip's own vertical padding (2 x 3 dp) plus the gap above it (4 dp). */
     const val ChipExtraDp = 10f
@@ -166,9 +171,16 @@ private object DayCanvasDefaults {
     const val HatchStepDp = 8f
     const val HatchAlpha = 0.25f
 
-    /** Height of one `bodySmall` line (per unit of font scale) in a tracking marker label in the time column. */
-    const val MarkerLabelLineDp = 16f
     val MarkerLabelGap = 2.dp
+
+    /** The side column once it has collapsed to the rail (large fonts): room for the hour ticks either side of the rail line. */
+    val RailColumn = 12.dp
+
+    /** Horizontal padding of a time label drawn over the canvas on a `card` background (large fonts). */
+    val StackedLabelPadding = 2.dp
+
+    /** One line of the card's own text (per unit of font scale): a card shorter than this plus a handle's 48 dp gets its handles outside. */
+    const val HandleCardTextDp = 28f
 
     val DashOn = 8.dp
     val DashOff = 5.dp
@@ -232,6 +244,7 @@ fun DayCanvas(
     val hourStyle = MaterialTheme.typography.bodySmall
     val nowStyle = hourStyle.copy(fontWeight = FontWeight.SemiBold)
     val measurer = rememberTextMeasurer()
+    val metrics = rememberTextMetrics()
     val density = LocalDensity.current
     val hourLabels = remember(layout.hourMarks, formats, zone) { layout.hourMarks.map { formats.hour(it.epochMs, zone) } }
     val minorLabels = remember(layout.minorLabels, formats, zone) { layout.minorLabels.map { formats.minute(it.epochMs, zone) } }
@@ -243,7 +256,10 @@ fun DayCanvas(
         trackingMarkers.associateWith { m -> markerLines(m, markerWords, { formats.time(it, zone) }) }
     }
     // The time column grows to the widest hour label, marker label or now-pill text, so none is ever clipped at large font sizes.
-    val timeColumn = remember(hourLabels, markerLineTexts, now, formats, zone, hourStyle, density, layout.nowDp != null) {
+    val stacked = stackedTimeLabels(fontScale)
+    // The real height of one label line at this font scale (never a literal): the collapsed layout puts a label's bottom exactly on its line, and marker labels keep clear of the now-pill by its real extent.
+    val hourLineDp = metrics.lineDp(hourStyle)
+    val timeColumn = if (stacked) DayCanvasDefaults.RailColumn else remember(hourLabels, markerLineTexts, now, formats, zone, hourStyle, density, layout.nowDp != null) {
         val texts = hourLabels.map { it to hourStyle } + markerLineTexts.values.flatten().map { it to hourStyle } +
             if (layout.nowDp != null) listOf(formats.time(now, zone) to nowStyle) else emptyList()
         val widest = texts.maxOfOrNull { (text, style) ->
@@ -258,17 +274,33 @@ fun DayCanvas(
     val dpPerMs = layout.scale / MsPerHour
     val visitItems = remember(layout) { layout.blocks.mapNotNull { it.item as? TimelineItem.Visit }.sortedBy { it.start } }
     val handleStart = timeColumn + DayCanvasDefaults.BlockInset
-    val placedMarkers = remember(markerLineTexts, layout, fontScale) {
+    val placedMarkers = remember(markerLineTexts, layout, fontScale, stacked, hourLineDp) {
         // The now-pill sits in the time column too; a marker label never goes under it.
-        val pillHalf = DayCanvasDefaults.NowPillHalfHeight.value * fontScale
+        val pillHalf = nowPillHalfHeightDp(hourLineDp)
         val pill = layout.nowDp?.let { (it - pillHalf)..(it + pillHalf) }
         placeTrackingMarkers(
             trackingMarkers, layout.canvasStart, layout.canvasEnd, layout.scale, layout.heightDp,
-            DayCanvasDefaults.MarkerLabelLineDp * fontScale, DayCanvasDefaults.MarkerLabelGap.value,
+            hourLineDp, DayCanvasDefaults.MarkerLabelGap.value,
             lineCount = { markerLineTexts[it]?.size ?: 2 },
             avoid = pill,
+            above = stacked,
+            blocks = layout.blocks.map { it.topDp..(it.topDp + it.heightDp) },
         )
     }
+
+    // "Not tracking" stretches (stop to next start; only past time): a faint hatch under everything, with a label if it fits.
+    val offLabelHeightDp = metrics.lineDp(MaterialTheme.typography.labelSmall)
+    val offStretches = remember(trackingMarkers, layout, dayEnd, now, dayStart) {
+        val isToday = now in dayStart until dayEnd
+        offStretches(trackingMarkers, dayEnd, if (isToday) now else null).mapNotNull { s ->
+            val a = maxOf(s.start, layout.canvasStart)
+            val b = minOf(s.end, layout.canvasEnd)
+            if (b <= a) null else PlacedOff(s, ((a - layout.canvasStart) * dpPerMs), ((b - a) * dpPerMs))
+        }
+    }
+    // Each trip is joined to its visits by a dotted line through the trip icon's centre, drawn under the blocks.
+    val connectorX = timeColumn + DayCanvasDefaults.BlockInset + TarryTheme.space.m + DayCanvasDefaults.TripIconBackdrop + DayCanvasDefaults.TripIconSize / 2
+    val connectors = remember(layout) { layout.trips.map { tripConnector(it, layout.blocks) } }
 
     TarryCard(modifier = modifier, contentPadding = PaddingValues(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.l)) {
         BoxWithConstraints(
@@ -278,20 +310,53 @@ fun DayCanvas(
                 .then(canvasModifier)
                 .drawBehind {
                     val stroke = DayCanvasDefaults.RuleWidth.toPx()
+                    val hourTick = DayCanvasDefaults.HourTickHalf.toPx()
                     val railX = timeColumn.toPx()
+                    // Off stretches: the gap-hatch style, in the quiet `line` colour, right of the rail.
+                    offStretches.forEach { off ->
+                        val top = off.topDp.dp.toPx()
+                        val bottom = top + off.heightDp.dp.toPx()
+                        clipRect(left = railX, top = top, right = size.width, bottom = bottom) {
+                            val step = DayCanvasDefaults.HatchStepDp.dp.toPx()
+                            var x = railX - (bottom - top)
+                            while (x < size.width) {
+                                drawLine(c.line, Offset(x, bottom), Offset(x + (bottom - top), top), strokeWidth = stroke)
+                                x += step
+                            }
+                        }
+                    }
                     layout.hourMarks.forEach { mark ->
                         // No rule at the very top edge: hour rules only separate hours.
                         if (mark.topDp <= 0f) return@forEach
                         val y = mark.topDp.dp.toPx()
-                        drawLine(c.divider, Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
+                        drawLine(hourRuleColor(c), Offset(railX, y), Offset(size.width, y), strokeWidth = stroke)
+                        // The hour tick crosses the rail, longer than the minor ticks, so hours read at a glance.
+                        drawLine(hourRuleColor(c), Offset(railX - hourTick, y), Offset(railX + hourTick, y), strokeWidth = stroke)
                     }
                     drawLine(c.divider, Offset(railX, 0f), Offset(railX, size.height), strokeWidth = stroke)
                     // Minor ticks on the rail (every 15, 10 or 5 min by zoom): drawn only, so they are neither focusable nor spoken.
                     val tick = DayCanvasDefaults.QuarterTickHalf.toPx()
-                    val tickColor = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
+                    val tickColor = minorTickColor(c)
                     layout.minorMarks.forEach { dp ->
                         val y = dp.dp.toPx()
                         drawLine(tickColor, Offset(railX - tick, y), Offset(railX + tick, y), strokeWidth = stroke)
+                    }
+                    val dotted = DayCanvasDefaults.ConnectorWidth.toPx()
+                    connectors.forEach { range ->
+                        drawLine(
+                            hourRuleColor(c), Offset(connectorX.toPx(), range.start.dp.toPx()), Offset(connectorX.toPx(), range.endInclusive.dp.toPx()),
+                            strokeWidth = dotted, cap = StrokeCap.Round,
+                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.01f, dotted * DayCanvasDefaults.ConnectorGapFactor)),
+                        )
+                    }
+                    // Collapsed time column (large fonts): a tick at each tracking marker, with its label just above it.
+                    if (stacked) {
+                        placedMarkers.forEach { pm ->
+                            pm.marker.ruleTimes.forEach { t ->
+                                val y = ((t - layout.canvasStart) * dpPerMs).dp.toPx()
+                                drawLine(hourRuleColor(c), Offset(railX - hourTick, y), Offset(railX + hourTick, y), strokeWidth = stroke)
+                            }
+                        }
                     }
                 }
                 .semantics { isTraversalGroup = true },
@@ -299,6 +364,36 @@ fun DayCanvas(
             // Time column | visits and trips | job column. The visit column ends [visitEnd] short of the right edge.
             val jobWidth = maxOf((maxWidth - timeColumn) * DayColumns.jobFraction(fontScale), DayColumns.MinJobWidth)
             val visitEnd = jobWidth + DayColumns.Gap
+            // The off stretches, behind everything: one node each for TalkBack ("Not tracking, 7:00 AM to 7:30 AM"), with the label if it fits.
+            val offLabel = stringResource(R.string.timeline_off_label)
+            offStretches.forEach { off ->
+                val description = stringResource(R.string.timeline_off_description, formats.time(off.stretch.start, zone), formats.time(off.stretch.end, zone))
+                val traversal = ordered.count { (if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start) < off.stretch.start } - 0.4f
+                Box(
+                    Modifier
+                        .offset(y = off.topDp.dp)
+                        .padding(start = timeColumn + DayCanvasDefaults.BlockInset)
+                        .fillMaxWidth()
+                        .height(off.heightDp.dp)
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = description
+                            traversalIndex = traversal
+                        }
+                        .testTag("timeline_off_stretch"),
+                ) {
+                    if (offLabelFits(off, offLabelHeightDp, ordered)) {
+                        Text(
+                            text = offLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = c.muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = TarryTheme.space.s, top = OffLabelInsetDp.dp),
+                        )
+                    }
+                }
+            }
+            if (!stacked) {
             layout.hourMarks.forEachIndexed { i, mark ->
                 if (hourLabelCoveredByNowPill(mark.topDp, layout.nowDp, fontScale)) return@forEachIndexed
                 // A tracking marker label in the time column wins over an hour label it would collide with.
@@ -342,11 +437,29 @@ fun DayCanvas(
                         },
                 )
             }
+            }
             JobColumn(
                 layout, dayStart, dayEnd, zone, jobWidth, fontScale, ordered, enabled = !selecting,
                 onOpenJob = onOpenJob, onConfirmSuggestion = onConfirmSuggestion, onDeclineSuggestion = onDeclineSuggestion, onCreateJob = onCreateJob,
                 onJobRangeChange = onJobRangeChange, snapMinutes = jobSnapMinutes,
             )
+            // Collapsed time column (large fonts): hour and minor labels sit just above their lines on a card backdrop.
+            // Minor labels go UNDER the blocks (composed before them), so they only show in free space. Hour labels are
+            // composed after the blocks (below) so a long visit never hides which hour it is (owner, 2026-11-09).
+            // A tracking marker label or the now-pill wins over a label it would collide with.
+            fun stackedLabelCovered(top: Float, height: Float): Boolean =
+                hourLabelCoveredByNowPill(top + height / 2, layout.nowDp, fontScale) ||
+                    placedMarkers.any { hourLabelCoveredByMarker(top + height / 2, it, height / 2) }
+            if (stacked) {
+                val minorStyle = MaterialTheme.typography.labelSmall
+                val minorLine = metrics.lineDp(minorStyle)
+                fun covered(top: Float, height: Float) = stackedLabelCovered(top, height)
+                layout.minorLabels.forEachIndexed { i, mark ->
+                    val top = (mark.topDp - minorLine).coerceAtLeast(0f)
+                    if (!covered(top, minorLine)) StackedTimeLabel(minorLabels[i], minorStyle, top, MinorLabelTag)
+                }
+            }
+            placedMarkers.filterNot { it.overBlocks }.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             // Blocks first, trips after: a trip's 48 dp touch target may reach over the visits' edges and wins taps there.
             // Resize handles are composed after both, so they win over a trip. The index is the time-order traversal index.
             ordered.withIndex().sortedBy { it.value is PlacedTrip }.forEach { (index, placed) ->
@@ -381,7 +494,7 @@ fun DayCanvas(
                         }
                         when (val item = placed.item) {
                             is TimelineItem.Visit -> VisitBlock(
-                                item, shown as? PlacedBlock ?: placed, times, description, index, fontScale, dimmed, position,
+                                item, shown as? PlacedBlock ?: placed, times, description, index, fontScale, dimmed, position, blockWidth = maxWidth - timeColumn - DayCanvasDefaults.BlockInset - visitEnd,
                                 selected = if (selecting) item.id in selectedIds else item.id == selectedVisitId,
                                 selecting = selecting,
                                 onSelect = { onSelectVisit(item.id) },
@@ -408,7 +521,13 @@ fun DayCanvas(
                     ) { onOpenTrip(placed.trip.id) }
                 }
             }
-            placedMarkers.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone) }
+            // Large-font hour labels, over the blocks on their card backdrop (resize handles still win, composed after).
+            if (stacked) {
+                layout.hourMarks.forEachIndexed { i, mark ->
+                    val top = (mark.topDp - hourLineDp).coerceAtLeast(0f)
+                    if (!stackedLabelCovered(top, hourLineDp)) StackedTimeLabel(hourLabels[i], hourStyle, top, HourLabelTag)
+                }
+            }
             // Resize handles of the selected visit, above every block. An edge cut by midnight has no handle.
             val selectedBlock = selectedVisitId?.takeUnless { selecting }?.let { id -> layout.blocks.firstOrNull { it.item.id == id && it.cluster.isEmpty() } }
             val selectedVisit = selectedBlock?.item as? TimelineItem.Visit
@@ -427,6 +546,7 @@ fun DayCanvas(
                         visitId = selectedVisit.id,
                         edgeDp = edgeDp,
                         shiftDp = if (live != null) (live.edgeMs - live.originMs) * dpPerMs else 0f,
+                        outside = handlesOutside(selectedBlock.heightDp, DayCanvasDefaults.HandleCardTextDp * fontScale, selectedBlock.topDp, layout.heightDp),
                         start = handleStart,
                         end = visitEnd,
                         onDragStart = { drag = ResizeDrag(selectedVisit.id, edge, originMs, originMs) },
@@ -459,8 +579,10 @@ fun DayCanvas(
                     ResizeLabel(formats.time(d.edgeMs, zone), edgeDp, handleStart, visitEnd)
                 }
             }
+            // A large-font label with blocks on both sides of its tick is drawn over them, on its card backdrop.
+            placedMarkers.filter { it.overBlocks }.forEach { TrackingMarkerLabel(it, markerLineTexts[it.marker].orEmpty(), ordered, timeColumn, DayCanvasDefaults.LabelGap, zone, stacked) }
             layout.nowDp?.let { nowDp ->
-                NowLine(nowDp, now, zone, ordered.count { it.topDp < nowDp } - 0.5f, timeColumn, fontScale)
+                NowLine(nowDp, now, zone, ordered.count { it.topDp < nowDp } - 0.5f, timeColumn, nowPillHalfHeightDp(hourLineDp).dp)
             }
             overlay()
         }
@@ -477,6 +599,7 @@ private fun VisitBlock(
     fontScale: Float,
     dimmed: Boolean,
     modifier: Modifier,
+    blockWidth: Dp,
     selected: Boolean,
     selecting: Boolean,
     onSelect: () -> Unit,
@@ -498,15 +621,43 @@ private fun VisitBlock(
     val title = visit.placeLabel ?: unknown
     val oneLine = placed.compact || placed.heightDp < DayCanvasDefaults.OneLineBelowDp * fontScale
     val showChip = !oneLine && visit.needsReview && placed.heightDp >= DayCanvasDefaults.ChipMinDp * fontScale
-    val (titleLines, detailLines) = textLines(placed.heightDp, fontScale, showChip)
 
     // Outage dots sit on top of the left border, outside the block clip.
     val dots = Modifier.innerGapDots(placed.innerGaps)
     val notTracked = notTrackedText(placed.innerGaps, times)
     val d = DayCanvasDefaults
-    val summaryRoom = d.BlockPaddingV.value * 2 + titleLines * d.TitleLineDp * fontScale + detailLines * d.DetailLineDp * fontScale +
-        (if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f) + d.SummaryLineDp * fontScale
-    val summary = notTracked?.takeIf { !oneLine && placed.heightDp >= summaryRoom }
+    // How many lines each text gets: real line heights for this font scale, real wrapping at this width. Everything shown
+    // keeps one line first; the height left over goes to the title, then the times, then the warning (see [allocateLines]).
+    val metrics = rememberTextMetrics()
+    val density = LocalDensity.current
+    val typography = MaterialTheme.typography
+    val textWidthPx = with(density) {
+        (blockWidth - TarryTheme.space.m * 2 - (if (selected && selecting) d.CheckBadge + TarryTheme.space.xs else 0.dp)).roundToPx()
+    }.coerceAtLeast(0)
+    fun lineDp(style: TextStyle) = metrics.lineDp(style)
+    fun linesNeeded(text: String, style: TextStyle, widthPx: Int = textWidthPx) =
+        metrics.lineCount(text, style, widthPx)
+    val titleLine = lineDp(typography.titleMedium)
+    val detailLine = lineDp(typography.bodyMedium)
+    val warnLine = lineDp(typography.bodySmall)
+    val chipHeight = if (showChip) lineDp(typography.labelMedium) + d.ChipExtraDp else 0f
+    val roomForSummary = d.BlockPaddingV.value * 2 + titleLine + detailLine + chipHeight + warnLine
+    val summary = notTracked?.takeIf { !oneLine && placed.heightDp >= roomForSummary }
+    val summaryText = summary?.replaceFirstChar { it.uppercase() }
+    val summaryWidthPx = with(density) { (d.InnerGapIconSize + TarryTheme.space.xs).roundToPx() }
+    val shownLines = if (oneLine) listOf(1, 1, 1) else {
+        val fixed = d.BlockPaddingV.value * 2 + titleLine + detailLine + chipHeight + (if (summary != null) warnLine else 0f)
+        allocateLines(
+            extraDp = placed.heightDp - fixed,
+            lineDps = listOf(titleLine, detailLine, warnLine),
+            needs = listOf(
+                linesNeeded(title, typography.titleMedium),
+                linesNeeded(times.range, typography.bodyMedium),
+                if (summaryText != null) linesNeeded(summaryText, typography.bodySmall, (textWidthPx - summaryWidthPx).coerceAtLeast(0)) else 1,
+            ),
+        )
+    }
+    val (titleLines, detailLines, summaryLines) = shownLines
     var focused by remember { mutableStateOf(false) }
     // A visit no job block covers keeps the dashed "needs review" outline; a covered one is a plain card.
     val look = if (visit.needsReview) {
@@ -611,10 +762,10 @@ private fun VisitBlock(
                         modifier = Modifier.size(DayCanvasDefaults.InnerGapIconSize),
                     )
                     Text(
-                        text = summary.replaceFirstChar { it.uppercase() },
+                        text = summaryText.orEmpty(),
                         style = MaterialTheme.typography.bodySmall,
                         color = c.onAlertSoft,
-                        maxLines = 1,
+                        maxLines = summaryLines,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -660,22 +811,22 @@ private fun VisitBlock(
 
 
 /**
- * How many lines the title and the time line of a block may use. At normal font size both stay on one line and
- * ellipsize (tokens.md). Once the font is scaled up the text no longer fits one line, so a block that has the height
- * gives the title up to two lines and the time line up to three, instead of ellipsizing.
+ * Splits a block's spare height over its texts. Every text starts with one line; [extraDp] (the height left once those
+ * are counted, and anything else fixed) then goes to the first text until it has the lines it [needs] or the next line
+ * would not fit, then to the second, and so on. A text therefore only ends in an ellipsis when the block truly has no
+ * more room for it.
  */
-private fun textLines(heightDp: Float, fontScale: Float, showChip: Boolean): Pair<Int, Int> {
-    if (fontScale <= 1f) return 1 to 1
-    val d = DayCanvasDefaults
-    val titleLine = d.TitleLineDp * fontScale
-    val detailLine = d.DetailLineDp * fontScale
-    val chip = if (showChip) d.ChipLineDp * fontScale + d.ChipExtraDp else 0f
-    val spare = heightDp - 2 * d.BlockPaddingV.value - chip
-    val title = if (spare >= 2 * titleLine + detailLine) 2 else 1
-    val detail = ((spare - title * titleLine) / detailLine).toInt().coerceIn(1, 3)
-    return title to detail
+internal fun allocateLines(extraDp: Float, lineDps: List<Float>, needs: List<Int>): List<Int> {
+    val lines = MutableList(lineDps.size) { 1 }
+    var left = extraDp
+    for (i in lineDps.indices) {
+        while (lines[i] < needs[i] && lineDps[i] > 0f && left >= lineDps[i]) {
+            lines[i]++
+            left -= lineDps[i]
+        }
+    }
+    return lines
 }
-
 @Composable
 private fun GapBlock(
     gap: TimelineItem.Gap,
@@ -782,7 +933,8 @@ private fun TripRow(
             painter = painterResource(trip.mode.iconRes()),
             contentDescription = null,
             tint = c.muted,
-            modifier = Modifier.size(DayCanvasDefaults.TripIconSize),
+            // A card-coloured disc behind the glyph breaks the connector line, so the line never runs through the icon.
+            modifier = Modifier.background(TarryTheme.colors.card, CircleShape).padding(DayCanvasDefaults.TripIconBackdrop).size(DayCanvasDefaults.TripIconSize),
         )
         if (!iconOnly) {
             Text(
@@ -810,8 +962,11 @@ internal fun hourLabelCoveredByNowPill(markDp: Float, nowDp: Float?, fontScale: 
     return abs(markDp - nowDp) < reach
 }
 
+/** Half the now-pill's real height: one text line plus its vertical padding. Marker labels keep clear of this span and the pill is drawn with it. */
+internal fun nowPillHalfHeightDp(lineDp: Float): Float = (lineDp + DayCanvasDefaults.PillPaddingV.value * 2) / 2
+
 @Composable
-private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, timeColumn: Dp, fontScale: Float) {
+private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, timeColumn: Dp, pillHalf: Dp) {
     val c = TarryTheme.colors
     val time = rememberTimeFormats().time(now, zone)
     val description = stringResource(R.string.timeline_now_description, time)
@@ -829,7 +984,7 @@ private fun NowLine(nowDp: Float, now: Long, zone: ZoneId, traversal: Float, tim
     Box(
         contentAlignment = Alignment.Center,
         modifier = Modifier
-            .offset(y = nowDp.dp - DayCanvasDefaults.NowPillHalfHeight * fontScale)
+            .offset(y = nowDp.dp - pillHalf)
             .widthIn(min = timeColumn)
             .clip(TarryTheme.shapes.pill)
             .background(c.accent)
@@ -908,7 +1063,7 @@ private fun Modifier.innerGapDots(innerGaps: List<InnerGap>): Modifier {
  * order between the blocks it falls between.
  */
 @Composable
-private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, ordered: List<Placed>, timeColumn: Dp, labelGap: Dp, zone: ZoneId) {
+private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, ordered: List<Placed>, timeColumn: Dp, labelGap: Dp, zone: ZoneId, stacked: Boolean) {
     val formats = rememberTimeFormats()
     val m = placed.marker
     val stopped = m.stoppedMs?.let { formats.time(it, zone) }
@@ -929,10 +1084,11 @@ private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, order
     }
     val traversal = ordered.count { (if (it is PlacedBlock) it.item.start else (it as PlacedTrip).trip.start) < m.timeMs } - 0.5f
     Column(
-        horizontalAlignment = Alignment.End,
+        horizontalAlignment = if (stacked) Alignment.Start else Alignment.End,
         modifier = Modifier
             .offset(y = placed.labelTopDp.dp)
-            .width(timeColumn - labelGap)
+            // Collapsed time column: the label is as wide as its text, over the canvas on a card background.
+            .then(if (stacked) Modifier.background(TarryTheme.colors.card).padding(horizontal = DayCanvasDefaults.StackedLabelPadding) else Modifier.width(timeColumn - labelGap))
             .clearAndSetSemantics {
                 contentDescription = spoken
                 traversalIndex = traversal
@@ -944,7 +1100,7 @@ private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, order
                 text = line,
                 style = MaterialTheme.typography.bodySmall,
                 color = TarryTheme.colors.muted,
-                textAlign = TextAlign.End,
+                textAlign = if (stacked) TextAlign.Start else TextAlign.End,
                 maxLines = 1,
                 softWrap = false,
                 modifier = Modifier.testTag("timeline_tracking_marker_line"),
@@ -952,3 +1108,57 @@ private fun TrackingMarkerLabel(placed: PlacedMarker, lines: List<String>, order
         }
     }
 }
+
+/** Hour rules and hour ticks: `outline`, which is at least 3:1 on `card` in both themes. */
+internal fun hourRuleColor(c: TarryColors): Color = c.outline
+
+/** Minor marks (15, 10 and 5 minutes) stay the quiet `divider` (the `line` colour at 0.8) so they never compete with the hours. */
+internal fun minorTickColor(c: TarryColors): Color = c.divider.copy(alpha = c.divider.alpha * DayCanvasDefaults.QuarterTickAlpha)
+
+/** An hour or minor time label of the collapsed time column: just above its line at the canvas's left padding, on `card` so it reads over blocks. */
+@Composable
+private fun StackedTimeLabel(text: String, style: TextStyle, topDp: Float, tag: String) {
+    Text(
+        text = text,
+        style = style,
+        color = TarryTheme.colors.muted,
+        maxLines = 1,
+        softWrap = false,
+        modifier = Modifier
+            .offset(y = topDp.dp)
+            .background(TarryTheme.colors.card)
+            .padding(horizontal = DayCanvasDefaults.StackedLabelPadding)
+            // Decorative: the blocks carry their own times.
+            .semantics {
+                hideFromAccessibility()
+                testTag = tag
+            },
+    )
+}
+
+/**
+ * The span (dp from the canvas top) of a trip's dotted connector: from the bottom of the visit before it to the top of
+ * the visit after it, never shorter than the trip's own slot. Without a visit on a side, the slot's edge ends it.
+ */
+internal fun tripConnector(trip: PlacedTrip, blocks: List<PlacedBlock>): ClosedFloatingPointRange<Float> {
+    val centre = trip.topDp + trip.heightDp / 2
+    val visits = blocks.filter { it.item is TimelineItem.Visit }
+    val before = visits.filter { it.topDp + it.heightDp <= centre }.maxOfOrNull { it.topDp + it.heightDp }
+    val after = visits.filter { it.topDp >= centre }.minOfOrNull { it.topDp }
+    return minOf(trip.topDp, before ?: trip.topDp)..maxOf(trip.topDp + trip.heightDp, after ?: (trip.topDp + trip.heightDp))
+}
+
+/** An [OffStretch] clamped to the canvas: where it sits (dp from the canvas top) and how tall it is. */
+internal data class PlacedOff(val stretch: OffStretch, val topDp: Float, val heightDp: Float)
+
+/**
+ * Whether the "Not tracking" label fits at the top of [off]: the stretch is tall enough for it, and no visit, gap or
+ * trip covers the label's rows (a gap wins over the stretch, so the label never sits on one).
+ */
+internal fun offLabelFits(off: PlacedOff, labelHeightDp: Float, placed: List<Placed>): Boolean {
+    val top = off.topDp + OffLabelInsetDp
+    val bottom = top + labelHeightDp
+    return off.heightDp >= labelHeightDp + 2 * OffLabelInsetDp && placed.none { it.topDp < bottom && it.topDp + it.heightDp > top }
+}
+
+private const val OffLabelInsetDp = 2f

@@ -39,31 +39,53 @@ class ReviewRowTest {
 
     private var showMap by mutableStateOf(false)
 
-    private fun show(width: Dp, showToggle: Boolean = true) {
+    private fun show(width: Dp, fontScale: Float = 1f) {
         composeRule.setContent {
-            TarryTheme {
-                ReviewRow(
-                    reviewOnly = false, showToggle = showToggle, onReviewOnlyChange = {}, onAddJob = {},
-                    showMap = showMap, onShowMapChange = { showMap = it },
-                    modifier = Modifier.width(width),
-                )
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale),
+            ) {
+                TarryTheme {
+                    ReviewRow(
+                        onAddJob = {},
+                        showMap = showMap, onShowMapChange = { showMap = it },
+                        modifier = Modifier.width(width),
+                    )
+                }
             }
         }
     }
 
     @Test
-    fun wideRowShowsTheLabelledToggleThenAddJobThenTheFilter() {
+    fun wideRowShowsTheLabelledToggleThenAddJob() {
         show(560.dp)
         composeRule.onNodeWithText("Timeline").assertExists()
         composeRule.onNodeWithText("Map").assertExists()
         composeRule.onNodeWithText("Add job").assertExists()
-        composeRule.onNodeWithText("Needs review").assertExists()
 
         val toggleRight = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot.right
         val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
-        val filterLeft = composeRule.onNodeWithTag("timeline_filter_review").fetchSemanticsNode().boundsInRoot.left
         assertThat(addJob.left).isAtLeast(toggleRight)
-        assertThat(filterLeft).isAtLeast(addJob.right)
+    }
+
+    @Test
+    fun addJobStaysBesideTheToggleBelowFontScale1_5() {
+        show(560.dp, fontScale = 1.0f)
+        val toggle = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot
+        val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
+        assertThat(addJob.top).isLessThan(toggle.bottom)
+    }
+
+    @Test
+    fun addJobSitsOnItsOwnLeftAlignedLineFromFontScale1_5() {
+        show(411.dp, fontScale = 2.0f)
+        val row = composeRule.onNodeWithTag("timeline_review_row").fetchSemanticsNode().boundsInRoot
+        val toggle = composeRule.onNodeWithTag("timeline_view_toggle").fetchSemanticsNode().boundsInRoot
+        val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
+        composeRule.onNodeWithText("Add job").assertExists()
+        assertThat(addJob.top).isAtLeast(toggle.bottom)
+        assertThat(addJob.left).isEqualTo(row.left)
+        assertThat(addJob.right).isAtMost(row.right)
     }
 
     @Test
@@ -72,7 +94,6 @@ class ReviewRowTest {
         composeRule.onNodeWithTag("timeline_review_row").assert(hasScrollAction())
         composeRule.onNodeWithText("Add job").assertExists()
         composeRule.onNodeWithContentDescription("Add job").assertDoesNotExist()
-        composeRule.onNodeWithText("Needs review").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -84,13 +105,19 @@ class ReviewRowTest {
     }
 
     @Test
-    fun toggleSwitchesToTheMapAndHidesTheReviewFilter() {
+    fun toggleSwitchesToTheMap() {
         show(560.dp)
         composeRule.onNode(hasText("Timeline") and hasClickAction()).assertIsSelected()
         composeRule.onNode(hasText("Map") and hasClickAction()).assertHeightIsAtLeast(48.dp).performClick()
         assertThat(showMap).isTrue()
         composeRule.onNode(hasText("Map") and hasClickAction()).assertIsSelected()
+    }
+
+    @Test
+    fun rowNoLongerCarriesTheReviewFilter() {
+        show(560.dp)
         composeRule.onNodeWithTag("timeline_filter_review").assertDoesNotExist()
+        composeRule.onNodeWithText("Needs review").assertDoesNotExist()
     }
 
     @Test

@@ -39,3 +39,11 @@ fun nearbyPlaces(pin: GeoPoint, places: List<PickPlace>, withinM: Double = MapCo
 
 /** Five decimal places (about 1 m), locale independent, for the "New place at ..." label. */
 fun formatPinCoordinates(lat: Double, lng: Double): String = String.format(Locale.US, "%.5f, %.5f", lat, lng)
+
+/**
+ * The pin's position, or null while it has no real one. [start] is the framing centre (chosen place, else the last
+ * visited one); with it the camera target is the pin. Without it the camera shows the zoomed-out world, whose target is
+ * meaningless, so the pin only counts once the user has panned ([userMoved]).
+ */
+fun pinPosition(start: GeoPoint?, cameraTarget: GeoPoint?, userMoved: Boolean): GeoPoint? =
+    if (start != null || userMoved) cameraTarget ?: start else null

@@ -38,4 +38,19 @@ class PinPickerTest {
     fun coordinatesUseFiveDecimalsWithADot() {
         assertThat(formatPinCoordinates(-33.8688197, 151.2092955)).isEqualTo("-33.86882, 151.20930")
     }
+
+    @Test
+    fun pinHasNoPositionOnTheWorldViewUntilTheUserPans() {
+        val world = GeoPoint(20.0, 0.0)
+        assertThat(pinPosition(null, world, userMoved = false)).isNull()
+        assertThat(pinPosition(null, null, userMoved = true)).isNull()
+        assertThat(pinPosition(null, GeoPoint(-33.8, 151.2), userMoved = true)).isEqualTo(GeoPoint(-33.8, 151.2))
+    }
+
+    @Test
+    fun pinFollowsTheCameraTargetWhenTheMapWasFramedOnAKnownCentre() {
+        val start = GeoPoint(-33.9, 151.2)
+        assertThat(pinPosition(start, null, userMoved = false)).isEqualTo(start)
+        assertThat(pinPosition(start, GeoPoint(-33.91, 151.21), userMoved = false)).isEqualTo(GeoPoint(-33.91, 151.21))
+    }
 }

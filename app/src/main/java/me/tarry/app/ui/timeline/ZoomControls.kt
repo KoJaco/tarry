@@ -18,6 +18,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.ui.theme.TarryColors
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.theme.surfaceEdge
 
@@ -33,7 +34,7 @@ internal val ZoomRestShift = 8.dp
 private const val DisabledAlpha = 0.38f
 
 /**
- * The "−" and "+" pair pinned to the top-right of the day canvas: a `card` pill (with the dark-mode `line` edge) of two
+ * The "−" and "+" pair pinned to the top-right of the day canvas: an `inset` pill (with the dark-mode `line` edge) of two
  * 48 dp icon buttons. Each tap steps one level; a button is disabled at its limit. This is the single-pointer
  * alternative to the pinch (WCAG 2.5.1). It is read first in the canvas's traversal group.
  */
@@ -46,7 +47,7 @@ internal fun ZoomControls(level: ZoomLevel, onLevelChange: (ZoomLevel) -> Unit, 
     Row(
         modifier = modifier
             .clip(TarryTheme.shapes.pill)
-            .background(c.card)
+            .background(zoomPillColor(c))
             .surfaceEdge(TarryTheme.shapes.pill)
             .semantics {
                 isTraversalGroup = true
@@ -70,3 +71,6 @@ private fun ZoomStepButton(icon: Int, label: Int, state: String, enabled: Boolea
         Icon(painterResource(icon), contentDescription = stringResource(label), modifier = Modifier.size(24.dp))
     }
 }
+
+/** The pill's background: `inset`, so it reads apart from the `card` day canvas under it, in both themes. */
+internal fun zoomPillColor(c: TarryColors) = c.inset

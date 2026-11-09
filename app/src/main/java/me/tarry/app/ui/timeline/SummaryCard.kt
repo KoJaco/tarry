@@ -2,14 +2,28 @@ package me.tarry.app.ui.timeline
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -20,7 +34,13 @@ import me.tarry.app.ui.theme.tabular
 
 /** Tracked total, a needs-review chip when visits have no job, and a "3 visits · 1 trip · 1 gap" caption. */
 @Composable
-fun SummaryCard(summary: DaySummary, isToday: Boolean, modifier: Modifier = Modifier) {
+fun SummaryCard(
+    summary: DaySummary,
+    isToday: Boolean,
+    modifier: Modifier = Modifier,
+    reviewOnly: Boolean = false,
+    onReviewOnlyChange: (Boolean) -> Unit = {},
+) {
     val c = TarryTheme.colors
     TarryCard(
         modifier = modifier
@@ -46,20 +66,7 @@ fun SummaryCard(summary: DaySummary, isToday: Boolean, modifier: Modifier = Modi
             verticalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
         ) {
             if (summary.needsReview > 0) {
-                Text(
-                    text = pluralStringResource(
-                        R.plurals.timeline_summary_needs_review,
-                        summary.needsReview,
-                        summary.needsReview,
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = c.onAccentSoft,
-                    modifier = Modifier
-                        .clip(TarryTheme.shapes.pill)
-                        .background(c.accentSoft)
-                        .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.xs)
-                        .testTag("timeline_summary_review"),
-                )
+                ReviewChip(summary.needsReview, reviewOnly, onReviewOnlyChange)
             }
             val parts = listOfNotNull(
                 if (summary.visits > 0) pluralStringResource(R.plurals.timeline_summary_visits, summary.visits, summary.visits) else null,
@@ -77,3 +84,54 @@ fun SummaryCard(summary: DaySummary, isToday: Boolean, modifier: Modifier = Modi
         }
     }
 }
+
+/**
+ * "N visits need review" doubling as the filter. Off: `accentSoft` pill. On: a leading check and an `accent` fill with
+ * `onAccent` text (shape as well as colour). The touch target is 48 dp tall; the pill is drawn inside it, and the target
+ * overlaps the neighbouring spacing instead of adding height, so the card stays as compact as with a bare pill.
+ */
+@Composable
+private fun ReviewChip(count: Int, on: Boolean, onChange: (Boolean) -> Unit) {
+    val c = TarryTheme.colors
+    val content = if (on) c.onAccent else c.onAccentSoft
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val labelStyle = MaterialTheme.typography.labelMedium
+    // The pill's own height (text line or check, plus its padding): what the chip takes in the card's layout.
+    val padPx = with(density) { TarryTheme.space.xs.toPx() * 2 }
+    val visualPx = remember(labelStyle, density, padPx) {
+        with(density) { maxOf(measurer.measure("Ag", labelStyle).size.height.toFloat(), ChipCheck.toPx()) + padPx }
+    }
+    Box(
+        modifier = Modifier
+            // Reports only the pill's height to the card and lets the 48 dp target hang equally above and below it.
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val overlap = (placeable.height - visualPx).coerceAtLeast(0f).toInt()
+                layout(placeable.width, placeable.height - overlap) { placeable.place(0, -overlap / 2) }
+            }
+            .heightIn(min = ChipTouch)
+            .toggleable(value = on, role = Role.Checkbox, onValueChange = onChange)
+            .testTag("timeline_filter_review"),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Row(
+            modifier = Modifier
+                .clip(TarryTheme.shapes.pill)
+                .background(if (on) c.accent else c.accentSoft)
+                .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs),
+        ) {
+            if (on) Icon(painterResource(R.drawable.ic_check), contentDescription = null, tint = content, modifier = Modifier.size(ChipCheck))
+            Text(
+                text = pluralStringResource(R.plurals.timeline_summary_needs_review, count, count),
+                style = MaterialTheme.typography.labelMedium,
+                color = content,
+            )
+        }
+    }
+}
+
+private val ChipTouch = 48.dp
+private val ChipCheck = 16.dp

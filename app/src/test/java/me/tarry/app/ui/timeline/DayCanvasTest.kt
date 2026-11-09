@@ -488,4 +488,27 @@ class DayCanvasTest {
         // Block padding is 6 dp; allow 2 dp for the text's own leading.
         assertThat((title.top - block.top).value).isAtMost(6f + 2f)
     }
+
+    @Test
+    fun allocateLinesFillsTheTitleFirstThenTheTimesAndNeverPastWhatIsNeeded() {
+        assertThat(allocateLines(0f, listOf(22f, 20f, 16f), listOf(3, 2, 2))).containsExactly(1, 1, 1).inOrder()
+        assertThat(allocateLines(44f, listOf(22f, 20f, 16f), listOf(3, 2, 2))).containsExactly(3, 1, 1).inOrder()
+        assertThat(allocateLines(100f, listOf(22f, 20f, 16f), listOf(2, 2, 2))).containsExactly(2, 2, 2).inOrder()
+        assertThat(allocateLines(-10f, listOf(22f), listOf(4))).containsExactly(1)
+        assertThat(allocateLines(21f, listOf(22f, 20f), listOf(2, 2))).containsExactly(1, 2).inOrder()
+    }
+
+    @Test
+    fun aTallTripRowIsCentredOnItsTimeRangeBetweenItsVisits() {
+        showTrips(
+            TimelineItem.Visit("a", at(9, 0), at(10, 0), "A"),
+            TimelineItem.Trip("t", at(10, 0), at(12, 0), 90_000f, TripMode.VEHICLE),
+            TimelineItem.Visit("b", at(12, 0), at(13, 0), "B"),
+        )
+        val a = bounds("timeline_row_a")
+        val b = bounds("timeline_row_b")
+        val t = bounds("timeline_row_t")
+        assertThat(((t.top + t.bottom) / 2).value).isWithin(1f).of(((a.bottom + b.top) / 2).value)
+        assertThat(t.height.value).isWithin(1f).of((b.top - a.bottom).value)
+    }
 }

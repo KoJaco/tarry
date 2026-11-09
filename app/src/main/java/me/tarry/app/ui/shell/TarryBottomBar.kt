@@ -226,7 +226,7 @@ private fun NavItem(
     Column(
         modifier = Modifier
             .heightIn(min = 48.dp)
-            .clip(TarryTheme.shapes.pill)
+            // No pill clip here: its rounded bottom corners cut the descenders of a wide label (the "y" of "Summary") when the slot is narrow.
             .selectable(
                 selected = selected,
                 role = Role.Tab,

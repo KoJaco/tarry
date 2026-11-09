@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -59,6 +60,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick as semanticsOnClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -86,7 +91,14 @@ internal object DayColumns {
     val MinJobWidth = 48.dp
 
     /** [JobFraction] at font scale 1, shrinking in proportion to the font scale (never below [MinJobFraction]). */
-    fun jobFraction(fontScale: Float): Float = (JobFraction / maxOf(1f, fontScale)).coerceAtLeast(MinJobFraction)
+    fun jobFraction(fontScale: Float): Float =
+        if (stackedTimeLabels(fontScale)) StackedJobFraction else (JobFraction / maxOf(1f, fontScale)).coerceAtLeast(MinJobFraction)
+
+    /**
+     * Share of the job column once the time column has collapsed (large fonts): the freed width is split so job names (which
+     * grow with the font) stay readable at 2x, about 100 dp on a 360 dp phone, without starving the visits.
+     */
+    const val StackedJobFraction = 0.35f
 }
 
 private object JobColumnDefaults {
@@ -250,6 +262,8 @@ internal fun BoxScope.JobColumn(
     /** The settled zoom level's step: drags and the accessibility move/resize actions snap to it. A mid-pinch zoom never reaches here. */
     snapMinutes: Int = baseConfig.snapMinutes,
 ) {
+    val metrics = rememberTextMetrics()
+    val textDensity = LocalDensity.current
     val config = remember(baseConfig, snapMinutes) { baseConfig.copy(snapMinutes = snapMinutes) }
     val formats = rememberTimeFormats()
     val haptics = LocalHapticFeedback.current
@@ -391,6 +405,25 @@ internal fun BoxScope.JobColumn(
                 // A done job says so at the top, quietly; the grey style alone would rely on colour.
                 val showDone = b.done && placed.heightDp >= JobColumnDefaults.DurationMinDp * fontScale
                 val doneDp = if (showDone) JobColumnDefaults.DoneLineDp else 0f
+                // The name takes the lines left over by the quieter texts below it (real heights and wrapping), and only
+                // ends in an ellipsis when it truly does not fit.
+                val showDuration = placed.heightDp >= (JobColumnDefaults.DurationMinDp + doneDp) * fontScale
+                val showBillable = placed.heightDp >= (JobColumnDefaults.BillableMinDp + doneDp) * fontScale
+                val nameLines = run {
+                    val laneWidth = (width - JobColumnDefaults.LaneGap * (placed.laneCount - 1)) / placed.laneCount
+                    val textWidthPx = with(textDensity) { (maxOf(laneWidth, JobColumnDefaults.Touch) - JobColumnDefaults.PaddingH * 2).roundToPx() }.coerceAtLeast(0)
+                    fun lineDp(style: TextStyle) = metrics.lineDp(style)
+                    val nameStyle = MaterialTheme.typography.labelLarge
+                    val nameLine = lineDp(nameStyle)
+                    val others = (if (showDone) lineDp(MaterialTheme.typography.labelSmall) else 0f) +
+                        (if (showDuration) lineDp(MaterialTheme.typography.bodySmall) else 0f) +
+                        (if (showBillable) maxOf(lineDp(MaterialTheme.typography.labelSmall), JobColumnDefaults.MarkSize.value) else 0f)
+                    allocateLines(
+                        extraDp = placed.heightDp - 2 * JobColumnDefaults.PaddingV.value - nameLine - others,
+                        lineDps = listOf(nameLine),
+                        needs = listOf(metrics.lineCount(b.jobName, nameStyle, textWidthPx)),
+                    ).first()
+                }
                 if (showDone) {
                     Text(
                         text = stringResource(R.string.timeline_job_done),
@@ -404,10 +437,10 @@ internal fun BoxScope.JobColumn(
                     text = b.jobName,
                     style = MaterialTheme.typography.labelLarge,
                     color = textColor,
-                    maxLines = 1,
+                    maxLines = nameLines,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (placed.heightDp >= (JobColumnDefaults.DurationMinDp + doneDp) * fontScale) {
+                if (showDuration) {
                     Text(
                         text = formatDuration(end - start),
                         style = MaterialTheme.typography.bodySmall,
@@ -416,7 +449,7 @@ internal fun BoxScope.JobColumn(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (placed.heightDp >= (JobColumnDefaults.BillableMinDp + doneDp) * fontScale) {
+                if (showBillable) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
                         val mark = Modifier.size(JobColumnDefaults.MarkSize).clip(CircleShape)
                         Box(if (b.billable) mark.background(textColor) else mark.border(JobColumnDefaults.MarkRing, textColor, CircleShape))
@@ -425,6 +458,7 @@ internal fun BoxScope.JobColumn(
                 }
             }
         }
+        val c0 = TarryTheme.colors
         plan.suggestions.forEach { placed ->
             val s = placed.item
             val colors = JobPalette.lookup(s.jobColorArgb, s.suggestion.jobId).colors(TarryTheme.isDark)
@@ -437,7 +471,7 @@ internal fun BoxScope.JobColumn(
                 description = stringResource(R.string.timeline_job_suggestion_description, s.jobName, spoken),
                 clickLabel = stringResource(R.string.timeline_review_suggestion),
                 enabled = enabled,
-                container = Color.Transparent, border = colors.border, dashed = true,
+                container = Color.Transparent, border = suggestionBorder(colors.border, c0), dashed = true,
                 tag = "timeline_suggestion_${s.suggestion.visitId}",
                 onClick = {},
                 onDoubleClick = { reviewing = s.suggestion.visitId to s.suggestion.jobId },
@@ -890,3 +924,19 @@ private fun Modifier.blockDragGesture(
         }
     }
 }
+
+/** Least contrast a non-text outline needs against the surface it is drawn on (WCAG 1.4.11). */
+private const val OutlineContrast = 3.0
+
+internal fun contrastRatio(a: Color, b: Color): Double {
+    val la = a.luminance().toDouble()
+    val lb = b.luminance().toDouble()
+    return (maxOf(la, lb) + 0.05) / (minOf(la, lb) + 0.05)
+}
+
+/**
+ * The dashed outline of a suggestion, which has no fill and so sits straight on `card`: the job's own border colour when
+ * that already reaches 3:1 there, else the theme's `outline` (about 3.5:1 in both themes).
+ */
+internal fun suggestionBorder(jobBorder: Color, colors: me.tarry.app.ui.theme.TarryColors): Color =
+    if (contrastRatio(jobBorder, colors.card) >= OutlineContrast) jobBorder else colors.outline
