@@ -28,7 +28,8 @@ fun interface EditClock {
 
 /**
  * Earliest instant an edit may rewind segmentation to: the start of the raw-ping retention window (0 when pings are
- * kept forever). Older pings are purged, so re-detecting before it would only erase history. Same window as `SegmentationUpgrade`.
+ * kept forever), moved up past anything actually pruned ([RetentionFloor]). Older pings are purged, so re-detecting
+ * before it would only erase history. Same floor as `SegmentationUpgrade`.
  */
 fun interface RewindFloor {
     suspend fun floorMs(): Long

@@ -57,7 +57,7 @@ class SegmentationUpgradeTest {
             db.placeDao(), db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao(), FakeWindowChecker(),
             SegmentationParams(),
         )
-        upgrade = SegmentationUpgrade(settings, runner, SegmentationScheduler(context, me.tarry.app.tracking.TrackingConfig()), FakeClock(now = now))
+        upgrade = SegmentationUpgrade(settings, runner, SegmentationScheduler(context, me.tarry.app.tracking.TrackingConfig()), FakeClock(now = now), me.tarry.app.tracking.TrackingConfig())
     }
 
     @After

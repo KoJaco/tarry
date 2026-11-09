@@ -15,7 +15,9 @@ import javax.inject.Singleton
 /**
  * Deletes raw pings older than the retention setting, less [TrackingConfig.retentionPruneMarginMs]. Visits, trips and
  * places are never touched. The cutoff never reaches into the open tracking session, nor into the range the next
- * segmentation run reads from its checkpoint (or, with no checkpoint yet, the first session) less the overlap.
+ * segmentation run reads from its checkpoint (or, with no checkpoint yet, the first session) less the overlap and
+ * the margin. Each prune raises the pruned-before
+ * watermark to its cutoff, so lengthening the retention later cannot move the rewind floor back past deleted pings.
  *
  * The guarantee: a run, or an edit/upgrade rewind clamped to `now - days` (`RewindFloor`, `SegmentationUpgrade`), reads
  * only pings that still exist, as long as the run's widening (to the start of an overlapping unfrozen visit, trip or
@@ -30,7 +32,7 @@ class PingRetention @Inject constructor(
     private val checkpointDao: SegmentationCheckpointDao,
     private val params: SegmentationParams,
     private val clock: TrackingClock,
-    private val config: TrackingConfig = TrackingConfig(),
+    private val config: TrackingConfig,
 ) {
     /** Returns how many pings were deleted. Forever deletes nothing. */
     suspend fun prune(): Int {
@@ -43,9 +45,11 @@ class PingRetention @Inject constructor(
             days = days,
             marginMs = config.retentionPruneMarginMs,
             openSessionStartMs = sessionDao.getOpenSession()?.start,
-            segmentationFromMs = processedUntil?.let { it - params.overlapMs },
+            segmentationFromMs = processedUntil?.let { it - params.overlapMs - config.retentionPruneMarginMs },
         )
-        return pingDao.deleteOlderThan(cutoff)
+        val deleted = pingDao.deleteOlderThan(cutoff)
+        settings.raisePrunedBeforeMs(cutoff)
+        return deleted
     }
 
     companion object {

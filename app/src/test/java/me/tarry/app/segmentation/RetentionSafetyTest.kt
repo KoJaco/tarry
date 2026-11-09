@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import androidx.work.Configuration
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import me.tarry.app.tracking.FakeClock
+import me.tarry.app.tracking.TrackingConfig
 import me.tarry.app.tracking.FakeWindowChecker
 import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.TarryDatabase
@@ -22,6 +25,7 @@ import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.repository.EditClock
 import me.tarry.core.data.repository.EditResult
 import me.tarry.core.data.repository.ItemRef
+import me.tarry.core.data.repository.RetentionFloor
 import me.tarry.core.data.repository.RewindFloor
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.core.data.settings.SettingsRepository
@@ -73,7 +77,7 @@ class RetentionSafetyTest {
             params,
         )
         retention = PingRetention(
-            settings, db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(), params, FakeClock(now = now),
+            settings, db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(), params, FakeClock(now = now), TrackingConfig(),
         )
         editor = TimelineEditor(
             db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
@@ -182,5 +186,135 @@ class RetentionSafetyTest {
         assertThat(tripAfter.id).isEqualTo(tripBefore.id)
         assertThat(tripAfter.fromVisitId).isEqualTo(tripBefore.fromVisitId)
         assertThat(tripAfter.distanceM).isEqualTo(tripBefore.distanceM)
+    }
+
+    /** The editor with the production floor: the retention window moved past what was pruned. */
+    private fun liveEditor() = TimelineEditor(
+        db, db.visitDao(), db.tripDao(), db.excludedRangeDao(), db.placeDao(), db.jobDao(),
+        db.segmentationCheckpointDao(), EditClock { now }, RewindFloor { RetentionFloor.compute(settings, now) },
+    )
+
+    private val oldDay get() = now - 60 * day
+
+    /** 30-day retention pruned the day -60 pings (none of its rows are touched); the setting is then lengthened to Forever. */
+    private suspend fun shortenPruneLengthen() {
+        settings.setRawPingRetentionDays(30)
+        for (offset in listOf(120, 60, 30)) addDay(now - offset * day)
+        addDay(now - 72 * minute, open = true)
+        runner.run(now)
+        assertThat(retention.prune()).isGreaterThan(0)
+        assertThat(db.locationPingDao().getInRange(oldDay - day, oldDay + day)).isEmpty()
+        settings.setRawPingRetentionDays(null)
+    }
+
+    private suspend fun oldDayVisits() = liveVisits().filter { it.start in oldDay - day..oldDay + day }.sortedBy { it.start }
+
+    @Test
+    fun anEditOfAVisitInPrunedDaysAfterLengtheningToForeverStillStaysAboveTheFloor() = runBlocking<Unit> {
+        settings.setRawPingRetentionDays(30)
+        for (offset in listOf(120, 60, 30)) addDay(now - offset * day)
+        addDay(now - 72 * minute, open = true)
+        runner.run(now)
+        val visits = oldDayVisits()
+        val trip = liveTrips().single { it.start in oldDay - day..oldDay + day }
+        val gaps = noFixGaps()
+        assertThat(retention.prune()).isGreaterThan(0)
+        settings.setRawPingRetentionDays(null)
+        val other = liveVisits().first { it.start > now - 40 * day }.placeId!!
+
+        assertThat(liveEditor().reassignPlace(visits[0].id, other)).isInstanceOf(EditResult.Ok::class.java)
+        assertThat(db.segmentationCheckpointDao().getById()!!.processedUntil).isAtLeast(settings.prunedBeforeMs()!!)
+        runner.run(now + minute)
+
+        val after = oldDayVisits()
+        assertThat(after).hasSize(2)
+        assertThat(after[0].placeId).isEqualTo(other)
+        assertThat(after[1]).isEqualTo(visits[1])
+        assertThat(liveTrips().single { it.start in oldDay - day..oldDay + day }).isEqualTo(trip)
+        assertThat(noFixGaps()).isEqualTo(gaps)
+    }
+
+    @Test
+    fun anUpgradeRewindAfterLengtheningToForeverDoesNotReachIntoPrunedDays() = runBlocking<Unit> {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        WorkManagerTestInitHelper.initializeTestWorkManager(context, Configuration.Builder().build())
+        settings.setRawPingRetentionDays(30)
+        for (offset in listOf(120, 60, 30)) addDay(now - offset * day)
+        addDay(now - 72 * minute, open = true)
+        runner.run(now)
+        val visits = oldDayVisits()
+        val trip = liveTrips().single { it.start in oldDay - day..oldDay + day }
+        val gaps = noFixGaps()
+        assertThat(retention.prune()).isGreaterThan(0)
+        settings.setRawPingRetentionDays(null)
+        val upgrade = SegmentationUpgrade(settings, runner, SegmentationScheduler(context, TrackingConfig()), FakeClock(now = now), TrackingConfig())
+
+        assertThat(upgrade.runIfNeeded()).isTrue()
+        assertThat(db.segmentationCheckpointDao().getById()!!.processedUntil).isAtLeast(settings.prunedBeforeMs()!!)
+        runner.run(now + minute)
+
+        assertThat(oldDayVisits()).isEqualTo(visits)
+        assertThat(liveTrips().single { it.start in oldDay - day..oldDay + day }).isEqualTo(trip)
+        assertThat(noFixGaps()).isEqualTo(gaps)
+    }
+
+    @Test
+    fun theWatermarkOnlyEverRises() = runBlocking<Unit> {
+        shortenPruneLengthen()
+        val first = settings.prunedBeforeMs()!!
+        assertThat(first).isEqualTo(now - 32 * day)
+
+        settings.setRawPingRetentionDays(90)
+        retention.prune()
+        assertThat(settings.prunedBeforeMs()).isEqualTo(first)
+        settings.raisePrunedBeforeMs(first - day)
+        assertThat(settings.prunedBeforeMs()).isEqualTo(first)
+    }
+
+    @Test
+    fun undoingAnEditOfAnOldVisitDoesNotRewindBelowTheFloor() = runBlocking<Unit> {
+        settings.setRawPingRetentionDays(90)
+        for (offset in listOf(120, 100, 30)) addDay(now - offset * day)
+        addDay(now - 72 * minute, open = true)
+        runner.run(now)
+        val oldDay = now - 100 * day
+        val visits = liveVisits().filter { it.start in oldDay - day..oldDay + day }.sortedBy { it.start }
+        val trip = liveTrips().single { it.start in oldDay - day..oldDay + day }
+        val gaps = noFixGaps()
+        retention.prune()
+        val other = liveVisits().first { it.start > now - 40 * day }.placeId!!
+        val edit = liveEditor().reassignPlace(visits[0].id, other) as EditResult.Ok
+
+        assertThat(liveEditor().restore(edit.undo!!)).isInstanceOf(EditResult.Ok::class.java)
+        assertThat(db.segmentationCheckpointDao().getById()!!.processedUntil).isAtLeast(floor)
+        runner.run(now + minute)
+
+        val after = liveVisits().filter { it.start in oldDay - day..oldDay + day }.sortedBy { it.start }
+        assertThat(after.map { it.id }).containsExactlyElementsIn(visits.map { it.id })
+        assertThat(after[1]).isEqualTo(visits[1])
+        assertThat(liveTrips().single { it.start in oldDay - day..oldDay + day }).isEqualTo(trip)
+        assertThat(noFixGaps()).isEqualTo(gaps)
+    }
+
+    @Test
+    fun aPlaceOperationTouchingOldVisitsNeverRewindsBelowTheFloor() = runBlocking<Unit> {
+        settings.setRawPingRetentionDays(90)
+        for (offset in listOf(120, 100, 30)) addDay(now - offset * day)
+        addDay(now - 72 * minute, open = true)
+        runner.run(now)
+        val oldDay = now - 100 * day
+        val visits = liveVisits().filter { it.start in oldDay - day..oldDay + day }.sortedBy { it.start }
+        val trip = liveTrips().single { it.start in oldDay - day..oldDay + day }
+        val gaps = noFixGaps()
+        retention.prune()
+
+        assertThat(liveEditor().setPlaceRadius(visits[0].placeId!!, 400f)).isInstanceOf(EditResult.Ok::class.java)
+        assertThat(db.segmentationCheckpointDao().getById()!!.processedUntil).isAtLeast(floor)
+        runner.run(now + minute)
+
+        assertThat(liveVisits().filter { it.start in oldDay - day..oldDay + day }.sortedBy { it.start }.map { it.id })
+            .containsExactlyElementsIn(visits.map { it.id })
+        assertThat(liveTrips().single { it.start in oldDay - day..oldDay + day }).isEqualTo(trip)
+        assertThat(noFixGaps()).isEqualTo(gaps)
     }
 }

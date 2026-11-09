@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import me.tarry.app.tracking.FakeClock
+import me.tarry.app.tracking.TrackingConfig
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.SegmentationCheckpoint
@@ -51,7 +52,7 @@ class PingRetentionTest {
             PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") },
         )
         retention = PingRetention(
-            settings, db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(), params, FakeClock(now = now),
+            settings, db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(), params, FakeClock(now = now), TrackingConfig(),
         )
     }
 
@@ -121,14 +122,15 @@ class PingRetentionTest {
         settings.setRawPingRetentionDays(30)
         val s = session(now - 100 * day, now - 50 * day)
         ping(s, now - 60 * day)
+        ping(s, now - 46 * day) // inside the margin below the run start
         ping(s, now - 45 * day)
         ping(s, now - 40 * day)
-        // Next run starts at checkpoint minus the overlap: 45 days ago plus a little.
+        // Next run starts at checkpoint minus the overlap: 45 days ago plus a little; the margin sits below that.
         db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = now - 45 * day + params.overlapMs))
 
         assertThat(retention.prune()).isEqualTo(1)
 
-        assertThat(remaining()).containsExactly(now - 45 * day, now - 40 * day)
+        assertThat(remaining()).containsExactly(now - 46 * day, now - 45 * day, now - 40 * day)
     }
 
     @Test

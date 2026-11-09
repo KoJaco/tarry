@@ -100,7 +100,23 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.LAST_BACKUP_MS] = epochMs }
     }
 
+    /** Pings before this instant (UTC epoch ms) may have been pruned; null if none ever were. */
+    suspend fun prunedBeforeMs(): Long? =
+        dataStore.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+            .first()[Keys.PRUNED_BEFORE_MS]
+
+    /** Raises the watermark to [epochMs] if that is later than the stored one; it never decreases. */
+    suspend fun raisePrunedBeforeMs(epochMs: Long) {
+        dataStore.edit { p -> p[Keys.PRUNED_BEFORE_MS] = maxOf(p[Keys.PRUNED_BEFORE_MS] ?: epochMs, epochMs) }
+    }
+
+    /** Replaces the watermark: after a restore (from the restored data) or a delete-all (null clears it). */
+    suspend fun setPrunedBeforeMs(epochMs: Long?) {
+        dataStore.edit { if (epochMs == null) it.remove(Keys.PRUNED_BEFORE_MS) else it[Keys.PRUNED_BEFORE_MS] = epochMs }
+    }
+
     private object Keys {
+        val PRUNED_BEFORE_MS = longPreferencesKey(Settings.PRUNED_BEFORE_KEY)
         val ROUNDING_INCREMENT_MIN = intPreferencesKey("rounding_increment_min")
         val ROUNDING_MODE = stringPreferencesKey("rounding_mode")
         val MIN_BILLABLE_MINUTES = intPreferencesKey("min_billable_minutes")

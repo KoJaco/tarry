@@ -1,5 +1,6 @@
 package me.tarry.app.export.backup
 
+import me.tarry.segmentation.SegmentationParams
 import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
@@ -228,9 +229,12 @@ class BackupRestoreTrackingTest {
             SettingsRepository(settingsStore),
             object : RestoreHooks {
                 override suspend fun <T> captureSuspended(block: suspend () -> T): T = controller.withCaptureSuspended(block)
+                override suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+                    controller.withCaptureSuspendedKeeping(block)
                 override suspend fun afterRestore() = Unit
             },
             clock,
+            SegmentationParams(),
         )
 
         manager.restore(manager.preview { ByteArrayInputStream(bytes) })
@@ -277,6 +281,7 @@ class BackupRestoreTrackingTest {
             override suspend fun afterRestore() = Unit
         },
         clock,
+        SegmentationParams(),
     )
 
     @Test
