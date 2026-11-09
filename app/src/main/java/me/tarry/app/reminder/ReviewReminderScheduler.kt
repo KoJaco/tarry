@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.first
 import me.tarry.app.tracking.EffectiveScheduleCalculator
 import me.tarry.app.tracking.ScheduleInputsProvider
 import me.tarry.app.tracking.TrackingClock
+import me.tarry.app.tracking.TrackingStatusStore
 import me.tarry.app.tracking.TrackingConfig
 import me.tarry.core.data.settings.SettingsRepository
 import java.time.Instant
@@ -19,15 +20,22 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * The next instant, strictly after [now], at [minuteOfDay] (local wall clock in [zone]) on a day [isScheduledDay] accepts.
- * Looks at today and the following [lookAheadDays] days; null when none of them is scheduled. Pure: a wall-clock time
- * that does not exist (a DST gap) moves forward by the gap, one that happens twice takes the first.
+ * When to arm the reminder: at [minuteOfDay] (local wall clock in [zone]) on the first day [isScheduledDay] accepts,
+ * looking at today and the following [lookAheadDays] days; null when none is scheduled. Pure: a wall-clock time that
+ * does not exist (a DST gap) moves forward by the gap, one that happens twice takes the first.
+ *
+ * Today still counts while it has not fired ([lastFiredDate] is not today) and [now] is before the reminder time plus
+ * [windowMs] (the alarm's delivery window): before the time that is the time, inside the window it is [now] itself, so a
+ * re-arm in the window (opening the app at 5:33 pm) fires promptly instead of cancelling today's reminder. Past the
+ * window without a fire (phone off) today is skipped. Later days only count if their time is after [now].
  */
 fun nextReviewReminderAt(
     now: Instant,
     zone: ZoneId,
     minuteOfDay: Int,
     lookAheadDays: Int,
+    windowMs: Long,
+    lastFiredDate: LocalDate?,
     isScheduledDay: (LocalDate) -> Boolean,
 ): Instant? {
     val today = now.atZone(zone).toLocalDate()
@@ -36,7 +44,11 @@ fun nextReviewReminderAt(
         val date = today.plusDays(offset.toLong())
         if (!isScheduledDay(date)) continue
         val at = date.atTime(time).atZone(zone).toInstant()
-        if (at > now) return at
+        if (offset == 0) {
+            if (date != lastFiredDate && now.toEpochMilli() < at.toEpochMilli() + windowMs) return maxOf(at, now)
+        } else if (at > now) {
+            return at
+        }
     }
     return null
 }
@@ -78,6 +90,7 @@ class AndroidReviewReminderScheduler @Inject constructor(
     @param:ApplicationContext private val context: Context,
     private val settings: SettingsRepository,
     private val scheduledDays: ScheduledDays,
+    private val statusStore: TrackingStatusStore,
     private val clock: TrackingClock,
     private val config: TrackingConfig,
 ) : ReviewReminderScheduler {
@@ -92,7 +105,10 @@ class AndroidReviewReminderScheduler @Inject constructor(
         val zone = clock.zone()
         val lookAhead = config.scheduleLookAheadDays.toInt()
         val days = scheduledDays.among(now.atZone(zone).toLocalDate(), lookAhead, zone)
-        val at = nextReviewReminderAt(now, zone, current.reviewReminderMinuteOfDay, lookAhead) { it in days } ?: return
+        val lastFired = statusStore.current().lastReviewReminderDate
+        val at = nextReviewReminderAt(
+            now, zone, current.reviewReminderMinuteOfDay, lookAhead, config.reviewReminderWindowMs, lastFired,
+        ) { it in days } ?: return
         alarmManager.setWindow(AlarmManager.RTC_WAKEUP, at.toEpochMilli(), config.reviewReminderWindowMs, pending)
     }
 

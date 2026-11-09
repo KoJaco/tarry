@@ -48,23 +48,32 @@ private class FakeCounter(var count: Int) : ReviewItemCounter {
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], application = android.app.Application::class)
 class ReviewReminderNotifierTest {
+    @get:org.junit.Rule
+    val folder = org.junit.rules.TemporaryFolder()
+
+    private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val sydney = ZoneId.of("Australia/Sydney")
     private val today = LocalDate.of(2026, 11, 9)
-    private val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
+    private val scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob() + kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> })
     private lateinit var context: Context
     private lateinit var notifications: NotificationManager
     private lateinit var db: TarryDatabase
+    private lateinit var status: me.tarry.app.tracking.TrackingStatusStore
 
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
         notifications = context.getSystemService(NotificationManager::class.java)
         db = Room.inMemoryDatabaseBuilder(context, TarryDatabase::class.java).allowMainThreadQueries().build()
+        status = me.tarry.app.tracking.TrackingStatusStore(
+            me.tarry.app.tracking.createTrackingStatusDataStore(ioScope) { folder.root.resolve("status.preferences_pb") },
+        )
     }
 
     @After
     fun tearDown() {
         scope.cancel()
+        ioScope.cancel()
         db.close()
     }
 
@@ -115,6 +124,7 @@ class ReviewReminderNotifierTest {
         val receiver = ReviewReminderReceiver().also {
             it.scheduler = scheduler
             it.notifier = ReviewReminderNotifier(context, counter)
+            it.statusStore = status
             it.clock = clock
             it.scope = scope
         }
@@ -123,6 +133,7 @@ class ReviewReminderNotifierTest {
         assertThat(scheduler.rearms).isEqualTo(1)
         assertThat(posted()).isEmpty()
         assertThat(counter.asked).containsExactly(today)
+        assertThat(runBlocking { status.current().lastReviewReminderDate }).isEqualTo(today)
 
         counter.count = 3
         deliver(receiver)
@@ -137,8 +148,9 @@ class ReviewReminderNotifierTest {
         val receiver = ReviewReminderReceiver().also {
             it.scheduler = scheduler
             it.notifier = ReviewReminderNotifier(context, failing)
+            it.statusStore = status
             it.clock = FakeClock(zone = sydney)
-            it.scope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob() + kotlinx.coroutines.CoroutineExceptionHandler { _, _ -> })
+            it.scope = scope
         }
 
         runCatching { deliver(receiver) }
@@ -184,5 +196,6 @@ class ReviewReminderNotifierTest {
         create.isAccessible = true
         setPendingResult.invoke(receiver, create.invoke(null, 0, null, null, false))
         receiver.onReceive(context, Intent())
+        runBlocking { scope.coroutineContext[kotlinx.coroutines.Job]!!.children.toList().forEach { it.join() } }
     }
 }

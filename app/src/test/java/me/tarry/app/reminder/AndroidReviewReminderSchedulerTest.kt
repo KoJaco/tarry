@@ -12,6 +12,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import me.tarry.app.tracking.FakeClock
 import me.tarry.app.tracking.TrackingConfig
+import me.tarry.app.tracking.TrackingStatusStore
+import me.tarry.app.tracking.createTrackingStatusDataStore
 import me.tarry.core.data.settings.SettingsRepository
 import org.junit.After
 import org.junit.Before
@@ -46,6 +48,7 @@ class AndroidReviewReminderSchedulerTest {
     private lateinit var alarmManager: AlarmManager
     private lateinit var settings: SettingsRepository
     private lateinit var clock: FakeClock
+    private lateinit var status: TrackingStatusStore
     private lateinit var scheduler: AndroidReviewReminderScheduler
 
     private fun at(day: Int, hour: Int, minute: Int = 0): Long =
@@ -57,7 +60,8 @@ class AndroidReviewReminderSchedulerTest {
         alarmManager = context.getSystemService(AlarmManager::class.java)
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("s.preferences_pb") })
         clock = FakeClock(now = at(9, 9), zone = sydney) // Monday 09:00
-        scheduler = AndroidReviewReminderScheduler(context, settings, weekdays, clock, config)
+        status = TrackingStatusStore(createTrackingStatusDataStore(scope) { folder.root.resolve("status.preferences_pb") })
+        scheduler = AndroidReviewReminderScheduler(context, settings, weekdays, status, clock, config)
     }
 
     @After
@@ -123,7 +127,7 @@ class AndroidReviewReminderSchedulerTest {
     @Test
     fun afterTheReminderTimeItMovesToTheNextScheduledDay() = runBlocking<Unit> {
         settings.setReviewReminderEnabled(true)
-        clock.now = at(13, 17, 31) // Friday just after 17:30
+        clock.now = at(13, 17, 41) // Friday past the 17:30 reminder and its 10 min window
 
         scheduler.rearm()
 
@@ -142,5 +146,36 @@ class AndroidReviewReminderSchedulerTest {
         // Same instant (Monday 09:00 Sydney = 14:00 Perth): 17:30 in Perth is later the same day.
         assertThat(alarms().single().triggerAtMs)
             .isEqualTo(ZonedDateTime.of(2026, 11, 9, 17, 30, 0, 0, perth).toInstant().toEpochMilli())
+    }
+
+    @Test
+    fun reArmingInsideTheWindowBeforeItFiredKeepsTodayAndArmsAtOnce() = runBlocking<Unit> {
+        settings.setReviewReminderEnabled(true)
+        clock.now = at(9, 17, 33) // the app is opened: MainActivity.onStart re-arms
+
+        scheduler.rearm()
+
+        assertThat(alarms().single().triggerAtMs).isEqualTo(at(9, 17, 33))
+    }
+
+    @Test
+    fun reArmingAfterItFiredTodayMovesToTomorrow() = runBlocking<Unit> {
+        settings.setReviewReminderEnabled(true)
+        clock.now = at(9, 17, 33)
+        status.setLastReviewReminderDate(LocalDate.of(2026, 11, 9))
+
+        scheduler.rearm()
+
+        assertThat(alarms().single().triggerAtMs).isEqualTo(at(10, 17, 30))
+    }
+
+    @Test
+    fun reArmingPastTheWindowWithoutAFireMovesToTomorrow() = runBlocking<Unit> {
+        settings.setReviewReminderEnabled(true)
+        clock.now = at(9, 18, 0)
+
+        scheduler.rearm()
+
+        assertThat(alarms().single().triggerAtMs).isEqualTo(at(10, 17, 30))
     }
 }

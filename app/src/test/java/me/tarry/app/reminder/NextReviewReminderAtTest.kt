@@ -17,8 +17,17 @@ class NextReviewReminderAtTest {
     private fun inSydney(y: Int, m: Int, d: Int, h: Int, min: Int = 0): Instant =
         ZonedDateTime.of(y, m, d, h, min, 0, 0, sydney).toInstant()
 
-    private fun next(now: Instant, zone: ZoneId = sydney, minute: Int = at1730, ahead: Int = 9, scheduled: (LocalDate) -> Boolean = monFri) =
-        nextReviewReminderAt(now, zone, minute, ahead, scheduled)
+    private val window = 10 * 60_000L
+
+    private fun next(
+        now: Instant,
+        zone: ZoneId = sydney,
+        minute: Int = at1730,
+        ahead: Int = 9,
+        lastFired: LocalDate? = null,
+        scheduled: (LocalDate) -> Boolean = monFri,
+    ) =
+        nextReviewReminderAt(now, zone, minute, ahead, window, lastFired, scheduled)
 
     // 2026-11-09 is a Monday.
     @Test
@@ -32,8 +41,51 @@ class NextReviewReminderAtTest {
     }
 
     @Test
-    fun exactlyAtTheTimeIsNotStrictlyAfterSoItMovesOn() {
-        assertThat(next(inSydney(2026, 11, 9, 17, 30))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
+    fun exactlyAtTheTimeUnfiredStillFiresNow() {
+        assertThat(next(inSydney(2026, 11, 9, 17, 30))).isEqualTo(inSydney(2026, 11, 9, 17, 30))
+    }
+
+    @Test
+    fun openingTheAppInsideTheWindowBeforeItFiredKeepsTodayAndFiresPromptly() {
+        // 17:33, the alarm (17:30 + up to 10 min) has not run: arm at now, not tomorrow.
+        val now = inSydney(2026, 11, 9, 17, 33)
+        assertThat(next(now)).isEqualTo(now)
+    }
+
+    @Test
+    fun afterItFiredTodayMovesToTheNextScheduledDay() {
+        val now = inSydney(2026, 11, 9, 17, 33)
+        assertThat(next(now, lastFired = LocalDate.of(2026, 11, 9))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
+    }
+
+    @Test
+    fun aFiredTodayGuardHoldsEvenBeforeTheTime() {
+        // A stale guard for today (for example the time moved later after it fired) keeps to once a day.
+        assertThat(next(inSydney(2026, 11, 9, 9), lastFired = LocalDate.of(2026, 11, 9))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
+    }
+
+    @Test
+    fun pastTheWindowWithoutAFireSkipsToTheNextScheduledDay() {
+        // 17:41 with the phone off through 17:30-17:40: today's reminder is not shown late.
+        assertThat(next(inSydney(2026, 11, 9, 17, 41))).isEqualTo(inSydney(2026, 11, 10, 17, 30))
+    }
+
+    @Test
+    fun lastWindowMinuteStillCounts() {
+        val now = inSydney(2026, 11, 9, 17, 39)
+        assertThat(next(now)).isEqualTo(now)
+    }
+
+    @Test
+    fun anOldFiredDateDoesNotBlockToday() {
+        val now = inSydney(2026, 11, 9, 9)
+        assertThat(next(now, lastFired = LocalDate.of(2026, 11, 6))).isEqualTo(inSydney(2026, 11, 9, 17, 30))
+    }
+
+    @Test
+    fun aUnscheduledTodayInsideTheWindowIsStillSkipped() {
+        // Saturday 17:33 on a Mon-Fri schedule.
+        assertThat(next(inSydney(2026, 11, 14, 17, 33))).isEqualTo(inSydney(2026, 11, 16, 17, 30))
     }
 
     @Test

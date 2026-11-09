@@ -8,15 +8,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.TrackingClock
+import me.tarry.app.tracking.TrackingStatusStore
 import java.time.Instant
 import javax.inject.Inject
 
-/** The review-reminder alarm (non-exported). Re-arms for the next day first, then posts only if today still has items to review. */
+/** The review-reminder alarm (non-exported). Marks the day done and re-arms for the next day first, then posts only if today still has items to review. */
 @AndroidEntryPoint
 class ReviewReminderReceiver : BroadcastReceiver() {
     @Inject lateinit var scheduler: ReviewReminderScheduler
 
     @Inject lateinit var notifier: ReviewReminderNotifier
+
+    @Inject lateinit var statusStore: TrackingStatusStore
 
     @Inject lateinit var clock: TrackingClock
 
@@ -26,9 +29,15 @@ class ReviewReminderReceiver : BroadcastReceiver() {
         val pending = goAsync()
         scope.launch {
             try {
-                scheduler.rearm()
                 val zone = clock.zone()
-                notifier.postIfNeeded(Instant.ofEpochMilli(clock.nowMs()).atZone(zone).toLocalDate(), zone)
+                val today = Instant.ofEpochMilli(clock.nowMs()).atZone(zone).toLocalDate()
+                // Mark today done first (fired or skipped as empty), so the re-arm moves to the next day instead of back to today's window.
+                try {
+                    statusStore.setLastReviewReminderDate(today)
+                } finally {
+                    scheduler.rearm()
+                }
+                notifier.postIfNeeded(today, zone)
             } finally {
                 pending.finish()
             }
