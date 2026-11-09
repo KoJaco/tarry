@@ -211,6 +211,10 @@
     <string name="settings_round_daily_total_subtitle">Add up each job\'s blocks for the day before dropping seconds, rounding and the minimum.</string>
     <string name="settings_ping_retention">Raw location retention</string>
     <string name="settings_ping_retention_explanation">Older days keep their visits and trips. Their route lines on the map are removed.</string>
+    <string name="settings_ping_retention_row">%1$s · older days lose map route lines</string>
+    <string name="retention_shorten_title">Remove older route lines</string>
+    <string name="retention_shorten_body">Route lines older than %1$s will be removed from the map. Visits, trips and distances stay. This can\'t be undone.</string>
+    <string name="retention_shorten_confirm">Remove older route lines</string>
     <string name="settings_one_year">1 year</string>
     <string name="settings_review_reminder">Review reminder</string>
     <string name="settings_review_reminder_time">Review reminder time</string>

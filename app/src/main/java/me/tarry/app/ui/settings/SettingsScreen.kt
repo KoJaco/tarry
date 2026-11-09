@@ -163,7 +163,11 @@ fun SettingsContent(
     var confirmDeleteAll by rememberSaveable { mutableStateOf(false) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
-    val retentionValue = settings?.let { retentionLabel(it.rawPingRetentionDays) }
+    var pendingRetention by rememberSaveable { mutableStateOf<Int?>(null) }
+    val currentRetention = settings?.let { retentionLabel(it.rawPingRetentionDays) }
+    // Forever has no lines to lose, so it keeps the bare label.
+    val retentionValue = if (settings?.rawPingRetentionDays == null) currentRetention
+    else stringResource(R.string.settings_ping_retention_row, currentRetention.orEmpty())
 
     if (settings != null) {
         when (picker) {
@@ -246,7 +250,7 @@ fun SettingsContent(
                 options = RETENTION_OPTIONS.map { it to retentionLabel(it) },
                 current = settings.rawPingRetentionDays,
                 onSelect = {
-                    onRetentionSelected(it)
+                    if (isShorterRetention(it, settings.rawPingRetentionDays)) pendingRetention = it else onRetentionSelected(it)
                     picker = null
                 },
                 onDismiss = { picker = null },
@@ -337,6 +341,16 @@ fun SettingsContent(
         SettingsGroup {
             row(aboutTitle, onClick = onOpenAbout, subtitle = BuildConfig.VERSION_NAME)
         }
+    }
+    pendingRetention?.let { days ->
+        ShortenRetentionDialog(
+            label = retentionLabel(days),
+            onConfirm = {
+                pendingRetention = null
+                onRetentionSelected(days)
+            },
+            onCancel = { pendingRetention = null },
+        )
     }
     if (confirmDeleteAll) {
         DeleteAllDialog(
@@ -481,6 +495,36 @@ private fun DeleteAllDialog(onDelete: () -> Unit, onCancel: () -> Unit) {
                         modifier = Modifier.fillMaxWidth(),
                         enabled = typed.trim().equals(word, ignoreCase = true),
                     )
+                    TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {},
+    )
+}
+
+/** Forever counts as the longest. */
+internal fun isShorterRetention(new: Int?, current: Int?): Boolean = new != null && (current == null || new < current)
+
+/** Pruning cannot be undone, so shortening the retention asks first. */
+@Composable
+private fun ShortenRetentionDialog(label: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val colors = TarryTheme.colors
+    val space = TarryTheme.space
+    AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
+        onDismissRequest = onCancel,
+        shape = TarryTheme.shapes.container,
+        containerColor = colors.card,
+        title = { Text(stringResource(R.string.retention_shorten_title), style = MaterialTheme.typography.titleLarge, color = colors.ink) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(space.s),
+            ) {
+                Text(stringResource(R.string.retention_shorten_body, label), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                Column(Modifier.padding(top = space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
+                    DestructiveButton(stringResource(R.string.retention_shorten_confirm), onClick = onConfirm, modifier = Modifier.fillMaxWidth())
                     TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
                 }
             }

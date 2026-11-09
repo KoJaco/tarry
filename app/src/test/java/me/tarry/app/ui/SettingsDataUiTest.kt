@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalDensity
@@ -168,6 +170,91 @@ class SettingsDataUiTest {
         composeRule.onNodeWithText("1 year").assertIsDisplayed()
         composeRule.onNodeWithText("Forever").performClick()
         assertThat(chosen).containsExactly(null)
+    }
+
+    private fun setRetentionContent(current: Int?, chosen: MutableList<Int?>, fontScale: Float = 1f) {
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
+                SettingsContent(Settings(rawPingRetentionDays = current), onRetentionSelected = { chosen += it })
+            }
+        }
+    }
+
+    @Test
+    fun retentionRowHintsThatOlderDaysLoseRouteLines() {
+        setRetentionContent(90, mutableListOf())
+
+        composeRule.onNodeWithText("90 days · older days lose map route lines").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun shorteningRetentionAsksFirstAndOnlyConfirmCallsTheSetter() {
+        val chosen = mutableListOf<Int?>()
+        setRetentionContent(90, chosen)
+
+        composeRule.onNodeWithText("Raw location retention").performScrollTo().performClick()
+        composeRule.onNodeWithText("30 days").performClick()
+        // The title and the confirm button share the wording.
+        composeRule.onAllNodes(hasText("Remove older route lines")).assertCountEquals(2)
+        composeRule.onNodeWithText(
+            "Route lines older than 30 days will be removed from the map. Visits, trips and distances stay. This can't be undone.",
+        ).assertIsDisplayed()
+        assertThat(chosen).isEmpty()
+
+        composeRule.onNodeWithText("Cancel").performClick()
+        assertThat(chosen).isEmpty()
+        composeRule.onNodeWithText("Route lines older than", substring = true).assertDoesNotExist()
+
+        composeRule.onNodeWithText("Raw location retention").performScrollTo().performClick()
+        composeRule.onNodeWithText("30 days").performClick()
+        composeRule.onAllNodes(hasText("Remove older route lines") and hasClickAction()).onFirst().performClick()
+        assertThat(chosen).containsExactly(30)
+    }
+
+    @Test
+    fun shorteningFromForeverAsksAndLengtheningDoesNot() {
+        val chosen = mutableListOf<Int?>()
+        setRetentionContent(null, chosen)
+        composeRule.onNodeWithText("Raw location retention").performScrollTo().performClick()
+        composeRule.onNodeWithText("1 year").performClick()
+        composeRule.onNodeWithText("Route lines older than 1 year", substring = true).assertIsDisplayed()
+        assertThat(chosen).isEmpty()
+    }
+
+    @Test
+    fun lengtheningRetentionAppliesAtOnceWithNoDialog() {
+        val chosen = mutableListOf<Int?>()
+        setRetentionContent(30, chosen)
+
+        composeRule.onNodeWithText("Raw location retention").performScrollTo().performClick()
+        composeRule.onNodeWithText("1 year").performClick()
+
+        assertThat(chosen).containsExactly(365)
+        composeRule.onNodeWithText("Remove older route lines").assertDoesNotExist()
+    }
+
+    @Test
+    fun theShortenDialogKeepsItsButtonsReachableAtFontScaleTwo() {
+        val chosen = mutableListOf<Int?>()
+        setRetentionContent(90, chosen, fontScale = 2f)
+
+        composeRule.onNodeWithText("Raw location retention").performScrollTo().performClick()
+        composeRule.onNodeWithText("30 days").performClick()
+
+        composeRule.onNodeWithText("Cancel").performScrollTo().assertHeightIsAtLeast(48.dp).assertIsDisplayed()
+        composeRule.onAllNodes(hasText("Remove older route lines") and hasClickAction()).onFirst()
+            .performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        assertThat(chosen).containsExactly(30)
+    }
+
+    @Test
+    fun shorterRetentionRule() {
+        assertThat(me.tarry.app.ui.settings.isShorterRetention(30, 90)).isTrue()
+        assertThat(me.tarry.app.ui.settings.isShorterRetention(365, null)).isTrue()
+        assertThat(me.tarry.app.ui.settings.isShorterRetention(null, 365)).isFalse()
+        assertThat(me.tarry.app.ui.settings.isShorterRetention(90, 90)).isFalse()
+        assertThat(me.tarry.app.ui.settings.isShorterRetention(365, 30)).isFalse()
     }
 
     private fun deleteDialogButtonMatcher() = hasText("Delete all data") and hasClickAction()
