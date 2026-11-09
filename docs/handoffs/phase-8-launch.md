@@ -123,6 +123,18 @@
 - **Refunds:** Play's standard policy.
 - **Price:** still to be decided.
 
+## Owner decisions, 2026-11-09 (supersede the matching items above)
+- **ADR 0004 is accepted** (`docs/decisions/0004-play-billing-network.md`), and AGENTS.md rule 2 is amended.
+- **Price:** **19.99 AUD as a launch price**, and Play converts it for other countries.
+- **Trial end locks new tracking only** (schedule and manual start). Viewing, editing, summary, export, backup and delete stay open. The toggle and notification say "Trial ended · Unlock Tarry".
+- **Onboarding on existing installs:** skipped when fine location is already granted or any tracking session exists. Only fresh installs see it.
+- **Review reminder:** fires at the set time on scheduled days only, and only when that day still has something needing review. Inexact alarm.
+- **Retention:** default stays 90 days. Pruned days keep visits, trips and distances but lose map route lines; the Settings hint says so.
+- **About links:** the privacy policy URL and support email are placeholders in one constants file until 8c, which is blocked until they are filled.
+- **Delete all data** removes every Room record and stops any open session. It keeps settings, the schedule, the onboarding flag and the trial and entitlement keys, so it can't reset the trial.
+- **8a carry-overs:** the killed-session "Off" edge case, release-friendly Sessions text, the nine icon swaps and the small nits from `phase-8-start.md`.
+- **PRs:** 8a ships as 8a.1 (docs, Data, About, carry-overs) and 8a.2 (onboarding, diagnostics, reminder, killed-session fix).
+
 ## Questions for the owner (ask while planning, rule 12)
 1. **When the trial ends,** what locks? The recommendation is tracking only, never data access.
 2. **The price:** final AUD price, and whether to let Play convert it per country or set a few by hand.
