@@ -70,15 +70,19 @@ class PingRetentionTest {
         )
     }
 
+    /** The runner has processed up to now, so only the retention (not a first run) bounds the prune. */
+    private suspend fun caughtUp() = db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = now))
+
     private suspend fun remaining(): List<Long> =
         db.locationPingDao().getInRange(0, Long.MAX_VALUE).map { it.timestamp }
 
     @Test
     fun deletesPingsOlderThanTheRetentionAndKeepsTheRest() = runBlocking<Unit> {
         settings.setRawPingRetentionDays(30)
+        caughtUp()
         val s = session(now - 100 * day, now - 99 * day)
         ping(s, now - 100 * day)
-        ping(s, now - 31 * day)
+        ping(s, now - 33 * day)
         ping(s, now - 29 * day)
 
         assertThat(retention.prune()).isEqualTo(2)
@@ -100,6 +104,7 @@ class PingRetentionTest {
     @Test
     fun theOpenSessionIsNeverCutIntoEvenWhenItIsOlderThanTheRetention() = runBlocking<Unit> {
         settings.setRawPingRetentionDays(30)
+        caughtUp()
         val closed = session(now - 100 * day, now - 99 * day)
         ping(closed, now - 100 * day)
         val open = session(now - 40 * day, null)
@@ -127,10 +132,40 @@ class PingRetentionTest {
     }
 
     @Test
-    fun cutoffIsTheEarliestOfTheRetentionAndEveryBound() {
-        assertThat(PingRetention.cutoff(now, 30, null, null)).isEqualTo(now - 30 * day)
-        assertThat(PingRetention.cutoff(now, 30, now - 5 * day, now - 6 * day)).isEqualTo(now - 30 * day)
-        assertThat(PingRetention.cutoff(now, 30, now - 40 * day, now - 6 * day)).isEqualTo(now - 40 * day)
-        assertThat(PingRetention.cutoff(now, 30, now - 5 * day, now - 50 * day)).isEqualTo(now - 50 * day)
+    fun theMarginKeepsPingsJustBehindTheRetentionWindow() = runBlocking<Unit> {
+        settings.setRawPingRetentionDays(30)
+        caughtUp()
+        val s = session(now - 100 * day, now - 99 * day)
+        ping(s, now - 33 * day)
+        ping(s, now - 31 * day)
+
+        assertThat(retention.prune()).isEqualTo(1)
+
+        assertThat(remaining()).containsExactly(now - 31 * day)
+    }
+
+    @Test
+    fun withNoCheckpointYetTheFirstSessionBoundsThePrune() = runBlocking<Unit> {
+        settings.setRawPingRetentionDays(30)
+        // The runner's first run starts at the first session start, so pings from there on must survive.
+        val first = session(now - 60 * day, now - 59 * day)
+        ping(first, now - 60 * day)
+        ping(first, now - 59 * day)
+        val second = session(now - 20 * day, now - 19 * day)
+        ping(second, now - 20 * day)
+        assertThat(db.segmentationCheckpointDao().getById()).isNull()
+
+        assertThat(retention.prune()).isEqualTo(0)
+
+        assertThat(remaining()).hasSize(3)
+    }
+
+    @Test
+    fun cutoffIsTheEarliestOfTheRetentionLessMarginAndEveryBound() {
+        val margin = 2 * day
+        assertThat(PingRetention.cutoff(now, 30, margin, null, null)).isEqualTo(now - 32 * day)
+        assertThat(PingRetention.cutoff(now, 30, margin, now - 5 * day, now - 6 * day)).isEqualTo(now - 32 * day)
+        assertThat(PingRetention.cutoff(now, 30, margin, now - 40 * day, now - 6 * day)).isEqualTo(now - 40 * day)
+        assertThat(PingRetention.cutoff(now, 30, margin, now - 5 * day, now - 50 * day)).isEqualTo(now - 50 * day)
     }
 }

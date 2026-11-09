@@ -76,6 +76,8 @@ data class TrackingConfig(
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,
+    /** Pings are pruned this far behind the retention window, so a segmentation run widened past the rewind floor still has its pings. */
+    val retentionPruneMarginMs: Long = 2 * 24 * 60 * 60_000L,
     /** How often old raw pings are pruned (RetentionWorker). */
     val retentionWorkerPeriodHours: Long = 24L,
     /** How long a due session may take to appear before "service not running" is reported. */
