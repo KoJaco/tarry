@@ -27,6 +27,7 @@ import me.tarry.app.ui.settings.DataBusy
 import me.tarry.app.ui.settings.DataUiState
 import me.tarry.app.ui.settings.RestorePrompt
 import me.tarry.app.ui.settings.SettingsContent
+import me.tarry.app.ui.settings.isShorterRetention
 import me.tarry.core.data.db.BackupCounts
 import me.tarry.core.data.settings.Settings
 import org.junit.Rule
@@ -250,11 +251,11 @@ class SettingsDataUiTest {
 
     @Test
     fun shorterRetentionRule() {
-        assertThat(me.tarry.app.ui.settings.isShorterRetention(30, 90)).isTrue()
-        assertThat(me.tarry.app.ui.settings.isShorterRetention(365, null)).isTrue()
-        assertThat(me.tarry.app.ui.settings.isShorterRetention(null, 365)).isFalse()
-        assertThat(me.tarry.app.ui.settings.isShorterRetention(90, 90)).isFalse()
-        assertThat(me.tarry.app.ui.settings.isShorterRetention(365, 30)).isFalse()
+        assertThat(isShorterRetention(30, 90)).isTrue()
+        assertThat(isShorterRetention(365, null)).isTrue()
+        assertThat(isShorterRetention(null, 365)).isFalse()
+        assertThat(isShorterRetention(90, 90)).isFalse()
+        assertThat(isShorterRetention(365, 30)).isFalse()
     }
 
     private fun deleteDialogButtonMatcher() = hasText("Delete all data") and hasClickAction()
