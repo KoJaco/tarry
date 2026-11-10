@@ -394,6 +394,20 @@ class EditDrawerContentTest {
     }
 
     @Test
+    fun longJobNameSitsUnderTheJobTitleInsteadOfSqueezingIt() {
+        val long = JobOption("l", "Harbourside apartments full kitchen and bathroom renovation", 3, defaultBillable = true)
+        show(newJob(jobId = "l").copy(jobs = listOf(acme, long)), fontScale = 1f)
+        // Unmerged: the row is one clickable node; its two texts are what get laid out.
+        val name = composeRule.onAllNodesWithText(long.name, useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }.maxBy { it.top }
+        // "Job" is both the section heading and the row title; the row title is the one directly above the name.
+        val title = composeRule.onAllNodesWithText("Job", useUnmergedTree = true).fetchSemanticsNodes().map { it.boundsInRoot }
+            .filter { it.bottom <= name.top }.maxBy { it.bottom }
+        assertThat(name.top).isAtLeast(title.bottom)
+        assertThat(name.left).isEqualTo(title.left)
+        composeRule.onAllNodesWithText("Job").onFirst().assertNotTruncated()
+    }
+
+    @Test
     fun jobDrawerCoversLineUsesPlurals() {
         show(jobBlock().copy(coveredVisits = 1, coveredTrips = 0))
         composeRule.onNodeWithText("Covers 1 visit · 0 trips").performScrollTo().assertExists()
