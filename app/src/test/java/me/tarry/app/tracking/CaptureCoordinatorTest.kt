@@ -341,6 +341,23 @@ class CaptureCoordinatorTest {
     }
 
     @Test
+    fun aHeartbeatOrPingFromTheFutureIsIgnoredNotClamped() = runBlocking {
+        val lastPing = clock.now - 1_800_000
+        val id = seedOpenSession(lastPing)
+        trackingRepo.savePing(
+            LocationPing(
+                timestamp = clock.now + 600_000, zoneId = "Australia/Sydney", lat = -33.0, lng = 151.0, accuracyM = 10f,
+                source = PingSource.FUSED, sessionId = id,
+            ),
+        )
+        store.setLastHeartbeat(clock.now + 300_000)
+
+        coordinator.recoverCrashedSession()
+
+        assertThat(trackingRepo.session(id)!!.end).isEqualTo(lastPing)
+    }
+
+    @Test
     fun aRestartWithinTheShortInterruptionWritesNoGap() = runBlocking {
         val heartbeat = clock.now - config.shortInterruptionMs + 1
         val id = seedOpenSession(clock.now - 1_800_000)

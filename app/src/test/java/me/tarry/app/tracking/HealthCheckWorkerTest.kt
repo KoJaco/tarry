@@ -247,6 +247,53 @@ class HealthCheckWorkerTest {
         assertThat(trackingRepo.session(sessionId)!!.endReason).isEqualTo(SessionEndReason.KILLED)
     }
 
+    private suspend fun seedKilledSession(heartbeat: Long) {
+        trackingRepo.saveSession(
+            TrackingSession(start = mondayAt(7).toEpochMilli(), zoneId = sydney.id, trigger = SessionTrigger.SCHEDULE),
+        )
+        store.setLastHeartbeat(heartbeat)
+    }
+
+    @Test
+    fun aShortRestartBeforeTheWorkerShowsNothing() = runBlocking<Unit> {
+        seedKilledSession(mondayAt(11, 1).toEpochMilli())
+        clock.now = mondayAt(11, 4).toEpochMilli()
+
+        runWorker()
+
+        assertThat(gaps()).isEmpty()
+        assertThat(alerts.posted).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
+        // The last-alive mark survives the recovery.
+        assertThat(store.current().lastHeartbeatMs).isEqualTo(mondayAt(11, 1).toEpochMilli())
+    }
+
+    @Test
+    fun aLongerOutageStartsTheGapAtTheLastAliveMarkNotTheWindowStart() = runBlocking<Unit> {
+        seedKilledSession(mondayAt(11, 1).toEpochMilli())
+        clock.now = mondayAt(11, 4).toEpochMilli()
+        runWorker()
+        clock.now = mondayAt(11, 8).toEpochMilli()
+
+        runWorker()
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.SERVICE_NOT_RUNNING)
+        val gap = gaps().single()
+        assertThat(gap.start).isEqualTo(mondayAt(11, 1).toEpochMilli())
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun aRestartWithinTheShortInterruptionRecordsNothing() = runBlocking<Unit> {
+        seedKilledSession(mondayAt(11, 1).toEpochMilli())
+        clock.now = mondayAt(11, 4).toEpochMilli()
+
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        assertThat(gaps()).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
+    }
+
     @Test
     fun crashRecoveryWithoutAHealthGapStillWritesItsOwn() = runBlocking<Unit> {
         val sessionStart = mondayAt(9, 30).toEpochMilli()

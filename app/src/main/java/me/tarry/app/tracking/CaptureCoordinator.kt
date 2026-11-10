@@ -325,10 +325,10 @@ class CaptureCoordinator @Inject constructor(
         if (session != null) return
         val open = trackingRepo.openSession() ?: return
         val now = clock.nowMs()
-        val lastPing = trackingRepo.pingsForSession(open.id).lastOrNull()?.timestamp ?: open.start
+        val lastPing = trackingRepo.pingsForSession(open.id).lastOrNull { it.timestamp <= now }?.timestamp ?: open.start
         // The heartbeat outlives PingFilter-dropped fixes, so it is the better "last alive" mark; one from before this
         // session started belongs to an earlier session and must not extend it.
-        val heartbeat = statusStore.current().lastHeartbeatMs?.takeIf { it >= open.start }
+        val heartbeat = statusStore.current().lastHeartbeatMs?.takeIf { it >= open.start && it <= now }
         val closedAt = minOf(maxOf(lastPing, heartbeat ?: lastPing), now)
         // A restart this quick is not worth a Gap: the Timeline shows no break.
         val shortOutage = now - closedAt < config.shortInterruptionMs
@@ -368,6 +368,8 @@ class CaptureCoordinator @Inject constructor(
             )
         }
         statusStore.clearSessionState()
+        // Keep the last-alive mark: a health check before the restart must start any Gap here, not at the window start.
+        statusStore.setLastHeartbeat(closedAt)
         // A dead process can leave its stay geofence and activity registration behind.
         geofenceClient.remove()
         activityClient.unregister()
