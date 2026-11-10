@@ -191,7 +191,7 @@ private fun PermissionRow(entry: PermissionItem, actions: PermissionsActions) {
 
 private val StatusIconSize = 18.sp
 
-private fun PermissionStep.iconRes(): Int = when (this) {
+internal fun PermissionStep.iconRes(): Int = when (this) {
     PermissionStep.LOCATION -> R.drawable.ic_location_pin
     PermissionStep.BACKGROUND_LOCATION -> R.drawable.ic_radius
     PermissionStep.ACTIVITY_RECOGNITION -> R.drawable.ic_walk
@@ -227,7 +227,7 @@ private fun StepStatus.labelRes(): Int = when (this) {
     StepStatus.LOCKED -> R.string.permissions_status_locked
 }
 
-private fun PermissionStep.titleRes(): Int = when (this) {
+internal fun PermissionStep.titleRes(): Int = when (this) {
     PermissionStep.LOCATION -> R.string.permissions_step_location
     PermissionStep.BACKGROUND_LOCATION -> R.string.permissions_step_background
     PermissionStep.ACTIVITY_RECOGNITION -> R.string.permissions_step_activity
@@ -236,7 +236,7 @@ private fun PermissionStep.titleRes(): Int = when (this) {
     PermissionStep.BATTERY_OPTIMISATION -> R.string.permissions_step_battery
 }
 
-private fun PermissionStep.bodyRes(): Int = when (this) {
+internal fun PermissionStep.bodyRes(): Int = when (this) {
     PermissionStep.LOCATION -> R.string.permissions_step_location_body
     PermissionStep.BACKGROUND_LOCATION -> R.string.permissions_step_background_body
     PermissionStep.ACTIVITY_RECOGNITION -> R.string.permissions_step_activity_body
@@ -245,7 +245,7 @@ private fun PermissionStep.bodyRes(): Int = when (this) {
     PermissionStep.BATTERY_OPTIMISATION -> R.string.permissions_step_battery_body
 }
 
-private fun PermissionStep.degradedRes(): Int = when (this) {
+internal fun PermissionStep.degradedRes(): Int = when (this) {
     PermissionStep.LOCATION -> R.string.permissions_step_location_degraded
     PermissionStep.BACKGROUND_LOCATION -> R.string.permissions_step_background_degraded
     PermissionStep.ACTIVITY_RECOGNITION -> R.string.permissions_step_activity_degraded

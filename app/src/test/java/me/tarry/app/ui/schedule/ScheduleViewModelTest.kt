@@ -119,7 +119,7 @@ class ScheduleViewModelTest {
         )
         stateRepo = CountingStateRepository()
         runBlocking { scheduleRepo.saveTemplate(Schedule.MON_FRI_7_TO_17, 0) }
-        viewModel = ScheduleViewModel(scheduleRepo, controller, stateRepo, clock, captureScope, reminder)
+        viewModel = ScheduleViewModel(scheduleRepo, ScheduleSaver(controller, stateRepo, reminder), clock, captureScope)
     }
 
     @After
@@ -303,7 +303,7 @@ class ScheduleViewModelTest {
     @Test
     fun useEveryWeekScheduleClearsTheOverride() = runBlocking {
         scheduleRepo.saveOverride(thisWeek.toString(), Schedule.EMPTY, 0)
-        viewModel = ScheduleViewModel(scheduleRepo, controller, stateRepo, clock, captureScope, reminder)
+        viewModel = ScheduleViewModel(scheduleRepo, ScheduleSaver(controller, stateRepo, reminder), clock, captureScope)
         awaitState { it.loaded }
         viewModel.setMode(ScheduleMode.WEEK)
         awaitLoaded(ScheduleMode.WEEK, thisWeek)
