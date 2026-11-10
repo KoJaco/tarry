@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.ui.theme.TarryTheme
+import me.tarry.app.ui.timeline.DayTracking
+import me.tarry.app.ui.timeline.DayTrackingReason
 import me.tarry.app.ui.timeline.keepWhole
 import me.tarry.app.ui.timeline.HourLabelTag
 import me.tarry.app.ui.timeline.TimelineContent
@@ -84,6 +86,7 @@ class TimelineContentTest {
         today: LocalDate = date,
         fontScale: Float? = null,
         nowMs: Long? = at(20, 0),
+        dayTracking: DayTracking = DayTracking(),
     ) {
         ShadowSettings.set24HourTimeFormat(is24Hour)
         composeRule.setContent {
@@ -93,7 +96,7 @@ class TimelineContentTest {
                 TarryTheme {
                     TimelineContent(
                         date, items, { previous++ }, { next++ },
-                        today = today, onSelectDate = { selected += it }, zone = zone, nowMs = nowMs,
+                        today = today, onSelectDate = { selected += it }, zone = zone, nowMs = nowMs, dayTracking = dayTracking,
                     )
                 }
             }
@@ -395,6 +398,43 @@ class TimelineContentTest {
         show(emptyList(), fontScale = 2f)
         composeRule.onNodeWithText("Nothing yet today").assertNotTruncated()
         composeRule.onNodeWithText("Visits and trips appear here as Tarry records your day.").assertNotTruncated()
+    }
+
+    @Test
+    fun anEmptyDayOutsideTheScheduleSaysSo() {
+        show(emptyList(), dayTracking = DayTracking(DayTrackingReason.OUTSIDE_SCHEDULE))
+        composeRule.onNodeWithText("Not tracking: outside your schedule").assertIsDisplayed()
+    }
+
+    @Test
+    fun anEmptyDayBeforeTheWindowSaysWhenTrackingStarts() {
+        show(emptyList(), nowMs = at(6, 0), dayTracking = DayTracking(DayTrackingReason.NOT_YET, at(7, 0)))
+        composeRule.onNodeWithText("Tracking starts at ${t(7, 0)}".plain(), substring = false).assertIsDisplayed()
+    }
+
+    @Test
+    fun aNotYetLineIsDroppedOnceThatTimeHasPassed() {
+        show(emptyList(), nowMs = at(8, 0), dayTracking = DayTracking(DayTrackingReason.NOT_YET, at(7, 0)))
+        composeRule.onNodeWithText("Tracking starts", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun anEmptyDayWithNoReasonShowsNoExtraLine() {
+        show(emptyList())
+        composeRule.onNodeWithText("Not tracking", substring = true).assertDoesNotExist()
+        composeRule.onNodeWithText("Tracking starts", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun theReasonLineIsOnlyForAnEmptyDay() {
+        show(listOf(TimelineItem.Visit("v", at(9, 0), at(10, 0), "Marina")), dayTracking = DayTracking(DayTrackingReason.OUTSIDE_SCHEDULE))
+        composeRule.onNodeWithText("Not tracking: outside your schedule").assertDoesNotExist()
+    }
+
+    @Test
+    fun fontScaleTwoKeepsTheReasonLineUntruncated() {
+        show(emptyList(), fontScale = 2f, dayTracking = DayTracking(DayTrackingReason.OUTSIDE_SCHEDULE))
+        composeRule.onNodeWithText("Not tracking: outside your schedule").assertNotTruncated()
     }
 
     private fun rangeTexts(tag: String): List<String> =

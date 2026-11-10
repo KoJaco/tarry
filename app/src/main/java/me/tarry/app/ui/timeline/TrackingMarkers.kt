@@ -1,5 +1,6 @@
 package me.tarry.app.ui.timeline
 
+import me.tarry.app.tracking.TrackingConfig
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.SessionEndReason
 
@@ -37,6 +38,8 @@ fun trackingMarkers(
     dayStart: Long,
     dayEnd: Long,
     mergeWindowMs: Long = TrackingMarkerConfig.MergeWindowMs,
+    /** A [SessionEndReason.KILLED] stop followed by a start sooner than this is not a visible break: no marker, no stretch. */
+    shortInterruptionMs: Long = TrackingConfig().shortInterruptionMs,
 ): List<TrackingMarker> {
     val edges = sessions.flatMap { s ->
         listOfNotNull(
@@ -49,6 +52,10 @@ fun trackingMarkers(
     while (i < edges.size) {
         val e = edges[i]
         val next = edges.getOrNull(i + 1)
+        if (!e.isStart && e.reason == SessionEndReason.KILLED && next != null && next.isStart && next.time - e.time < shortInterruptionMs) {
+            i += 2
+            continue
+        }
         if (!e.isStart && next != null && next.isStart && next.time - e.time <= mergeWindowMs) {
             out += TrackingMarker(startedMs = next.time, stoppedMs = e.time, reason = e.reason)
             i += 2
@@ -127,8 +134,8 @@ fun placeTrackingMarkers(
 fun hourLabelCoveredByMarker(markDp: Float, placed: PlacedMarker, hourHalfLineDp: Float): Boolean =
     markDp - hourHalfLineDp < placed.labelTopDp + placed.labelHeightDp && markDp + hourHalfLineDp > placed.labelTopDp
 
-/** The words of the time-column labels ("Start", "Stop", "Off"). */
-data class MarkerWords(val start: String, val stop: String, val off: String)
+/** The words of the time-column labels ("Start", "Stop", "Off", "Interrupted"). */
+data class MarkerWords(val start: String, val stop: String, val off: String, val interrupted: String = off)
 
 /**
  * The visible lines of a marker's time-column label. A start or stop is the word over the time ("Start" / "7:30"). A
@@ -137,9 +144,10 @@ data class MarkerWords(val start: String, val stop: String, val off: String)
 fun markerLines(marker: TrackingMarker, words: MarkerWords, time: (Long) -> String): List<String> {
     val stopped = marker.stoppedMs?.let(time)
     val started = marker.startedMs?.let(time)
+    val killed = marker.reason == SessionEndReason.KILLED
     return when {
-        stopped != null && started != null -> listOf(words.off, "$stopped–$started")
-        stopped != null -> listOf(words.stop, stopped)
+        stopped != null && started != null -> listOf(if (killed) words.interrupted else words.off, "$stopped–$started")
+        stopped != null -> listOf(if (killed) words.interrupted else words.stop, stopped)
         else -> listOf(words.start, started.orEmpty())
     }
 }
@@ -158,6 +166,26 @@ fun offStretches(markers: List<TrackingMarker>, dayEnd: Long, now: Long?): List<
         val stop = m.stoppedMs ?: return@mapIndexedNotNull null
         val end = m.startedMs ?: sorted.getOrNull(i + 1)?.timeMs ?: minOf(now ?: dayEnd, dayEnd)
         if (end > stop) OffStretch(stop, end) else null
+    }
+}
+
+/**
+ * [stretches] minus the time covered by [visits] (start to end ranges): a visit that carries on across a short stop and
+ * restart must not look like time off. A stretch partly inside a visit keeps its outside parts.
+ */
+fun clipOutOfVisits(stretches: List<OffStretch>, visits: List<LongRange>): List<OffStretch> {
+    val sorted = visits.sortedBy { it.first }
+    return stretches.flatMap { s ->
+        var from = s.start
+        val parts = mutableListOf<OffStretch>()
+        for (v in sorted) {
+            if (v.last <= from) continue
+            if (v.first >= s.end) break
+            if (v.first > from) parts += OffStretch(from, v.first)
+            from = maxOf(from, v.last)
+        }
+        if (from < s.end) parts += OffStretch(from, s.end)
+        parts
     }
 }
 

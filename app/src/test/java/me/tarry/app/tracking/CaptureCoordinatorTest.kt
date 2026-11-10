@@ -295,7 +295,7 @@ class CaptureCoordinatorTest {
     }
 
     @Test
-    fun recoveryClosesAtLastPingWithKilledAndWritesGap() = runBlocking {
+    fun recoveryClosesAtLastPingWithKilledAndWritesGapWhenNoHeartbeatIsNewer() = runBlocking {
         val lastPing = clock.now - 1_800_000
         val id = seedOpenSession(lastPing)
 
@@ -312,6 +312,74 @@ class CaptureCoordinatorTest {
         assertThat(gap.sessionId).isEqualTo(id)
         assertThat(store.current().activeSessionId).isNull()
         assertThat(geofence.removeCalls).isGreaterThan(0)
+    }
+
+    @Test
+    fun recoveryClosesAtTheLastHeartbeatNotTheStalePing() = runBlocking {
+        val lastPing = clock.now - 1_800_000
+        val heartbeat = clock.now - 900_000
+        val id = seedOpenSession(lastPing)
+        store.setLastHeartbeat(heartbeat)
+
+        coordinator.recoverCrashedSession()
+
+        assertThat(trackingRepo.session(id)!!.end).isEqualTo(heartbeat)
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(heartbeat)
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun aHeartbeatFromBeforeTheSessionStartedIsIgnored() = runBlocking {
+        val lastPing = clock.now - 1_800_000
+        val id = seedOpenSession(lastPing)
+        store.setLastHeartbeat(trackingRepo.session(id)!!.start - 1)
+
+        coordinator.recoverCrashedSession()
+
+        assertThat(trackingRepo.session(id)!!.end).isEqualTo(lastPing)
+    }
+
+    @Test
+    fun aRestartWithinTheShortInterruptionWritesNoGap() = runBlocking {
+        val heartbeat = clock.now - config.shortInterruptionMs + 1
+        val id = seedOpenSession(clock.now - 1_800_000)
+        store.setLastHeartbeat(heartbeat)
+
+        coordinator.recoverCrashedSession()
+
+        val closed = trackingRepo.session(id)!!
+        assertThat(closed.end).isEqualTo(heartbeat)
+        assertThat(closed.endReason).isEqualTo(SessionEndReason.KILLED)
+        assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE)).isEmpty()
+    }
+
+    @Test
+    fun aRestartAtTheShortInterruptionThresholdWritesTheGap() = runBlocking {
+        val heartbeat = clock.now - config.shortInterruptionMs
+        seedOpenSession(clock.now - 1_800_000)
+        store.setLastHeartbeat(heartbeat)
+
+        coordinator.recoverCrashedSession()
+
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(heartbeat)
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun theGapFromAHeartbeatEndStillClipsToTheWindows() = runBlocking {
+        val heartbeat = clock.now - 3_600_000
+        seedOpenSession(clock.now - 7_200_000)
+        store.setLastHeartbeat(heartbeat)
+        val windowEnd = clock.now - 1_800_000
+        windows.intervals = listOf(WindowBounds(java.time.Instant.ofEpochMilli(heartbeat), java.time.Instant.ofEpochMilli(windowEnd)))
+
+        coordinator.recoverCrashedSession()
+
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(heartbeat)
+        assertThat(gap.end).isEqualTo(windowEnd)
     }
 
     @Test
