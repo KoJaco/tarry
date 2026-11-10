@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.navigation.JobsRoute
+import me.tarry.app.ui.navigation.OnboardingRoute
 import me.tarry.app.ui.navigation.PlaceDetailRoute
 import me.tarry.app.ui.navigation.PlacesRoute
 import me.tarry.app.ui.navigation.SummaryRoute
@@ -193,6 +194,33 @@ class TarryAppShellTest {
         backStack.removeAt(backStack.lastIndex)
         composeRule.mainClock.advanceTimeBy(1_000)
         composeRule.onNodeWithText("Places screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun onboardingRoute_isFullScreenWithoutTheBottomBarOrTheTrackingToggle() {
+        val backStack = mutableStateListOf<NavKey>(OnboardingRoute)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = { backStack.navigateTopLevel(it) },
+                onBack = {},
+                onToggleClick = {},
+                settingsContent = {},
+                timelineContent = { Text("Timeline screen") },
+                onboardingContent = { Text("Onboarding screen") },
+            )
+        }
+        composeRule.onNodeWithText("Onboarding screen").assertIsDisplayed()
+        timelineTab.assertDoesNotExist()
+        settingsTab.assertDoesNotExist()
+        summaryTab.assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Tracking: off").assertDoesNotExist()
+
+        backStack.navigateTopLevel(TimelineRoute)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Timeline screen").assertIsDisplayed()
+        timelineTab.assertIsDisplayed()
     }
 
     @Test

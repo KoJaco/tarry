@@ -47,7 +47,13 @@ import me.tarry.app.ui.navigation.ScheduleRoute
 import me.tarry.app.ui.schedule.ScheduleScreen
 import me.tarry.app.ui.places.PlaceDetailScreen
 import me.tarry.app.ui.places.PlacesScreen
+import me.tarry.app.ui.navigation.OnboardingRoute
 import me.tarry.app.ui.navigation.PermissionsRoute
+import me.tarry.app.ui.onboarding.OnboardingScreen
+import me.tarry.app.ui.theme.TarryTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
 import me.tarry.app.ui.navigation.SummaryRoute
@@ -110,12 +116,20 @@ fun TarryApp(
             onOpenReviewHandled()
         }
     }
-    var initialChecked by rememberSaveable { mutableStateOf(false) }
+    // Resolved once per process: a fresh install replaces the stack with onboarding before anything else is drawn.
+    var onboardingResolved by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (!initialChecked) {
-            initialChecked = true
-            if (shellViewModel.needsInitialPermissions()) openPermissions()
+        if (!onboardingResolved) {
+            if (shellViewModel.needsOnboarding()) {
+                backStack.clear()
+                backStack.add(OnboardingRoute)
+            }
+            onboardingResolved = true
         }
+    }
+    if (!onboardingResolved) {
+        Box(Modifier.fillMaxSize().background(TarryTheme.colors.paper))
+        return
     }
     TarryAppContent(
         trackingState = trackingState,
@@ -158,6 +172,9 @@ fun TarryApp(
                 onOpenAbout = { if (backStack.lastOrNull() != AboutRoute) backStack.add(AboutRoute) },
                 snackbarHostState = snackbarHostState,
             )
+        },
+        onboardingContent = {
+            OnboardingScreen(onFinished = { backStack.navigateTopLevel(TimelineRoute) })
         },
         permissionsContent = {
             PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
@@ -263,6 +280,7 @@ fun TarryAppContent(
     settingsContent: @Composable () -> Unit,
     summaryContent: @Composable () -> Unit = {},
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
+    onboardingContent: @Composable () -> Unit = {},
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
     scheduleContent: @Composable () -> Unit = {},
@@ -278,10 +296,14 @@ fun TarryAppContent(
     onToggleLongClick: () -> Unit = {},
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute || it == SummaryRoute }
+    // Onboarding is full screen: no bottom bar and no tracking toggle.
+    val fullScreen = backStack.lastOrNull() == OnboardingRoute
     Scaffold(
         modifier = modifier,
         snackbarHost = snackbarHost,
-        bottomBar = selectionBar ?: {
+        bottomBar = if (fullScreen) {
+            {}
+        } else selectionBar ?: {
             TarryBottomBar(
                 trackingState = trackingState,
                 timelineSelected = topLevel != SettingsRoute && topLevel != SummaryRoute,
@@ -307,6 +329,7 @@ fun TarryAppContent(
                 entry<TimelineRoute> { timelineContent() }
                 entry<SettingsRoute> { settingsContent() }
                 entry<SummaryRoute> { summaryContent() }
+                entry<OnboardingRoute> { onboardingContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }
                 entry<ScheduleRoute> { scheduleContent() }
