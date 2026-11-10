@@ -115,7 +115,17 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { if (epochMs == null) it.remove(Keys.PRUNED_BEFORE_MS) else it[Keys.PRUNED_BEFORE_MS] = epochMs }
     }
 
+    /** When first-run onboarding finished or was skipped silently (UTC epoch ms); null on a fresh install. */
+    suspend fun onboardingCompletedAtMs(): Long? =
+        dataStore.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+            .first()[Keys.ONBOARDING_COMPLETED_AT_MS]
+
+    suspend fun setOnboardingCompletedAtMs(epochMs: Long?) {
+        dataStore.edit { if (epochMs == null) it.remove(Keys.ONBOARDING_COMPLETED_AT_MS) else it[Keys.ONBOARDING_COMPLETED_AT_MS] = epochMs }
+    }
+
     private object Keys {
+        val ONBOARDING_COMPLETED_AT_MS = longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)
         val PRUNED_BEFORE_MS = longPreferencesKey(Settings.PRUNED_BEFORE_KEY)
         val ROUNDING_INCREMENT_MIN = intPreferencesKey("rounding_increment_min")
         val ROUNDING_MODE = stringPreferencesKey("rounding_mode")

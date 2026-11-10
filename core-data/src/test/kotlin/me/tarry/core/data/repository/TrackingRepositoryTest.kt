@@ -25,6 +25,14 @@ class TrackingRepositoryTest : DbTestBase() {
     )
 
     @Test
+    fun anySession_isFalseOnAnEmptyDbAndTrueOnceOneExists() = runTest {
+        val r = repo()
+        assertThat(r.anySession()).isFalse()
+        r.saveSession(TrackingSession(start = 1, zoneId = "UTC", trigger = SessionTrigger.MANUAL))
+        assertThat(r.anySession()).isTrue()
+    }
+
+    @Test
     fun saveSession_updateReturnsRealId() = runTest {
         val r = repo()
         val id = r.saveSession(TrackingSession(start = 1, zoneId = "UTC", trigger = SessionTrigger.MANUAL))

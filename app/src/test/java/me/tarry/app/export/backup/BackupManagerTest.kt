@@ -155,6 +155,20 @@ class BackupManagerTest {
         assertThat(settingsRepo.settings.first().lastBackupMs).isEqualTo(1_700_000_000_000L)
     }
 
+    @Test
+    fun theOnboardingStampStaysOutOfTheFileAndSurvivesARestoreAndADeleteAll() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        settingsRepo.setOnboardingCompletedAtMs(123L)
+        val bytes = backupBytes()
+        assertThat(decodeSettingsKeys(bytes)).doesNotContain(Settings.ONBOARDING_COMPLETED_AT_KEY)
+
+        manager.restore(previewOf(bytes))
+        assertThat(settingsRepo.onboardingCompletedAtMs()).isEqualTo(123L)
+
+        manager.deleteAll()
+        assertThat(settingsRepo.onboardingCompletedAtMs()).isEqualTo(123L)
+    }
+
     private fun decodeSettingsKeys(bytes: ByteArray) =
         decodeAll { ByteArrayInputStream(bytes) }.settings.map { it.key }
 

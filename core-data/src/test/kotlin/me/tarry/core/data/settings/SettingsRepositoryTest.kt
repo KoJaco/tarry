@@ -61,6 +61,17 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun onboardingCompletedAt_isNullByDefault_roundTrips_clears_andOnlyAffectsItself() = runTest {
+        val r = repo()
+        assertThat(r.onboardingCompletedAtMs()).isNull()
+        r.setOnboardingCompletedAtMs(1_700_000_000_000L)
+        assertThat(r.onboardingCompletedAtMs()).isEqualTo(1_700_000_000_000L)
+        assertThat(r.settings.first()).isEqualTo(Settings())
+        r.setOnboardingCompletedAtMs(null)
+        assertThat(r.onboardingCompletedAtMs()).isNull()
+    }
+
+    @Test
     fun roundingIncrement_updates_andOnlyAffectsItself() = runTest {
         val r = repo()
         for (m in listOf(6, 15, 30, 0)) {
