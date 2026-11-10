@@ -176,7 +176,7 @@ class TimelineViewModelTest {
 
         val markers = withTimeout(10_000) { vm.trackingMarkers.first { it.isNotEmpty() } }
 
-        assertThat(asked.first()).isEqualTo(dayBounds(day, zone).let { (from, to) -> from to to + TrackingConfig().shortInterruptionMs })
+        assertThat(asked.first()).isEqualTo(dayBounds(day, zone).let { (from, to) -> from - TrackingConfig().shortInterruptionMs to to + TrackingConfig().shortInterruptionMs })
         assertThat(markers.map { it.startedMs to it.stoppedMs }).containsExactly(at(day, 7, 2) to null, null to at(day, 17, 4)).inOrder()
     }
 

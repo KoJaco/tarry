@@ -310,8 +310,8 @@ class TimelineViewModel internal constructor(
     val trackingMarkers: StateFlow<List<TrackingMarker>> = _selectedDate
         .flatMapLatest { date ->
             val (from, to) = dayBounds(date, zone)
-            // Read past midnight too: a 23:58 kill with a 00:01 restart is not a visible break (see [trackingMarkers]).
-            trackingSessions(from, to + shortInterruptionMs).map { trackingMarkers(it, from, to, shortInterruptionMs = shortInterruptionMs) }
+            // Read past both midnights: a 23:58 kill with a 00:01 restart is not a visible break on either day (see [trackingMarkers]).
+            trackingSessions(from - shortInterruptionMs, to + shortInterruptionMs).map { trackingMarkers(it, from, to, shortInterruptionMs = shortInterruptionMs) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 

@@ -26,14 +26,15 @@ data class TrackingMarker(
     val ruleTimes: List<Long> get() = listOfNotNull(stoppedMs, startedMs)
 }
 
-/** [inside] false: a start after the day, kept only so a KILLED stop just before midnight can see its restart. */
+/** [inside] false: an edge outside the day, kept only so a KILLED stop and its restart can see each other across midnight. */
 private class Edge(val time: Long, val isStart: Boolean, val reason: SessionEndReason?, val inside: Boolean = true)
 
 /**
  * The markers for `[dayStart, dayEnd)`: each session's start and end that fall inside the day, in time order. A session
  * crossing midnight contributes only its edge inside the day; an open session only its start. A stop and the next start
  * at most [mergeWindowMs] later become one marker. A start up to [shortInterruptionMs] after the day only cancels a
- * KILLED stop just before the end (the caller loads sessions that far past it); it is never a marker of this day.
+ * KILLED stop just before the end, and a KILLED stop up to [shortInterruptionMs] before the day cancels a start just after the
+ * day's beginning (the caller loads sessions that far on both sides); neither is ever a marker of this day.
  */
 fun trackingMarkers(
     sessions: List<TrackingSession>,
@@ -44,13 +45,19 @@ fun trackingMarkers(
     shortInterruptionMs: Long = TrackingConfig().shortInterruptionMs,
 ): List<TrackingMarker> {
     val edges = sessions.flatMap { s ->
+        val end = s.end
         listOfNotNull(
             when {
                 s.start >= dayStart && s.start < dayEnd -> Edge(s.start, true, null)
                 s.start >= dayEnd && s.start - dayEnd < shortInterruptionMs -> Edge(s.start, true, null, inside = false)
                 else -> null
             },
-            s.end?.takeIf { it > dayStart && it < dayEnd }?.let { Edge(it, false, s.endReason) },
+            when {
+                end == null -> null
+                end > dayStart && end < dayEnd -> Edge(end, false, s.endReason)
+                end <= dayStart && dayStart - end < shortInterruptionMs -> Edge(end, false, s.endReason, inside = false)
+                else -> null
+            },
         )
     }.sortedWith(compareBy<Edge>({ it.time }, { it.isStart })) // a stop sorts before a start at the same instant
     val out = mutableListOf<TrackingMarker>()

@@ -120,6 +120,21 @@ class TrackingMarkersTest {
     }
 
     @Test
+    fun aKilledStopJustBeforeMidnightRestartedJustAfterShowsNoStartOnTheNextDay() {
+        val short = TrackingConfig().shortInterruptionMs
+        val prevDay = date.minusDays(1)
+        val killedAt = bounds.first - 2 * 60_000L
+        val restartAt = bounds.first + 60_000L
+        val m = markers(session(at(8, 0, prevDay), killedAt, SessionEndReason.KILLED), session(restartAt, at(17, 0), SessionEndReason.SCHEDULE_END))
+        assertThat(m).containsExactly(TrackingMarker(null, at(17, 0), SessionEndReason.SCHEDULE_END))
+        // Past the short interruption the restart is a real start again; a deliberate stop never cancels it.
+        val late = markers(session(at(8, 0, prevDay), killedAt, SessionEndReason.KILLED), session(killedAt + short, null))
+        assertThat(late).containsExactly(TrackingMarker(killedAt + short, null))
+        val deliberate = markers(session(at(8, 0, prevDay), killedAt, SessionEndReason.USER_STOP), session(restartAt, null))
+        assertThat(deliberate).containsExactly(TrackingMarker(restartAt, null))
+    }
+
+    @Test
     fun aStretchInsideAContinuingVisitIsRemoved_oneOverlappingAnEdgeKeepsItsOutsidePart() {
         val stretch = OffStretch(at(12, 0), at(12, 30), killed = true)
         assertThat(clipOutOfVisits(listOf(stretch), listOf(at(11, 0)..at(14, 0)))).isEmpty()
