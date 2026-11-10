@@ -87,6 +87,7 @@ class OnboardingViewModelTest {
     private val saturday10am = ZonedDateTime.of(2026, 10, 24, 10, 0, 0, 0, sydney).toInstant().toEpochMilli()
     private val clock = FakeClock(now = monday10am, zone = sydney)
     private val permissions = FakePermissionChecker()
+    private val none = buildPermissionsUiState(PermissionSnapshot(), emptySet())
     private val stateRepo = FakeStateRepository()
     private val launcher = FakeLauncher()
 
@@ -141,7 +142,7 @@ class OnboardingViewModelTest {
     }
 
     private fun goToSchedulePage() {
-        while (viewModel.state.value.page != OnboardingPage.Schedule) viewModel.next()
+        while (viewModel.state.value.page != OnboardingPage.Schedule) viewModel.next(none)
     }
 
     @Test
@@ -155,10 +156,9 @@ class OnboardingViewModelTest {
 
     @Test
     fun nextAndBackMoveOnePageAndBackStopsAtTheFirst() {
-        val none = buildPermissionsUiState(PermissionSnapshot(), emptySet())
         viewModel.back(none)
         assertThat(viewModel.state.value.index).isEqualTo(0)
-        viewModel.next()
+        viewModel.next(none)
         assertThat(viewModel.state.value.index).isEqualTo(1)
         viewModel.back(none)
         assertThat(viewModel.state.value.index).isEqualTo(0)
@@ -234,9 +234,9 @@ class OnboardingViewModelTest {
     @Test
     fun backAfterAGrantSkipsTheGrantedPageToThePreviousOneThenWelcome() {
         // Welcome, LOCATION, BACKGROUND_LOCATION, ACTIVITY_RECOGNITION, ...: grant on page 3, go to 4, Back -> 2, then 1, then Welcome.
-        repeat(3) { viewModel.next() }
+        repeat(3) { viewModel.next(none) }
         val granted = buildPermissionsUiState(PermissionSnapshot(activityRecognition = true), emptySet())
-        viewModel.next()
+        viewModel.next(none)
         assertThat(viewModel.state.value.index).isEqualTo(4)
         viewModel.back(granted)
         assertThat(viewModel.state.value.index).isEqualTo(2)
@@ -248,10 +248,20 @@ class OnboardingViewModelTest {
 
     @Test
     fun notNowSkipsTheRemainingPermissionPagesToTheSchedule() = runBlocking<Unit> {
-        viewModel.next() // the location page
+        viewModel.next(none) // the location page
         assertThat(viewModel.state.value.page).isInstanceOf(OnboardingPage.Permission::class.java)
         viewModel.skipPermissions()
         assertThat(viewModel.state.value.page).isEqualTo(OnboardingPage.Schedule)
         assertThat(settings.onboardingCompletedAtMs()).isNull()
+    }
+
+    @Test
+    fun nextSkipsAPermissionGrantedSinceTheFlowStarted() {
+        // Welcome, LOCATION, BACKGROUND_LOCATION, ACTIVITY_RECOGNITION, ...: background granted outside the flow.
+        val background = buildPermissionsUiState(PermissionSnapshot(backgroundLocation = true), emptySet())
+        viewModel.next(background)
+        assertThat(viewModel.state.value.index).isEqualTo(1)
+        viewModel.next(background)
+        assertThat(viewModel.state.value.page).isEqualTo(OnboardingPage.Permission(PermissionStep.ACTIVITY_RECOGNITION))
     }
 }

@@ -127,7 +127,7 @@ fun OnboardingContent(
                     }
                     OnboardingPage.Done -> DoneBody(state.outcome, permissions)
                 }
-        }
+            }
         }
         Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = space.gutter).padding(bottom = space.l, top = space.s),

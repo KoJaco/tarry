@@ -68,8 +68,9 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    fun next() {
-        _state.update { if (it.saving || it.index >= it.pages.lastIndex) it else it.copy(index = it.index + 1) }
+    /** Next skips permission pages that are already granted ([permissions] is the platform state now). */
+    fun next(permissions: PermissionsUiState) {
+        _state.update { if (it.saving || it.index >= it.pages.lastIndex) it else it.copy(index = it.nextIndex(permissions)) }
     }
 
     /** Back skips permission pages that are already granted ([permissions] is the platform state now). */

@@ -72,4 +72,19 @@ class OnboardingStateTest {
         assertThat(state.copy(index = 2).previousIndex(permissions)).isEqualTo(0)
         assertThat(state.copy(index = 1).previousIndex(permissions)).isEqualTo(0)
     }
+
+    @Test
+    fun nextSkipsGrantedPermissionPagesAndNeverPassesTheLastPage() {
+        // Welcome, LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, Schedule, Done; LOCATION and NOTIFICATIONS are granted now.
+        val steps = listOf(PermissionStep.LOCATION, PermissionStep.BACKGROUND_LOCATION, PermissionStep.NOTIFICATIONS)
+        val permissions = buildPermissionsUiState(
+            PermissionSnapshot(fineLocation = true, coarseLocation = true, notifications = true), emptySet(),
+        )
+        val state = OnboardingUiState(onboardingPages(steps), index = 0)
+        // Welcome -> past granted LOCATION -> BACKGROUND_LOCATION.
+        assertThat(state.nextIndex(permissions)).isEqualTo(2)
+        // BACKGROUND_LOCATION -> past granted NOTIFICATIONS -> Schedule.
+        assertThat(state.copy(index = 2).nextIndex(permissions)).isEqualTo(4)
+        assertThat(state.copy(index = 5).nextIndex(permissions)).isEqualTo(5)
+    }
 }

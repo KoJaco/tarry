@@ -64,6 +64,21 @@ fun OnboardingUiState.previousIndex(permissions: PermissionsUiState): Int {
     return i.coerceAtLeast(0)
 }
 
+/**
+ * Where Next lands: the nearest later page that is not a permission already granted (arriving on one would be a dead end:
+ * its page only moves on when the grant changes), or the last page.
+ */
+fun OnboardingUiState.nextIndex(permissions: PermissionsUiState): Int {
+    val granted = permissions.items.filter { it.status == StepStatus.GRANTED }.map { it.step }.toSet()
+    var i = index + 1
+    while (i < pages.lastIndex) {
+        val p = pages[i]
+        if (p !is OnboardingPage.Permission || p.step !in granted) break
+        i++
+    }
+    return i.coerceAtMost(pages.lastIndex)
+}
+
 /** The index of the schedule page, where "Not now" on the location page jumps to. */
 val OnboardingUiState.scheduleIndex: Int get() = pages.indexOf(OnboardingPage.Schedule)
 

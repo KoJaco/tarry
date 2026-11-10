@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -30,13 +31,7 @@ fun OnboardingScreen(
     val permissions by permissionsViewModel.uiState.collectAsStateWithLifecycle()
 
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { permissionsViewModel.refresh() }
-    // Move on only when the permission turns granted while the user is on its page, never on arrival (Back must stay put).
-    var satisfiedOnPage by remember(state.page) { mutableStateOf(state.permissionPageSatisfied(permissions)) }
-    LaunchedEffect(state.page, permissions) {
-        val satisfied = state.permissionPageSatisfied(permissions)
-        if (satisfied && !satisfiedOnPage) viewModel.next()
-        satisfiedOnPage = satisfied
-    }
+    AdvanceWhenGranted(state.page, state.permissionPageSatisfied(permissions)) { viewModel.next(permissions) }
 
     val permissionActions = rememberPermissionsActions(permissionsViewModel, onDone = onFinished)
     OnboardingContent(
@@ -44,7 +39,7 @@ fun OnboardingScreen(
         permissions = permissions,
         permissionActions = permissionActions,
         actions = OnboardingActions(
-            onNext = viewModel::next,
+            onNext = { viewModel.next(permissions) },
             onBack = { viewModel.back(permissions) },
             onToggleCell = viewModel::toggleCell,
             onStroke = viewModel::setSchedule,
@@ -54,4 +49,18 @@ fun OnboardingScreen(
         ),
         modifier = modifier,
     )
+}
+
+/**
+ * Calls [onAdvance] when [satisfied] turns true while [page] is showing, never on arrival at a page that is already
+ * satisfied (Back must stay put there).
+ */
+@Composable
+internal fun AdvanceWhenGranted(page: OnboardingPage, satisfied: Boolean, onAdvance: () -> Unit) {
+    val advance by rememberUpdatedState(onAdvance)
+    var satisfiedOnPage by remember(page) { mutableStateOf(satisfied) }
+    LaunchedEffect(page, satisfied) {
+        if (satisfied && !satisfiedOnPage) advance()
+        satisfiedOnPage = satisfied
+    }
 }
