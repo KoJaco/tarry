@@ -18,6 +18,8 @@ import androidx.compose.ui.platform.LocalContext
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import android.net.Uri
 import android.provider.Settings
 import me.tarry.app.ui.shell.CustomDurationActions
@@ -122,7 +124,7 @@ fun TarryApp(
     var onboardingResolved by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!onboardingResolved) {
-            if (shellViewModel.needsOnboarding()) {
+            if (resolveNeedsOnboarding(shellViewModel::needsOnboarding)) {
                 backStack.clear()
                 backStack.add(OnboardingRoute)
             }
@@ -349,4 +351,17 @@ fun TarryAppContent(
             },
         )
     }
+}
+
+/**
+ * Runs the start-up onboarding check. A failing check (a DataStore or Room read error) must not crash the app before the
+ * first frame: it is logged and treated as "no onboarding", so the app opens normally and the gate still resolves.
+ */
+internal suspend fun resolveNeedsOnboarding(check: suspend () -> Boolean): Boolean = try {
+    check()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Log.e("TarryApp", "Onboarding check failed; continuing without onboarding", e)
+    false
 }
