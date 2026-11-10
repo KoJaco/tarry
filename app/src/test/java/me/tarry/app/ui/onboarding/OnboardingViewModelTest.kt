@@ -125,7 +125,7 @@ class OnboardingViewModelTest {
     }
 
     private fun newViewModel() = OnboardingViewModel(
-        permissions, ScheduleSaver(controller, stateRepo, FakeReviewReminderScheduler()), gate, controller, windows, clock, config, captureScope,
+        permissions, ScheduleSaver(controller, stateRepo, FakeReviewReminderScheduler()), gate, scheduleRepo, windows, clock, config, captureScope,
     )
 
     @After
@@ -199,6 +199,20 @@ class OnboardingViewModelTest {
         awaitState { it.page == OnboardingPage.Done }
 
         assertThat(scheduleRepo.template()).isEqualTo(Schedule.EMPTY.withSlots(DayOfWeek.TUESDAY, 20..20, true))
+    }
+
+    @Test
+    fun aStoredTemplateSeedsTheGridInsteadOfThePreset() = runBlocking<Unit> {
+        val stored = Schedule.EMPTY.withSlots(DayOfWeek.SATURDAY, 20..24, true)
+        scheduleRepo.saveTemplate(stored, 1L)
+        viewModel = newViewModel()
+
+        assertThat(awaitState { it.schedule == stored }.schedule).isEqualTo(stored)
+        goToSchedulePage()
+        viewModel.saveHours()
+        awaitState { it.page == OnboardingPage.Done }
+
+        assertThat(scheduleRepo.template()).isEqualTo(stored)
     }
 
     @Test
