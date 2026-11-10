@@ -37,6 +37,8 @@ import kotlinx.coroutines.launch
 import me.tarry.app.R
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.TrackingConfig
+import me.tarry.app.tracking.TrackingState
+import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.tracking.ScheduleWindowChecker
 import me.tarry.app.tracking.WindowBounds
 import me.tarry.app.ui.schedule.mondayOf
@@ -153,7 +155,7 @@ private const val DEFAULT_MIN_STAY_MS = 5 * 60_000L
 private val RowOrder = compareBy<TimelineItem>({ it.start }, { it.typeOrder() })
 
 /** Why a day may show no tracking. */
-enum class DayTrackingReason { NONE, OUTSIDE_SCHEDULE, NOT_YET }
+enum class DayTrackingReason { NONE, OUTSIDE_SCHEDULE, NOT_YET, NEEDS_ATTENTION }
 
 /** [reason] for the selected day; [startMs] is the first window start, set for [DayTrackingReason.NOT_YET]. */
 data class DayTracking(val reason: DayTrackingReason = DayTrackingReason.NONE, val startMs: Long? = null)
@@ -210,6 +212,8 @@ class TimelineViewModel internal constructor(
     private val activeIntervals: suspend (from: Long, to: Long) -> List<WindowBounds> = { _, _ -> emptyList() },
     /** Emits whenever the schedule that applies to the week starting [monday] (ISO date) may have changed; the day's reason is then recomputed. */
     private val scheduleChanges: (monday: String) -> Flow<Any?> = { flowOf(Unit) },
+    /** The live tracking state: ATTENTION inside an active interval is why today may be empty. */
+    private val trackingState: Flow<TrackingState> = flowOf(TrackingState.IDLE),
 ) : ViewModel() {
     @Inject
     constructor(
@@ -227,6 +231,7 @@ class TimelineViewModel internal constructor(
         trackingConfig: TrackingConfig,
         schedules: ScheduleRepository,
         windowChecker: ScheduleWindowChecker,
+        trackingStateRepo: TrackingStateRepository,
     ) :
         this(
             timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
@@ -250,6 +255,7 @@ class TimelineViewModel internal constructor(
             scheduleChanges = { monday ->
                 combine(schedules.observeTemplate(), schedules.observeOverride(monday), tracking.observeActiveOverrides()) { _, _, _ -> Unit }
             },
+            trackingState = trackingStateRepo.state,
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -310,18 +316,23 @@ class TimelineViewModel internal constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 
     /**
-     * Why the selected day may have no tracking: outside the schedule, or the window has not started yet (today). Recomputed on
+     * Why the selected day may have no tracking: outside the schedule, or the window has not started yet (today). Or, inside a window, tracking needs attention. Recomputed on
      * a date change and whenever the schedule changes; [DayTrackingReason.NONE] while loading.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val dayTracking: StateFlow<DayTracking> = _selectedDate
-        .flatMapLatest { date -> scheduleChanges(mondayOf(date).toString()).map { dayTrackingFor(date) } }
+        .flatMapLatest { date ->
+            combine(scheduleChanges(mondayOf(date).toString()), trackingState) { _, state -> state }.map { dayTrackingFor(date, it) }
+        }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), DayTracking())
 
-    private suspend fun dayTrackingFor(date: LocalDate): DayTracking {
+    private suspend fun dayTrackingFor(date: LocalDate, state: TrackingState): DayTracking {
         val (from, to) = dayBounds(date, zone)
-        val first = activeIntervals(from, to).firstOrNull() ?: return DayTracking(DayTrackingReason.OUTSIDE_SCHEDULE)
+        val intervals = activeIntervals(from, to)
+        val first = intervals.firstOrNull() ?: return DayTracking(DayTrackingReason.OUTSIDE_SCHEDULE)
         val now = nowMs()
+        val insideInterval = intervals.any { it.start.toEpochMilli() <= now && now < it.end.toEpochMilli() }
+        if (state == TrackingState.ATTENTION && now in from until to && insideInterval) return DayTracking(DayTrackingReason.NEEDS_ATTENTION)
         val start = first.start.toEpochMilli()
         return if (now in from until to && start > now) DayTracking(DayTrackingReason.NOT_YET, start) else DayTracking()
     }

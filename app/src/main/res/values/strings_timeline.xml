@@ -6,6 +6,7 @@
     <string name="timeline_empty_title_past">Nothing recorded</string>
     <string name="timeline_empty_body_past">Tarry recorded no visits or trips on this day.</string>
     <string name="timeline_empty_reason_outside_schedule">Not tracking: outside your schedule</string>
+    <string name="timeline_empty_reason_attention">Not tracking: needs attention</string>
     <string name="timeline_empty_reason_not_yet">Tracking starts at %1$s</string>
 
     <string name="timeline_open_calendar">Choose a date</string>

@@ -413,6 +413,12 @@ class TimelineContentTest {
     }
 
     @Test
+    fun anAttentionReasonStaysUntruncatedAtFontScale2() {
+        show(emptyList(), fontScale = 2f, dayTracking = DayTracking(DayTrackingReason.NEEDS_ATTENTION))
+        composeRule.onNodeWithText("Not tracking: needs attention").assertNotTruncated()
+    }
+
+    @Test
     fun aNotYetLineIsDroppedOnceThatTimeHasPassed() {
         show(emptyList(), nowMs = at(8, 0), dayTracking = DayTracking(DayTrackingReason.NOT_YET, at(7, 0)))
         composeRule.onNodeWithText("Tracking starts", substring = true).assertDoesNotExist()

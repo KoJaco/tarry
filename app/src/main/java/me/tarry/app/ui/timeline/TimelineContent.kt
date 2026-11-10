@@ -229,6 +229,7 @@ fun TimelineContent(
                     body = stringResource(if (isToday) R.string.timeline_empty_body_today else R.string.timeline_empty_body_past),
                     reason = when {
                         dayTracking.reason == DayTrackingReason.OUTSIDE_SCHEDULE -> stringResource(R.string.timeline_empty_reason_outside_schedule)
+                        dayTracking.reason == DayTrackingReason.NEEDS_ATTENTION -> stringResource(R.string.timeline_empty_reason_attention)
                         // The start is only ahead until it passes; the VM does not tick, so check it here.
                         dayTracking.reason == DayTrackingReason.NOT_YET && dayTracking.startMs != null && dayTracking.startMs > now ->
                             stringResource(R.string.timeline_empty_reason_not_yet, rememberTimeFormats().time(dayTracking.startMs, zone))

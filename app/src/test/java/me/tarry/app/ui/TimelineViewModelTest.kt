@@ -1008,11 +1008,13 @@ class TimelineViewModelTest {
         today: LocalDate = day,
         nowMs: Long,
         changes: kotlinx.coroutines.flow.Flow<Any?> = flowOf(Unit),
+        trackingState: kotlinx.coroutines.flow.Flow<me.tarry.app.tracking.TrackingState> = flowOf(me.tarry.app.tracking.TrackingState.IDLE),
         intervals: (LocalDate) -> List<me.tarry.app.tracking.WindowBounds>,
     ) = TimelineViewModel(
         timeline, places, jobs, zone, { today }, nowMs = { nowMs },
         activeIntervals = { from, _ -> intervalCalls.incrementAndGet(); intervals(java.time.Instant.ofEpochMilli(from).atZone(zone).toLocalDate()) },
         scheduleChanges = { changes },
+        trackingState = trackingState,
     ).managed()
 
     private val intervalCalls = java.util.concurrent.atomic.AtomicInteger()
@@ -1066,6 +1068,24 @@ class TimelineViewModelTest {
         scheduled = true
         changes.value = 1
         vm.awaitDayTracking(DayTrackingReason.NONE)
+    }
+
+    @Test
+    fun todayInsideTheWindowWithAttentionNeedsAttention() {
+        val vm = dayTrackingVm(nowMs = at(day, 12), trackingState = flowOf(me.tarry.app.tracking.TrackingState.ATTENTION)) { listOf(interval(it, 7, 17)) }
+        assertThat(vm.awaitDayTracking(DayTrackingReason.NEEDS_ATTENTION).startMs).isNull()
+    }
+
+    @Test
+    fun attentionOutsideTheWindowOrOnAPastDayIsNotTheReason() {
+        val attention = flowOf(me.tarry.app.tracking.TrackingState.ATTENTION)
+        val before = dayTrackingVm(nowMs = at(day, 6), trackingState = attention) { listOf(interval(it, 7, 17)) }
+        assertThat(before.awaitDayTracking(DayTrackingReason.NOT_YET).startMs).isEqualTo(at(day, 7))
+        val today = day.plusDays(3)
+        val past = dayTrackingVm(today = today, nowMs = at(today, 12), trackingState = attention) { listOf(interval(it, 7, 17)) }
+        past.selectDate(day)
+        intervalCalls.set(0)
+        assertThat(past.settledDayTracking().reason).isEqualTo(DayTrackingReason.NONE)
     }
 
     // endregion
