@@ -64,12 +64,12 @@ A row above the strip, inside the same overlay card, showing `model.itemAt(curre
 - Scrubber: strip height 64 dp and fully draggable; no visit-start dots; minimum block width; hour labels thin out at 1.5×; content description updates on snap only; card shows visit / trip / gap variants; card height constant while dragging; card tap and Add job callbacks; 48 dp targets. Light and dark, font 1.0 and 2.0.
 - Existing scrubber/map tests stay green; `ScrubberModel` tests untouched.
 
-## Part B — compact timeline time text (owner asked 11 Nov; rules to confirm, see below)
+## Part B — compact timeline time text (owner decisions 11 Nov: cut-off 10 min; gap wording "1m gap")
 Problem: very short items carry a full range ("4:13 pm–4:14 pm") that says less than a duration would.
 
 Proposed rules (one shared helper next to `clampedTimes` in `ui/timeline/TimelineText.kt`, used by the visit, gap and cluster texts on the Timeline only):
 1. **Drop the repeated am/pm** inside a range when both ends share it: "4:13–4:41 pm", "11:50 am–12:10 pm" stays. 24-hour unchanged.
-2. **Short items show one time plus a duration** instead of a range, below a threshold `TimelineText.ShortItemMs` (proposal: under 10 min): a visit "4:13 pm · 6 min"; a gap "1 min gap" (with the time in the spoken description and the gap sheet).
+2. **Short items show one time plus a duration** instead of a range, below `TimelineText.ShortItemMs` = **10 min** (strictly under): a visit "4:13 pm · 6m"; a gap **"1m gap"** (compact unit, no space, as the owner prefers; under a minute "<1m gap"). The time stays in the spoken description and the gap sheet. Use plural-safe string resources for the compact forms; other duration texts in the app keep their current format.
 3. Markers already use single times ("Start 7:30 am") — unchanged.
 4. Spoken descriptions keep full ranges for screen readers.
 Tests: the helper (12/24 h, same and different half-days, short threshold edges), Timeline rows at font 1.0/2.0.
