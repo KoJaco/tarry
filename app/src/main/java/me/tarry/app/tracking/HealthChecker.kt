@@ -91,6 +91,8 @@ class HealthChecker @Inject constructor(
         val issue = issueFor(health)
         if (issue == null) {
             recorder.recover(health.nowMs)
+            // A dead service inside the short-interruption grace reports nothing, but it must still be restarted.
+            if (health.shouldRun && !health.serviceRunning) controller.reconcile(ReconcileSource.SYSTEM)
             return null
         }
         recorder.reportOutage(issue, health.shouldRunSinceMs)

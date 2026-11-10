@@ -266,6 +266,9 @@ class HealthCheckWorkerTest {
         assertThat(store.current().attentionCause).isNull()
         // The last-alive mark survives the recovery.
         assertThat(store.current().lastHeartbeatMs).isEqualTo(mondayAt(11, 1).toEpochMilli())
+        // Nothing is reported, but the dead service is still restarted (as SYSTEM: via the short alarm).
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(Instant.ofEpochMilli(clock.now + config.deferredStartDelayMs))
     }
 
     @Test
