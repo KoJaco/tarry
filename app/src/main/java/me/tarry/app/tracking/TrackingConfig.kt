@@ -73,6 +73,8 @@ data class TrackingConfig(
     // It was 2 h before the setting existed: a grace in flight across that upgrade (no persisted cap) is accounted to 60 min.
     val windowEndSettleMs: Long = 10 * 60_000L,
     val windowEndGraceMaxMs: Long = 60 * 60_000L,
+    /** A process kill followed by a restart within this long is not a break: no Gap, and the Timeline shows no marker. */
+    val shortInterruptionMs: Long = 5 * 60_000L,
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,

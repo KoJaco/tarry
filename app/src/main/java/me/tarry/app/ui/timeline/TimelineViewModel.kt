@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.tarry.app.R
 import me.tarry.app.segmentation.SegmentationScheduler
+import me.tarry.app.tracking.TrackingConfig
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.app.ui.undo.noticeRes
@@ -192,6 +193,8 @@ class TimelineViewModel internal constructor(
     zoomMinutes: Flow<Int> = flowOf(ZoomLevel.Q15.snapMinutes),
     /** Saves the timeline zoom step in minutes. */
     private val saveZoomMinutes: suspend (Int) -> Unit = {},
+    /** A killed session restarted within this long leaves no marker on the day canvas. */
+    private val shortInterruptionMs: Long = TrackingConfig().shortInterruptionMs,
 ) : ViewModel() {
     @Inject
     constructor(
@@ -206,6 +209,7 @@ class TimelineViewModel internal constructor(
         jobBlocks: JobBlockRepository,
         declined: DeclinedSuggestionStore,
         settings: SettingsRepository,
+        trackingConfig: TrackingConfig,
     ) :
         this(
             timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
@@ -224,6 +228,7 @@ class TimelineViewModel internal constructor(
             createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
             zoomMinutes = settings.settings.map { it.timelineZoomMinutes },
             saveZoomMinutes = settings::setTimelineZoomMinutes,
+            shortInterruptionMs = trackingConfig.shortInterruptionMs,
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -278,7 +283,7 @@ class TimelineViewModel internal constructor(
     val trackingMarkers: StateFlow<List<TrackingMarker>> = _selectedDate
         .flatMapLatest { date ->
             val (from, to) = dayBounds(date, zone)
-            trackingSessions(from, to).map { trackingMarkers(it, from, to) }
+            trackingSessions(from, to).map { trackingMarkers(it, from, to, shortInterruptionMs = shortInterruptionMs) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
 

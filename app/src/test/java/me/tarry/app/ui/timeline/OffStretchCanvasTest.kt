@@ -48,6 +48,13 @@ class OffStretchCanvasTest {
     }
 
     @Test
+    fun noHatchIsDrawnOverAVisitThatContinuesAcrossTheStretch() {
+        val continuing = TimelineItem.Visit("v2", at(9), at(14), "Marina")
+        show(listOf(continuing), listOf(TrackingMarker(null, at(11, 0)), TrackingMarker(at(11, 20), null)))
+        composeRule.onAllNodesWithTag("timeline_off_stretch").assertCountEquals(0)
+    }
+
+    @Test
     fun noStopMeansNoStretch() {
         show(listOf(visit), listOf(TrackingMarker(at(8, 0), null)))
         composeRule.onAllNodesWithTag("timeline_off_stretch").assertCountEquals(0)

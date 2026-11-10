@@ -117,6 +117,7 @@
     <string name="timeline_marker_start">Start</string>
     <string name="timeline_marker_stop">Stop</string>
     <string name="timeline_marker_off">Off</string>
+    <string name="timeline_marker_interrupted">Interrupted</string>
     <string name="timeline_tracking_started">Tracking started %1$s</string>
     <string name="timeline_tracking_stopped">Tracking stopped %1$s</string>
     <string name="timeline_tracking_paused">Tracking paused %1$s</string>

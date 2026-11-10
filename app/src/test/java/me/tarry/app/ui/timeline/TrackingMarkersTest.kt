@@ -1,6 +1,7 @@
 package me.tarry.app.ui.timeline
 
 import com.google.common.truth.Truth.assertThat
+import me.tarry.app.tracking.TrackingConfig
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
@@ -73,6 +74,40 @@ class TrackingMarkersTest {
         val m = markers(session(at(8, 0), at(12, 0)), session(at(12, 0) + gapMs, null))
         assertThat(m.map { (it.stoppedMs != null) to (it.startedMs != null) })
             .containsExactly(false to true, true to false, false to true).inOrder()
+    }
+
+    @Test
+    fun aKilledStopRestartedWithinTheShortInterruptionShowsNothing() {
+        val short = TrackingConfig().shortInterruptionMs
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.KILLED), session(at(12, 0) + short - 1, null))
+        assertThat(m).containsExactly(TrackingMarker(at(8, 0), null))
+        assertThat(offStretches(m, dayEnd, now = at(20))).isEmpty()
+    }
+
+    @Test
+    fun aKilledStopRestartedLaterShowsAnInterruptedMarkerAndAStretch() {
+        val short = TrackingConfig().shortInterruptionMs
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.KILLED), session(at(12, 0) + short, null))
+        assertThat(m.map { it.reason }).containsExactly(null, SessionEndReason.KILLED, null).inOrder()
+        assertThat(offStretches(m, dayEnd, now = at(20))).containsExactly(OffStretch(at(12, 0), at(12, 0) + short))
+        assertThat(markerLines(m[1], MarkerWords("Start", "Stop", "Off", "Interrupted")) { "t" }).containsExactly("Interrupted", "t").inOrder()
+    }
+
+    @Test
+    fun aUserStopAndStartWithinTheShortInterruptionStillCollapses() {
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.USER_PAUSE), session(at(12, 1), null))
+        assertThat(m).contains(TrackingMarker(startedMs = at(12, 1), stoppedMs = at(12, 0), reason = SessionEndReason.USER_PAUSE))
+    }
+
+    @Test
+    fun aStretchInsideAContinuingVisitIsRemoved_oneOverlappingAnEdgeKeepsItsOutsidePart() {
+        val stretch = OffStretch(at(12, 0), at(12, 30))
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(11, 0)..at(14, 0)))).isEmpty()
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(11, 0)..at(12, 10))))
+            .containsExactly(OffStretch(at(12, 10), at(12, 30)))
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(12, 20)..at(14, 0))))
+            .containsExactly(OffStretch(at(12, 0), at(12, 20)))
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(9, 0)..at(10, 0)))).containsExactly(stretch)
     }
 
     @Test
