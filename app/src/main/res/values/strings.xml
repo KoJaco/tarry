@@ -52,7 +52,7 @@
     <string name="tracking_state_tracking">Tracking</string>
     <string name="tracking_state_idle">Off</string>
     <string name="tracking_state_paused">Paused</string>
-    <string name="tracking_state_attention">Needs attention</string>
+    <string name="tracking_state_attention">Attention</string>
 
     <string name="tracking_channel_name">Tracking status</string>
     <string name="tracking_alert_channel_name">Tracking alerts</string>

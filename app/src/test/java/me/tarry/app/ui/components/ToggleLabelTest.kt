@@ -6,6 +6,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
@@ -54,9 +55,13 @@ class ToggleLabelTest {
     }
 
     @Test
-    fun needsAttentionNeverSplitsAWordAtFontScaleTwo() {
+    fun attentionIsOneUntruncatedLineAtFontScaleTwo() {
         show(TrackingState.ATTENTION, 2f)
-        assertWholeWords("Needs attention")
+        assertOneLine("Attention")
+    }
+
+    private fun assertOneLine(label: String) {
+        assertThat(composeRule.onNodeWithText(label).assertNotTruncated().textLayout().lineCount).isEqualTo(1)
     }
 
     @Test
@@ -72,8 +77,9 @@ class ToggleLabelTest {
     }
 
     @Test
-    fun needsAttentionKeepsItsFullSizeAtNormalFontScale() {
+    fun attentionIsOneUntruncatedLineAtNormalFontScale() {
         show(TrackingState.ATTENTION, 1f)
-        assertWholeWords("Needs attention")
+        assertOneLine("Attention")
+        composeRule.onNodeWithContentDescription("Tracking: needs attention").assertExists()
     }
 }
