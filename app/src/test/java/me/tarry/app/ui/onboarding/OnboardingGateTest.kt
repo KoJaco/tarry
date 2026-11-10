@@ -79,6 +79,30 @@ class OnboardingGateTest {
     }
 
     @Test
+    fun aFreshInstallStampsTheStartAndAHalfFinishedOnboardingResumes() = runBlocking {
+        assertThat(settings.onboardingStartedAtMs()).isNull()
+        assertThat(gate.needsOnboarding()).isTrue()
+        assertThat(settings.onboardingStartedAtMs()).isEqualTo(1_700_000_000_000L)
+
+        // Location granted on page 2, then the app is killed: still a first run, not an existing install.
+        permissions.snapshot = PermissionSnapshot(fineLocation = true)
+        clock.now += 60_000
+        assertThat(gate.needsOnboarding()).isTrue()
+        assertThat(settings.onboardingCompletedAtMs()).isNull()
+        assertThat(settings.onboardingStartedAtMs()).isEqualTo(1_700_000_000_000L)
+
+        gate.markCompleted()
+        assertThat(gate.needsOnboarding()).isFalse()
+    }
+
+    @Test
+    fun theSilentExistingInstallSkipLeavesTheStartUnset() = runBlocking {
+        permissions.snapshot = PermissionSnapshot(fineLocation = true)
+        assertThat(gate.needsOnboarding()).isFalse()
+        assertThat(settings.onboardingStartedAtMs()).isNull()
+    }
+
+    @Test
     fun theFlagWinsEvenWhenTheOtherSignalsAreGone() = runBlocking {
         settings.setOnboardingCompletedAtMs(5L)
         clock.now = 9_000_000_000_000L

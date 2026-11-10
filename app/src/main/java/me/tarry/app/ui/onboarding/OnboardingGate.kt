@@ -19,10 +19,13 @@ class OnboardingGate @Inject constructor(
 ) {
     suspend fun needsOnboarding(): Boolean {
         if (settings.onboardingCompletedAtMs() != null) return false
+        // Shown before but never finished (killed on the permission page, say): resume, whatever was granted since.
+        if (settings.onboardingStartedAtMs() != null) return true
         if (permissions.check().fineLocation || trackingRepo.anySession()) {
             settings.setOnboardingCompletedAtMs(clock.nowMs())
             return false
         }
+        settings.setOnboardingStartedAtMs(clock.nowMs())
         return true
     }
 

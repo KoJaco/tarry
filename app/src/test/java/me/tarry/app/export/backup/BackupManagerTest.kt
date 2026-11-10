@@ -159,14 +159,18 @@ class BackupManagerTest {
     fun theOnboardingStampStaysOutOfTheFileAndSurvivesARestoreAndADeleteAll() = runBlocking<Unit> {
         store.replaceAll(everythingSnapshot())
         settingsRepo.setOnboardingCompletedAtMs(123L)
+        settingsRepo.setOnboardingStartedAtMs(100L)
         val bytes = backupBytes()
         assertThat(decodeSettingsKeys(bytes)).doesNotContain(Settings.ONBOARDING_COMPLETED_AT_KEY)
+        assertThat(decodeSettingsKeys(bytes)).doesNotContain(Settings.ONBOARDING_STARTED_AT_KEY)
 
         manager.restore(previewOf(bytes))
         assertThat(settingsRepo.onboardingCompletedAtMs()).isEqualTo(123L)
+        assertThat(settingsRepo.onboardingStartedAtMs()).isEqualTo(100L)
 
         manager.deleteAll()
         assertThat(settingsRepo.onboardingCompletedAtMs()).isEqualTo(123L)
+        assertThat(settingsRepo.onboardingStartedAtMs()).isEqualTo(100L)
     }
 
     private fun decodeSettingsKeys(bytes: ByteArray) =
