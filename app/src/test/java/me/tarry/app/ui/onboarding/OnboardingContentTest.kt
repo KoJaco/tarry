@@ -59,8 +59,14 @@ class OnboardingContentTest {
         onDone = {},
     )
 
+    private var snapshot = PermissionSnapshot()
+    private val allGranted = PermissionSnapshot(
+        fineLocation = true, coarseLocation = true, backgroundLocation = true, activityRecognition = true,
+        notifications = true, exactAlarms = true, batteryExempt = true,
+    )
+
     private fun permissionsState(showDisclosure: Boolean = false): PermissionsUiState =
-        buildPermissionsUiState(PermissionSnapshot(), emptySet(), showDisclosure)
+        buildPermissionsUiState(snapshot, emptySet(), showDisclosure)
 
     private var flow by mutableStateOf(OnboardingUiState(onboardingPages(emptyList())))
 
@@ -131,7 +137,7 @@ class OnboardingContentTest {
     }
 
     @Test
-    fun notNowOnTheLocationPageFinishesOnboarding() {
+    fun notNowOnTheLocationPageAsksToSkipTheRest() {
         setFlow(startIndex = 1)
         composeRule.onNodeWithTag("onboarding_not_now").performClick()
         assertThat(calls).containsExactly("notNow")
@@ -189,8 +195,11 @@ class OnboardingContentTest {
 
     @Test
     fun doneSaysTrackingNowInsideAWindow() {
+        snapshot = allGranted
         setFlow(steps = emptyList(), outcome = DoneOutcome.TrackingNow, startIndex = 2)
-        assertTitle("Tracking now")
+        assertTitle("You're set")
+        composeRule.onNodeWithTag("onboarding_done_outcome").assertTextContains("Tracking now")
+        composeRule.onNodeWithTag("onboarding_done_warning").assertDoesNotExist()
         primary().assertTextContains("Open Tarry").performClick()
         assertThat(calls).containsExactly("open")
     }
@@ -199,14 +208,16 @@ class OnboardingContentTest {
     fun doneNamesTheNextWindowOutsideOne() {
         // 2026-10-26 07:00 in Sydney is a Monday.
         val monday7am = java.time.ZonedDateTime.of(2026, 10, 26, 7, 0, 0, 0, java.time.ZoneId.of("Australia/Sydney")).toInstant().toEpochMilli()
+        snapshot = allGranted
         setFlow(steps = emptyList(), outcome = DoneOutcome.Next(monday7am, "Australia/Sydney"), startIndex = 2)
-        composeRule.onNodeWithTag("onboarding_title").assertTextContains("Next: Mon", substring = true)
+        composeRule.onNodeWithTag("onboarding_done_outcome").assertTextContains("Next: Mon", substring = true)
     }
 
     @Test
     fun doneWithNoHoursSaysSo() {
+        snapshot = allGranted
         setFlow(steps = emptyList(), outcome = DoneOutcome.NoHours, startIndex = 2)
-        assertTitle("No hours set")
+        composeRule.onNodeWithTag("onboarding_done_outcome").assertTextContains("No hours set")
     }
 
     @Test
@@ -238,5 +249,52 @@ class OnboardingContentTest {
             composeRule.waitForIdle()
             primary().assertIsDisplayed()
         }
+    }
+
+    private fun assertDoneWarnsWhenLocationIsMissing(scale: Float) {
+        snapshot = PermissionSnapshot(fineLocation = true, coarseLocation = true) // no "all the time"
+        setFlow(steps = emptyList(), outcome = DoneOutcome.TrackingNow, fontScale = scale, startIndex = 2)
+        assertTitle("Almost there")
+        composeRule.onNodeWithTag("onboarding_done_warning").assertIsDisplayed()
+            .assertTextContains("Tracking can't start until location is allowed all the time", substring = true)
+        composeRule.onNodeWithTag("onboarding_done_outcome").assertDoesNotExist()
+        composeRule.onNodeWithText("Tarry starts and stops on its own", substring = true).assertDoesNotExist()
+        primary().assertIsDisplayed()
+    }
+
+    @Test
+    fun doneWarnsAndSaysAlmostThereWhenLocationIsMissing() = assertDoneWarnsWhenLocationIsMissing(1f)
+
+    @Test
+    fun doneWarnsWhenLocationIsMissingAtFontScale2() = assertDoneWarnsWhenLocationIsMissing(2f)
+
+    private fun assertDoneIsReady(scale: Float) {
+        snapshot = allGranted
+        setFlow(steps = emptyList(), outcome = DoneOutcome.TrackingNow, fontScale = scale, startIndex = 2)
+        assertTitle("You're set")
+        composeRule.onNodeWithTag("onboarding_done_warning").assertDoesNotExist()
+        composeRule.onNodeWithText("Tarry starts and stops on its own", substring = true).assertExists()
+    }
+
+    @Test
+    fun doneIsReadyWithoutAWarningWhenTrackingCanRun() = assertDoneIsReady(1f)
+
+    @Test
+    fun doneIsReadyAtFontScale2() = assertDoneIsReady(2f)
+
+    @Test
+    @Config(sdk = [35], application = android.app.Application::class, qualifiers = "w411dp-h891dp")
+    fun theScheduleGridFillsTheHeightOnATallPhone() {
+        setFlow(steps = emptyList(), startIndex = 1)
+        composeRule.onNodeWithTag("onboarding_grid").assertHeightIsAtLeast(500.dp)
+        primary().assertIsDisplayed()
+    }
+
+    @Test
+    @Config(sdk = [35], application = android.app.Application::class, qualifiers = "w411dp-h891dp")
+    fun theScheduleGridAndButtonStayUsableAtFontScale2() {
+        setFlow(steps = emptyList(), fontScale = 2f, startIndex = 1)
+        composeRule.onNodeWithTag("onboarding_grid").assertHeightIsAtLeast(340.dp)
+        primary().assertIsDisplayed()
     }
 }

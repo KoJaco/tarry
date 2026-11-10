@@ -57,4 +57,19 @@ class OnboardingStateTest {
     fun noWindowsMeansNoHours() {
         assertThat(doneOutcome(emptyList(), now, "UTC")).isEqualTo(DoneOutcome.NoHours)
     }
+
+    @Test
+    fun backSkipsGrantedPermissionPagesAndLandsOnWelcomeAtTheStart() {
+        // Welcome, LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, Schedule, Done; LOCATION and NOTIFICATIONS are granted now.
+        val steps = listOf(PermissionStep.LOCATION, PermissionStep.BACKGROUND_LOCATION, PermissionStep.NOTIFICATIONS)
+        val permissions = buildPermissionsUiState(
+            PermissionSnapshot(fineLocation = true, coarseLocation = true, notifications = true), emptySet(),
+        )
+        val state = OnboardingUiState(onboardingPages(steps), index = 4)
+        // Schedule -> past granted NOTIFICATIONS -> BACKGROUND_LOCATION (not granted).
+        assertThat(state.previousIndex(permissions)).isEqualTo(2)
+        // BACKGROUND_LOCATION -> past granted LOCATION -> Welcome.
+        assertThat(state.copy(index = 2).previousIndex(permissions)).isEqualTo(0)
+        assertThat(state.copy(index = 1).previousIndex(permissions)).isEqualTo(0)
+    }
 }

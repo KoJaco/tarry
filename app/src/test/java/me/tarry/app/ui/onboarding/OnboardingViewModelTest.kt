@@ -42,6 +42,7 @@ import me.tarry.app.tracking.createTrackingStatusDataStore
 import me.tarry.app.ui.permissions.FakePermissionChecker
 import me.tarry.app.ui.permissions.PermissionSnapshot
 import me.tarry.app.ui.permissions.PermissionStep
+import me.tarry.app.ui.permissions.buildPermissionsUiState
 import me.tarry.app.ui.schedule.ScheduleSaver
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.model.Schedule
@@ -154,11 +155,12 @@ class OnboardingViewModelTest {
 
     @Test
     fun nextAndBackMoveOnePageAndBackStopsAtTheFirst() {
-        viewModel.back()
+        val none = buildPermissionsUiState(PermissionSnapshot(), emptySet())
+        viewModel.back(none)
         assertThat(viewModel.state.value.index).isEqualTo(0)
         viewModel.next()
         assertThat(viewModel.state.value.index).isEqualTo(1)
-        viewModel.back()
+        viewModel.back(none)
         assertThat(viewModel.state.value.index).isEqualTo(0)
     }
 
@@ -228,12 +230,28 @@ class OnboardingViewModelTest {
         assertThat(settings.onboardingCompletedAtMs()).isNull()
     }
 
+
     @Test
-    fun skippingAllStampsTheFlag() = runBlocking<Unit> {
-        viewModel.skipAll()
-        withTimeout(10_000) {
-            while (settings.onboardingCompletedAtMs() == null) delay(10)
-        }
-        assertThat(settings.onboardingCompletedAtMs()).isEqualTo(monday10am)
+    fun backAfterAGrantSkipsTheGrantedPageToThePreviousOneThenWelcome() {
+        // Welcome, LOCATION, BACKGROUND_LOCATION, ACTIVITY_RECOGNITION, ...: grant on page 3, go to 4, Back -> 2, then 1, then Welcome.
+        repeat(3) { viewModel.next() }
+        val granted = buildPermissionsUiState(PermissionSnapshot(activityRecognition = true), emptySet())
+        viewModel.next()
+        assertThat(viewModel.state.value.index).isEqualTo(4)
+        viewModel.back(granted)
+        assertThat(viewModel.state.value.index).isEqualTo(2)
+        viewModel.back(granted)
+        assertThat(viewModel.state.value.index).isEqualTo(1)
+        viewModel.back(granted)
+        assertThat(viewModel.state.value.index).isEqualTo(0)
+    }
+
+    @Test
+    fun notNowSkipsTheRemainingPermissionPagesToTheSchedule() = runBlocking<Unit> {
+        viewModel.next() // the location page
+        assertThat(viewModel.state.value.page).isInstanceOf(OnboardingPage.Permission::class.java)
+        viewModel.skipPermissions()
+        assertThat(viewModel.state.value.page).isEqualTo(OnboardingPage.Schedule)
+        assertThat(settings.onboardingCompletedAtMs()).isNull()
     }
 }

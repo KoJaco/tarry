@@ -49,6 +49,24 @@ data class OnboardingUiState(
 fun onboardingPages(missing: List<PermissionStep>): List<OnboardingPage> =
     listOf(OnboardingPage.Welcome) + missing.map { OnboardingPage.Permission(it) } + OnboardingPage.Schedule + OnboardingPage.Done
 
+/**
+ * Where Back lands: the nearest earlier page that is not a permission already granted (those pages would only bounce the
+ * user forward again), or the first page.
+ */
+fun OnboardingUiState.previousIndex(permissions: PermissionsUiState): Int {
+    val granted = permissions.items.filter { it.status == StepStatus.GRANTED }.map { it.step }.toSet()
+    var i = index - 1
+    while (i > 0) {
+        val p = pages[i]
+        if (p !is OnboardingPage.Permission || p.step !in granted) break
+        i--
+    }
+    return i.coerceAtLeast(0)
+}
+
+/** The index of the schedule page, where "Not now" on the location page jumps to. */
+val OnboardingUiState.scheduleIndex: Int get() = pages.indexOf(OnboardingPage.Schedule)
+
 /** True when the current page asks for a permission that has since been granted, so the flow moves on by itself. */
 fun OnboardingUiState.permissionPageSatisfied(permissions: PermissionsUiState): Boolean {
     val current = page as? OnboardingPage.Permission ?: return false

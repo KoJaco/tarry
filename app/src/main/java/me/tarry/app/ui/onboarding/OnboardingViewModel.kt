@@ -15,6 +15,7 @@ import me.tarry.app.tracking.ScheduleWindowChecker
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.app.tracking.TrackingConfig
 import me.tarry.app.ui.permissions.PermissionChecker
+import me.tarry.app.ui.permissions.PermissionsUiState
 import me.tarry.app.ui.permissions.StepStatus
 import me.tarry.app.ui.permissions.buildPermissionsUiState
 import me.tarry.app.ui.schedule.ScheduleSaver
@@ -71,8 +72,9 @@ class OnboardingViewModel @Inject constructor(
         _state.update { if (it.saving || it.index >= it.pages.lastIndex) it else it.copy(index = it.index + 1) }
     }
 
-    fun back() {
-        _state.update { if (it.canGoBack) it.copy(index = it.index - 1) else it }
+    /** Back skips permission pages that are already granted ([permissions] is the platform state now). */
+    fun back(permissions: PermissionsUiState) {
+        _state.update { if (it.canGoBack) it.copy(index = it.previousIndex(permissions)) else it }
     }
 
     fun toggleCell(day: DayOfWeek, slot: Int) = edit { toggle(it, day, slot) }
@@ -111,8 +113,8 @@ class OnboardingViewModel @Inject constructor(
         }
     }
 
-    /** "Not now" on the location page: onboarding ends here and the normal attention path shows (rule 6). */
-    fun skipAll() {
-        captureScope.launch { runCatching { gate.markCompleted() } }
+    /** "Not now" on the location page: the remaining permission pages are skipped; the user still sets their hours. */
+    fun skipPermissions() {
+        _state.update { if (it.saving || it.page !is OnboardingPage.Permission) it else it.copy(index = it.scheduleIndex) }
     }
 }
