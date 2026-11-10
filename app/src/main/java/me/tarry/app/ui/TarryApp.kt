@@ -58,6 +58,8 @@ import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
 import me.tarry.app.ui.navigation.SummaryRoute
 import me.tarry.app.ui.navigation.TimelineRoute
+import me.tarry.app.ui.navigation.TrackingHealthRoute
+import me.tarry.app.ui.health.TrackingHealthScreen
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.permissions.PermissionsScreen
 import me.tarry.app.ui.sessions.SessionsScreen
@@ -164,7 +166,8 @@ fun TarryApp(
         },
         settingsContent = {
             SettingsScreen(
-                onOpenPermissions = { openPermissions() },
+                trackingState = trackingState,
+                onOpenTrackingHealth = { if (backStack.lastOrNull() != TrackingHealthRoute) backStack.add(TrackingHealthRoute) },
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
                 onOpenSchedule = { if (backStack.lastOrNull() != ScheduleRoute) backStack.add(ScheduleRoute) },
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
@@ -175,6 +178,9 @@ fun TarryApp(
         },
         onboardingContent = {
             OnboardingScreen(onFinished = { backStack.navigateTopLevel(TimelineRoute) })
+        },
+        trackingHealthContent = {
+            TrackingHealthScreen(onOpenPermissions = { openPermissions() })
         },
         permissionsContent = {
             PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
@@ -281,6 +287,7 @@ fun TarryAppContent(
     summaryContent: @Composable () -> Unit = {},
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
     onboardingContent: @Composable () -> Unit = {},
+    trackingHealthContent: @Composable () -> Unit = {},
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
     scheduleContent: @Composable () -> Unit = {},
@@ -330,6 +337,7 @@ fun TarryAppContent(
                 entry<SettingsRoute> { settingsContent() }
                 entry<SummaryRoute> { summaryContent() }
                 entry<OnboardingRoute> { onboardingContent() }
+                entry<TrackingHealthRoute> { trackingHealthContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }
                 entry<ScheduleRoute> { scheduleContent() }

@@ -62,3 +62,10 @@ data object LicencesRoute : NavKey
  */
 @Serializable
 data object OnboardingRoute : NavKey
+
+/**
+ * Tracking health (phase 8a.2): the live checks, why tracking can stop and Test tracking. Pushed on top of [SettingsRoute];
+ * it replaces the Permissions row there, and the Permissions screen is reached from it.
+ */
+@Serializable
+data object TrackingHealthRoute : NavKey

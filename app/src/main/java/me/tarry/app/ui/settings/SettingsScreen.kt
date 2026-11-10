@@ -14,6 +14,8 @@ import androidx.lifecycle.compose.LifecycleEventEffect
 import java.time.ZoneOffset
 import me.tarry.app.ui.drawer.TimePickerDialog
 import me.tarry.app.ui.permissions.PermissionIntents
+import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.health.healthStatusRes
 import me.tarry.app.ui.timeline.rememberTimeFormats
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -99,7 +101,8 @@ import me.tarry.core.data.settings.ThemeMode
 /** Hilt-wired entry point. */
 @Composable
 fun SettingsScreen(
-    onOpenPermissions: () -> Unit,
+    trackingState: TrackingState,
+    onOpenTrackingHealth: () -> Unit,
     onOpenSessions: () -> Unit,
     onOpenSchedule: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
@@ -144,7 +147,8 @@ fun SettingsScreen(
         onBackUpFirst = startBackup,
         onCancelRestore = viewModel::cancelRestore,
         onOpenSchedule = onOpenSchedule,
-        onOpenPermissions = onOpenPermissions,
+        trackingState = trackingState,
+        onOpenTrackingHealth = onOpenTrackingHealth,
         onOpenSessions = onOpenSessions,
         onOpenJobs = onOpenJobs,
         onOpenPlaces = onOpenPlaces,
@@ -182,7 +186,9 @@ fun SettingsContent(
     settings: Settings?,
     schedule: WeekScheduleSummary? = null,
     onOpenSchedule: () -> Unit = {},
-    onOpenPermissions: () -> Unit = {},
+    /** Drives the Tracking health row's subtitle (Working, Off, Paused, Needs attention). */
+    trackingState: TrackingState = TrackingState.IDLE,
+    onOpenTrackingHealth: () -> Unit = {},
     onOpenSessions: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
@@ -342,7 +348,8 @@ fun SettingsContent(
         val stayRadiusValue = settings?.let { stringResource(R.string.settings_stay_radius_value, it.stayGeofenceRadiusM) }
         val scheduleTitle = stringResource(R.string.settings_schedule)
         val scheduleSubtitle = schedule?.let { scheduleRowSubtitle(it) }
-        val permissionsTitle = stringResource(R.string.settings_permissions)
+        val healthTitle = stringResource(R.string.settings_tracking_health)
+        val healthSubtitle = stringResource(trackingState.healthStatusRes())
         val sessionsTitle = stringResource(R.string.settings_sessions)
         SettingsGroup {
             row(scheduleTitle, onClick = onOpenSchedule, icon = R.drawable.ic_calendar, subtitle = scheduleSubtitle)
@@ -352,7 +359,7 @@ fun SettingsContent(
             if (graceValue != null) {
                 row(graceTitle, onClick = { picker = Picker.GRACE }, icon = R.drawable.ic_more_time, subtitle = graceValue)
             }
-            row(permissionsTitle, onClick = onOpenPermissions, icon = R.drawable.ic_permissions)
+            row(healthTitle, onClick = onOpenTrackingHealth, icon = R.drawable.ic_permissions, subtitle = healthSubtitle)
             row(sessionsTitle, onClick = onOpenSessions, icon = R.drawable.ic_sessions)
         }
         SectionHeader(stringResource(R.string.settings_section_labels), Modifier.padding(top = space.m))

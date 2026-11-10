@@ -144,7 +144,7 @@
     <string name="permissions_disclosure_continue">Continue</string>
     <string name="permissions_disclosure_cancel">Not now</string>
 
-    <string name="settings_permissions">Permissions</string>
+    <string name="settings_tracking_health">Tracking health</string>
     <string name="settings_sessions">Sessions</string>
 
     <string name="sessions_title">Sessions</string>
