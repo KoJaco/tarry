@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import me.tarry.app.ui.timeline.DayTracking
+import me.tarry.app.ui.timeline.DayTrackingReason
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.runBlocking
@@ -994,6 +996,75 @@ class TimelineViewModelTest {
         delay(100)
 
         assertThat(saved).hasSize(1)
+    }
+
+    // region empty-day reason
+
+    private fun interval(date: LocalDate, fromHour: Int, toHour: Int) =
+        me.tarry.app.tracking.WindowBounds(java.time.Instant.ofEpochMilli(at(date, fromHour)), java.time.Instant.ofEpochMilli(at(date, toHour)))
+
+    private fun dayTrackingVm(
+        today: LocalDate = day,
+        nowMs: Long,
+        changes: kotlinx.coroutines.flow.Flow<Any?> = flowOf(Unit),
+        intervals: (LocalDate) -> List<me.tarry.app.tracking.WindowBounds>,
+    ) = TimelineViewModel(
+        timeline, places, jobs, zone, { today }, nowMs = { nowMs },
+        activeIntervals = { from, _ -> intervalCalls.incrementAndGet(); intervals(java.time.Instant.ofEpochMilli(from).atZone(zone).toLocalDate()) },
+        scheduleChanges = { changes },
+    ).managed()
+
+    private val intervalCalls = java.util.concurrent.atomic.AtomicInteger()
+
+    /** The value once the schedule has been asked at least [calls] times (a collector keeps the WhileSubscribed flow live). */
+    private fun TimelineViewModel.settledDayTracking(calls: Int = 1): DayTracking = runBlocking {
+        val collector = launch(kotlinx.coroutines.Dispatchers.Default) { dayTracking.collect { } }
+        withTimeout(10_000) { while (intervalCalls.get() < calls) kotlinx.coroutines.delay(10) }
+        kotlinx.coroutines.delay(100)
+        dayTracking.value.also { collector.cancel() }
+    }
+
+    private fun TimelineViewModel.awaitDayTracking(reason: DayTrackingReason): DayTracking =
+        runBlocking { withTimeout(10_000) { dayTracking.first { it.reason == reason } } }
+
+    @Test
+    fun anUnscheduledDayIsOutsideTheSchedule() {
+        val vm = dayTrackingVm(nowMs = at(day, 12)) { emptyList() }
+        assertThat(vm.awaitDayTracking(DayTrackingReason.OUTSIDE_SCHEDULE).startMs).isNull()
+    }
+
+    @Test
+    fun todayBeforeTheWindowIsNotYetWithTheWindowStart() {
+        val vm = dayTrackingVm(nowMs = at(day, 6)) { listOf(interval(it, 7, 17)) }
+        assertThat(vm.awaitDayTracking(DayTrackingReason.NOT_YET).startMs).isEqualTo(at(day, 7))
+    }
+
+    @Test
+    fun todayInsideOrAfterTheWindowHasNoReason() {
+        listOf(12, 18).forEach { hour ->
+            val vm = dayTrackingVm(nowMs = at(day, hour)) { listOf(interval(it, 7, 17)) }
+            intervalCalls.set(0)
+            assertThat(vm.settledDayTracking().reason).isEqualTo(DayTrackingReason.NONE)
+        }
+    }
+
+    @Test
+    fun aPastScheduledDayHasNoReason() {
+        val today = day.plusDays(3)
+        val vm = dayTrackingVm(today = today, nowMs = at(today, 6)) { listOf(interval(it, 7, 17)) }
+        vm.selectDate(day)
+        assertThat(vm.settledDayTracking().reason).isEqualTo(DayTrackingReason.NONE)
+    }
+
+    @Test
+    fun aScheduleChangeRecomputesTheReason() {
+        val changes = MutableStateFlow(0)
+        var scheduled = false
+        val vm = dayTrackingVm(nowMs = at(day, 12), changes = changes) { if (scheduled) listOf(interval(it, 7, 17)) else emptyList() }
+        vm.awaitDayTracking(DayTrackingReason.OUTSIDE_SCHEDULE)
+        scheduled = true
+        changes.value = 1
+        vm.awaitDayTracking(DayTrackingReason.NONE)
     }
 
     // endregion

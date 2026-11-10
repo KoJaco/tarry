@@ -55,6 +55,7 @@ fun TimelineScreen(
         // Collected only while the Map tab shows, so the route isn't built otherwise.
         dayMap = if (showMap) viewModel.dayMap.collectAsStateWithLifecycle().value else null,
         trackingMarkers = viewModel.trackingMarkers.collectAsStateWithLifecycle().value,
+        dayTracking = viewModel.dayTracking.collectAsStateWithLifecycle().value,
         jobBlocks = jobBlocks,
         jobSuggestions = jobSuggestions,
         onOpenJob = { editTarget = EditTarget.Job(it) },

@@ -50,7 +50,7 @@ private const val PlaceholderPulseLow = 0.35f
  * No illustration.
  */
 @Composable
-fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
+fun EmptyState(title: String, body: String, modifier: Modifier = Modifier, reason: String? = null) {
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -74,6 +74,9 @@ fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth().semantics { heading() },
             )
             Text(body, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            if (reason != null) {
+                Text(reason, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.ink, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+            }
         }
     }
 }
