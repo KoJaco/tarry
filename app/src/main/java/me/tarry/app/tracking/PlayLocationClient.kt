@@ -64,6 +64,8 @@ class PlayLocationClient @Inject constructor(
         } catch (_: SecurityException) {
             CurrentFixResult.Denied
         } catch (e: Exception) {
+            // A failed Task wraps the SecurityException (ExecutionException, ApiException): still a denial, not a timeout.
+            if (e.hasSecurityCause()) return CurrentFixResult.Denied
             Log.w("PlayLocationClient", "Test fix failed", e)
             CurrentFixResult.Timeout
         } finally {
@@ -94,3 +96,14 @@ internal fun Location.toFix(): Fix = Fix(
     bearing = if (hasBearing()) bearing else null,
     elapsedRealtimeNanos = elapsedRealtimeNanos,
 )
+
+/** True when this throwable or anything in its cause chain is a [SecurityException] (the chain is walked at most 16 deep, so a cycle cannot hang it). */
+internal fun Throwable.hasSecurityCause(): Boolean {
+    var t: Throwable? = this
+    var depth = 0
+    while (t != null && depth++ < 16) {
+        if (t is SecurityException) return true
+        t = t.cause
+    }
+    return false
+}
