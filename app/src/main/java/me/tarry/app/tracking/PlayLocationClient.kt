@@ -4,12 +4,17 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Location
 import android.os.Looper
+import android.util.Log
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -39,6 +44,36 @@ class PlayLocationClient @Inject constructor(
         client.requestLocationUpdates(request, callback, Looper.getMainLooper())
             .addOnFailureListener { close(it) }
         awaitClose { client.removeLocationUpdates(callback) }
+    }
+
+    // A missing permission surfaces as SecurityException (thrown or as a failed Task) and is the Denied result.
+    @SuppressLint("MissingPermission")
+    override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long): CurrentFixResult {
+        val cancel = CancellationTokenSource()
+        return try {
+            val request = CurrentLocationRequest.Builder()
+                .setPriority(priority.toPlayPriority())
+                .setMaxUpdateAgeMillis(0)
+                .setDurationMillis(timeoutMs)
+                .build()
+            // The request ends itself after [timeoutMs]; the outer timeout is only a guard against a Task that never completes.
+            val location = withTimeoutOrNull(timeoutMs + GUARD_MS) { client.getCurrentLocation(request, cancel.token).awaitResult() }
+            if (location == null) CurrentFixResult.Timeout else CurrentFixResult.Success(location.toFix())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: SecurityException) {
+            CurrentFixResult.Denied
+        } catch (e: Exception) {
+            Log.w("PlayLocationClient", "Test fix failed", e)
+            CurrentFixResult.Timeout
+        } finally {
+            // Also runs when the caller is cancelled (the user left the screen): the platform request stops with it.
+            cancel.cancel()
+        }
+    }
+
+    private companion object {
+        const val GUARD_MS = 5_000L
     }
 }
 

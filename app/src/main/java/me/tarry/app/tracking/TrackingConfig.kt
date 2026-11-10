@@ -121,4 +121,6 @@ data class TrackingConfig(
     // Debug-only test window: starts [debugTestWindowDelayMs] after the request and lasts [debugTestWindowLengthMs].
     val debugTestWindowDelayMs: Long = 2 * 60_000L,
     val debugTestWindowLengthMs: Long = 10 * 60_000L,
+    /** Settings > Tracking health > Test tracking: how long the single one-off location request may wait for a fix. */
+    val testFixTimeoutMs: Long = 30_000L,
 )

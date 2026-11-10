@@ -235,6 +235,7 @@ class CaptureCoordinatorTest {
     @Test
     fun locationUpdatesFailingWithGenericExceptionRecordsOutageGapAndAlert() = runBlocking {
         val failing = object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams) =
                 kotlinx.coroutines.flow.flow<List<Fix>> { throw IllegalStateException("boom") }
         }
@@ -416,6 +417,7 @@ class CaptureCoordinatorTest {
     fun locationUpdatesDeadAfterAGenericFailureAreRestartedByEnsureLocationUpdates() = runBlocking {
         val calls = java.util.concurrent.atomic.AtomicInteger()
         val flaky = object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams) =
                 if (calls.getAndIncrement() == 0) {
                     kotlinx.coroutines.flow.flow<List<Fix>> { throw IllegalStateException("boom") }
@@ -453,6 +455,7 @@ class CaptureCoordinatorTest {
     fun permissionLostMidSessionGoesThroughTheFailureListenerWhenSet() = runBlocking {
         val seen = java.util.concurrent.CopyOnWriteArrayList<HealthIssue>()
         val denied = object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams) =
                 kotlinx.coroutines.flow.flow<List<Fix>> { throw SecurityException("revoked") }
         }

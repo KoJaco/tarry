@@ -88,6 +88,7 @@ class HealthCheckWorkerTest {
             ),
         )
         wire(object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams): Flow<List<Fix>> = FakeLocationClient().updates(params)
         })
     }
@@ -301,6 +302,7 @@ class HealthCheckWorkerTest {
     @Test
     fun permissionLostMidSessionOpensAGapAndEndsTheSession() = runBlocking<Unit> {
         wire(object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams): Flow<List<Fix>> = flow { throw SecurityException("revoked") }
         })
         permissions.fine = false
@@ -434,6 +436,7 @@ class HealthCheckWorkerTest {
         val calls = java.util.concurrent.atomic.AtomicInteger()
         val fake = FakeLocationClient()
         wire(object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams): Flow<List<Fix>> =
                 if (calls.getAndIncrement() == 0) flow { throw IllegalStateException("boom") } else fake.updates(params)
         })

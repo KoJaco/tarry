@@ -24,3 +24,13 @@ internal suspend fun Task<*>.awaitDone() {
 
 /** A Play Services Task was cancelled. Deliberately not a coroutine `CancellationException`. */
 internal class TaskCancelledException : Exception("Play Services task was cancelled")
+
+/**
+ * Suspends until a Play Services [Task] completes and returns its result, or null if the Task was cancelled. A failed Task
+ * throws its exception.
+ */
+internal suspend fun <T> Task<T>.awaitResult(): T? = suspendCancellableCoroutine { c ->
+    addOnSuccessListener(listenerExecutor) { c.resume(it) }
+    addOnFailureListener(listenerExecutor) { c.resumeWithException(it) }
+    addOnCanceledListener(listenerExecutor) { c.resume(null) }
+}
