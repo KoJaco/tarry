@@ -3,6 +3,7 @@ package me.tarry.app.ui.timeline
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,11 +20,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.ui.components.FadingScrollRow
@@ -33,7 +37,7 @@ private val MinTouch = 48.dp
 private val MarkSize = 20.dp
 
 /**
- * The row under the week strip: the labelled Timeline | Map toggle first, then "Add job". (The needs-review filter is the
+ * The row under the week strip: the labelled Timeline | Map toggle first, then "Add job" stretched to the content edge. (The needs-review filter is the
  * chip in the summary card.) It is one row that scrolls sideways at large font scales
  * (edges fade while more lies that way) and never wraps or drops a label.
  */
@@ -53,17 +57,41 @@ internal fun ReviewRow(
             FadingScrollRow(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 ViewToggle(showMap, onShowMapChange, Modifier.testTag("timeline_view_toggle"))
             }
-            AddJobButton(onAddJob, Modifier.align(Alignment.Start).testTag("timeline_add_job"))
+            AddJobButton(onAddJob, Modifier.fillMaxWidth().testTag("timeline_add_job"))
         }
         return
     }
-    FadingScrollRow(
-        modifier = modifier.fillMaxWidth().testTag("timeline_review_row"),
-        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ViewToggle(showMap, onShowMapChange, Modifier.testTag("timeline_view_toggle"))
-        AddJobButton(onAddJob, Modifier.testTag("timeline_add_job"))
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val viewport = maxWidth
+        FadingScrollRow(
+            modifier = Modifier.fillMaxWidth().testTag("timeline_review_row"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FillToWidth(viewport, TarryTheme.space.s) {
+                ViewToggle(showMap, onShowMapChange, Modifier.testTag("timeline_view_toggle"))
+                AddJobButton(onAddJob, Modifier.testTag("timeline_add_job"))
+            }
+        }
+    }
+}
+
+/**
+ * Two children side by side; the second stretches to end at [width] (so "Add job" lines up with the content edge) but never
+ * shrinks below its natural width. When both don't fit, the row is wider than [width] and the parent scrolls.
+ */
+@Composable
+private fun FillToWidth(width: Dp, gap: Dp, content: @Composable () -> Unit) {
+    Layout(content) { measurables, _ ->
+        val first = measurables[0].measure(Constraints())
+        val gapPx = gap.roundToPx()
+        val natural = measurables[1].maxIntrinsicWidth(Constraints.Infinity)
+        val secondWidth = maxOf(natural, width.roundToPx() - first.width - gapPx)
+        val second = measurables[1].measure(Constraints.fixedWidth(secondWidth))
+        val height = maxOf(first.height, second.height)
+        layout(first.width + gapPx + second.width, height) {
+            first.place(0, (height - first.height) / 2)
+            second.place(first.width + gapPx, (height - second.height) / 2)
+        }
     }
 }
 
