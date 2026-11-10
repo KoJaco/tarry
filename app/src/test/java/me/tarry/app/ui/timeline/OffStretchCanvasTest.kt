@@ -1,5 +1,6 @@
 package me.tarry.app.ui.timeline
 
+import me.tarry.core.data.model.SessionEndReason
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
@@ -50,8 +51,15 @@ class OffStretchCanvasTest {
     @Test
     fun noHatchIsDrawnOverAVisitThatContinuesAcrossTheStretch() {
         val continuing = TimelineItem.Visit("v2", at(9), at(14), "Marina")
-        show(listOf(continuing), listOf(TrackingMarker(null, at(11, 0)), TrackingMarker(at(11, 20), null)))
+        show(listOf(continuing), listOf(TrackingMarker(null, at(11, 0), SessionEndReason.KILLED), TrackingMarker(at(11, 20), null)))
         composeRule.onAllNodesWithTag("timeline_off_stretch").assertCountEquals(0)
+    }
+
+    @Test
+    fun aUserStopKeepsItsHatchOverAVisitThatContinues() {
+        val continuing = TimelineItem.Visit("v2", at(9), at(14), "Marina")
+        show(listOf(continuing), listOf(TrackingMarker(null, at(11, 0), SessionEndReason.USER_STOP), TrackingMarker(at(11, 20), null)))
+        composeRule.onAllNodesWithTag("timeline_off_stretch").assertCountEquals(1)
     }
 
     @Test

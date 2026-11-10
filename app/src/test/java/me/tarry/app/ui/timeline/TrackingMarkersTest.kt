@@ -89,7 +89,7 @@ class TrackingMarkersTest {
         val short = TrackingConfig().shortInterruptionMs
         val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.KILLED), session(at(12, 0) + short, null))
         assertThat(m.map { it.reason }).containsExactly(null, SessionEndReason.KILLED, null).inOrder()
-        assertThat(offStretches(m, dayEnd, now = at(20))).containsExactly(OffStretch(at(12, 0), at(12, 0) + short))
+        assertThat(offStretches(m, dayEnd, now = at(20))).containsExactly(OffStretch(at(12, 0), at(12, 0) + short, killed = true))
         assertThat(markerLines(m[1], MarkerWords("Start", "Stop", "Off", "Interrupted")) { "t" }).containsExactly("Interrupted", "t").inOrder()
     }
 
@@ -100,13 +100,33 @@ class TrackingMarkersTest {
     }
 
     @Test
+    fun aDeliberateStopKeepsItsHatchUnderAVisit() {
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.USER_STOP), session(at(12, 30), null))
+        val stretches = offStretches(m, dayEnd, now = at(20))
+        assertThat(stretches.single().killed).isFalse()
+        assertThat(clipOutOfVisits(stretches, listOf(at(11, 0)..at(14, 0)))).isEqualTo(stretches)
+    }
+
+    @Test
+    fun aKilledStopJustBeforeMidnightRestartedJustAfterShowsNothing() {
+        val short = TrackingConfig().shortInterruptionMs
+        val killedAt = bounds.second - 2 * 60_000L
+        val restartAt = bounds.second + 60_000L
+        val m = markers(session(at(8, 0), killedAt, SessionEndReason.KILLED), session(restartAt, null))
+        assertThat(m).containsExactly(TrackingMarker(at(8, 0), null))
+        // Past the short interruption the restart no longer cancels the stop, and is still not a marker of this day.
+        val late = markers(session(at(8, 0), killedAt, SessionEndReason.KILLED), session(killedAt + short, null))
+        assertThat(late.map { it.reason }).containsExactly(null, SessionEndReason.KILLED).inOrder()
+    }
+
+    @Test
     fun aStretchInsideAContinuingVisitIsRemoved_oneOverlappingAnEdgeKeepsItsOutsidePart() {
-        val stretch = OffStretch(at(12, 0), at(12, 30))
+        val stretch = OffStretch(at(12, 0), at(12, 30), killed = true)
         assertThat(clipOutOfVisits(listOf(stretch), listOf(at(11, 0)..at(14, 0)))).isEmpty()
         assertThat(clipOutOfVisits(listOf(stretch), listOf(at(11, 0)..at(12, 10))))
-            .containsExactly(OffStretch(at(12, 10), at(12, 30)))
+            .containsExactly(OffStretch(at(12, 10), at(12, 30), killed = true))
         assertThat(clipOutOfVisits(listOf(stretch), listOf(at(12, 20)..at(14, 0))))
-            .containsExactly(OffStretch(at(12, 0), at(12, 20)))
+            .containsExactly(OffStretch(at(12, 0), at(12, 20), killed = true))
         assertThat(clipOutOfVisits(listOf(stretch), listOf(at(9, 0)..at(10, 0)))).containsExactly(stretch)
     }
 

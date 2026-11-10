@@ -26,12 +26,14 @@ data class TrackingMarker(
     val ruleTimes: List<Long> get() = listOfNotNull(stoppedMs, startedMs)
 }
 
-private class Edge(val time: Long, val isStart: Boolean, val reason: SessionEndReason?)
+/** [inside] false: a start after the day, kept only so a KILLED stop just before midnight can see its restart. */
+private class Edge(val time: Long, val isStart: Boolean, val reason: SessionEndReason?, val inside: Boolean = true)
 
 /**
  * The markers for `[dayStart, dayEnd)`: each session's start and end that fall inside the day, in time order. A session
  * crossing midnight contributes only its edge inside the day; an open session only its start. A stop and the next start
- * at most [mergeWindowMs] later become one marker.
+ * at most [mergeWindowMs] later become one marker. A start up to [shortInterruptionMs] after the day only cancels a
+ * KILLED stop just before the end (the caller loads sessions that far past it); it is never a marker of this day.
  */
 fun trackingMarkers(
     sessions: List<TrackingSession>,
@@ -43,7 +45,11 @@ fun trackingMarkers(
 ): List<TrackingMarker> {
     val edges = sessions.flatMap { s ->
         listOfNotNull(
-            if (s.start >= dayStart && s.start < dayEnd) Edge(s.start, true, null) else null,
+            when {
+                s.start >= dayStart && s.start < dayEnd -> Edge(s.start, true, null)
+                s.start >= dayEnd && s.start - dayEnd < shortInterruptionMs -> Edge(s.start, true, null, inside = false)
+                else -> null
+            },
             s.end?.takeIf { it > dayStart && it < dayEnd }?.let { Edge(it, false, s.endReason) },
         )
     }.sortedWith(compareBy<Edge>({ it.time }, { it.isStart })) // a stop sorts before a start at the same instant
@@ -56,7 +62,11 @@ fun trackingMarkers(
             i += 2
             continue
         }
-        if (!e.isStart && next != null && next.isStart && next.time - e.time <= mergeWindowMs) {
+        if (!e.inside) {
+            i++
+            continue
+        }
+        if (!e.isStart && next != null && next.isStart && next.inside && next.time - e.time <= mergeWindowMs) {
             out += TrackingMarker(startedMs = next.time, stoppedMs = e.time, reason = e.reason)
             i += 2
         } else {
@@ -153,7 +163,8 @@ fun markerLines(marker: TrackingMarker, words: MarkerWords, time: (Long) -> Stri
 }
 
 /** A stretch of the day when tracking was off, drawn as a faint hatch. Visual only: gaps (which are about missing data) are separate. */
-data class OffStretch(val start: Long, val end: Long)
+/** [killed]: the stop was the process dying (not a user stop or pause); only such a stretch is clipped out of visits. */
+data class OffStretch(val start: Long, val end: Long, val killed: Boolean = false)
 
 /**
  * The stretches between a stop and the next start. A collapsed pair is its own short stretch. A stop never followed by a
@@ -165,26 +176,28 @@ fun offStretches(markers: List<TrackingMarker>, dayEnd: Long, now: Long?): List<
     return sorted.mapIndexedNotNull { i, m ->
         val stop = m.stoppedMs ?: return@mapIndexedNotNull null
         val end = m.startedMs ?: sorted.getOrNull(i + 1)?.timeMs ?: minOf(now ?: dayEnd, dayEnd)
-        if (end > stop) OffStretch(stop, end) else null
+        if (end > stop) OffStretch(stop, end, killed = m.reason == SessionEndReason.KILLED) else null
     }
 }
 
 /**
- * [stretches] minus the time covered by [visits] (start to end ranges): a visit that carries on across a short stop and
- * restart must not look like time off. A stretch partly inside a visit keeps its outside parts.
+ * The [OffStretch.killed] stretches of [stretches] minus the time covered by [visits] (start to end ranges): a visit that carries on across a short stop and
+ * restart must not look like time off. A stretch partly inside a visit keeps its outside parts. A deliberate stop or pause
+ * keeps its hatch whatever the visit does.
  */
 fun clipOutOfVisits(stretches: List<OffStretch>, visits: List<LongRange>): List<OffStretch> {
     val sorted = visits.sortedBy { it.first }
     return stretches.flatMap { s ->
+        if (!s.killed) return@flatMap listOf(s)
         var from = s.start
         val parts = mutableListOf<OffStretch>()
         for (v in sorted) {
             if (v.last <= from) continue
             if (v.first >= s.end) break
-            if (v.first > from) parts += OffStretch(from, v.first)
+            if (v.first > from) parts += s.copy(start = from, end = v.first)
             from = maxOf(from, v.last)
         }
-        if (from < s.end) parts += OffStretch(from, s.end)
+        if (from < s.end) parts += s.copy(start = from)
         parts
     }
 }
