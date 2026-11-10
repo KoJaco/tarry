@@ -2,10 +2,12 @@ package me.tarry.app.ui.about
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +17,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +83,12 @@ fun AboutContent(
             .padding(horizontal = space.gutter, vertical = space.l),
         verticalArrangement = Arrangement.spacedBy(space.s),
     ) {
+        // Decorative: the title below names the app.
+        Image(
+            painter = painterResource(R.drawable.tarry_logo),
+            contentDescription = null,
+            modifier = Modifier.size(64.dp).testTag("about_logo"),
+        )
         Text(
             text = stringResource(R.string.about_title),
             style = MaterialTheme.typography.headlineMedium,

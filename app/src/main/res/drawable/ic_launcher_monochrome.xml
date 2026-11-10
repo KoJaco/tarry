@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tarry mark, monochrome for themed icons (docs/brand/logo/tarry-mark.svg, 100-unit viewBox): an ink trail that ends at an apricot stop.
+  Scaled 0.7 and centred inside the 66 dp adaptive-icon safe zone of the 108 dp canvas.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:scaleX="0.7"
+        android:scaleY="0.7"
+        android:translateX="20.225"
+        android:translateY="19.175">
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M14,67 C32,67 34,41 54,41 L61,41"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineCap="round"
+            android:strokeWidth="13" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M59,41 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0" />
+    </group>
+</vector>

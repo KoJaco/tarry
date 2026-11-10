@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The full Tarry logo (docs/brand/logo/tarry-mark.svg): the mark on a `paper` rounded square. Same colours in dark mode. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+    <path
+        android:fillColor="#F3EFE8"
+        android:pathData="M20,0 h60 a20,20 0 0,1 20,20 v60 a20,20 0 0,1 -20,20 h-60 a20,20 0 0,1 -20,-20 v-60 a20,20 0 0,1 20,-20 z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M14,67 C32,67 34,41 54,41 L61,41"
+        android:strokeColor="#1B1813"
+        android:strokeLineCap="round"
+        android:strokeWidth="13" />
+    <path
+        android:fillColor="#F2B064"
+        android:pathData="M59,41 a15,15 0 1,0 30,0 a15,15 0 1,0 -30,0" />
+</vector>
