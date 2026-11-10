@@ -1,5 +1,6 @@
 package me.tarry.app.ui.schedule
 
+import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.ScheduleChange
 import me.tarry.app.tracking.TrackingClock
@@ -77,6 +79,7 @@ class ScheduleViewModel @Inject constructor(
     private val trackingState: TrackingStateRepository,
     private val clock: TrackingClock,
     @param:CaptureScope private val captureScope: CoroutineScope,
+    private val reviewReminder: ReviewReminderScheduler,
 ) : ViewModel() {
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<ScheduleUiState> = _state.asStateFlow()
@@ -179,6 +182,15 @@ class ScheduleViewModel @Inject constructor(
                 // Keep the draft (still dirty) and say so; the user can retry.
                 _state.update { it.copy(saving = false, saveFailed = true) }
                 return@launch
+            }
+            // The review reminder follows the scheduled days. It is not part of the save: a failure here must not mark the save failed
+            // (the next app start re-arms it).
+            try {
+                reviewReminder.rearm()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w("ScheduleViewModel", "Review reminder re-arm failed after a schedule save", e)
             }
             load()
         }

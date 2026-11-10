@@ -47,3 +47,11 @@ data class PlaceDetailRoute(val id: String) : NavKey
 /** Summary of job blocks over a date range (phase 7). A bottom-bar tab, like [SettingsRoute]. */
 @Serializable
 data object SummaryRoute : NavKey
+
+/** About screen (phase 8a). Pushed on top of [SettingsRoute]. */
+@Serializable
+data object AboutRoute : NavKey
+
+/** Open-source licences (phase 8a). Pushed on top of [AboutRoute]. */
+@Serializable
+data object LicencesRoute : NavKey

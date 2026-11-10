@@ -68,6 +68,9 @@
         <receiver
             android:name=".tracking.ScheduleAlarmReceiver"
             android:exported="false" />
+        <receiver
+            android:name=".reminder.ReviewReminderReceiver"
+            android:exported="false" />
         <!-- System broadcasts come from the system UID, so this stays non-exported. -->
         <receiver
             android:name=".tracking.ScheduleRearmReceiver"

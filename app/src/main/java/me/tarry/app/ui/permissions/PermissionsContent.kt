@@ -12,6 +12,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.AlertDialog
@@ -26,6 +27,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import me.tarry.app.R
 import me.tarry.app.ui.components.Chevron
 import me.tarry.app.ui.components.PrimaryButton
@@ -140,7 +142,10 @@ private fun PermissionRow(entry: PermissionItem, actions: PermissionsActions) {
                             painter = painterResource(if (granted) R.drawable.ic_check else R.drawable.ic_close),
                             contentDescription = null,
                             tint = statusColor,
-                            modifier = Modifier.size(18.dp),
+                            // 18 sp as dp: the icon grows with the font so it stays in proportion with the status word.
+                            modifier = Modifier
+                                .size(with(LocalDensity.current) { StatusIconSize.toDp() })
+                                .testTag("permission_status_icon_${step.name}"),
                         )
                         Text(
                             text = stringResource(entry.status.labelRes()),
@@ -183,6 +188,8 @@ private fun PermissionRow(entry: PermissionItem, actions: PermissionsActions) {
     }
 }
 
+
+private val StatusIconSize = 18.sp
 
 private fun PermissionStep.iconRes(): Int = when (this) {
     PermissionStep.LOCATION -> R.drawable.ic_location_pin

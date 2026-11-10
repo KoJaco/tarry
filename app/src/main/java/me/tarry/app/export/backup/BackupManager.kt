@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.longPreferencesKey
 import dagger.Binds
 import dagger.Module
@@ -17,13 +18,17 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import me.tarry.app.BuildConfig
+import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.segmentation.SegmentationUpgrade
+import me.tarry.segmentation.SegmentationParams
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.app.tracking.TrackingController
 import me.tarry.app.ui.timeline.DeclinedSuggestionsDataStore
 import me.tarry.core.data.db.BackupCounts
 import me.tarry.core.data.db.BackupSnapshot
 import me.tarry.core.data.db.BackupStore
+import me.tarry.core.data.db.entity.ManualOverride
+import me.tarry.core.data.repository.restoredPrunedBefore
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.SettingsRepository
 import java.io.IOException
@@ -41,19 +46,38 @@ interface RestoreHooks {
      */
     suspend fun <T> captureSuspended(block: suspend () -> T): T
 
+    /** As [captureSuspended], with the manual overrides that were active before capture was stopped, for a caller that wipes them and must put them back. */
+    suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T
+
     /** After the data is replaced and tracking reconciled: the segmentation upgrade check. */
     suspend fun afterRestore()
+}
+
+/**
+ * What follows a restore or a delete-all: the segmentation upgrade check, then (even if that throws) the review reminder
+ * re-arm, because the restore may have replaced the reminder setting and the schedule behind the alarm's back.
+ */
+internal suspend fun afterRestoreSteps(upgrade: suspend () -> Unit, reviewReminder: ReviewReminderScheduler) {
+    try {
+        upgrade()
+    } finally {
+        reviewReminder.rearm()
+    }
 }
 
 /** [RestoreHooks] over the real controller. */
 class TrackingRestoreHooks @Inject constructor(
     private val controller: TrackingController,
     private val upgrade: SegmentationUpgrade,
+    private val reviewReminder: ReviewReminderScheduler,
 ) : RestoreHooks {
     override suspend fun <T> captureSuspended(block: suspend () -> T): T = controller.withCaptureSuspended(block)
 
+    override suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+        controller.withCaptureSuspendedKeeping(block)
+
     override suspend fun afterRestore() {
-        upgrade.runIfNeeded()
+        afterRestoreSteps({ upgrade.runIfNeeded() }, reviewReminder)
     }
 }
 
@@ -63,6 +87,9 @@ interface DataBackup {
     suspend fun backUp(uri: Uri): BackupCounts
     suspend fun preview(uri: Uri): RestorePreview
     suspend fun restore(preview: RestorePreview): BackupCounts
+
+    /** Removes every visit, trip, place, job and location from this phone. Settings and the schedule stay. */
+    suspend fun deleteAll()
 }
 
 @Module
@@ -105,6 +132,7 @@ class BackupManager @Inject constructor(
     private val settingsRepo: SettingsRepository,
     private val hooks: RestoreHooks,
     private val clock: TrackingClock,
+    private val params: SegmentationParams,
 ) : DataBackup {
     override suspend fun currentCounts(): BackupCounts = store.counts()
 
@@ -132,7 +160,7 @@ class BackupManager @Inject constructor(
             createdAt = clock.nowMs(),
             zoneId = clock.zone().id,
             appVersionName = BuildConfig.VERSION_NAME,
-            settings = settingsStore.data.first().toEntries(skip = setOf(Settings.LAST_BACKUP_KEY)),
+            settings = settingsStore.data.first().toEntries(skip = setOf(Settings.LAST_BACKUP_KEY, Settings.PRUNED_BEFORE_KEY)),
             declinedSuggestions = declinedStore.data.first().toEntries(),
             tables = head.snapshot.toTables(),
         )
@@ -228,9 +256,11 @@ class BackupManager @Inject constructor(
                         }
                     }
                     declinedStore.updateData { _ -> preview.declined }
+                    var prunedBefore: Long? = null
                     // Pass 2: the file is streamed again straight into the transaction.
                     store.replaceAllStreaming(preview.snapshot, preview.createdAt) { insert ->
                         var n = 0
+                        var earliestPing: Long? = null
                         // The same ping checks as pass 1, with fresh state: a swapped file with the same count is rejected.
                         val checker = BackupCodec.PingChecker(preview.snapshot.sessions.mapTo(HashSet()) { s -> s.id })
                         BackupCodec.read(
@@ -239,15 +269,20 @@ class BackupManager @Inject constructor(
                                 checker.inline(chunk)
                                 insert(chunk.map { it.toEntity() })
                                 n += chunk.size
+                                earliestPing = listOfNotNull(earliestPing, chunk.minOfOrNull { it.timestamp }).minOrNull()
                             },
                         ) { chunk ->
                             checker.streamed(chunk)
                             insert(chunk.map { it.toEntity() })
                             n += chunk.size
+                            earliestPing = listOfNotNull(earliestPing, chunk.minOfOrNull { it.timestamp }).minOrNull()
                         }
                         // The file changed between the passes: roll back rather than restore something not previewed.
                         if (n != preview.pingCount) throw BackupException(BackupError.DAMAGED)
+                        // A backup made after pruning has sessions that start before their first ping.
+                        prunedBefore = restoredPrunedBefore(preview.snapshot.sessions.minOfOrNull { s -> s.start }, earliestPing, params.overlapMs)
                     }
+                    settingsRepo.setPrunedBeforeMs(prunedBefore)
                 } catch (e: Exception) {
                     runCatching { settingsStore.updateData { _ -> oldSettings } }
                     runCatching { declinedStore.updateData { _ -> oldDeclined } }
@@ -263,6 +298,31 @@ class BackupManager @Inject constructor(
             // The data is restored. The segmentation upgrade check runs again at the next app start.
         }
         preview.counts
+    }
+
+    /**
+     * Deletes all recorded data ([BackupStore.deleteAll]) with tracking suspended, as a restore does: capture stops
+     * (closing any open session), Room is cleared in one transaction, then tracking reconciles and resumes per the
+     * schedule. Manual overrides active before the delete (a pause, a manual start) survive it. Settings, the schedule and the `last_backup_ms` stamp are kept; the declined suggestions (they name
+     * deleted visits and places) are cleared with the data. Cannot be cancelled half way. Throws
+     * [BackupError.DELETE_FAILED] if the delete fails; Room has then rolled back and nothing was removed.
+     */
+    override suspend fun deleteAll() = withContext(Dispatchers.IO + NonCancellable) {
+        try {
+            hooks.captureSuspendedKeepingOverrides { activeBefore ->
+                store.deleteAll(keepOverrides = activeBefore)
+                settingsRepo.setPrunedBeforeMs(null)
+                // Only a hint list: a failure here must not report the delete as failed.
+                runCatching { declinedStore.updateData { _ -> emptyPreferences() } }
+            }
+        } catch (e: Exception) {
+            throw BackupException(BackupError.DELETE_FAILED, e)
+        }
+        try {
+            hooks.afterRestore()
+        } catch (e: Exception) {
+            // The data is deleted. The segmentation upgrade check runs again at the next app start.
+        }
     }
 
     private companion object {

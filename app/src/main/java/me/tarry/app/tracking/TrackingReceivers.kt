@@ -12,6 +12,7 @@ import com.google.android.gms.location.GeofencingEvent
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import me.tarry.app.reminder.ReviewReminderScheduler
 import javax.inject.Inject
 
 /** Runs [block] off the main thread while keeping the receiver alive. */
@@ -84,10 +85,13 @@ class TrackingActionReceiver : BroadcastReceiver() {
 class ScheduleAlarmReceiver : BroadcastReceiver() {
     @Inject lateinit var controller: TrackingController
 
+    @Inject lateinit var reviewReminder: ReviewReminderScheduler
+
     @Inject @CaptureScope lateinit var scope: CoroutineScope
 
     override fun onReceive(context: Context, intent: Intent) {
-        runAsync(scope) { controller.reconcile(ReconcileSource.ALARM) }
+        // A scheduled window starting also recomputes the review reminder (covers a schedule that had no day in its look-ahead).
+        runAsync(scope) { try { controller.reconcile(ReconcileSource.ALARM) } finally { reviewReminder.rearm() } }
     }
 }
 
@@ -101,15 +105,19 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
 class ScheduleRearmReceiver : BroadcastReceiver() {
     @Inject lateinit var controller: TrackingController
 
+    @Inject lateinit var reviewReminder: ReviewReminderScheduler
+
     @Inject @CaptureScope lateinit var scope: CoroutineScope
 
     override fun onReceive(context: Context, intent: Intent) {
+        // The review reminder (an inexact alarm of its own) is lost and recomputed on the same events; it re-arms even if tracking's step throws.
         when (intent.action) {
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
-            -> runAsync(scope) { controller.onClockChanged() }
+            -> runAsync(scope) { try { controller.onClockChanged() } finally { reviewReminder.rearm() } }
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
+            -> runAsync(scope) { try { controller.reconcile(ReconcileSource.SYSTEM) } finally { reviewReminder.rearm() } }
             AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED,
             -> runAsync(scope) { controller.reconcile(ReconcileSource.SYSTEM) }
         }

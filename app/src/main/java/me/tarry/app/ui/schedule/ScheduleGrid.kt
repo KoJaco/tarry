@@ -63,6 +63,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.ui.timeline.NarrowFontScale
+import me.tarry.app.ui.timeline.weekdayLabel
+import me.tarry.app.ui.timeline.weekdayPrefix
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.core.data.model.Schedule
 import java.time.DayOfWeek
@@ -103,8 +106,11 @@ fun ScheduleGrid(
     listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = ScheduleGridInitialSlot),
 ) {
     val locale = currentLocale()
-    val shortNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.SHORT, locale) } }
-    val narrowNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.NARROW, locale) } }
+    // One form for every header at a given font scale (the week strip's rule); if even that overflows, all drop to one letter together.
+    val fontScale = LocalDensity.current.fontScale
+    var oneLetter by remember(fontScale, locale) { mutableStateOf(false) }
+    val shortNames = remember(locale, fontScale) { DayOfWeek.entries.map { weekdayLabel(it, locale, narrow = fontScale >= NarrowFontScale) } }
+    val narrowNames = remember(locale) { DayOfWeek.entries.map { weekdayPrefix(it, locale, 1) } }
     val fullNames = remember(locale) { DayOfWeek.entries.map { dayName(it, TextStyle.FULL, locale) } }
     val labelWidth = hourLabelWidth()
     Column(modifier) {
@@ -112,8 +118,8 @@ fun ScheduleGrid(
             Spacer(Modifier.width(labelWidth))
             DayOfWeek.entries.forEach { day ->
                 DayHeader(
-                    shortName = shortNames[day.ordinal],
-                    narrowName = narrowNames[day.ordinal],
+                    label = if (oneLetter) narrowNames[day.ordinal] else shortNames[day.ordinal],
+                    onOverflow = { oneLetter = true },
                     fullName = fullNames[day.ordinal],
                     highlighted = day == highlightDay,
                     onClick = { onDayHeaderClick(day) },
@@ -132,13 +138,10 @@ private fun hourLabelWidth(): Dp {
 }
 
 @Composable
-private fun DayHeader(shortName: String, narrowName: String, fullName: String, highlighted: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun DayHeader(label: String, onOverflow: () -> Unit, fullName: String, highlighted: Boolean, onClick: () -> Unit, modifier: Modifier) {
     val c = TarryTheme.colors
     val edit = stringResource(R.string.schedule_edit_day, fullName)
     val today = stringResource(R.string.schedule_today)
-    // Large font scales leave a column too narrow for the short name: fall back to the narrow one rather than clip.
-    val fontScale = LocalDensity.current.fontScale
-    var narrow by remember(shortName, fontScale) { mutableStateOf(false) }
     Box(
         modifier = modifier
             .heightIn(min = 48.dp)
@@ -150,13 +153,13 @@ private fun DayHeader(shortName: String, narrowName: String, fullName: String, h
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = if (narrow) narrowName else shortName,
+            text = label,
             style = MaterialTheme.typography.labelMedium,
             color = if (highlighted) c.onAccentSoft else c.ink,
             textAlign = TextAlign.Center,
             maxLines = 1,
             softWrap = false,
-            onTextLayout = { if (it.didOverflowWidth) narrow = true },
+            onTextLayout = { if (it.didOverflowWidth) onOverflow() },
             modifier = Modifier
                 .clip(TarryTheme.shapes.pill)
                 .background(if (highlighted) c.accentSoft else Color.Transparent)

@@ -36,7 +36,11 @@ import androidx.navigation3.ui.NavDisplay
 import me.tarry.app.tracking.TrackingState
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.app.ui.catalog.JobsScreen
+import me.tarry.app.ui.about.AboutScreen
+import me.tarry.app.ui.about.LicencesScreen
+import me.tarry.app.ui.navigation.AboutRoute
 import me.tarry.app.ui.navigation.JobsRoute
+import me.tarry.app.ui.navigation.LicencesRoute
 import me.tarry.app.ui.navigation.PlaceDetailRoute
 import me.tarry.app.ui.navigation.PlacesRoute
 import me.tarry.app.ui.navigation.ScheduleRoute
@@ -70,6 +74,9 @@ private enum class AssignStep { NONE, PICK, NEW }
 /** Hilt-wired root. Owns the back stack and connects ViewModels to [TarryAppContent]. */
 @Composable
 fun TarryApp(
+    /** The review-reminder notification was tapped: go to today's Timeline with Needs review on, then call [onOpenReviewHandled]. */
+    openReview: Boolean = false,
+    onOpenReviewHandled: () -> Unit = {},
     shellViewModel: ShellViewModel = hiltViewModel(),
     statusViewModel: ShellStatusViewModel = hiltViewModel(),
     // Owned here, not by the Timeline entry, so the shell can swap its bottom bar while visits are selected.
@@ -96,6 +103,13 @@ fun TarryApp(
     LaunchedEffect(trackingState) { if (trackingState == TrackingState.ATTENTION) customSheetVisible = false }
     val context = LocalContext.current
     val openPermissions = { if (backStack.lastOrNull() != PermissionsRoute) backStack.add(PermissionsRoute) }
+    LaunchedEffect(openReview) {
+        if (openReview) {
+            backStack.navigateTopLevel(TimelineRoute)
+            timelineViewModel.showNeedsReviewToday()
+            onOpenReviewHandled()
+        }
+    }
     var initialChecked by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         if (!initialChecked) {
@@ -141,6 +155,7 @@ fun TarryApp(
                 onOpenSchedule = { if (backStack.lastOrNull() != ScheduleRoute) backStack.add(ScheduleRoute) },
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
                 onOpenPlaces = { if (backStack.lastOrNull() != PlacesRoute) backStack.add(PlacesRoute) },
+                onOpenAbout = { if (backStack.lastOrNull() != AboutRoute) backStack.add(AboutRoute) },
                 snackbarHostState = snackbarHostState,
             )
         },
@@ -152,6 +167,13 @@ fun TarryApp(
             ScheduleScreen(onClose = { if (backStack.lastOrNull() == ScheduleRoute) backStack.removeAt(backStack.lastIndex) })
         },
         jobsContent = { JobsScreen() },
+        aboutContent = {
+            AboutScreen(
+                onOpenLicences = { if (backStack.lastOrNull() != LicencesRoute) backStack.add(LicencesRoute) },
+                snackbarHostState = snackbarHostState,
+            )
+        },
+        licencesContent = { LicencesScreen() },
         placesContent = { PlacesScreen(onOpenPlace = { if (backStack.lastOrNull() != PlaceDetailRoute(it)) backStack.add(PlaceDetailRoute(it)) }) },
         placeDetailContent = { id ->
             PlaceDetailScreen(
@@ -245,6 +267,8 @@ fun TarryAppContent(
     sessionsContent: @Composable () -> Unit = {},
     scheduleContent: @Composable () -> Unit = {},
     jobsContent: @Composable () -> Unit = {},
+    aboutContent: @Composable () -> Unit = {},
+    licencesContent: @Composable () -> Unit = {},
     placesContent: @Composable () -> Unit = {},
     placeDetailContent: @Composable (String) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -287,6 +311,8 @@ fun TarryAppContent(
                 entry<SessionsRoute> { sessionsContent() }
                 entry<ScheduleRoute> { scheduleContent() }
                 entry<JobsRoute> { jobsContent() }
+                entry<AboutRoute> { aboutContent() }
+                entry<LicencesRoute> { licencesContent() }
                 entry<PlacesRoute> { placesContent() }
                 entry<PlaceDetailRoute> { placeDetailContent(it.id) }
             },

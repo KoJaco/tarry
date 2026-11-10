@@ -50,6 +50,8 @@ data class TrackingStatus(
     val finishingUpCapMs: Long? = null,
     /** Recent schedule saves, ascending; edits count from the moment they were saved (see [ScheduleEdit]). */
     val scheduleEdits: List<ScheduleEdit> = emptyList(),
+    /** The local date the review reminder last fired (or was skipped as empty); a once-a-day guard, local state only. */
+    val lastReviewReminderDate: LocalDate? = null,
 )
 
 /** Activity Recognition transitions seen in one session: how many, how many were ignored (an equal or newer one was already applied), and the last one. */
@@ -108,6 +110,7 @@ class TrackingStatusStore @Inject constructor(
             finishingUpSinceMs = p[FINISHING_UP_SINCE],
             finishingUpCapMs = p[FINISHING_UP_CAP],
             scheduleEdits = decodeScheduleEdits(p[SCHEDULE_EDITS]),
+            lastReviewReminderDate = p[REVIEW_REMINDER_DATE]?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
         )
     }
 
@@ -145,6 +148,7 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
     suspend fun setAlarmDegraded(degraded: Boolean) = set(ALARM_DEGRADED, degraded)
+    suspend fun setLastReviewReminderDate(date: LocalDate?) = set(REVIEW_REMINDER_DATE, date?.toString())
 
     /** Appends [edit] to the history, pruning edits older than [retentionDays] and keeping at most [max] (see [ScheduleEdit.append]). */
     suspend fun appendScheduleEdit(edit: ScheduleEdit, retentionDays: Long, max: Int) {
@@ -213,6 +217,7 @@ class TrackingStatusStore @Inject constructor(
         val FINISHING_UP_CAP = longPreferencesKey("finishing_up_cap_ms")
         val SCHEDULE_EDITS = stringPreferencesKey("schedule_edits")
         val AR_LOG = stringPreferencesKey("ar_log")
+        val REVIEW_REMINDER_DATE = stringPreferencesKey("review_reminder_last_date")
         const val AR_LOG_SESSIONS = 20
     }
 }

@@ -103,7 +103,6 @@
 
 ## 6. Icons and illustration
 - **Icons:** Material Symbols Rounded, weight 300, grade 0, 24 px, imported as vector drawables from `google/material-design-icons` (Apache-2.0). Name the source in a comment at the top of the file.
-  - **Known gap:** `ic_route`, `ic_session_complete`, `ic_session_killed`, `ic_session_open`, `ic_stat_tracking`, `ic_summary`, `ic_table`, `ic_zoom_in` and `ic_zoom_out` are classic Material Icons (24-unit viewport). Replace them with their Symbols versions when a screen using them is next touched, or in phase 8.
 - **No illustrations.** Empty states are text only. The brand uses real app screens instead (landing page). An onboarding illustration needs an owner decision and an entry here first.
 - **No emoji** in UI text.
 

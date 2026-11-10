@@ -5,7 +5,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertHasNoClickAction
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -178,12 +179,11 @@ class SettingsBillingUiTest {
     }
 
     @Test
-    fun movedRowsStayDisplayOnly() {
+    fun movedRowsShowTheirValues() {
         show(Settings(reviewReminderEnabled = true, reviewReminderMinuteOfDay = 20 * 60 + 5, rawPingRetentionDays = null))
-        composeRule.onNode(hasText("Review reminder") and hasText("On")).assertExists()
-        composeRule.onNode(hasText("Review reminder time") and hasText("20:05")).assertExists()
+        composeRule.onNode(hasText("Review reminder") and androidx.compose.ui.test.isToggleable()).assertIsOn()
+        composeRule.onNode(hasText("Review reminder time") and hasText("8:05 PM", ignoreCase = true)).assertExists()
         composeRule.onNode(hasText("Raw location retention") and hasText("Forever")).assertExists()
-        composeRule.onNode(hasText("Review reminder time")).assertHasNoClickAction()
-        composeRule.onNode(hasText("Raw location retention")).assertHasNoClickAction()
+        composeRule.onNode(hasText("Review reminder time")).assertHasClickAction()
     }
 }

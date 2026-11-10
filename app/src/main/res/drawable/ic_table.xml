@@ -1,10 +1,12 @@
+<!-- Material Symbols Rounded "table", weight 300, grade 0, 24 px (google/material-design-icons, Apache-2.0). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-  <path
-      android:fillColor="@android:color/white"
-      android:fillType="evenOdd"
-      android:pathData="M3,5h18v14h-18ZM5,7v2.5h4.5v-2.5ZM11.5,7v2.5h7.5v-2.5ZM5,11.5v2h4.5v-2ZM11.5,11.5v2h7.5v-2ZM5,15.5v2h4.5v-2ZM11.5,15.5v2h7.5v-2Z"/>
+    android:viewportWidth="960"
+    android:viewportHeight="960">
+  <group android:translateY="960">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M140-212.31v-535.38q0-29.83 21.24-51.07Q182.48-820 212.31-820h535.38q29.83 0 51.07 21.24Q820-777.52 820-747.69v535.38q0 29.83-21.24 51.07Q777.52-140 747.69-140H212.31q-29.83 0-51.07-21.24Q140-182.48 140-212.31Zm60-384.61h560v-150.77q0-5.39-3.46-8.85t-8.85-3.46H212.31q-5.39 0-8.85 3.46t-3.46 8.85v150.77Zm206.46 198.46h147.08v-138.46H406.46v138.46Zm0 198.46h147.08v-138.46H406.46V-200ZM200-398.46h146.46v-138.46H200v138.46Zm413.54 0H760v-138.46H613.54v138.46ZM212.31-200h134.15v-138.46H200v126.15q0 5.39 3.46 8.85t8.85 3.46Zm401.23 0h134.15q5.39 0 8.85-3.46t3.46-8.85v-126.15H613.54V-200Z"/>
+  </group>
 </vector>

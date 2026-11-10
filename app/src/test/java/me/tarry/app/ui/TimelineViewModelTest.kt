@@ -352,6 +352,23 @@ class TimelineViewModelTest {
         assertThat(vm.selectedDate.value).isEqualTo(day)
     }
 
+
+    @Test
+    fun showNeedsReviewTodaySelectsTodayAndRaisesTheFlagUntilConsumed() {
+        val vm = viewModel()
+        vm.selectDate(day.minusDays(4))
+        assertThat(vm.reviewOnlyRequested.value).isFalse()
+
+        vm.showNeedsReviewToday()
+
+        assertThat(vm.selectedDate.value).isEqualTo(day)
+        assertThat(vm.reviewOnlyRequested.value).isTrue()
+
+        vm.consumeReviewOnlyRequest()
+
+        assertThat(vm.reviewOnlyRequested.value).isFalse()
+        assertThat(vm.selectedDate.value).isEqualTo(day)
+    }
     @Test
     fun nextDayStopsAtToday() {
         val vm = viewModel()

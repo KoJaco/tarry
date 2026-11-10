@@ -366,7 +366,8 @@ private fun JobPickerSection(state: EditDrawerState, jobId: String?, purpose: Jo
     val title = stringResource(R.string.edit_job_row_title)
     val choose = stringResource(R.string.edit_job_choose)
     Section(R.string.edit_section_job) {
-        SettingsGroup { row(title = title, onClick = { onOpen(DrawerDialog.JobPicker(purpose)) }, value = job?.name ?: choose) }
+        // The name sits under "Job" (not beside it) so a long name never squeezes the title.
+        SettingsGroup { row(title = title, onClick = { onOpen(DrawerDialog.JobPicker(purpose)) }, subtitle = job?.name ?: choose) }
         if (jobId == null) {
             Text(
                 stringResource(R.string.edit_job_required),

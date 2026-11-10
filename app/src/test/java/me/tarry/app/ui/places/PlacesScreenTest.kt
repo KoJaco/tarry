@@ -1,7 +1,9 @@
 package me.tarry.app.ui.places
 
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -59,6 +61,13 @@ class PlacesScreenTest {
         composeRule.onNodeWithText("Home").performClick()
 
         assertThat(opened).containsExactly("a")
+    }
+
+    @Test
+    fun everyPlaceRowEndsWithAChevron() {
+        show(PlacesUiState(listOf(PlaceRow("a", "Shop", 3, daysAgo(0), ignored = false), PlaceRow("b", "Home", 1, daysAgo(1), ignored = true))))
+
+        composeRule.onAllNodesWithTag("row_chevron", useUnmergedTree = true).assertCountEquals(2)
     }
 
     @Test

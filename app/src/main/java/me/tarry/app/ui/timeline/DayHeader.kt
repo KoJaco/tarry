@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,6 +28,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.sp
 import me.tarry.app.R
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.components.TertiaryButton
@@ -62,10 +65,16 @@ fun DayHeader(
     val titles: @Composable (Modifier) -> Unit = { m ->
         Column(modifier = m) {
             Text(weekday, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.muted)
+            // headlineMedium, not display, and beside the buttons it steps down (to 20 sp) to stay on one line on narrow
+            // phones: long dates ("30 September") keep clear of the buttons. Dates with a year may still take two lines.
+            val headline = MaterialTheme.typography.headlineMedium
+            val oneLine = !wrap && date.year == today.year
             Text(
                 text = dateText,
-                style = MaterialTheme.typography.displaySmall,
+                style = headline,
                 color = TarryTheme.colors.ink,
+                maxLines = if (oneLine) 1 else Int.MAX_VALUE,
+                autoSize = if (oneLine) TextAutoSize.StepBased(minFontSize = 20.sp, maxFontSize = headline.fontSize, stepSize = 1.sp) else null,
                 modifier = Modifier
                     .semantics {
                         heading()
@@ -106,7 +115,7 @@ fun DayHeader(
         }
     } else {
         Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            titles(Modifier.weight(1f))
+            titles(Modifier.weight(1f).padding(end = TarryTheme.space.m))
             buttons()
         }
     }

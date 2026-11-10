@@ -248,11 +248,18 @@ class TrackingController @Inject constructor(
      * wrote is ended), then the state reconciles and the exception is rethrown. If the final reconcile itself fails, the
      * outage is reported through the health path (ATTENTION and a Gap), never swallowed.
      */
-    suspend fun <T> withCaptureSuspended(block: suspend () -> T): T = mutex.withLock {
+    suspend fun <T> withCaptureSuspended(block: suspend () -> T): T = withCaptureSuspendedKeeping { block() }
+
+    /**
+     * Like [withCaptureSuspended], but [block] is given the manual overrides that were active before the stop changed
+     * anything (a user pause, a manual start), exactly as they were. A caller that wipes the override table (delete all)
+     * writes them back, so the final reconcile sees the state the user left, and the PAUSE the stop wrote is not left behind.
+     */
+    suspend fun <T> withCaptureSuspendedKeeping(block: suspend (activeBefore: List<ManualOverride>) -> T): T = mutex.withLock {
         val activeBefore = trackingRepo.observeActiveOverrides().first()
         stopLocked()
         val result = try {
-            block()
+            block(activeBefore)
         } catch (e: Throwable) {
             val now = clock.nowMs()
             val ids = activeBefore.mapTo(HashSet()) { it.id }

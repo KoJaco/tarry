@@ -1,0 +1,8 @@
+Map data © OpenStreetMap contributors.
+
+The maps in Tarry use OpenStreetMap data, which is made available under the Open Database Licence (ODbL) 1.0. Vector tiles are served by OpenFreeMap and built with OpenMapTiles.
+
+You are free to copy, distribute, transmit and adapt the data, as long as you credit OpenStreetMap and its contributors. If you alter or build upon the data, you may distribute the result only under the same licence.
+
+Full licence text: https://opendatacommons.org/licenses/odbl/
+About the data: https://www.openstreetmap.org/copyright

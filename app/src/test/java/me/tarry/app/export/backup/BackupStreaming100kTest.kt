@@ -1,5 +1,6 @@
 package me.tarry.app.export.backup
 
+import me.tarry.segmentation.SegmentationParams
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
@@ -69,8 +70,8 @@ class BackupStreaming100kTest {
         declinedStore = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("declined.preferences_pb") }
         settingsRepo = SettingsRepository(settingsStore)
         val clock = FakeClock(now = 1_700_000_000_000L)
-        manager = BackupManager(context, BackupStore(source), settingsStore, declinedStore, settingsRepo, RecordingHooks(), clock)
-        targetManager = BackupManager(context, BackupStore(target), settingsStore, declinedStore, settingsRepo, RecordingHooks(), clock)
+        manager = BackupManager(context, BackupStore(source), settingsStore, declinedStore, settingsRepo, RecordingHooks(), clock, SegmentationParams())
+        targetManager = BackupManager(context, BackupStore(target), settingsStore, declinedStore, settingsRepo, RecordingHooks(), clock, SegmentationParams())
     }
 
     @After

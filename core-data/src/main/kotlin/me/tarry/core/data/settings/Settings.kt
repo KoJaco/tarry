@@ -30,6 +30,8 @@ data class Settings(
         const val DEFAULT_REVIEW_REMINDER_MINUTE = 1050
         /** DataStore key of [lastBackupMs]; device-local, so a backup file neither carries nor overwrites it. */
         const val LAST_BACKUP_KEY = "last_backup_ms"
+        /** DataStore key of the pruned-before watermark; derived from the stored data, so a backup file neither carries nor sets it. */
+        const val PRUNED_BEFORE_KEY = "pings_pruned_before_ms"
         const val DEFAULT_STAY_RADIUS_M = 100
         const val DEFAULT_WINDOW_END_GRACE_MIN = 60
         const val DEFAULT_TIMELINE_ZOOM_MINUTES = 15

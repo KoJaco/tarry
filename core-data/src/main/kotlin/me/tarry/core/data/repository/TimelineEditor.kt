@@ -27,8 +27,9 @@ fun interface EditClock {
 }
 
 /**
- * Earliest instant a place op may rewind segmentation to: the start of the raw-ping retention window (0 when pings are
- * kept forever). Older pings are purged, so re-detecting before it would only erase history. Same window as `SegmentationUpgrade`.
+ * Earliest instant an edit may rewind segmentation to: the start of the raw-ping retention window (0 when pings are
+ * kept forever), moved up past anything actually pruned ([RetentionFloor]). Older pings are purged, so re-detecting
+ * before it would only erase history. Same floor as `SegmentationUpgrade`.
  */
 fun interface RewindFloor {
     suspend fun floorMs(): Long
@@ -352,6 +353,8 @@ class TimelineEditor @Inject constructor(
      */
     suspend fun resetToDetected(visitId: String): EditResult = db.withTransaction {
         val v = liveVisit(visitId) ?: return@withTransaction EditResult.NotFound
+        // Older than the retained pings there is nothing to re-detect from, and an unfrozen visit would be deleted by the next run.
+        if (v.start < rewindFloor.floorMs()) return@withTransaction EditResult.NotFound
         val undo = snapshotRange(v.start, v.end)
         val now = clock.nowMs()
         visits.upsert(v.copy(freeNotes = "", frozen = false, updatedAt = now))
@@ -395,7 +398,7 @@ class TimelineEditor @Inject constructor(
             val created = livePlace(id)
             if (created != null && visits.getLiveByPlace(id).isEmpty()) places.upsert(created.copy(deleted = true, updatedAt = now))
         }
-        snapshot.range?.let { rewindCheckpoint(if (snapshot.places.isNotEmpty()) maxOf(it.first, rewindFloor.floorMs()) else it.first) }
+        snapshot.range?.let { rewindCheckpoint(it.first) }
         EditResult.Ok()
     }
 
@@ -421,10 +424,14 @@ class TimelineEditor @Inject constructor(
         )
     }
 
-    /** Segmentation only reprocesses from the checkpoint, so an edit before it must pull the checkpoint back. */
+    /**
+     * Segmentation only reprocesses from the checkpoint, so an edit before it must pull the checkpoint back, but never
+     * before [RewindFloor]: older pings are purged, so re-detecting there would erase unfrozen history and add gaps.
+     */
     private suspend fun rewindCheckpoint(editStart: Long) {
         val current = checkpoints.getById()?.processedUntil ?: return
-        if (editStart < current) checkpoints.upsert(SegmentationCheckpoint(processedUntil = editStart))
+        val target = maxOf(editStart, rewindFloor.floorMs())
+        if (target < current) checkpoints.upsert(SegmentationCheckpoint(processedUntil = target))
     }
 
     // region place naming
@@ -543,9 +550,9 @@ class TimelineEditor @Inject constructor(
 
     private suspend fun livePlace(id: String): Place? = places.getById(id)?.takeUnless { it.deleted }
 
-    /** Pulls the checkpoint back to [from] (the earliest unfrozen visit the op touched; null means nothing to re-detect) so the next run reprocesses it, but never before [RewindFloor] (purged pings). */
+    /** Pulls the checkpoint back to [from] (the earliest unfrozen visit the op touched; null means nothing to re-detect) so the next run reprocesses it (clamped to [RewindFloor] by [rewindCheckpoint]). */
     private suspend fun rewindForPlaces(from: Long?) {
-        if (from != null) rewindCheckpoint(maxOf(from, rewindFloor.floorMs()))
+        if (from != null) rewindCheckpoint(from)
     }
 
     /**

@@ -18,7 +18,7 @@ import java.util.zip.GZIPOutputStream
 import java.util.zip.ZipException
 
 /** Why a backup or restore did not happen; each maps to one user-facing message. */
-enum class BackupError { CANNOT_OPEN, NOT_A_BACKUP, TOO_NEW, DAMAGED, WRITE_FAILED, RESTORE_FAILED }
+enum class BackupError { CANNOT_OPEN, NOT_A_BACKUP, TOO_NEW, DAMAGED, WRITE_FAILED, RESTORE_FAILED, DELETE_FAILED }
 
 class BackupException(val error: BackupError, cause: Throwable? = null) : Exception(error.name, cause)
 

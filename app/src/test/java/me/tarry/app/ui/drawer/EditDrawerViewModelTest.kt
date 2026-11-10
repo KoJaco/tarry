@@ -45,6 +45,7 @@ import me.tarry.core.data.repository.JobBlockRepository
 import me.tarry.core.data.repository.JobRepository
 import me.tarry.core.data.repository.MergeDirection
 import me.tarry.core.data.repository.PlaceRepository
+import me.tarry.core.data.repository.RewindFloor
 import me.tarry.core.data.repository.TimelineEditor
 import me.tarry.core.data.repository.TimelineRepository
 import org.junit.After
@@ -67,6 +68,8 @@ class EditDrawerViewModelTest {
     private lateinit var undoEvents: UndoEvents
     private lateinit var viewModel: EditDrawerViewModel
 
+    private var floorMs = 0L
+    private val rewindFloor = RewindFloor { floorMs }
     private val minute = 60_000L
     private val base = 1_800_000_000_000L
     private val zone = "Australia/Sydney"
@@ -89,7 +92,7 @@ class EditDrawerViewModelTest {
         undoEvents = UndoEvents(editor, scheduler)
         jobs = JobRepository(db.jobDao())
         jobBlocks = JobBlockRepository(db.jobBlockDao())
-        val created = EditDrawerViewModel(timeline, places, editor, undoEvents, scheduler, jobs, jobBlocks)
+        val created = EditDrawerViewModel(timeline, places, editor, undoEvents, scheduler, jobs, jobBlocks, rewindFloor)
         // Held in a store so tearDown can clear it (cancelling viewModelScope) before the database closes.
         viewModel = ViewModelProvider.create(store, object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
@@ -246,6 +249,22 @@ class EditDrawerViewModelTest {
         viewModel.merge(MergeDirection.NEXT)
 
         assertThat(awaitState { it.error != null }.error).isEqualTo(EditError.NOT_FOUND)
+    }
+
+    @Test
+    fun resetIsHiddenForAVisitBeforeTheRewindFloorAndShownAfterIt() = runBlocking<Unit> {
+        seed(visit("old", 0, 20, frozen = true), visit("new", 60, 90, frozen = true))
+        floorMs = base + 30 * minute
+
+        viewModel.load(EditTarget.Visit("old"))
+        val before = awaitState { it.id == "old" }
+        assertThat(before.beforeRewindFloor).isTrue()
+        assertThat(before.canReset).isFalse()
+
+        viewModel.load(EditTarget.Visit("new"))
+        val after = awaitState { it.id == "new" }
+        assertThat(after.beforeRewindFloor).isFalse()
+        assertThat(after.canReset).isTrue()
     }
 
     @Test

@@ -2,7 +2,7 @@
 <resources>
     <!-- Sessions screen rows (phase 3 R4). -->
     <string name="sessions_state_complete">Completed session</string>
-    <string name="sessions_state_killed">Session was killed</string>
+    <string name="sessions_state_killed">Session ended unexpectedly</string>
     <string name="sessions_state_open">Session in progress</string>
     <string name="sessions_export_gpx_row">Export GPX</string>
     <string name="sessions_export_csv_row">Export CSV</string>

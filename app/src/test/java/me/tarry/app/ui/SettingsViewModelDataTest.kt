@@ -73,6 +73,13 @@ private class FakeBackup : DataBackup {
         maybeFail()
         return counts
     }
+
+    var deletes = 0
+
+    override suspend fun deleteAll() {
+        deletes++
+        maybeFail()
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -86,6 +93,7 @@ class SettingsViewModelDataTest {
     private lateinit var db: TarryDatabase
     private lateinit var backup: FakeBackup
     private lateinit var vm: SettingsViewModel
+    private val reminder = me.tarry.app.reminder.FakeReviewReminderScheduler()
     private lateinit var settingsRepo: SettingsRepository
     @Volatile private var reconciles = 0
     private val reconcile = me.tarry.app.tracking.ReconcileTrigger { reconciles++ }
@@ -100,7 +108,7 @@ class SettingsViewModelDataTest {
         backup = FakeBackup()
         val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("s.preferences_pb") })
         settingsRepo = settings
-        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, scope)
+        vm = SettingsViewModel(settings, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, scope, reminder)
     }
 
     @After
@@ -114,7 +122,7 @@ class SettingsViewModelDataTest {
     fun changingTheWindowEndGraceSavesItAndReconcilesAtOnce() = runBlocking<Unit> {
         val captureJob = SupervisorJob()
         val capturing = SettingsViewModel(
-            settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, CoroutineScope(Dispatchers.IO + captureJob),
+            settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup, reconcile, CoroutineScope(Dispatchers.IO + captureJob), reminder,
         )
         capturing.setWindowEndGraceMaxMin(15)
 
@@ -133,7 +141,7 @@ class SettingsViewModelDataTest {
         val captureJob = SupervisorJob()
         val gated = SettingsViewModel(
             settingsRepo, ScheduleRepository(db.scheduleDao()), FakeClock(), backup,
-            { gate.await(); reconciles++ }, CoroutineScope(Dispatchers.IO + captureJob),
+            { gate.await(); reconciles++ }, CoroutineScope(Dispatchers.IO + captureJob), reminder,
         )
         gated.setWindowEndGraceMaxMin(30)
 
@@ -256,5 +264,31 @@ class SettingsViewModelDataTest {
         vm.setRoundDailyTotalPerJob(false)
         val off = withTimeout(5_000) { vm.settings.first { it != null && it.roundingIncrementMin == 0 && it.minBillableMinutes == 0 && !it.roundDailyTotalPerJob } }!!
         assertThat(off.roundingMode).isEqualTo(RoundingMode.UP)
+    }
+
+    @Test
+    fun deletingAllDataIsBusyThenReportsDeletedAndIgnoresASecondRequest() = runBlocking<Unit> {
+        backup.gate = CompletableDeferred()
+
+        vm.deleteAll()
+        assertThat(vm.data.value.busy).isEqualTo(DataBusy.DELETING)
+        vm.deleteAll()
+        vm.backUp(uri)
+        assertThat(backup.deletes).isEqualTo(1)
+        assertThat(backup.backUps).isEqualTo(0)
+
+        backup.gate!!.complete(Unit)
+        assertThat(vm.events.first()).isEqualTo(DataEvent.Deleted)
+        assertThat(vm.data.value.busy).isNull()
+    }
+
+    @Test
+    fun aFailedDeleteReportsItAndClearsTheBusyState() = runBlocking<Unit> {
+        backup.failure = BackupException(BackupError.DELETE_FAILED)
+
+        vm.deleteAll()
+
+        assertThat(vm.events.first()).isEqualTo(DataEvent.Failed(BackupError.DELETE_FAILED))
+        assertThat(vm.data.value.busy).isNull()
     }
 }

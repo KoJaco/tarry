@@ -6,7 +6,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import android.content.Intent
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.toArgb
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -18,6 +21,8 @@ import me.tarry.core.data.settings.SettingsRepository
 import me.tarry.core.data.settings.ThemeMode
 import me.tarry.app.ui.theme.DarkTarryColors
 import me.tarry.app.ui.theme.LightTarryColors
+import me.tarry.app.reminder.ReviewReminderIntents
+import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.HealthChecker
@@ -40,19 +45,47 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var segmentationScheduler: SegmentationScheduler
 
+    @Inject lateinit var reviewReminder: ReviewReminderScheduler
+
     @Inject @CaptureScope lateinit var captureScope: CoroutineScope
+
+    /** The reminder notification was tapped: show today's Timeline with the Needs review filter on, once. */
+    private var openReview by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // A rotation or process restart replays the launching intent, so only a fresh launch reads it; a request not yet handled is carried in the saved state.
+        openReview = if (savedInstanceState == null) {
+            intent.getBooleanExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW, false)
+        } else {
+            savedInstanceState.getBoolean(STATE_OPEN_REVIEW, false)
+        }
         setContent {
             val themeFlow = remember { settingsRepository.settings.map { it.theme } }
             // Null until the stored theme loads: TarryRoot composes nothing (the paper window background shows).
             val mode by themeFlow.collectAsStateWithLifecycle<ThemeMode?>(initialValue = null)
             TarryRoot(themeMode = mode, onDarkChanged = ::styleSystemBars) {
-                TarryApp()
+                TarryApp(
+                    openReview = openReview,
+                    onOpenReviewHandled = {
+                        openReview = false
+                        intent.removeExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW)
+                    },
+                )
             }
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_OPEN_REVIEW, openReview)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW, false)) openReview = true
     }
 
     private fun styleSystemBars(darkTheme: Boolean) {
@@ -81,5 +114,11 @@ class MainActivity : ComponentActivity() {
             controller.reconcile(ReconcileSource.UI)
             healthChecker.clearResolved()
         }
+        // Also catches a restore from backup, which changes the schedule and the reminder setting behind the app's back.
+        captureScope.launch { reviewReminder.rearm() }
+    }
+
+    private companion object {
+        const val STATE_OPEN_REVIEW = "open_review"
     }
 }

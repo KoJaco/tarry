@@ -76,6 +76,10 @@ data class TrackingConfig(
     // Health.
     val noHeartbeatThresholdMs: Long = 20 * 60_000L,
     val healthWorkerPeriodMin: Long = 15L,
+    /** Pings are pruned this far behind the retention window, so a segmentation run widened past the rewind floor still has its pings. */
+    val retentionPruneMarginMs: Long = me.tarry.core.data.repository.RetentionFloor.PRUNE_MARGIN_MS,
+    /** How often old raw pings are pruned (RetentionWorker). */
+    val retentionWorkerPeriodHours: Long = 24L,
     /** How long a due session may take to appear before "service not running" is reported. */
     val serviceStartGraceMs: Long = 2 * 60_000L,
     /** Health Gaps of the same cause closer together than this are merged into one. */
@@ -103,6 +107,10 @@ data class TrackingConfig(
     val deferredStartDelayMs: Long = 5_000L,
     /** Upper bound for persisting a failed foreground start before the service stops itself (must stay well under the ANR limit). */
     val startFailurePersistTimeoutMs: Long = 3_000L,
+    /** Delivery window of the inexact review-reminder alarm (no exact-alarm permission): it fires within this long after the reminder time. */
+    val reviewReminderWindowMs: Long = 10 * 60_000L,
+    /** How long after the reminder time today's reminder is still due (a late delivery, a re-arm after the time); after that the day is skipped. */
+    val reviewReminderGraceMs: Long = 2 * 60 * 60_000L,
     // Manual controls.
     val pauseShortMin: Long = 30L,
     val pauseLongMin: Long = 60L,

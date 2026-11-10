@@ -108,7 +108,10 @@ class TrackingReceiversTest {
         runBlocking { captureScope.coroutineContext[Job]!!.children.toList().forEach { it.join() } }
     }
 
+    private val reminder = me.tarry.app.reminder.FakeReviewReminderScheduler()
+
     private fun rearm() = ScheduleRearmReceiver().also {
+        it.reviewReminder = reminder
         it.controller = controller
         it.scope = captureScope
     }
@@ -131,9 +134,12 @@ class TrackingReceiversTest {
         )
         for (action in actions) {
             alarms.armed.clear()
+            val before = reminder.rearms
 
             deliver(rearm(), Intent(action))
 
+            // The review reminder re-arms on the events that can move it (not on the exact-alarm permission change).
+            if (action != AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED) assertThat(reminder.rearms).isEqualTo(before + 1)
             // SYSTEM source inside the window defers the start to a short alarm instead of starting the service.
             assertThat(alarms.armed).isNotEmpty()
             assertThat(alarms.armed.last()).isEqualTo(Instant.ofEpochMilli(clock.now + config.deferredStartDelayMs))
@@ -162,6 +168,7 @@ class TrackingReceiversTest {
     @Test
     fun scheduleAlarmReceiverReconcilesAsAlarmAndStartsDirectly() {
         val receiver = ScheduleAlarmReceiver().also {
+            it.reviewReminder = reminder
             it.controller = controller
             it.scope = captureScope
         }
@@ -170,6 +177,8 @@ class TrackingReceiversTest {
 
         assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
         assertThat(alarms.armed.last()).isEqualTo(mondayAt(17))
+        // A scheduled window starting also recomputes the review reminder.
+        assertThat(reminder.rearms).isEqualTo(1)
     }
 
     @Test

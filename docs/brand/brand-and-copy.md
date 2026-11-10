@@ -111,7 +111,7 @@ Keep these claims exactly in line with AGENTS.md rule 2 and ADR 0004. If the app
 - **Heading:** *One price. No subscription.*
 - **Card:**
   - **Free for 7 days**, with everything included.
-  - **Then 29 AUD once.** Yours for life, on your Google account. (The price is to be confirmed; show the localised Play price if possible.)
+  - **Then 19.99 AUD once** (launch price). Yours for life, on your Google account. Show the localised Play price where possible; Play converts it for other countries.
   - The ticks:
     - Unlimited tracking and history
     - Jobs, summary and exports
@@ -126,7 +126,7 @@ Keep these claims exactly in line with AGENTS.md rule 2 and ADR 0004. If the app
 - **What happens if tracking gets interrupted?** Tarry marks the gap on your timeline and tells you why, so you're never invoicing from silently missing time.
 - **Can I move to a new phone?** Export a backup and restore it on the new phone. Your purchase restores through Google Play.
 - **iPhone?** Not yet. Tarry is Android only for now.
-- **What happens after the trial?** Decide in phase 8, then write it here, e.g. "Your data stays yours: you can still view, edit and export everything. Unlock Tarry to keep tracking."
+- **What happens after the trial?** Your data stays yours: you can still view, edit, export, back up and delete everything. Unlock Tarry to keep tracking.
 
 ### Footer
 Privacy policy · Support (email) · Made in Australia (if true) · © Tarry. Source line (per ADR 0005): "Source available on GitHub" with a link. Showing the code builds trust in the privacy promise.
@@ -138,7 +138,7 @@ Privacy policy · Support (email) · Made in Australia (if true) · © Tarry. So
 
 ## 9. Open items
 - A logo or mark, and an app icon refresh to match.
-- The final price, and what the trial end locks (phase 8).
+- Decided 2026-11-09: 19.99 AUD launch price (Play converts), and the trial end locks new tracking only.
 - The licence line (ADR 0005).
 - Real screenshots after phase 7.5. The calendar-style day view is the hero image.
 - Battery numbers from phase 6.5 for the FAQ.

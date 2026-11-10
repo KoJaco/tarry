@@ -89,6 +89,22 @@ class ReviewRowTest {
     }
 
     @Test
+    fun addJobStretchesToTheRowEnd() {
+        show(411.dp)
+        val row = composeRule.onNodeWithTag("timeline_review_row").fetchSemanticsNode().boundsInRoot
+        val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
+        assertThat(addJob.right).isWithin(1f).of(row.right)
+    }
+
+    @Test
+    fun stackedAddJobSpansTheRow() {
+        show(411.dp, fontScale = 2.0f)
+        val row = composeRule.onNodeWithTag("timeline_review_row").fetchSemanticsNode().boundsInRoot
+        val addJob = composeRule.onNodeWithTag("timeline_add_job").fetchSemanticsNode().boundsInRoot
+        assertThat(addJob.right).isWithin(1f).of(row.right)
+    }
+
+    @Test
     fun narrowRowScrollsInsteadOfDroppingTheAddJobLabel() {
         show(200.dp)
         composeRule.onNodeWithTag("timeline_review_row").assert(hasScrollAction())

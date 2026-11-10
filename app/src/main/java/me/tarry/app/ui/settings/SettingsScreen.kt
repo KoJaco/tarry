@@ -1,6 +1,20 @@
 package me.tarry.app.ui.settings
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
 import android.content.res.Resources
+import android.os.Build
+import android.text.format.DateFormat
+import androidx.compose.runtime.remember
+import me.tarry.app.reminder.ReviewReminderNotifier
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import java.time.ZoneOffset
+import me.tarry.app.ui.drawer.TimePickerDialog
+import me.tarry.app.ui.permissions.PermissionIntents
+import me.tarry.app.ui.timeline.rememberTimeFormats
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -12,7 +26,9 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import me.tarry.app.export.backup.BackupError
@@ -26,10 +42,18 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.semantics.heading
+import me.tarry.app.ui.theme.surfaceEdgeStroke
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -38,6 +62,8 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Text
@@ -56,8 +82,10 @@ import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.tarry.app.BuildConfig
 import me.tarry.app.R
 import me.tarry.app.ui.components.SectionHeader
+import me.tarry.app.ui.about.versionLabel
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.scheduleSummaryText
@@ -76,6 +104,7 @@ fun SettingsScreen(
     onOpenSchedule: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     snackbarHostState: SnackbarHostState? = null,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -94,6 +123,15 @@ fun SettingsScreen(
     LaunchedEffect(viewModel, snackbarHostState) {
         viewModel.events.collect { event -> snackbarHostState?.showSnackbar(dataEventMessage(context.resources, event)) }
     }
+    // The setting stays on if the user refuses; the Reminders group then says notifications are off (AGENTS rule 6).
+    var notificationsBlocked by remember { mutableStateOf(ReviewReminderNotifier.isBlocked(context)) }
+    val askNotifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        notificationsBlocked = ReviewReminderNotifier.isBlocked(context)
+    }
+    // Back from the system notification settings (or the permission dialog): look again.
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        notificationsBlocked = ReviewReminderNotifier.isBlocked(context)
+    }
     val startBackup = { createBackup.launch("tarry-backup-${LocalDate.now()}.json.gz") }
     SettingsContent(
         settings = settings,
@@ -110,6 +148,7 @@ fun SettingsScreen(
         onOpenSessions = onOpenSessions,
         onOpenJobs = onOpenJobs,
         onOpenPlaces = onOpenPlaces,
+        onOpenAbout = onOpenAbout,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onGraceSelected = viewModel::setWindowEndGraceMaxMin,
         onThemeSelected = viewModel::setTheme,
@@ -117,11 +156,25 @@ fun SettingsScreen(
         onRoundingModeSelected = viewModel::setRoundingMode,
         onMinBillableSelected = viewModel::setMinBillableMinutes,
         onRoundDailyTotalChange = viewModel::setRoundDailyTotalPerJob,
+        onRetentionSelected = viewModel::setRawPingRetentionDays,
+        onDeleteAll = viewModel::deleteAll,
+        onReviewReminderChange = { enabled ->
+            viewModel.setReviewReminderEnabled(enabled)
+            if (enabled && needsNotificationPermission(context)) askNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        },
+        onReviewReminderTimeSelected = viewModel::setReviewReminderMinuteOfDay,
+        notificationsBlocked = notificationsBlocked,
+        onOpenNotificationSettings = { context.startActivity(PermissionIntents.notificationSettings(context)) },
         modifier = modifier,
     )
 }
 
-private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE }
+private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE, RETENTION, REMINDER_TIME }
+
+/** Android 13 and later ask for the notification permission at runtime; before that there is nothing to ask. */
+private fun needsNotificationPermission(context: Context): Boolean =
+    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
 
 /** Stateless sectioned settings; the stop radius, theme and the billing rounding rows are the editable ones. */
 @Composable
@@ -133,6 +186,7 @@ fun SettingsContent(
     onOpenSessions: () -> Unit = {},
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onGraceSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
@@ -140,6 +194,13 @@ fun SettingsContent(
     onRoundingModeSelected: (RoundingMode) -> Unit = {},
     onMinBillableSelected: (Int) -> Unit = {},
     onRoundDailyTotalChange: (Boolean) -> Unit = {},
+    onRetentionSelected: (Int?) -> Unit = {},
+    onDeleteAll: () -> Unit = {},
+    onReviewReminderChange: (Boolean) -> Unit = {},
+    onReviewReminderTimeSelected: (Int) -> Unit = {},
+    /** Notifications are off for Tarry; with the reminder on, the Reminders group says so and links to the system settings. */
+    notificationsBlocked: Boolean = false,
+    onOpenNotificationSettings: () -> Unit = {},
     data: DataUiState = DataUiState(),
     zone: ZoneId = ZoneId.systemDefault(),
     onBackUp: () -> Unit = {},
@@ -150,12 +211,14 @@ fun SettingsContent(
     modifier: Modifier = Modifier,
 ) {
     var picker by rememberSaveable { mutableStateOf<Picker?>(null) }
+    var confirmDeleteAll by rememberSaveable { mutableStateOf(false) }
     val on = stringResource(R.string.settings_on)
     val off = stringResource(R.string.settings_off)
-    val retentionValue = settings?.let { s ->
-        s.rawPingRetentionDays?.let { pluralStringResource(R.plurals.settings_days_value, it, it) }
-            ?: stringResource(R.string.settings_forever)
-    }
+    var pendingRetention by rememberSaveable { mutableStateOf<Int?>(null) }
+    val currentRetention = settings?.let { retentionLabel(it.rawPingRetentionDays) }
+    // Forever has no lines to lose, so it keeps the bare label.
+    val retentionValue = if (settings?.rawPingRetentionDays == null) currentRetention
+    else stringResource(R.string.settings_ping_retention_row, currentRetention.orEmpty())
 
     if (settings != null) {
         when (picker) {
@@ -232,6 +295,29 @@ fun SettingsContent(
                 },
                 onDismiss = { picker = null },
             )
+            Picker.RETENTION -> PickerSheet(
+                title = stringResource(R.string.settings_ping_retention),
+                explanation = stringResource(R.string.settings_ping_retention_explanation),
+                options = RETENTION_OPTIONS.map { it to retentionLabel(it) },
+                current = settings.rawPingRetentionDays,
+                onSelect = {
+                    if (isShorterRetention(it, settings.rawPingRetentionDays)) pendingRetention = it else onRetentionSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.REMINDER_TIME -> TimePickerDialog(
+                title = stringResource(R.string.settings_review_reminder_time),
+                // Minutes since midnight are the same number in any zone, so UTC keeps the picker free of DST gaps.
+                initialMs = settings.reviewReminderMinuteOfDay * 60_000L,
+                zone = ZoneOffset.UTC,
+                is24Hour = DateFormat.is24HourFormat(LocalContext.current),
+                onConfirm = { hour, minute ->
+                    onReviewReminderTimeSelected(hour * 60 + minute)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
             null -> Unit
         }
     }
@@ -304,15 +390,54 @@ fun SettingsContent(
             }
             SectionHeader(stringResource(R.string.settings_section_reminders), Modifier.padding(top = space.m))
             val reminderTitle = stringResource(R.string.settings_review_reminder)
-            val reminderValue = if (settings.reviewReminderEnabled) on else off
             val reminderTimeTitle = stringResource(R.string.settings_review_reminder_time)
-            val reminderTimeValue = "%02d:%02d".format(settings.reviewReminderMinuteOfDay / 60, settings.reviewReminderMinuteOfDay % 60)
+            val reminderTimeValue = rememberTimeFormats().time(settings.reviewReminderMinuteOfDay * 60_000L, ZoneOffset.UTC)
+            val reminderSubtitle = if (settings.reviewReminderEnabled) {
+                stringResource(R.string.settings_review_reminder_subtitle, reminderTimeValue)
+            } else {
+                null
+            }
+            val notificationsOffText = stringResource(R.string.settings_review_reminder_notifications_off)
             SettingsGroup {
-                row(reminderTitle, icon = R.drawable.ic_notifications, value = reminderValue)
-                row(reminderTimeTitle, icon = R.drawable.ic_schedule, value = reminderTimeValue)
+                switchRow(
+                    reminderTitle, settings.reviewReminderEnabled, onReviewReminderChange,
+                    subtitle = reminderSubtitle, icon = R.drawable.ic_notifications,
+                )
+                row(
+                    reminderTimeTitle, onClick = { picker = Picker.REMINDER_TIME }, icon = R.drawable.ic_schedule,
+                    value = reminderTimeValue, enabled = settings.reviewReminderEnabled,
+                )
+                if (settings.reviewReminderEnabled && notificationsBlocked) {
+                    row(notificationsOffText, onClick = onOpenNotificationSettings, icon = R.drawable.ic_notifications)
+                }
             }
         }
-        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore)
+        DataSection(settings?.lastBackupMs, retentionValue, data, zone, onBackUp, onRestore, onRetention = { picker = Picker.RETENTION }, onDeleteAll = { confirmDeleteAll = true })
+        SectionHeader(stringResource(R.string.settings_section_about), Modifier.padding(top = space.m))
+        val aboutTitle = stringResource(R.string.settings_about_row)
+        val aboutVersion = versionLabel(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE)
+        SettingsGroup {
+            row(aboutTitle, onClick = onOpenAbout, icon = R.drawable.ic_info, subtitle = aboutVersion)
+        }
+    }
+    pendingRetention?.let { days ->
+        ShortenRetentionDialog(
+            label = retentionLabel(days),
+            onConfirm = {
+                pendingRetention = null
+                onRetentionSelected(days)
+            },
+            onCancel = { pendingRetention = null },
+        )
+    }
+    if (confirmDeleteAll) {
+        DeleteAllDialog(
+            onDelete = {
+                confirmDeleteAll = false
+                onDeleteAll()
+            },
+            onCancel = { confirmDeleteAll = false },
+        )
     }
     // Hidden (not dropped) while "Back up current data first" runs, so it comes back when that finishes.
     if (data.prompt != null && data.busy == null) {
@@ -322,7 +447,7 @@ fun SettingsContent(
 
 /** Settings → Data: back up, restore, and a progress row while either runs. */
 @Composable
-private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit) {
+private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?, data: DataUiState, zone: ZoneId, onBackUp: () -> Unit, onRestore: () -> Unit, onRetention: () -> Unit, onDeleteAll: () -> Unit) {
     val space = TarryTheme.space
     val busy = data.busy != null
     SectionHeader(stringResource(R.string.settings_section_data), Modifier.padding(top = space.m))
@@ -334,13 +459,21 @@ private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?
     SettingsGroup {
         row(backUpTitle, onClick = onBackUp, icon = R.drawable.ic_backup, subtitle = lastBackup, enabled = !busy)
         row(restoreTitle, onClick = onRestore, icon = R.drawable.ic_settings_backup_restore, enabled = !busy)
-        if (retentionValue != null) row(retentionTitle, icon = R.drawable.ic_history, value = retentionValue)
-        if (working != null) item { WorkingRow(working) }
     }
     Text(
         text = stringResource(R.string.settings_data_privacy),
         style = MaterialTheme.typography.bodyMedium,
         color = TarryTheme.colors.muted,
+    )
+    if (retentionValue != null || working != null) SettingsGroup {
+        if (retentionValue != null) row(retentionTitle, onClick = onRetention, icon = R.drawable.ic_history, subtitle = retentionValue, enabled = !busy)
+        if (working != null) item { WorkingRow(working) }
+    }
+    DestructiveButton(
+        stringResource(R.string.delete_all_title),
+        onClick = onDeleteAll,
+        modifier = Modifier.fillMaxWidth(),
+        enabled = !busy,
     )
 }
 
@@ -399,12 +532,112 @@ private fun RestoreDialog(prompt: RestorePrompt, zone: ZoneId, onReplace: () -> 
     )
 }
 
+/** Type-to-confirm before everything recorded is removed. The confirm button stays off until the word matches. */
+@Composable
+private fun DeleteAllDialog(onDelete: () -> Unit, onCancel: () -> Unit) {
+    val colors = TarryTheme.colors
+    val space = TarryTheme.space
+    val word = stringResource(R.string.delete_all_word)
+    val fieldLabel = stringResource(R.string.delete_all_field_label)
+    var typed by rememberSaveable { mutableStateOf("") }
+    // Our own window layout instead of AlertDialog: the dialog window is edge to edge and its root keeps clear of the system bars and
+    // the keyboard (imePadding), so the card can only be as tall as the visible area and its content scrolls. With the platform
+    // default the window was only panned, which at large font sizes pushed the buttons behind the keyboard.
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = space.xxl, vertical = space.l),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                shape = TarryTheme.shapes.container,
+                color = colors.card,
+                border = surfaceEdgeStroke(),
+                modifier = Modifier.widthIn(max = 560.dp),
+            ) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()).padding(space.xxl),
+                    verticalArrangement = Arrangement.spacedBy(space.s),
+                ) {
+                    Text(
+                        stringResource(R.string.delete_all_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = colors.ink,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    Text(stringResource(R.string.delete_all_body), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                    // The label is plain text above the field: a floating label would sit on the border and overlap the body at large font sizes.
+                    Text(fieldLabel, style = MaterialTheme.typography.labelLarge, color = colors.ink)
+                    OutlinedTextField(
+                        value = typed,
+                        onValueChange = { typed = it },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = fieldLabel },
+                        shape = TarryTheme.shapes.container,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = colors.ink,
+                            unfocusedTextColor = colors.ink,
+                            focusedBorderColor = colors.ink,
+                            unfocusedBorderColor = colors.outline,
+                            focusedLabelColor = colors.muted,
+                            unfocusedLabelColor = colors.muted,
+                            cursorColor = colors.ink,
+                        ),
+                    )
+                    Column(Modifier.padding(top = space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
+                        DestructiveButton(
+                            stringResource(R.string.delete_all_title),
+                            onClick = onDelete,
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = typed.trim().equals(word, ignoreCase = true),
+                        )
+                        TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Forever counts as the longest. */
+internal fun isShorterRetention(new: Int?, current: Int?): Boolean = new != null && (current == null || new < current)
+
+/** Pruning cannot be undone, so shortening the retention asks first. */
+@Composable
+private fun ShortenRetentionDialog(label: String, onConfirm: () -> Unit, onCancel: () -> Unit) {
+    val colors = TarryTheme.colors
+    val space = TarryTheme.space
+    AlertDialog(
+        modifier = Modifier.surfaceEdge(TarryTheme.shapes.container),
+        onDismissRequest = onCancel,
+        shape = TarryTheme.shapes.container,
+        containerColor = colors.card,
+        title = { Text(stringResource(R.string.retention_shorten_title), style = MaterialTheme.typography.titleLarge, color = colors.ink) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(space.s),
+            ) {
+                Text(stringResource(R.string.retention_shorten_body, label), style = MaterialTheme.typography.bodyLarge, color = colors.ink)
+                Column(Modifier.padding(top = space.s), verticalArrangement = Arrangement.spacedBy(space.s)) {
+                    DestructiveButton(stringResource(R.string.retention_shorten_confirm), onClick = onConfirm, modifier = Modifier.fillMaxWidth())
+                    TertiaryButton(stringResource(R.string.edit_dialog_cancel), onClick = onCancel, modifier = Modifier.fillMaxWidth())
+                }
+            }
+        },
+        confirmButton = {},
+    )
+}
+
 private const val BACKUP_MIME_TYPE = "application/gzip"
 
 private fun DataBusy.labelRes(): Int = when (this) {
     DataBusy.BACKING_UP -> R.string.data_working_backup
     DataBusy.READING -> R.string.data_working_read
     DataBusy.RESTORING -> R.string.data_working_restore
+    DataBusy.DELETING -> R.string.data_working_delete
 }
 
 /** "2 Nov 2026" in the phone's language and the capture clock's zone. */
@@ -424,6 +657,7 @@ internal fun formatCounts(resources: Resources, counts: BackupCounts): String {
 internal fun dataEventMessage(resources: Resources, event: DataEvent): String = when (event) {
     is DataEvent.BackedUp -> resources.getString(R.string.data_backed_up, formatCounts(resources, event.counts))
     is DataEvent.Restored -> resources.getString(R.string.data_restored, formatCounts(resources, event.counts))
+    DataEvent.Deleted -> resources.getString(R.string.data_deleted)
     is DataEvent.Failed -> resources.getString(
         when (event.error) {
             BackupError.CANNOT_OPEN -> R.string.data_error_cannot_open
@@ -432,8 +666,19 @@ internal fun dataEventMessage(resources: Resources, event: DataEvent): String = 
             BackupError.DAMAGED -> R.string.data_error_damaged
             BackupError.WRITE_FAILED -> R.string.data_error_write
             BackupError.RESTORE_FAILED -> R.string.data_error_restore
+            BackupError.DELETE_FAILED -> R.string.data_error_delete
         },
     )
+}
+
+private val RETENTION_OPTIONS: List<Int?> = Settings.ALLOWED_RETENTION_DAYS.sorted() + listOf(null)
+
+/** "30 days", "90 days", "1 year", "Forever". */
+@Composable
+private fun retentionLabel(days: Int?): String = when (days) {
+    null -> stringResource(R.string.settings_forever)
+    365 -> stringResource(R.string.settings_one_year)
+    else -> pluralStringResource(R.plurals.settings_days_value, days, days)
 }
 
 @Composable

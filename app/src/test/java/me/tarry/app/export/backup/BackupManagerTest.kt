@@ -1,5 +1,7 @@
 package me.tarry.app.export.backup
 
+import me.tarry.core.data.db.entity.ManualOverride
+import me.tarry.segmentation.SegmentationParams
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -28,6 +30,7 @@ import me.tarry.core.data.model.PingSource
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.settings.RoundingMode
+import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.SettingsRepository
 import me.tarry.core.data.settings.ThemeMode
 import org.junit.After
@@ -53,6 +56,8 @@ internal class RecordingHooks : RestoreHooks {
             throw e
         }
     }
+    override suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+        captureSuspended { block(emptyList()) }
     var afterGate: (suspend () -> Unit)? = null
     override suspend fun afterRestore() {
         calls += "after"
@@ -85,7 +90,7 @@ class BackupManagerTest {
         declinedStore = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("declined.preferences_pb") }
         settingsRepo = SettingsRepository(settingsStore)
         hooks = RecordingHooks()
-        manager = BackupManager(context, store, settingsStore, declinedStore, settingsRepo, hooks, FakeClock(now = 1_700_000_000_000L))
+        manager = BackupManager(context, store, settingsStore, declinedStore, settingsRepo, hooks, FakeClock(now = 1_700_000_000_000L), SegmentationParams())
     }
 
     @After
@@ -329,5 +334,112 @@ class BackupManagerTest {
         assertThat(e2.error).isEqualTo(BackupError.WRITE_FAILED)
         assertThat(discarded).isTrue()
         assertThat(settingsRepo.settings.first().lastBackupMs).isNull()
+    }
+
+    @Test
+    fun deleteAllStopsTrackingThenDeletesThenResumesAndKeepsTheSettings() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("a"))
+        settingsRepo.setTheme(ThemeMode.DARK)
+        settingsRepo.setRoundingMode(RoundingMode.UP)
+        settingsRepo.setLastBackupMs(5L)
+        declinedStore.edit { it[declinedKey] = "v1|j1" }
+        val events = mutableListOf<String>()
+        val ordered = object : RestoreHooks {
+            override suspend fun <T> captureSuspended(block: suspend () -> T): T {
+                events += "stop (rows: ${store.counts().locations})"
+                return block().also { events += "resume (rows: ${store.counts().locations})" }
+            }
+
+            override suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+                captureSuspended { block(emptyList()) }
+
+            override suspend fun afterRestore() {
+                events += "after"
+            }
+        }
+        val deleting = BackupManager(
+            ApplicationProvider.getApplicationContext<Context>(), store, settingsStore, declinedStore, settingsRepo, ordered,
+            FakeClock(now = 1_700_000_000_000L),
+            SegmentationParams(),
+        )
+
+        deleting.deleteAll()
+
+        assertThat(events).containsExactly("stop (rows: 3)", "resume (rows: 0)", "after").inOrder()
+        val snapshot = store.snapshot()
+        assertThat(snapshot.copy(scheduleTemplates = emptyList(), scheduleOverrides = emptyList())).isEqualTo(BackupSnapshot())
+        val s = settingsRepo.settings.first()
+        assertThat(s.theme).isEqualTo(ThemeMode.DARK)
+        assertThat(s.roundingMode).isEqualTo(RoundingMode.UP)
+        assertThat(s.lastBackupMs).isEqualTo(5L)
+        assertThat(declinedStore.data.first()[declinedKey]).isNull()
+    }
+
+    @Test
+    fun deleteAllFailureIsReportedAndLeavesTheDataAlone() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot("a"))
+        val failing = object : RestoreHooks {
+            override suspend fun <T> captureSuspended(block: suspend () -> T): T = throw java.io.IOException("cannot stop")
+            override suspend fun <T> captureSuspendedKeepingOverrides(block: suspend (activeBefore: List<ManualOverride>) -> T): T =
+                captureSuspended { block(emptyList()) }
+            override suspend fun afterRestore() = Unit
+        }
+        val deleting = BackupManager(
+            ApplicationProvider.getApplicationContext<Context>(), store, settingsStore, declinedStore, settingsRepo, failing,
+            FakeClock(now = 1_700_000_000_000L),
+            SegmentationParams(),
+        )
+
+        val e = assertThrows(BackupException::class.java) { runBlocking { deleting.deleteAll() } }
+
+        assertThat(e.error).isEqualTo(BackupError.DELETE_FAILED)
+        assertThat(store.counts().locations).isEqualTo(3)
+    }
+
+    @Test
+    fun restoringABackupMadeAfterPruningSetsTheWatermarkAtItsEarliestPing() = runBlocking<Unit> {
+        val late = 10_000_000L // sessions start at 1_000 and 5_000, well over the overlap before this
+        val pruned = everythingSnapshot().copy(
+            pings = listOf(
+                LocationPing(10, late + 5, "UTC", 0.0, 0.0, 5f, null, null, null, PingSource.FUSED, 1),
+                LocationPing(11, late, "UTC", 0.0, 0.0, 5f, null, null, null, PingSource.FUSED, 1),
+            ),
+        )
+        store.replaceAll(pruned)
+        val bytes = backupBytes()
+        settingsRepo.setPrunedBeforeMs(42L)
+
+        manager.restore(previewOf(bytes))
+
+        assertThat(settingsRepo.prunedBeforeMs()).isEqualTo(late)
+    }
+
+    @Test
+    fun restoringABackupWithAllItsPingsClearsTheWatermark() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        val bytes = backupBytes()
+        settingsRepo.setPrunedBeforeMs(42L)
+
+        manager.restore(previewOf(bytes))
+
+        assertThat(settingsRepo.prunedBeforeMs()).isNull()
+    }
+
+    @Test
+    fun theWatermarkIsNotWrittenToABackupFile() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        settingsRepo.setPrunedBeforeMs(42L)
+
+        assertThat(decodeSettingsKeys(backupBytes())).doesNotContain(Settings.PRUNED_BEFORE_KEY)
+    }
+
+    @Test
+    fun deleteAllClearsTheWatermark() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        settingsRepo.setPrunedBeforeMs(42L)
+
+        manager.deleteAll()
+
+        assertThat(settingsRepo.prunedBeforeMs()).isNull()
     }
 }

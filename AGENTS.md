@@ -32,7 +32,7 @@
 ## Hard rules
 
 1. Never commit to `main`. One branch (ideally one worktree) per phase or task.
-2. **Privacy:** no network calls except map tiles and the platform Geocoder. No analytics, crash SDKs, ads or accounts. Raw pings never leave the device except via a user-initiated export. Auto-backup stays disabled for the DB.
+2. **Privacy:** no network calls except map tiles, the platform Geocoder, and Google Play Billing via the Play Billing Library (ADR 0004; no app data goes into it). No analytics, crash SDKs, ads or accounts. Raw pings never leave the device except via a user-initiated export. Auto-backup stays disabled for the DB.
 3. **Data model:** UUID + `updatedAt` + `deleted` on Place, Visit, Trip, Job, JobBlock; Long keys on pings, sessions and manual overrides only (local control state, never synced or merged). Timestamps are UTC epoch ms plus capture time-zone ID. Frozen (annotated/edited) records are never touched by segmentation.
 4. **Room:** every schema change bumps the version, commits the exported schema JSON, and ships a migration with a `MigrationTestHelper` test. No `fallbackToDestructiveMigration`.
 5. **Tracking:** the app never polls on its own timer — the OS wakes it (alarms, geofences, activity transitions, WorkManager). All tunables live in `TrackingConfig` / segmentation params, not scattered literals.

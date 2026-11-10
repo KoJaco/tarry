@@ -154,7 +154,7 @@ fun ScheduleDaySheetContent(day: DayOfWeek, schedule: Schedule, actions: Schedul
             }
             others.forEach { other ->
                 TarryChip(
-                    text = dayName(other, TextStyle.SHORT, locale),
+                    text = shortDayName(other, locale),
                     selected = other in targets,
                     role = Role.Checkbox,
                     onClick = { targets = if (other in targets) targets - other else targets + other },

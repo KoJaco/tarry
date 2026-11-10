@@ -24,6 +24,7 @@ import me.tarry.app.export.backup.BackupError
 import me.tarry.app.export.backup.BackupException
 import me.tarry.app.export.backup.DataBackup
 import me.tarry.app.export.backup.RestorePreview
+import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.ReconcileTrigger
 import me.tarry.app.tracking.TrackingClock
@@ -48,6 +49,7 @@ class SettingsViewModel @Inject constructor(
     private val reconcile: ReconcileTrigger,
     // The reconcile after a grace change must finish even if the user leaves Settings right after picking.
     @param:CaptureScope private val captureScope: CoroutineScope,
+    private val reviewReminder: ReviewReminderScheduler,
 ) : ViewModel() {
     /** Null until the first DataStore read completes. */
     val settings: StateFlow<Settings?> = repository.settings
@@ -79,6 +81,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Saves the switch and re-arms (or cancels) the reminder alarm; app-lifetime scope so a quick back-out cannot leave them out of step. */
+    fun setReviewReminderEnabled(enabled: Boolean) {
+        captureScope.launch {
+            repository.setReviewReminderEnabled(enabled)
+            reviewReminder.rearm()
+        }
+    }
+
+    fun setReviewReminderMinuteOfDay(minuteOfDay: Int) {
+        captureScope.launch {
+            repository.setReviewReminderMinuteOfDay(minuteOfDay)
+            reviewReminder.rearm()
+        }
+    }
+
     fun setTheme(mode: ThemeMode) {
         viewModelScope.launch { repository.setTheme(mode) }
     }
@@ -97,6 +114,11 @@ class SettingsViewModel @Inject constructor(
 
     fun setRoundDailyTotalPerJob(enabled: Boolean) {
         viewModelScope.launch { repository.setRoundDailyTotalPerJob(enabled) }
+    }
+
+    /** Null keeps raw locations forever. Pruning itself runs daily (RetentionWorker). */
+    fun setRawPingRetentionDays(days: Int?) {
+        viewModelScope.launch { repository.setRawPingRetentionDays(days) }
     }
 
     /** The zone dates are shown in (the capture clock's), not a second opinion from the system default. */
@@ -161,6 +183,24 @@ class SettingsViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _events.send(DataEvent.Failed((e as? BackupException)?.error ?: BackupError.RESTORE_FAILED))
+            } finally {
+                _data.update { it.copy(busy = null) }
+            }
+        }
+    }
+
+    /** "Delete all data", after the typed confirmation. Ignored while another operation runs. */
+    fun deleteAll() {
+        if (_data.value.busy != null) return
+        viewModelScope.launch {
+            _data.update { it.copy(busy = DataBusy.DELETING) }
+            try {
+                backup.deleteAll()
+                _events.send(DataEvent.Deleted)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _events.send(DataEvent.Failed((e as? BackupException)?.error ?: BackupError.DELETE_FAILED))
             } finally {
                 _data.update { it.copy(busy = null) }
             }

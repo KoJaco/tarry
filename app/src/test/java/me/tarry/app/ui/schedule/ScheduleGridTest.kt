@@ -244,4 +244,33 @@ class ScheduleGridTest {
         assertThat(count).isAtLeast(7)
         for (i in 0 until count) texts[i].assertNotTruncated()
     }
+
+    private fun headerLabels(fontScale: Float): List<String> {
+        composeRule.setContent {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = fontScale),
+            ) {
+                Box(Modifier.width(360.dp).height(600.dp)) {
+                    ScheduleGrid(schedule = Schedule.EMPTY, onToggle = { _, _ -> }, onStroke = {}, onDayHeaderClick = {})
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        return DayOfWeek.entries.map { day ->
+            val name = day.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+            composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Edit $name"), useUnmergedTree = true)
+                .fetchSemanticsNode().children.first().config[SemanticsProperties.Text].single().text
+        }
+    }
+
+    @Test
+    fun dayHeadersUseThreeLettersAtDefaultFont() {
+        assertThat(headerLabels(1f)).containsExactly("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").inOrder()
+    }
+
+    @Test
+    fun dayHeadersAllUseTwoLettersAtFontScaleTwo() {
+        assertThat(headerLabels(2f)).containsExactly("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su").inOrder()
+    }
 }

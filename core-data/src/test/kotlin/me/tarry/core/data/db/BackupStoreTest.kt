@@ -228,4 +228,25 @@ class BackupStoreTest : DbTestBase() {
         assertThat(s.end).isEqualTo(4_000L)
         assertThat(s.endReason).isEqualTo(SessionEndReason.KILLED)
     }
+
+    @Test
+    fun deleteAllEmptiesEveryRecordedTableAndKeepsTheSchedule() = runBlocking<Unit> {
+        val original = everything()
+        store.replaceAll(original)
+
+        store.deleteAll()
+
+        // The schedule is the only thing left: it is configuration, like the settings.
+        assertThat(store.snapshot()).isEqualTo(
+            BackupSnapshot(scheduleTemplates = original.scheduleTemplates, scheduleOverrides = original.scheduleOverrides),
+        )
+        assertThat(store.counts()).isEqualTo(BackupCounts(visits = 0, locations = 0))
+    }
+
+    @Test
+    fun deleteAllOnAnEmptyDatabaseIsANoOp() = runBlocking<Unit> {
+        store.deleteAll()
+
+        assertThat(store.snapshot()).isEqualTo(BackupSnapshot())
+    }
 }
