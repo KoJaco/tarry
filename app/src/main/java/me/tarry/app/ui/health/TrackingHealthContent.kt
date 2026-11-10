@@ -1,5 +1,7 @@
 package me.tarry.app.ui.health
 
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +15,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -133,7 +137,8 @@ private fun StatusCard(state: TrackingHealthUiState) {
             ),
             style = MaterialTheme.typography.bodyMedium,
             color = colors.muted,
-            modifier = Modifier.padding(top = TarryTheme.space.xs),
+            // Starts where the title text starts, after the icon.
+            modifier = Modifier.padding(start = StatusIconSize + TarryTheme.space.s, top = TarryTheme.space.xs),
         )
     }
 }
@@ -167,42 +172,60 @@ private fun ChecksGroup(state: TrackingHealthUiState, actions: TrackingHealthAct
 private fun TestResult(state: TrackingHealthUiState, actions: TrackingHealthActions) {
     val test = state.test
     if (test == TestFixState.Idle) return
+    // The card appears below the button, which can be off screen at large text: scroll it into view as it changes.
+    val requester = remember { BringIntoViewRequester() }
+    LaunchedEffect(test) { requester.bringIntoView() }
     TarryCard(
         modifier = Modifier
             .fillMaxWidth()
+            .bringIntoViewRequester(requester)
             .semantics { liveRegion = LiveRegionMode.Polite }
             .testTag("health_test_result"),
     ) {
         val body = MaterialTheme.typography.bodyMedium
         val ink = TarryTheme.colors.ink
-        when (test) {
-            TestFixState.Idle -> Unit
-            TestFixState.Running -> Text(stringResource(R.string.health_test_running_body), style = body, color = ink)
-            is TestFixState.Success -> {
-                Text(
-                    stringResource(R.string.health_test_success, test.accuracyM, test.ageSeconds),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = ink,
-                )
-                Text(
-                    text = if (test.blockedBy == null) {
-                        stringResource(R.string.health_test_can_start)
-                    } else {
-                        stringResource(test.blockedBy.messageRes())
-                    },
-                    style = body,
-                    color = TarryTheme.colors.muted,
-                    modifier = Modifier.padding(top = TarryTheme.space.xs),
+        Row(horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
+            if (test != TestFixState.Running) {
+                val ok = test is TestFixState.Success
+                // The words carry the meaning; the icon repeats it.
+                Icon(
+                    painter = painterResource(if (ok) R.drawable.ic_check else R.drawable.ic_warning),
+                    contentDescription = null,
+                    tint = if (ok) TarryTheme.colors.success else TarryTheme.colors.alert,
+                    modifier = Modifier.size(StatusIconSize).testTag(if (ok) "health_test_icon_ok" else "health_test_icon_attention"),
                 )
             }
-            is TestFixState.Timeout -> Text(stringResource(R.string.health_test_timeout, test.seconds), style = body, color = ink)
-            TestFixState.Denied -> {
-                Text(stringResource(R.string.health_test_denied), style = body, color = ink)
-                SecondaryButton(
-                    text = stringResource(R.string.health_test_denied_fix),
-                    onClick = actions.onFixPermission,
-                    modifier = Modifier.padding(top = TarryTheme.space.s).testTag("health_test_fix"),
-                )
+            Column(modifier = Modifier.weight(1f)) {
+                when (test) {
+                    TestFixState.Idle -> Unit
+                    TestFixState.Running -> Text(stringResource(R.string.health_test_running_body), style = body, color = ink)
+                    is TestFixState.Success -> {
+                        Text(
+                            stringResource(R.string.health_test_success, test.accuracyM, test.ageSeconds),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = ink,
+                        )
+                        Text(
+                            text = if (test.blockedBy == null) {
+                                stringResource(R.string.health_test_can_start)
+                            } else {
+                                stringResource(test.blockedBy.messageRes())
+                            },
+                            style = body,
+                            color = TarryTheme.colors.muted,
+                            modifier = Modifier.padding(top = TarryTheme.space.xs),
+                        )
+                    }
+                    is TestFixState.Timeout -> Text(stringResource(R.string.health_test_timeout, test.seconds), style = body, color = ink)
+                    TestFixState.Denied -> {
+                        Text(stringResource(R.string.health_test_denied), style = body, color = ink)
+                        SecondaryButton(
+                            text = stringResource(R.string.health_test_denied_fix),
+                            onClick = actions.onFixPermission,
+                            modifier = Modifier.padding(top = TarryTheme.space.s).testTag("health_test_fix"),
+                        )
+                    }
+                }
             }
         }
     }

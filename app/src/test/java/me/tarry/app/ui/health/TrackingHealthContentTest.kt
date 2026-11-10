@@ -1,6 +1,8 @@
 package me.tarry.app.ui.health
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -192,5 +194,45 @@ class TrackingHealthContentTest {
     fun noResultCardBeforeTheFirstTest() {
         show(TrackingHealthUiState(checks = allOk))
         composeRule.onNodeWithTag("health_test_result").assertDoesNotExist()
+    }
+
+    @Test
+    fun aResultThatArrivesIsBroughtIntoViewAtFontScale2() {
+        var ui by androidx.compose.runtime.mutableStateOf(TrackingHealthUiState(checks = someBroken))
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+                TrackingHealthContent(
+                    state = ui,
+                    actions = TrackingHealthActions(onFix = {}, onTestTracking = {}, onFixPermission = {}),
+                )
+            }
+        }
+        composeRule.onNodeWithTag("health_test_button").performScrollTo()
+        composeRule.runOnUiThread { ui = ui.copy(test = TestFixState.Timeout(30)) }
+        composeRule.waitForIdle()
+        // No performScrollTo: the screen scrolled by itself.
+        composeRule.onNodeWithTag("health_test_result").assertIsDisplayed()
+    }
+
+    @Test
+    fun theResultCardHasAnOkIconForAFixAndAnAttentionIconOtherwise() {
+        show(TrackingHealthUiState(checks = allOk, test = TestFixState.Success(12, 3, null)))
+        composeRule.onNodeWithTag("health_test_icon_ok").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("health_test_icon_attention").assertDoesNotExist()
+    }
+
+    @Test
+    fun timeoutAndDeniedShowTheAttentionIcon() {
+        show(TrackingHealthUiState(checks = allOk, test = TestFixState.Timeout(30)))
+        composeRule.onNodeWithTag("health_test_icon_attention").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun theStatusBodyStartsWhereTheStatusTitleStarts() {
+        show(TrackingHealthUiState(TrackingState.TRACKING, null, allOk))
+        val title = composeRule.onNodeWithText("Working").fetchSemanticsNode().boundsInRoot.left
+        val body = composeRule.onNodeWithText("Tarry is recording your location now.", substring = true).fetchSemanticsNode().boundsInRoot.left
+        assertThat(body).isWithin(1f).of(title)
     }
 }
