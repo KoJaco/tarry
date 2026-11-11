@@ -882,8 +882,10 @@ private fun GapBlock(
                     times.range,
                     pluralStringResource(R.plurals.timeline_cluster_outages, placed.cluster.size, placed.cluster.size),
                 )
+            } else if (TimelineText.isShort(times.durationMs)) {
+                stringResource(R.string.timeline_compact_line, compactGap(times.durationMs), stringResource(gap.cause.labelRes()))
             } else {
-                stringResource(R.string.timeline_gap_row, stringResource(gap.cause.labelRes()))
+                stringResource(R.string.timeline_gap_row,stringResource(gap.cause.labelRes()))
             },
             style = MaterialTheme.typography.bodyMedium,
             color = c.onAlertSoft,
