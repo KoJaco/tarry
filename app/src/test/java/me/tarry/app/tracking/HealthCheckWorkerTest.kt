@@ -61,6 +61,7 @@ class HealthCheckWorkerTest {
     private val alarms = FakeAlarmScheduler()
     private val alerts = FakeAlertNotifier()
     private val clock = FakeClock(now = mondayAt(10).toEpochMilli(), zone = sydney)
+    private var epochMs: Long? = 0L
     private lateinit var health: HealthGapRecorder
     private lateinit var coordinator: CaptureCoordinator
     private lateinit var controller: TrackingController
@@ -86,6 +87,7 @@ class HealthCheckWorkerTest {
                 ScheduleInputsProvider(ScheduleRepository(db.scheduleDao()), trackingRepo, store, config, clock),
                 EffectiveScheduleCalculator(config), clock,
             ),
+            { epochMs },
         )
         wire(object : LocationClient {
             override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
@@ -199,6 +201,34 @@ class HealthCheckWorkerTest {
         // The reconcile the worker triggers must not close the outage of a session that is still supposed to run.
         assertThat(store.current().openHealthGapId).isEqualTo(gap.id)
         assertThat(coordinator.isActive).isTrue()
+    }
+
+    @Test
+    fun freshInstallInsideTheWindowStartsTheGapAtOnboardingCompletion() = runBlocking<Unit> {
+        // Window opened 07:00; the app was installed at 08:00 and set up at 08:02.
+        epochMs = mondayAt(8, 2).toEpochMilli()
+        clock.now = mondayAt(8, 30).toEpochMilli()
+        preconditions.value = Preconditions(backgroundLocation = false)
+
+        runWorker()
+
+        val gap = gaps().single()
+        assertThat(gap.cause).isEqualTo(GapCause.PERMISSION_LOST)
+        assertThat(gap.start).isEqualTo(mondayAt(8, 2).toEpochMilli())
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun onboardingStillOpenWritesNoGapAndPostsNoAlert() = runBlocking<Unit> {
+        epochMs = null
+        clock.now = mondayAt(8, 30).toEpochMilli()
+        preconditions.value = Preconditions(backgroundLocation = false)
+
+        runWorker()
+
+        assertThat(gaps()).isEmpty()
+        assertThat(alerts.posted).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
     }
 
     @Test
