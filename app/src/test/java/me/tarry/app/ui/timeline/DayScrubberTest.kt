@@ -8,6 +8,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.text.TextLayoutResult
+import org.robolectric.annotation.GraphicsMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsEnabled
@@ -39,6 +43,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], application = android.app.Application::class, qualifiers = "w400dp-h800dp")
 class DayScrubberTest {
     @get:Rule val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -61,9 +66,9 @@ class DayScrubberTest {
     private val openedTrips = mutableListOf<String>()
     private val siteJob = JobBlockItem("jb", "job", "Fitout", 0xFF3366CC.toInt(), at(11), at(13), billable = true, notes = null)
 
-    private fun show(dark: Boolean = false, fontScale: Float = 1f) {
+    private fun show(dark: Boolean = false, fontScale: Float = 1f, rows: List<TimelineItem> = items) {
         val (start, end) = dayBounds(day, zone)
-        val model = ScrubberModel(items.toScrubItems(), start, end, listOf(RoutePoint(at(8), -33.9, 151.2, 5f)))
+        val model = ScrubberModel(rows.toScrubItems(), start, end, listOf(RoutePoint(at(8), -33.9, 151.2, 5f)))
         composeRule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
@@ -71,7 +76,7 @@ class DayScrubberTest {
                     DayScrubber(
                         model, mapOf("b" to siteJob), time, { time = it }, { opened += it },
                         date = day, today = day, zone = zone, onJump = { _, _ -> },
-                        items = items, onOpenTrip = { openedTrips += it }, onAddJob = { addJobFor += it.id },
+                        items = rows, onOpenTrip = { openedTrips += it }, onAddJob = { addJobFor += it.id },
                     )
                 }
             }
@@ -101,7 +106,7 @@ class DayScrubberTest {
     @Test
     fun theCardShowsAVisitThatNeedsReviewWithAddJob() {
         show()
-        composeRule.onNodeWithText("Office", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("1 · Office", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Needs review", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("map_scrub_add_job").assertHeightIsAtLeast(48.dp).performClick()
         assertThat(addJobFor).containsExactly("a")
@@ -112,7 +117,7 @@ class DayScrubberTest {
     fun theCardShowsAVisitsJobChip() {
         time = at(11)
         show()
-        composeRule.onNodeWithText("Site", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("2 · Site", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Fitout · Billable", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("map_scrub_add_job").assertDoesNotExist()
     }
@@ -122,7 +127,8 @@ class DayScrubberTest {
         time = at(10, 30)
         show()
         composeRule.onNodeWithText("Vehicle · 900 m · 1 h", useUnmergedTree = true).assertExists()
-        composeRule.onNodeWithText("Near Office → Site", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Near Office", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("→ Site", useUnmergedTree = true).assertExists()
     }
 
     @Test
@@ -276,5 +282,72 @@ class DayScrubberTest {
         val node = composeRule.onNodeWithTag("map_scrubber").fetchSemanticsNode()
         assertThat(node.config[SemanticsProperties.StateDescription]).isNotEmpty()
         assertThat(node.config[SemanticsProperties.ProgressBarRangeInfo].current).isEqualTo(0f)
+    }
+
+    private fun boundsOf(tag: String) = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot
+
+    private fun checkPillBand(scale: Float) {
+        show(fontScale = scale)
+        val pill = boundsOf("map_scrub_time")
+        assertThat(pill.height).isAtLeast(composeRule.density.run { 48.dp.toPx() } - 1f)
+        assertThat(pill.overlaps(boundsOf("map_scrub_add_job"))).isFalse()
+        assertThat(pill.overlaps(boundsOf("map_scrubber"))).isFalse()
+        // A tap on the visible pill's bottom edge is the pill's, not the strip's.
+        composeRule.onNodeWithTag("map_scrub_time").performTouchInput { click(Offset(centerX, height - 4.dp.toPx() - 1f)) }
+        composeRule.onNodeWithText("OK").assertExists()
+    }
+
+    @Test fun theTimePillHasItsOwnBandAtNormalText() = checkPillBand(1f)
+
+    @Test fun theTimePillHasItsOwnBandAtLargeText() = checkPillBand(2f)
+
+    private fun cardTexts(): List<String> {
+        val out = mutableListOf<String>()
+        fun walk(n: androidx.compose.ui.semantics.SemanticsNode) {
+            n.config.getOrNull(SemanticsProperties.Text)?.let { out += it.joinToString("") { t -> t.text } }
+            n.children.forEach(::walk)
+        }
+        walk(composeRule.onNodeWithTag("map_scrub_card", useUnmergedTree = true).fetchSemanticsNode())
+        return out.map { it.replace(Char(0x00A0), ' ').replace(Char(0x202F), ' ').replace(Char(0x200B).toString(), "") }
+    }
+
+    @Test
+    fun theVisitCardReadsTheTimelinesCompactRangeAndDuration() {
+        show()
+        assertThat(cardTexts()).contains("8:00–10:00 AM · 2 h")
+        assertThat(cardTexts()).contains("1 · Office")
+    }
+
+    @Test
+    fun aVisitCrossingMidnightKeepsItsNoteAndDurationAtFontScale2() {
+        val night = TimelineItem.Visit("n", at(22), at(22) + 4 * 3_600_000L, "Night shift")
+        time = at(22)
+        show(fontScale = 2f, rows = listOf(night))
+        val sub = cardTexts().single { it.startsWith("10:00 PM") }
+        assertThat(sub).isEqualTo("10:00 PM–12:00 AM (continues) · 2 h")
+        val results = mutableListOf<TextLayoutResult>()
+        val node = composeRule.onNode(hasText("(continues)", substring = true), useUnmergedTree = true).fetchSemanticsNode()
+        node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+        assertThat(results.single().hasVisualOverflow).isFalse()
+        assertThat(results.single().lineCount).isAtMost(2)
+    }
+
+    @Test
+    fun addJobIsAnnouncedOnce() {
+        show()
+        val config = composeRule.onNodeWithTag("map_scrub_add_job").fetchSemanticsNode().config
+        assertThat(config.getOrNull(SemanticsProperties.Text)).isNull()
+        assertThat(config[SemanticsProperties.ContentDescription]).containsExactly("Add job to Office")
+    }
+
+    @Test
+    fun visitNumbersMatchThePinNumbering() {
+        val rows = listOf(
+            TimelineItem.Visit("z", at(9), at(10), "Z"),
+            TimelineItem.Trip("t", at(10), at(11), 1f, TripMode.WALK),
+            TimelineItem.Visit("b", at(9), at(10), "B"),
+            TimelineItem.Visit("c", at(12), at(13), "C"),
+        )
+        assertThat(rows.visitNumbers()).containsExactly("b", 1, "z", 2, "c", 3)
     }
 }

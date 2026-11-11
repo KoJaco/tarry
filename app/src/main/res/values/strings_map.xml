@@ -33,10 +33,11 @@
         <item quantity="one">%d visit</item>
         <item quantity="other">%d visits</item>
     </plurals>
-    <string name="map_card_visit_times">%1$s – %2$s · %3$s</string>
+    <string name="map_card_visit_times">%1$s · %2$s</string>
+    <string name="map_card_visit_title">%1$d · %2$s</string>
     <string name="map_card_job_billable">%1$s · %2$s</string>
     <string name="map_card_trip_title">%1$s · %2$s · %3$s</string>
-    <string name="map_card_trip_between">Near %1$s → %2$s</string>
+    <string name="map_card_trip_to">→ %1$s</string>
     <string name="map_card_trip_from">Near %1$s</string>
     <string name="map_card_gap_title">No location · %1$s</string>
     <string name="map_card_open">Open details</string>

@@ -12,13 +12,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredSizeIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -70,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.map.LargeFontScale
 import me.tarry.app.map.ScrubItem
 import me.tarry.app.map.ScrubKind
 import me.tarry.app.map.ScrubberModel
@@ -108,11 +109,12 @@ private val VisitDash = 4.dp
 private val VisitDashGap = 3.dp
 private val TickLength = 5.dp
 private val TickGap = 2.dp
-private val PillBand = 32.dp
-/** The overlay card over the map: mostly opaque so the strip reads on any map content. */
-private const val OverlayAlpha = 0.94f
-/** Strip items other than the one under the thumb. */
+/** The time pill gets a band of its own, the full touch height, so it never overlaps the card or the strip. */
+private val PillBand = MinTouch
+/** Fill strength of strip items other than the one under the thumb; outlines and lines stay full strength (>= 3:1). */
 private const val FadedAlpha = 0.4f
+/** The line under the thumb is this much thicker, so it stands out without fading the others. */
+private val ActiveLineExtra = 1.5.dp
 
 /** The scrubber's rows: [TimelineItem]s as [ScrubItem]s (same ids, so a tapped visit block opens its drawer). */
 internal fun List<TimelineItem>.toScrubItems(): List<ScrubItem> = map {
@@ -192,7 +194,8 @@ internal fun DayScrubber(
         marks.map { it to measurer.measure(hourLabel(it, zone, formats.is24Hour), labelStyle) }
     }
     val labelHeightDp = with(density) { MaterialTheme.typography.bodySmall.lineHeight.toDp() }
-    val stripHeight = maxOf(BarRow + LabelRow, BarRow - TickGap - 6.dp + labelHeightDp)
+    // The labels hang under the blocks and ticks (centred on the bar): the bar's half, the block's half, tick and gaps.
+    val stripHeight = maxOf(BarRow + LabelRow, BarRow / 2 + BlockHeight / 2 + TickLength + TickGap * 2 + labelHeightDp)
     val shownLabels = run {
         val length = range?.let { it.end - it.start } ?: 0L
         val trackDp = (widthPx - 2 * inset) / density.density
@@ -200,35 +203,50 @@ internal fun DayScrubber(
         thinned(labels, hourLabelStride(spacingDp, density.fontScale))
     }
 
-    // What TalkBack hears for the strip and the card, updated when the thumb settles.
-    val settledItem = model.itemAt(settled)?.let { itemsById[it.id] }
+    // What TalkBack hears for the strip and the card, from the settled time only (never per drag frame).
+    val settledItem = remember(settled, model, itemsById) { model.itemAt(settled)?.let { itemsById[it.id] } }
     val (dayStart, dayEnd) = remember(date, zone) { dayBounds(date, zone) }
+    val (visitCount, tripCount) = remember(model) {
+        model.blocks.count { it.item.kind == ScrubKind.VISIT } to model.blocks.count { it.item.kind == ScrubKind.TRIP }
+    }
     val stripDescription = if (range == null) "" else {
-        val visits = model.blocks.count { it.item.kind == ScrubKind.VISIT }
-        val trips = model.blocks.count { it.item.kind == ScrubKind.TRIP }
         val head = stringResource(
             R.string.map_scrub_strip_description,
             formats.time(range.start, zone), formats.time(range.end, zone),
-            pluralStringResource(R.plurals.map_visit_count, visits, visits),
-            pluralStringResource(R.plurals.map_trip_count, trips, trips),
+            pluralStringResource(R.plurals.map_visit_count, visitCount, visitCount),
+            pluralStringResource(R.plurals.map_trip_count, tripCount, tripCount),
         )
         val at = settledItem?.let { itemLabel(it) }
         if (at == null) head else "$head ${stringResource(R.string.map_scrub_strip_at, formats.time(settled, zone), at)}"
     }
     val cardDescription = settledItem?.let { spokenDescription(it, dayStart, dayEnd, zone) }.orEmpty()
 
-    val live = model.itemAt(time)?.let { itemsById[it.id] }
+    // The item under the thumb, looked up once per frame for the card and the strip's emphasis.
+    val liveScrub = model.itemAt(time)
+    val live = liveScrub?.let { itemsById[it.id] }
+    val visitNumbers = remember(items) { items.visitNumbers() }
+
+    // Drawing objects made once, not per block per frame.
+    val gapEffect = remember(density) { PathEffect.dashPathEffect(floatArrayOf(with(density) { GapDash.toPx() }, with(density) { GapDash.toPx() })) }
+    val visitStroke = remember(density) {
+        Stroke(
+            with(density) { BlockStroke.toPx() },
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(with(density) { VisitDash.toPx() }, with(density) { VisitDashGap.toPx() })),
+        )
+    }
+    val solidStroke = remember(density) { Stroke(with(density) { BlockStroke.toPx() }) }
 
     Column(modifier) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(c.card.copy(alpha = OverlayAlpha), TarryTheme.shapes.container)
+                .background(c.card, TarryTheme.shapes.container)
                 .padding(bottom = TarryTheme.space.xs),
         ) {
             SelectedItemCard(
                 item = live,
                 items = items,
+                visitNumber = (live as? TimelineItem.Visit)?.let { visitNumbers[it.id] },
                 job = (live as? TimelineItem.Visit)?.let { visitJobs[it.id] },
                 jobColors = (live as? TimelineItem.Visit)?.let { jobColors[it.id] },
                 description = cardDescription,
@@ -240,7 +258,8 @@ internal fun DayScrubber(
                 onAddJob = onAddJob,
                 modifier = Modifier.padding(start = TarryTheme.space.l, end = TarryTheme.space.xs, top = TarryTheme.space.xs),
             )
-            // The time label floats above the thumb; the pill is small but its touch target is 48 dp.
+            // The time label floats above the thumb in a 48 dp band of its own: the whole band is the touch target, so
+            // it never overlaps the card above or the strip below.
             BoxWithConstraints(Modifier.fillMaxWidth().height(PillBand).padding(horizontal = StepTouch + TarryTheme.space.xs)) {
                 var labelWidth by remember { mutableStateOf(0) }
                 val trackPx = constraints.maxWidth - 2 * inset
@@ -250,7 +269,8 @@ internal fun DayScrubber(
                     modifier = Modifier
                         .offset { IntOffset(x, 0) }
                         .onSizeChanged { labelWidth = it.width }
-                        .requiredSizeIn(minWidth = MinTouch, minHeight = MinTouch)
+                        .fillMaxHeight()
+                        .widthIn(min = MinTouch)
                         .clickable(onClickLabel = stringResource(R.string.map_scrub_jump), role = Role.Button) { pickingDay = true }
                         .testTag("map_scrub_time"),
                     contentAlignment = Alignment.BottomCenter,
@@ -316,39 +336,33 @@ internal fun DayScrubber(
                         val y = BarRow.toPx() / 2
                         val track = size.width - 2 * inset
                         fun xAt(f: Float) = inset + f * track
-                        // One line for the worked span with the day's items on it. The item the thumb is on is full
-                        // strength; the rest are faded so the current place in the day stands out.
-                        val activeId = model.itemAt(current)?.id
-                        fun Color.emphasis(id: String) = if (id == activeId) this else copy(alpha = alpha * FadedAlpha)
-                        drawLine(c.faint, Offset(xAt(0f), y), Offset(xAt(1f), y), LineWidth.toPx(), StrokeCap.Round)
+                        // One line for the worked span with the day's items on it. Only fills fade for the items the
+                        // thumb is not on; outlines and lines keep full strength so they hold 3:1 against the card
+                        // (muted, alert and outline pass in both themes; a job border under 3:1 becomes `outline`).
+                        val activeId = liveScrub?.id
+                        fun Color.fade(id: String) = if (id == activeId) this else copy(alpha = alpha * FadedAlpha)
+                        fun lineWidth(id: String) = LineWidth.toPx() + if (id == activeId) ActiveLineExtra.toPx() else 0f
+                        drawLine(c.outline, Offset(xAt(0f), y), Offset(xAt(1f), y), LineWidth.toPx(), StrokeCap.Round)
                         model.blocks.forEach { block ->
                             val from = Offset(xAt(block.startFraction), y)
                             val to = Offset(xAt(block.endFraction), y)
+                            val id = block.item.id
                             when (block.item.kind) {
-                                ScrubKind.TRIP -> drawLine(c.muted.emphasis(block.item.id), from, to, LineWidth.toPx(), StrokeCap.Round)
-                                ScrubKind.GAP -> drawLine(
-                                    c.alert.emphasis(block.item.id), from, to, LineWidth.toPx(),
-                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(GapDash.toPx(), GapDash.toPx())),
-                                )
+                                ScrubKind.TRIP -> drawLine(c.muted, from, to, lineWidth(id), StrokeCap.Round)
+                                ScrubKind.GAP -> drawLine(c.alert, from, to, lineWidth(id), pathEffect = gapEffect)
                                 ScrubKind.VISIT -> {
                                     val (left, width) = blockExtent(from.x, to.x, BlockMinWidth.toPx())
                                     val topLeft = Offset(left, y - BlockHeight.toPx() / 2)
                                     val size = Size(width, BlockHeight.toPx())
                                     val corner = CornerRadius(BlockCorner.toPx())
-                                    val job = jobColors[block.item.id]
+                                    val job = jobColors[id]
                                     if (job != null) {
-                                        drawRoundRect(job.container.emphasis(block.item.id), topLeft, size, corner)
-                                        drawRoundRect(job.border.emphasis(block.item.id), topLeft, size, corner, style = Stroke(BlockStroke.toPx()))
+                                        drawRoundRect(job.container.fade(id), topLeft, size, corner)
+                                        drawRoundRect(suggestionBorder(job.border, c), topLeft, size, corner, style = solidStroke)
                                     } else {
                                         // No job (needs review): card fill and a dashed outline, as on the timeline.
-                                        drawRoundRect(c.card.emphasis(block.item.id), topLeft, size, corner)
-                                        drawRoundRect(
-                                            c.outline.emphasis(block.item.id), topLeft, size, corner,
-                                            style = Stroke(
-                                                BlockStroke.toPx(),
-                                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(VisitDash.toPx(), VisitDashGap.toPx())),
-                                            ),
-                                        )
+                                        drawRoundRect(c.card.fade(id), topLeft, size, corner)
+                                        drawRoundRect(c.outline, topLeft, size, corner, style = visitStroke)
                                     }
                                 }
                             }
@@ -359,7 +373,8 @@ internal fun DayScrubber(
                         shownLabels.forEach { (ms, layout) ->
                             val x = xAt(model.fractionAt(ms))
                             drawLine(c.outline, Offset(x, tickTop), Offset(x, tickTop + TickLength.toPx()), 1.dp.toPx())
-                            drawText(layout, topLeft = Offset((x - layout.size.width / 2f).coerceIn(0f, size.width - layout.size.width), labelTop))
+                            val maxLeft = maxOf(0f, size.width - layout.size.width)
+                            drawText(layout, topLeft = Offset((x - layout.size.width / 2f).coerceIn(0f, maxLeft), labelTop))
                         }
                         val thumb = Offset(xAt(model.fractionAt(current)), y)
                         drawCircle(c.card, ThumbRadius.toPx() + DotRing.toPx(), thumb)
@@ -391,6 +406,10 @@ internal fun DayScrubber(
     }
 }
 
+/** Each visit's pin number on the map: 1..n in start order (ties by id), as [me.tarry.app.map.visitPins] numbers them. */
+internal fun List<TimelineItem>.visitNumbers(): Map<String, Int> =
+    filterIsInstance<TimelineItem.Visit>().sortedWith(compareBy({ it.start }, { it.id })).mapIndexed { i, v -> v.id to i + 1 }.toMap()
+
 /** The spoken name of an item: the visit's place, the trip's mode or the gap's cause. */
 @Composable
 private fun itemLabel(item: TimelineItem): String = when (item) {
@@ -410,6 +429,8 @@ private fun itemLabel(item: TimelineItem): String = when (item) {
 private fun SelectedItemCard(
     item: TimelineItem?,
     items: List<TimelineItem>,
+    /** The visit's pin number on the map (the pin hides it when small). */
+    visitNumber: Int?,
     job: JobBlockItem?,
     jobColors: JobColors?,
     description: String,
@@ -432,6 +453,8 @@ private fun SelectedItemCard(
     val density = LocalDensity.current
     val titleMin = with(density) { MaterialTheme.typography.titleMedium.lineHeight.toDp() }
     val subMin = with(density) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() }
+    // Large text: the second line (times with duration and "(continues)") may wrap; the height is reserved for every kind.
+    val subLines = if (density.fontScale >= LargeFontScale) 2 else 1
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -450,13 +473,13 @@ private fun SelectedItemCard(
                 val times = item?.let { clampedTimes(it, dayStart, dayEnd, zone) }
                 when (item) {
                     is TimelineItem.Visit -> {
-                        CardTitle(itemLabel(item), titleMin, c.ink)
+                        val place = itemLabel(item)
+                        CardTitle(if (visitNumber != null) stringResource(R.string.map_card_visit_title, visitNumber, place) else place, titleMin, c.ink)
+                        // The timeline's compact range (a short visit already carries its duration).
+                        val range = times!!.range
                         CardSub(
-                            stringResource(
-                                R.string.map_card_visit_times,
-                                formats.time(times!!.start, zone), formats.time(times.end, zone), formatDuration(times.durationMs),
-                            ),
-                            subMin, c.muted,
+                            if (TimelineText.isShort(times.durationMs)) range else stringResource(R.string.map_card_visit_times, range, formatDuration(times.durationMs)),
+                            subMin, c.muted, subLines,
                         )
                     }
                     is TimelineItem.Trip -> {
@@ -470,20 +493,32 @@ private fun SelectedItemCard(
                         val sorted = remember(items) { items.sortedBy { it.start } }
                         val from = sorted.lastOrNull { it is TimelineItem.Visit && it.end <= item.start } as TimelineItem.Visit?
                         val to = sorted.firstOrNull { it is TimelineItem.Visit && it.start >= item.end } as TimelineItem.Visit?
-                        val sub = when {
-                            from != null && to != null -> stringResource(R.string.map_card_trip_between, itemLabel(from), itemLabel(to))
-                            from != null || to != null -> stringResource(R.string.map_card_trip_from, itemLabel((from ?: to)!!))
-                            else -> ""
+                        if (from != null && to != null) {
+                            // Each end gets its own share and ellipsizes alone, so "→ B" never disappears behind a long A.
+                            Row(Modifier.heightIn(min = subMin * subLines), horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs)) {
+                                Text(
+                                    stringResource(R.string.map_card_trip_from, itemLabel(from)),
+                                    style = MaterialTheme.typography.bodyMedium, color = c.muted, maxLines = subLines, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                Text(
+                                    stringResource(R.string.map_card_trip_to, itemLabel(to)),
+                                    style = MaterialTheme.typography.bodyMedium, color = c.muted, maxLines = subLines, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                            }
+                        } else {
+                            val only = from ?: to
+                            CardSub(if (only != null) stringResource(R.string.map_card_trip_from, itemLabel(only)) else "", subMin, c.muted, subLines)
                         }
-                        CardSub(sub, subMin, c.muted)
                     }
                     is TimelineItem.Gap -> {
                         CardTitle(stringResource(R.string.map_card_gap_title, formatDuration(times!!.durationMs)), titleMin, c.alert)
-                        CardSub(stringResource(item.cause.labelRes()), subMin, c.muted)
+                        CardSub(stringResource(item.cause.labelRes()), subMin, c.muted, subLines)
                     }
                     null -> {
                         CardTitle("", titleMin, c.ink)
-                        CardSub("", subMin, c.muted)
+                        CardSub("", subMin, c.muted, subLines)
                     }
                 }
             }
@@ -547,7 +582,8 @@ private fun SelectedItemCard(
                             .testTag("map_scrub_add_job"),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(addLabel, style = MaterialTheme.typography.labelLarge, color = c.ink, maxLines = 1)
+                        // The box's description is what TalkBack reads; the visible word is not announced a second time.
+                        Text(addLabel, style = MaterialTheme.typography.labelLarge, color = c.ink, maxLines = 1, modifier = Modifier.clearAndSetSemantics { })
                     }
                 }
             }
@@ -568,14 +604,14 @@ private fun CardTitle(text: String, minHeight: androidx.compose.ui.unit.Dp, colo
 }
 
 @Composable
-private fun CardSub(text: String, minHeight: androidx.compose.ui.unit.Dp, color: Color) {
+private fun CardSub(text: String, lineHeight: androidx.compose.ui.unit.Dp, color: Color, lines: Int) {
     Text(
         text,
         style = MaterialTheme.typography.bodyMedium,
         color = color,
-        maxLines = 1,
+        maxLines = lines,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.heightIn(min = minHeight),
+        modifier = Modifier.heightIn(min = lineHeight * lines),
     )
 }
 
