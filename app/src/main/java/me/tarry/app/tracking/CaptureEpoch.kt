@@ -3,6 +3,7 @@ package me.tarry.app.tracking
 import android.content.Context
 import android.content.pm.PackageManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import me.tarry.core.data.repository.TrackingRepository
 import me.tarry.core.data.settings.SettingsRepository
 import javax.inject.Inject
 
@@ -34,14 +35,21 @@ class AndroidInstallTimeSource @Inject constructor(
  * time; a pre-granted or permission-restored fresh install is bounded by its install time and, if onboarding ran,
  * by its completion.
  */
-class TrackingCaptureEpoch @Inject constructor(
+class TrackingCaptureEpoch internal constructor(
     private val settings: SettingsRepository,
     private val installTime: InstallTimeSource,
+    private val anySession: suspend () -> Boolean,
 ) : CaptureEpoch {
+    @Inject constructor(settings: SettingsRepository, installTime: InstallTimeSource, trackingRepo: TrackingRepository) :
+        this(settings, installTime, trackingRepo::anySession)
+
     override suspend fun notBeforeMs(): Long? {
         val started = settings.onboardingStartedAtMs()
         val completed = settings.onboardingCompletedAtMs()
         if (started != null && completed == null) return null
+        // Nothing stamped and never tracked: a fresh install whose first start-up runs before the onboarding gate has
+        // stamped anything. It is not set up yet either. (An upgrader before its first launch has sessions.)
+        if (started == null && completed == null && !anySession()) return null
         return maxOf(installTime.firstInstallTimeMs(), if (started != null) completed ?: 0L else 0L)
     }
 }

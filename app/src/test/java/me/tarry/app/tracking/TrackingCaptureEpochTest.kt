@@ -21,7 +21,8 @@ class TrackingCaptureEpochTest {
     private val settings by lazy {
         SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
     }
-    private val epoch by lazy { TrackingCaptureEpoch(settings, InstallTimeSource { 1_000L }) }
+    private var tracked = false
+    private val epoch by lazy { TrackingCaptureEpoch(settings, InstallTimeSource { 1_000L }) { tracked } }
 
     @After
     fun tearDown() = scope.cancel()
@@ -53,7 +54,13 @@ class TrackingCaptureEpochTest {
     }
 
     @Test
-    fun nothingStampedYetUsesTheInstallTime() = runBlocking<Unit> {
+    fun nothingStampedAndNeverTrackedIsAFreshInstallNotSetUpYet() = runBlocking<Unit> {
+        assertThat(epoch.notBeforeMs()).isNull()
+    }
+
+    @Test
+    fun nothingStampedButTrackedBeforeIsAnUpgraderBoundedByItsInstallTime() = runBlocking<Unit> {
+        tracked = true
         assertThat(epoch.notBeforeMs()).isEqualTo(1_000L)
     }
 }
