@@ -41,6 +41,16 @@
     <string name="timeline_trip_row_drive">Vehicle</string>
     <string name="timeline_trip_row_walk">Walk</string>
     <string name="timeline_trip_row_unknown">Trip</string>
+    <string name="timeline_short_duration_less_than_min">&lt;1m</string>
+    <plurals name="timeline_short_duration_min">
+        <item quantity="one">%1$dm</item>
+        <item quantity="other">%1$dm</item>
+    </plurals>
+    <string name="timeline_gap_short_less_than_min">&lt;1m gap</string>
+    <plurals name="timeline_gap_short_min">
+        <item quantity="one">%1$dm gap</item>
+        <item quantity="other">%1$dm gap</item>
+    </plurals>
     <string name="timeline_gap_row">Not tracked · %1$s</string>
     <string name="timeline_now_description">Now, %1$s</string>
 
