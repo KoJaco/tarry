@@ -2,15 +2,8 @@ package me.tarry.app.ui.timeline
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.Icon
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -19,16 +12,23 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSizeIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -37,34 +37,50 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.map.ScrubItem
 import me.tarry.app.map.ScrubKind
 import me.tarry.app.map.ScrubberModel
+import me.tarry.app.map.blockExtent
+import me.tarry.app.map.hourLabel
+import me.tarry.app.map.hourLabelStride
+import me.tarry.app.map.hourMarks
+import me.tarry.app.map.thinned
 import me.tarry.app.ui.components.IconCircleButton
 import me.tarry.app.ui.drawer.TimePickerDialog
+import me.tarry.app.ui.theme.JobColors
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.theme.disabledIcon
@@ -78,11 +94,21 @@ private val StepTouch = 48.dp
 private val StepIcon = 20.dp
 private val TrackInset = 10.dp
 private val LineWidth = 3.dp
-private val VisitLineWidth = 5.dp
 private val GapDash = 4.dp
-private val DotRadius = 5.dp
 private val DotRing = 1.5.dp
 private val ThumbRadius = 8.dp
+/** The bar's drag row, and the hour labels under it: together the strip's 64 dp. */
+private val BarRow = 48.dp
+private val LabelRow = 16.dp
+private val BlockHeight = 14.dp
+private val BlockCorner = 4.dp
+private val BlockMinWidth = 4.dp
+private val BlockStroke = 1.5.dp
+private val VisitDash = 4.dp
+private val VisitDashGap = 3.dp
+private val TickLength = 5.dp
+private val TickGap = 2.dp
+private val PillBand = 32.dp
 /** The overlay card over the map: mostly opaque so the strip reads on any map content. */
 private const val OverlayAlpha = 0.94f
 /** Strip items other than the one under the thumb. */
@@ -99,11 +125,13 @@ internal fun List<TimelineItem>.toScrubItems(): List<ScrubItem> = map {
 }
 
 /**
- * The map's time scrubber (MVP § Map view), drawn as an overlay: one line in proportion to time (visits in their job
- * colour with a dot at each start, trips `muted`, gaps dashed `alert`), with the [time] thumb and its label above. Dragging moves [time]
+ * The map's time scrubber (MVP § Map view), drawn as an overlay: a card for the item under the thumb, then the day as a
+ * strip in proportion to time (visits as blocks in their job colour, dashed when they have no job; trips `muted`; gaps
+ * dashed `alert`; hour ticks under it), with the [time] thumb and its label above. Dragging moves [time]
  * live ([onTimeChange]) and snaps to the nearest visit start on release. Tapping a visit block opens it
  * ([onOpenVisit]). Previous / next visit buttons and TalkBack actions are the non-drag alternative (WCAG 2.5.7).
  * Tapping the time label opens the date-time jump: a day, then a time; [onJump] gets that instant and its date.
+ * The card's text and the strip's description change when the thumb settles, not on every drag frame.
  */
 @Composable
 internal fun DayScrubber(
@@ -118,6 +146,12 @@ internal fun DayScrubber(
     zone: ZoneId,
     onJump: (date: LocalDate, epochMs: Long) -> Unit,
     modifier: Modifier = Modifier,
+    /** The day's rows, for the card (names, distance, review state); a row missing here leaves the card blank. */
+    items: List<TimelineItem> = emptyList(),
+    /** The card (or its Open button) was used on a trip. */
+    onOpenTrip: (String) -> Unit = {},
+    /** "Add job" on a visit that needs review. */
+    onAddJob: (TimelineItem.Visit) -> Unit = {},
 ) {
     val c = TarryTheme.colors
     val dark = TarryTheme.isDark
@@ -131,9 +165,14 @@ internal fun DayScrubber(
     var widthPx by remember { mutableStateOf(0) }
     var pickingDay by rememberSaveable { mutableStateOf(false) }
     var pickedDay by rememberSaveable { mutableStateOf<LocalDate?>(null) }
+    // The time the description and the card announce: follows [time] except while a drag is in progress.
+    var dragging by remember { mutableStateOf(false) }
+    var settled by remember { mutableLongStateOf(time) }
+    LaunchedEffect(dragging, time) { if (!dragging) settled = time }
     val jobColors = remember(visitJobs, dark) {
         visitJobs.mapValues { (_, b) -> JobPalette.lookup(b.jobColorArgb, b.jobId).colors(dark) }
     }
+    val itemsById = remember(items) { items.associateBy { it.id } }
     val previous = model.previous(time)
     val next = model.next(time)
     val previousLabel = stringResource(R.string.map_scrub_previous_visit)
@@ -141,116 +180,195 @@ internal fun DayScrubber(
 
     val density = LocalDensity.current
     val inset = with(density) { TrackInset.toPx() }
-    /** Strip x (px) → 0..1 along the track, which is inset so the end dots and the thumb aren't clipped. */
+    /** Strip x (px) → 0..1 along the track, which is inset so the end blocks and the thumb aren't clipped. */
     fun fractionOf(x: Float): Float = if (widthPx <= 2 * inset) 0f else ((x - inset) / (widthPx - 2 * inset)).coerceIn(0f, 1f)
 
+    // Hour labels: whole hours inside the worked span, thinned when they would crowd or text is large.
+    val labelStyle = MaterialTheme.typography.bodySmall.copy(color = c.muted)
+    val measurer = rememberTextMeasurer()
+    val range = model.range
+    val labels: List<Pair<Long, TextLayoutResult>> = remember(range, zone, formats.is24Hour, labelStyle, density) {
+        val marks = if (range == null) emptyList() else hourMarks(range.start, range.end, zone)
+        marks.map { it to measurer.measure(hourLabel(it, zone, formats.is24Hour), labelStyle) }
+    }
+    val labelHeightDp = with(density) { MaterialTheme.typography.bodySmall.lineHeight.toDp() }
+    val stripHeight = maxOf(BarRow + LabelRow, BarRow - TickGap - 6.dp + labelHeightDp)
+    val shownLabels = run {
+        val length = range?.let { it.end - it.start } ?: 0L
+        val trackDp = (widthPx - 2 * inset) / density.density
+        val spacingDp = if (length <= 0L || widthPx <= 0) Float.MAX_VALUE else trackDp * 3_600_000f / length
+        thinned(labels, hourLabelStride(spacingDp, density.fontScale))
+    }
+
+    // What TalkBack hears for the strip and the card, updated when the thumb settles.
+    val settledItem = model.itemAt(settled)?.let { itemsById[it.id] }
+    val (dayStart, dayEnd) = remember(date, zone) { dayBounds(date, zone) }
+    val stripDescription = if (range == null) "" else {
+        val visits = model.blocks.count { it.item.kind == ScrubKind.VISIT }
+        val trips = model.blocks.count { it.item.kind == ScrubKind.TRIP }
+        val head = stringResource(
+            R.string.map_scrub_strip_description,
+            formats.time(range.start, zone), formats.time(range.end, zone),
+            pluralStringResource(R.plurals.map_visit_count, visits, visits),
+            pluralStringResource(R.plurals.map_trip_count, trips, trips),
+        )
+        val at = settledItem?.let { itemLabel(it) }
+        if (at == null) head else "$head ${stringResource(R.string.map_scrub_strip_at, formats.time(settled, zone), at)}"
+    }
+    val cardDescription = settledItem?.let { spokenDescription(it, dayStart, dayEnd, zone) }.orEmpty()
+
+    val live = model.itemAt(time)?.let { itemsById[it.id] }
+
     Column(modifier) {
-        // The time label floats above the thumb, over the map; the pill is small but its touch target is 48 dp.
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal = StepTouch + TarryTheme.space.xs)) {
-            var labelWidth by remember { mutableStateOf(0) }
-            val trackPx = constraints.maxWidth - 2 * inset
-            val thumbX = inset + model.fractionAt(time) * trackPx
-            val x = (thumbX - labelWidth / 2f).roundToInt().coerceIn(0, maxOf(0, constraints.maxWidth - labelWidth))
-            Box(
-                modifier = Modifier
-                    .offset { IntOffset(x, 0) }
-                    .onSizeChanged { labelWidth = it.width }
-                    .sizeIn(minWidth = MinTouch, minHeight = MinTouch)
-                    .clickable(onClickLabel = stringResource(R.string.map_scrub_jump), role = Role.Button) { pickingDay = true }
-                    .testTag("map_scrub_time"),
-                contentAlignment = Alignment.BottomCenter,
-            ) {
-                Text(
-                    timeText,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = c.onInk,
-                    modifier = Modifier
-                        .padding(bottom = TarryTheme.space.xs)
-                        .background(c.ink, TarryTheme.shapes.pill)
-                        .padding(horizontal = TarryTheme.space.s, vertical = 2.dp),
-                )
-            }
-        }
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(c.card.copy(alpha = OverlayAlpha), TarryTheme.shapes.pill)
-                .padding(horizontal = TarryTheme.space.xs),
-            verticalAlignment = Alignment.CenterVertically,
+                .background(c.card.copy(alpha = OverlayAlpha), TarryTheme.shapes.container)
+                .padding(bottom = TarryTheme.space.xs),
         ) {
-            StepButton(R.drawable.ic_chevron_left, previousLabel, enabled = previous != null, Modifier.testTag("map_scrub_previous")) {
-                previous?.let(onTimeChange)
-            }
-            val description = stringResource(R.string.map_scrub_description)
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(MinTouch)
-                    .onSizeChanged { widthPx = it.width }
-                    .semantics {
-                        contentDescription = description
-                        stateDescription = timeText
-                        progressBarRangeInfo = ProgressBarRangeInfo(model.fractionAt(current), 0f..1f)
-                        setProgress { f -> change(model.snap(model.timeAt(f))); true }
-                        customActions = listOfNotNull(
-                            previous?.let { t -> CustomAccessibilityAction(previousLabel) { change(t); true } },
-                            next?.let { t -> CustomAccessibilityAction(nextLabel) { change(t); true } },
-                        )
-                    }
-                    .pointerInput(Unit) {
-                        detectTapGestures { p ->
-                            if (widthPx <= 0) return@detectTapGestures
-                            val t = latestModel.timeAt(fractionOf(p.x))
-                            val hit = latestModel.itemAt(t)
-                            if (hit?.kind == ScrubKind.VISIT) openVisit(hit.id) else change(latestModel.snap(t))
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectHorizontalDragGestures(
-                            onDragEnd = { change(latestModel.snap(current)) },
-                        ) { pointer, _ ->
-                            if (widthPx > 0) change(latestModel.timeAt(fractionOf(pointer.position.x)))
-                        }
-                    }
-                    .testTag("map_scrubber"),
-            ) {
-                Canvas(Modifier.fillMaxSize()) {
-                    val y = size.height / 2
-                    val track = size.width - 2 * inset
-                    fun xAt(f: Float) = inset + f * track
-                    // One line for the worked span: trips and stays in their colours, gaps dashed in alert. The item the
-                    // thumb is on is full strength; the rest are faded so the current place in the day stands out.
-                    val activeId = model.itemAt(current)?.id
-                    fun Color.emphasis(id: String) = if (id == activeId) this else copy(alpha = alpha * FadedAlpha)
-                    drawLine(c.faint, Offset(xAt(0f), y), Offset(xAt(1f), y), LineWidth.toPx(), StrokeCap.Round)
-                    model.blocks.forEach { block ->
-                        val from = Offset(xAt(block.startFraction), y)
-                        val to = Offset(xAt(block.endFraction), y)
-                        when (block.item.kind) {
-                            ScrubKind.TRIP -> drawLine(c.muted.emphasis(block.item.id), from, to, LineWidth.toPx(), StrokeCap.Round)
-                            ScrubKind.GAP -> drawLine(
-                                c.alert.emphasis(block.item.id), from, to, LineWidth.toPx(),
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(GapDash.toPx(), GapDash.toPx())),
-                            )
-                            ScrubKind.VISIT -> {
-                                val colour = (jobColors[block.item.id]?.border ?: c.outline).emphasis(block.item.id)
-                                drawLine(colour, from, to, VisitLineWidth.toPx(), StrokeCap.Round)
-                            }
-                        }
-                    }
-                    // A coloured point at each visit start: where the steps and the snap land.
-                    model.blocks.filter { it.item.kind == ScrubKind.VISIT }.forEach { block ->
-                        val at = Offset(xAt(block.startFraction), y)
-                        drawCircle(c.card, DotRadius.toPx() + DotRing.toPx(), at)
-                        drawCircle((jobColors[block.item.id]?.border ?: c.outline).emphasis(block.item.id), DotRadius.toPx(), at)
-                    }
-                    val thumb = Offset(xAt(model.fractionAt(current)), y)
-                    drawCircle(c.card, ThumbRadius.toPx() + DotRing.toPx(), thumb)
-                    drawCircle(c.ink, ThumbRadius.toPx(), thumb)
+            SelectedItemCard(
+                item = live,
+                items = items,
+                job = (live as? TimelineItem.Visit)?.let { visitJobs[it.id] },
+                jobColors = (live as? TimelineItem.Visit)?.let { jobColors[it.id] },
+                description = cardDescription,
+                dayStart = dayStart,
+                dayEnd = dayEnd,
+                zone = zone,
+                onOpenVisit = onOpenVisit,
+                onOpenTrip = onOpenTrip,
+                onAddJob = onAddJob,
+                modifier = Modifier.padding(start = TarryTheme.space.l, end = TarryTheme.space.xs, top = TarryTheme.space.xs),
+            )
+            // The time label floats above the thumb; the pill is small but its touch target is 48 dp.
+            BoxWithConstraints(Modifier.fillMaxWidth().height(PillBand).padding(horizontal = StepTouch + TarryTheme.space.xs)) {
+                var labelWidth by remember { mutableStateOf(0) }
+                val trackPx = constraints.maxWidth - 2 * inset
+                val thumbX = inset + model.fractionAt(time) * trackPx
+                val x = (thumbX - labelWidth / 2f).roundToInt().coerceIn(0, maxOf(0, constraints.maxWidth - labelWidth))
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(x, 0) }
+                        .onSizeChanged { labelWidth = it.width }
+                        .requiredSizeIn(minWidth = MinTouch, minHeight = MinTouch)
+                        .clickable(onClickLabel = stringResource(R.string.map_scrub_jump), role = Role.Button) { pickingDay = true }
+                        .testTag("map_scrub_time"),
+                    contentAlignment = Alignment.BottomCenter,
+                ) {
+                    Text(
+                        timeText,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = c.onInk,
+                        modifier = Modifier
+                            .padding(bottom = TarryTheme.space.xs)
+                            .background(c.ink, TarryTheme.shapes.pill)
+                            .padding(horizontal = TarryTheme.space.s, vertical = 2.dp),
+                    )
                 }
             }
-            StepButton(R.drawable.ic_chevron_right, nextLabel, enabled = next != null, Modifier.testTag("map_scrub_next")) {
-                next?.let(onTimeChange)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = TarryTheme.space.xs),
+                verticalAlignment = Alignment.Top,
+            ) {
+                StepButton(R.drawable.ic_chevron_left, previousLabel, enabled = previous != null, Modifier.testTag("map_scrub_previous")) {
+                    previous?.let(onTimeChange)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(stripHeight)
+                        .onSizeChanged { widthPx = it.width }
+                        .semantics {
+                            contentDescription = stripDescription
+                            stateDescription = timeText
+                            progressBarRangeInfo = ProgressBarRangeInfo(model.fractionAt(current), 0f..1f)
+                            setProgress { f -> change(model.snap(model.timeAt(f))); true }
+                            customActions = listOfNotNull(
+                                previous?.let { t -> CustomAccessibilityAction(previousLabel) { change(t); true } },
+                                next?.let { t -> CustomAccessibilityAction(nextLabel) { change(t); true } },
+                            )
+                        }
+                        .pointerInput(Unit) {
+                            detectTapGestures { p ->
+                                if (widthPx <= 0) return@detectTapGestures
+                                val t = latestModel.timeAt(fractionOf(p.x))
+                                val hit = latestModel.itemAt(t)
+                                if (hit?.kind == ScrubKind.VISIT) openVisit(hit.id) else change(latestModel.snap(t))
+                            }
+                        }
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { dragging = true },
+                                onDragEnd = {
+                                    dragging = false
+                                    change(latestModel.snap(current))
+                                },
+                                onDragCancel = { dragging = false },
+                            ) { pointer, _ ->
+                                if (widthPx > 0) change(latestModel.timeAt(fractionOf(pointer.position.x)))
+                            }
+                        }
+                        .testTag("map_scrubber"),
+                ) {
+                    Canvas(Modifier.fillMaxSize()) {
+                        val y = BarRow.toPx() / 2
+                        val track = size.width - 2 * inset
+                        fun xAt(f: Float) = inset + f * track
+                        // One line for the worked span with the day's items on it. The item the thumb is on is full
+                        // strength; the rest are faded so the current place in the day stands out.
+                        val activeId = model.itemAt(current)?.id
+                        fun Color.emphasis(id: String) = if (id == activeId) this else copy(alpha = alpha * FadedAlpha)
+                        drawLine(c.faint, Offset(xAt(0f), y), Offset(xAt(1f), y), LineWidth.toPx(), StrokeCap.Round)
+                        model.blocks.forEach { block ->
+                            val from = Offset(xAt(block.startFraction), y)
+                            val to = Offset(xAt(block.endFraction), y)
+                            when (block.item.kind) {
+                                ScrubKind.TRIP -> drawLine(c.muted.emphasis(block.item.id), from, to, LineWidth.toPx(), StrokeCap.Round)
+                                ScrubKind.GAP -> drawLine(
+                                    c.alert.emphasis(block.item.id), from, to, LineWidth.toPx(),
+                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(GapDash.toPx(), GapDash.toPx())),
+                                )
+                                ScrubKind.VISIT -> {
+                                    val (left, width) = blockExtent(from.x, to.x, BlockMinWidth.toPx())
+                                    val topLeft = Offset(left, y - BlockHeight.toPx() / 2)
+                                    val size = Size(width, BlockHeight.toPx())
+                                    val corner = CornerRadius(BlockCorner.toPx())
+                                    val job = jobColors[block.item.id]
+                                    if (job != null) {
+                                        drawRoundRect(job.container.emphasis(block.item.id), topLeft, size, corner)
+                                        drawRoundRect(job.border.emphasis(block.item.id), topLeft, size, corner, style = Stroke(BlockStroke.toPx()))
+                                    } else {
+                                        // No job (needs review): card fill and a dashed outline, as on the timeline.
+                                        drawRoundRect(c.card.emphasis(block.item.id), topLeft, size, corner)
+                                        drawRoundRect(
+                                            c.outline.emphasis(block.item.id), topLeft, size, corner,
+                                            style = Stroke(
+                                                BlockStroke.toPx(),
+                                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(VisitDash.toPx(), VisitDashGap.toPx())),
+                                            ),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // Hour ticks under the bar and their labels.
+                        val tickTop = y + BlockHeight.toPx() / 2 + TickGap.toPx()
+                        val labelTop = tickTop + TickLength.toPx() + TickGap.toPx()
+                        shownLabels.forEach { (ms, layout) ->
+                            val x = xAt(model.fractionAt(ms))
+                            drawLine(c.outline, Offset(x, tickTop), Offset(x, tickTop + TickLength.toPx()), 1.dp.toPx())
+                            drawText(layout, topLeft = Offset((x - layout.size.width / 2f).coerceIn(0f, size.width - layout.size.width), labelTop))
+                        }
+                        val thumb = Offset(xAt(model.fractionAt(current)), y)
+                        drawCircle(c.card, ThumbRadius.toPx() + DotRing.toPx(), thumb)
+                        drawCircle(c.ink, ThumbRadius.toPx(), thumb)
+                    }
+                }
+                StepButton(R.drawable.ic_chevron_right, nextLabel, enabled = next != null, Modifier.testTag("map_scrub_next")) {
+                    next?.let(onTimeChange)
+                }
             }
         }
     }
@@ -271,6 +389,194 @@ internal fun DayScrubber(
             onDismiss = { pickedDay = null },
         )
     }
+}
+
+/** The spoken name of an item: the visit's place, the trip's mode or the gap's cause. */
+@Composable
+private fun itemLabel(item: TimelineItem): String = when (item) {
+    is TimelineItem.Visit ->
+        if (item.labelIsCoordinates) stringResource(R.string.timeline_unknown_place) else item.placeLabel ?: stringResource(R.string.timeline_unknown_place)
+    is TimelineItem.Trip -> stringResource(item.mode.labelRes())
+    is TimelineItem.Gap -> stringResource(item.cause.labelRes())
+}
+
+/**
+ * The item under the thumb: a visit (place, times and duration, job or "Needs review" with "Add job"), a trip (mode,
+ * distance, duration; the places either side) or a gap (cause). Its height never changes with the item, so the strip
+ * below does not jump while dragging: two text lines plus a 48 dp row for the chips. The whole card opens the item
+ * (a gap has nothing to open); the text is described for TalkBack as a polite live region from [description].
+ */
+@Composable
+private fun SelectedItemCard(
+    item: TimelineItem?,
+    items: List<TimelineItem>,
+    job: JobBlockItem?,
+    jobColors: JobColors?,
+    description: String,
+    dayStart: Long,
+    dayEnd: Long,
+    zone: ZoneId,
+    onOpenVisit: (String) -> Unit,
+    onOpenTrip: (String) -> Unit,
+    onAddJob: (TimelineItem.Visit) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = TarryTheme.colors
+    val formats = rememberTimeFormats()
+    val open: (() -> Unit)? = when (item) {
+        is TimelineItem.Visit -> {{ onOpenVisit(item.id) }}
+        is TimelineItem.Trip -> {{ onOpenTrip(item.id) }}
+        else -> null
+    }
+    // Both lines reserve the same height whatever the item, in the user's text size.
+    val density = LocalDensity.current
+    val titleMin = with(density) { MaterialTheme.typography.titleMedium.lineHeight.toDp() }
+    val subMin = with(density) { MaterialTheme.typography.bodyMedium.lineHeight.toDp() }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (open != null) Modifier.pointerInput(item?.id) { detectTapGestures { open() } } else Modifier)
+            .testTag("map_scrub_card"),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clearAndSetSemantics {
+                        contentDescription = description
+                        liveRegion = LiveRegionMode.Polite
+                    },
+            ) {
+                val times = item?.let { clampedTimes(it, dayStart, dayEnd, zone) }
+                when (item) {
+                    is TimelineItem.Visit -> {
+                        CardTitle(itemLabel(item), titleMin, c.ink)
+                        CardSub(
+                            stringResource(
+                                R.string.map_card_visit_times,
+                                formats.time(times!!.start, zone), formats.time(times.end, zone), formatDuration(times.durationMs),
+                            ),
+                            subMin, c.muted,
+                        )
+                    }
+                    is TimelineItem.Trip -> {
+                        Row(Modifier.heightIn(min = titleMin), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s)) {
+                            Icon(painterResource(item.mode.iconRes()), contentDescription = null, tint = c.muted, modifier = Modifier.size(StepIcon))
+                            Text(
+                                stringResource(R.string.map_card_trip_title, stringResource(item.mode.rowLabelRes()), formatDistance(item.distanceM), formatDuration(times!!.durationMs)),
+                                style = MaterialTheme.typography.titleMedium, color = c.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        val sorted = remember(items) { items.sortedBy { it.start } }
+                        val from = sorted.lastOrNull { it is TimelineItem.Visit && it.end <= item.start } as TimelineItem.Visit?
+                        val to = sorted.firstOrNull { it is TimelineItem.Visit && it.start >= item.end } as TimelineItem.Visit?
+                        val sub = when {
+                            from != null && to != null -> stringResource(R.string.map_card_trip_between, itemLabel(from), itemLabel(to))
+                            from != null || to != null -> stringResource(R.string.map_card_trip_from, itemLabel((from ?: to)!!))
+                            else -> ""
+                        }
+                        CardSub(sub, subMin, c.muted)
+                    }
+                    is TimelineItem.Gap -> {
+                        CardTitle(stringResource(R.string.map_card_gap_title, formatDuration(times!!.durationMs)), titleMin, c.alert)
+                        CardSub(stringResource(item.cause.labelRes()), subMin, c.muted)
+                    }
+                    null -> {
+                        CardTitle("", titleMin, c.ink)
+                        CardSub("", subMin, c.muted)
+                    }
+                }
+            }
+            Box(Modifier.size(MinTouch), contentAlignment = Alignment.Center) {
+                if (open != null) {
+                    IconCircleButton(
+                        icon = R.drawable.ic_chevron_right,
+                        contentDescription = stringResource(R.string.map_card_open),
+                        onClick = open,
+                        containerColor = c.inset,
+                        modifier = Modifier.testTag("map_scrub_open"),
+                    )
+                }
+            }
+        }
+        // The chip row always takes its 48 dp, so the card is the same height for every item.
+        Row(
+            Modifier.fillMaxWidth().height(MinTouch),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s),
+        ) {
+            if (item is TimelineItem.Visit) {
+                if (job != null && jobColors != null) {
+                    val name = if (job.billable) stringResource(R.string.map_card_job_billable, job.jobName, stringResource(R.string.timeline_job_billable)) else job.jobName
+                    Row(
+                        Modifier
+                            .clip(TarryTheme.shapes.pill)
+                            .background(jobColors.container)
+                            .border(BlockStroke, jobColors.border, TarryTheme.shapes.pill)
+                            .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.xs)
+                            .testTag("map_scrub_job_chip"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.xs),
+                    ) {
+                        Box(Modifier.size(8.dp).background(jobColors.border, CircleShape))
+                        Text(name, style = MaterialTheme.typography.labelMedium, color = jobColors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                } else if (item.needsReview) {
+                    Text(
+                        stringResource(R.string.timeline_needs_review),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = c.onAccentSoft,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .clip(TarryTheme.shapes.pill)
+                            .background(c.accentSoft)
+                            .padding(horizontal = TarryTheme.space.m, vertical = TarryTheme.space.xs)
+                            .testTag("map_scrub_review_chip"),
+                    )
+                    val addLabel = stringResource(R.string.timeline_add_job)
+                    val addDescription = stringResource(R.string.map_card_add_job_description, itemLabel(item))
+                    Box(
+                        Modifier
+                            .heightIn(min = MinTouch)
+                            .widthIn(min = MinTouch)
+                            .clip(TarryTheme.shapes.pill)
+                            .semantics { contentDescription = addDescription }
+                            .clickable(role = Role.Button) { onAddJob(item) }
+                            .padding(horizontal = TarryTheme.space.s)
+                            .testTag("map_scrub_add_job"),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(addLabel, style = MaterialTheme.typography.labelLarge, color = c.ink, maxLines = 1)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardTitle(text: String, minHeight: androidx.compose.ui.unit.Dp, color: Color) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium,
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.heightIn(min = minHeight),
+    )
+}
+
+@Composable
+private fun CardSub(text: String, minHeight: androidx.compose.ui.unit.Dp, color: Color) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.heightIn(min = minHeight),
+    )
 }
 
 /** A previous / next arrow: a small glyph on the overlay with the full 48 dp touch target. */

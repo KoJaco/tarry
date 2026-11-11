@@ -1,6 +1,7 @@
 package me.tarry.app.ui.timeline
 
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +20,9 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.google.common.truth.Truth.assertThat
 import me.tarry.app.map.RoutePoint
@@ -44,7 +48,7 @@ class DayScrubberTest {
     private fun at(h: Int, m: Int = 0) = day.atTime(h, m).atZone(zone).toInstant().toEpochMilli()
 
     private val items = listOf(
-        TimelineItem.Visit("a", at(8), at(10), "Office"),
+        TimelineItem.Visit("a", at(8), at(10), "Office", needsReview = true),
         TimelineItem.Trip("t", at(10), at(11), 900f, TripMode.VEHICLE),
         TimelineItem.Visit("b", at(11), at(13), "Site"),
         TimelineItem.Gap("g", at(13), at(14), GapCause.NO_FIX),
@@ -53,18 +57,151 @@ class DayScrubberTest {
     private var time by mutableLongStateOf(at(8))
     private val opened = mutableListOf<String>()
 
-    private fun show() {
+    private val addJobFor = mutableListOf<String>()
+    private val openedTrips = mutableListOf<String>()
+    private val siteJob = JobBlockItem("jb", "job", "Fitout", 0xFF3366CC.toInt(), at(11), at(13), billable = true, notes = null)
+
+    private fun show(dark: Boolean = false, fontScale: Float = 1f) {
         val (start, end) = dayBounds(day, zone)
         val model = ScrubberModel(items.toScrubItems(), start, end, listOf(RoutePoint(at(8), -33.9, 151.2, 5f)))
         composeRule.setContent {
-            TarryTheme {
-                DayScrubber(
-                    model, emptyMap(), time, { time = it }, { opened += it },
-                    date = day, today = day, zone = zone, onJump = { _, _ -> },
-                )
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
+                TarryTheme(darkTheme = dark) {
+                    DayScrubber(
+                        model, mapOf("b" to siteJob), time, { time = it }, { opened += it },
+                        date = day, today = day, zone = zone, onJump = { _, _ -> },
+                        items = items, onOpenTrip = { openedTrips += it }, onAddJob = { addJobFor += it.id },
+                    )
+                }
             }
         }
     }
+
+    private fun cardHeightPx(): Float =
+        composeRule.onNodeWithTag("map_scrub_card").fetchSemanticsNode().size.height.toFloat()
+
+    private fun stripDescription(): String =
+        composeRule.onNodeWithTag("map_scrubber").fetchSemanticsNode().config[SemanticsProperties.ContentDescription].joinToString(" ")
+
+    @Test
+    fun theStripIsSixtyFourDpTallAndAllOfItIsDraggable() {
+        show()
+        composeRule.onNodeWithTag("map_scrubber").assertHeightIsEqualTo(64.dp)
+        // Down in the hour-label band (bottom edge), then along: still a drag.
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput {
+            down(Offset(width * 0.05f, height - 2f))
+            moveBy(Offset(width * 0.45f, 0f))
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput { up() }
+        assertThat(time).isEqualTo(at(11))
+    }
+
+    @Test
+    fun theCardShowsAVisitThatNeedsReviewWithAddJob() {
+        show()
+        composeRule.onNodeWithText("Office", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Needs review", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("map_scrub_add_job").assertHeightIsAtLeast(48.dp).performClick()
+        assertThat(addJobFor).containsExactly("a")
+        assertThat(opened).isEmpty() // the button took the tap, not the card behind it
+    }
+
+    @Test
+    fun theCardShowsAVisitsJobChip() {
+        time = at(11)
+        show()
+        composeRule.onNodeWithText("Site", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Fitout · Billable", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("map_scrub_add_job").assertDoesNotExist()
+    }
+
+    @Test
+    fun theCardShowsATripWithItsNeighbours() {
+        time = at(10, 30)
+        show()
+        composeRule.onNodeWithText("Vehicle · 900 m · 1 h", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Near Office → Site", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
+    fun theCardShowsAGapWithItsCause() {
+        time = at(13, 30)
+        show()
+        composeRule.onNodeWithText("No location · 1 h", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("No location fix", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithTag("map_scrub_open").assertDoesNotExist()
+    }
+
+    @Test
+    fun theCardIsTheSameHeightForEveryKindOfItem() {
+        show()
+        val visit = cardHeightPx()
+        composeRule.runOnIdle { time = at(10, 30) }
+        composeRule.waitForIdle()
+        val trip = cardHeightPx()
+        composeRule.runOnIdle { time = at(13, 30) }
+        composeRule.waitForIdle()
+        val gap = cardHeightPx()
+        composeRule.runOnIdle { time = at(11) }
+        composeRule.waitForIdle()
+        val job = cardHeightPx()
+        assertThat(listOf(trip, gap, job)).containsExactly(visit, visit, visit)
+    }
+
+    @Test
+    fun theCardAndItsOpenButtonOpenTheItem() {
+        time = at(11)
+        show()
+        composeRule.onNodeWithTag("map_scrub_open").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp).performClick()
+        assertThat(opened).containsExactly("b")
+        composeRule.onNodeWithTag("map_scrub_card").performTouchInput { click(Offset(width * 0.3f, 10f)) }
+        assertThat(opened).containsExactly("b", "b")
+        composeRule.runOnIdle { time = at(10, 30) }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("map_scrub_open").performClick()
+        assertThat(openedTrips).containsExactly("t")
+    }
+
+    @Test
+    fun theDescriptionChangesWhenTheThumbSnapsNotWhileDragging() {
+        show()
+        val before = stripDescription()
+        assertThat(before).contains("Day from")
+        assertThat(before).contains("3 visits, 1 trip")
+        assertThat(before).contains("Office")
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput {
+            down(centerLeft.copy(x = width * 0.05f))
+            moveBy(Offset(width * 0.45f, 0f))
+        }
+        composeRule.waitForIdle()
+        assertThat(stripDescription()).isEqualTo(before)
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput { up() }
+        composeRule.waitForIdle()
+        assertThat(stripDescription()).contains("Site")
+        assertThat(stripDescription()).doesNotContain("At 8:00")
+    }
+
+
+    private fun checkLayout(dark: Boolean, scale: Float) {
+        show(dark, scale)
+        val first = cardHeightPx()
+        composeRule.onNodeWithTag("map_scrub_add_job").assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag("map_scrubber").assertHeightIsAtLeast(64.dp)
+        composeRule.onNodeWithTag("map_scrub_time").assertHeightIsAtLeast(48.dp)
+        composeRule.runOnIdle { time = at(13, 30) }
+        composeRule.waitForIdle()
+        assertThat(cardHeightPx()).isEqualTo(first)
+    }
+
+    @Test fun lightNormalText() = checkLayout(dark = false, scale = 1f)
+
+    @Test fun lightLargeText() = checkLayout(dark = false, scale = 2f)
+
+    @Test fun darkNormalText() = checkLayout(dark = true, scale = 1f)
+
+    @Test fun darkLargeText() = checkLayout(dark = true, scale = 2f)
 
     @Test
     fun stepButtonsWalkTheVisitStartsAndDisableAtTheEnds() {

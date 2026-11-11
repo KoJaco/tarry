@@ -34,8 +34,11 @@ import me.tarry.app.map.TripRoute
 import me.tarry.app.map.circlePolygon
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.geojson.Polygon
+import me.tarry.app.map.PinHit
 import me.tarry.app.map.VisitPin
 import me.tarry.app.map.groupCoincidentPins
+import me.tarry.app.map.pickPin
+import me.tarry.app.map.sortedForDrawing
 import me.tarry.app.ui.theme.JobPalette
 import me.tarry.app.ui.theme.TarryColors
 import me.tarry.app.ui.theme.TarryTheme
@@ -65,8 +68,15 @@ private const val SinglePlaceZoom = 16.0
 /** A box smaller than this (degrees) is effectively one place: zoom to it instead of fitting. */
 private const val TinySpanDeg = 0.001
 private val BannerTop = 48.dp
-/** Margin around the day when fitting it, inside the attribution strip and the bottom overlay (a pin is 26 dp across). */
-private val FitPadding = 32.dp
+/**
+ * Margin around the day when fitting it, inside the attribution strip and the bottom overlay (the card and strip, whose
+ * measured height is added by the caller). The biggest pin is 56 dp across, so half of it plus some air.
+ */
+private val FitPadding = 44.dp
+private const val PinStroke = 2f
+private const val ActivePinStroke = 3f
+/** Pins smaller than this (style units) hide their number. */
+private const val LabelMinRadius = 13f
 private const val BreakEndRadius = 4f
 private const val FadedRouteOpacity = 0.3f
 
@@ -112,12 +122,13 @@ fun DayMapView(
                         val p = map.projection.toScreenLocation(latLng)
                         val half = touchPx / 2
                         val hit = map.queryRenderedFeatures(RectF(p.x - half, p.y - half, p.x + half, p.y + half), PinCircleLayer)
-                        // Overlapping pins: the one whose circle edge (its real radius r, in style units) is nearest the tap, not whichever the query lists first.
-                        val nearest = hit.minByOrNull { f ->
+                        // Overlapping pins: the smallest circle holding the tap (it is drawn on top), else the nearest edge.
+                        val candidates = hit.mapNotNull { f ->
+                            val id = f.getStringProperty("id") ?: return@mapNotNull null
                             val at = (f.geometry() as? org.maplibre.geojson.Point)?.let { map.projection.toScreenLocation(org.maplibre.android.geometry.LatLng(it.latitude(), it.longitude())) }
-                            if (at == null) Float.MAX_VALUE else pinEdgeDistancePx(hypot(at.x - p.x, at.y - p.y), f.getNumberProperty("r")?.toFloat() ?: 0f, pxPerStyleUnit)
+                            PinHit(id, f.getNumberProperty("r")?.toFloat() ?: 0f, if (at == null) Float.MAX_VALUE else hypot(at.x - p.x, at.y - p.y))
                         }
-                        val id = nearest?.getStringProperty("id") ?: return@addOnMapClickListener false
+                        val id = pickPin(candidates, pxPerStyleUnit) ?: return@addOnMapClickListener false
                         openVisit(id)
                         true
                     }
@@ -135,7 +146,7 @@ fun DayMapView(
             // Added bottom-up on first use: visit areas, then trips, then pins (all below the marker).
             style.setVisitAreas(dayMap.pins, activeVisit, colors, dark, config)
             style.setRoutes(dayMap.routes, activeTrip, colors)
-            style.setPins(dayMap.pins, colors, dark)
+            style.setPins(dayMap.pins, activeVisit, colors, dark)
             dayMap.bounds?.takeIf { dayFit.fit(date, it) }?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomInsetPx) }
         }
         LaunchedEffect(current, bottomInsetPx, topInsetPx) {
@@ -299,16 +310,20 @@ private fun Style.setMarker(marker: GeoPoint?, colors: TarryColors) {
 }
 
 /** Pins carry their own colours as properties so job colours need no per-job layers. */
-private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boolean) {
-    val features = groupCoincidentPins(pins).map { group ->
+private fun Style.setPins(pins: List<VisitPin>, activeVisit: String?, colors: TarryColors, dark: Boolean) {
+    // Largest first, with a sort key to match: short stops are drawn on top of long ones and stay tappable.
+    val features = sortedForDrawing(groupCoincidentPins(pins)).map { group ->
         val pin = group.first
         val job = pin.jobId?.let { JobPalette.lookup(pin.jobColorArgb, it).colors(dark) }
+        val active = group.isActive(activeVisit)
         Feature.fromGeometry(pin.position.toPoint()).apply {
             addStringProperty("id", pin.visitId)
             addStringProperty("n", group.label)
             addNumberProperty("r", group.radius)
+            addNumberProperty("sk", -group.radius)
+            addBooleanProperty("active", active)
             addStringProperty("fill", mapColor((job?.container ?: colors.card).toArgb()))
-            addStringProperty("stroke", mapColor((job?.border ?: colors.outline).toArgb()))
+            addStringProperty("stroke", mapColor((if (active) colors.ink else job?.border ?: colors.outline).toArgb()))
             addStringProperty("text", mapColor((job?.text ?: colors.ink).toArgb()))
         }
     }
@@ -317,9 +332,12 @@ private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boole
         addBelowMarker(
             CircleLayer(PinCircleLayer, "$PinsId-src").withProperties(
                 PropertyFactory.circleRadius(Expression.get("r")),
+                PropertyFactory.circleSortKey(Expression.get("sk")),
                 PropertyFactory.circleColor(Expression.toColor(Expression.get("fill"))),
                 PropertyFactory.circleStrokeColor(Expression.toColor(Expression.get("stroke"))),
-                PropertyFactory.circleStrokeWidth(2f),
+                PropertyFactory.circleStrokeWidth(
+                    Expression.switchCase(Expression.get("active"), Expression.literal(ActivePinStroke), Expression.literal(PinStroke)),
+                ),
             ),
         )
         addBelowMarker(
@@ -327,7 +345,12 @@ private fun Style.setPins(pins: List<VisitPin>, colors: TarryColors, dark: Boole
                 PropertyFactory.textField(Expression.get("n")),
                 PropertyFactory.textFont(arrayOf(PinFont)),
                 PropertyFactory.textSize(13f),
+                PropertyFactory.symbolSortKey(Expression.get("sk")),
                 PropertyFactory.textColor(Expression.toColor(Expression.get("text"))),
+                // A small circle has no room for its number (it is in the strip card and the drawer).
+                PropertyFactory.textOpacity(
+                    Expression.step(Expression.get("r"), Expression.literal(0f), Expression.literal(LabelMinRadius), Expression.literal(1f)),
+                ),
                 PropertyFactory.textAllowOverlap(true),
                 PropertyFactory.textIgnorePlacement(true),
             ),
