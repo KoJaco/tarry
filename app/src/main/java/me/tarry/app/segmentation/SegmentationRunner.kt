@@ -65,8 +65,9 @@ class SegmentationRunner @Inject constructor(
     }
 
     private suspend fun runLocked(now: Long) {
+        val firstSessionStart = sessionDao.getInRange(0, Long.MAX_VALUE).firstOrNull()?.start
         val checkpoint = checkpointDao.getById()?.processedUntil
-            ?: sessionDao.getInRange(0, Long.MAX_VALUE).firstOrNull()?.start
+            ?: firstSessionStart
         if (checkpoint == null) {
             saveCheckpoint(now)
             return
@@ -93,7 +94,8 @@ class SegmentationRunner @Inject constructor(
         }
 
         val pings = pingDao.getInRange(from, to)
-        val sessions = sessionDao.getOverlapping(from, to)
+        // Wider on the left so a KILLED session just before the range still bridges to a restart inside it.
+        val sessions = sessionDao.getOverlapping(from - config.shortInterruptionMs, to)
         val allGaps = gapDao.getInRange(from, to)
         val knownPlaces = placeDao.getAllActive()
         val weights = visitDao.durationByPlaceOutside(from, to).associate { it.placeId to it.durationMs }
@@ -110,9 +112,12 @@ class SegmentationRunner @Inject constructor(
                     weightMs = weights[it.id] ?: 0L, merged = it.mergedIntoId != null, ignored = it.ignored,
                 )
             },
-            windows = windowChecker.activeIntervals(Instant.ofEpochMilli(from), Instant.ofEpochMilli(to))
-                .map { TimeRange(it.start.toEpochMilli(), it.end.toEpochMilli()) },
-            sessions = sessions.map { TimeRange(it.start, maxOf(it.end ?: now, it.start)) },
+            windows = boundedWindows(
+                windowChecker.activeIntervals(Instant.ofEpochMilli(from), Instant.ofEpochMilli(to))
+                    .map { TimeRange(it.start.toEpochMilli(), it.end.toEpochMilli()) },
+                firstSessionStart,
+            ),
+            sessions = segmentationSessions(sessions, now, config.shortInterruptionMs),
             healthGaps = allGaps.filter { it.cause.toSegmentationOrNull() == null }.map { TimeRange(it.start, it.end) },
         )
         val result = Segmenter.segment(input, params)

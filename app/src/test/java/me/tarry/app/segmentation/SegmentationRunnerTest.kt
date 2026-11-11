@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.runBlocking
 import me.tarry.app.tracking.FakeWindowChecker
+import me.tarry.app.tracking.WindowBounds
 import me.tarry.core.data.db.SegmentationStore
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.ExcludedRange
@@ -16,6 +17,7 @@ import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.GapCause
 import me.tarry.core.data.model.PingSource
+import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.EditClock
@@ -89,6 +91,69 @@ class SegmentationRunnerTest {
     private suspend fun visits() = db.visitDao().getInRange(0, Long.MAX_VALUE)
 
     private suspend fun trips() = db.tripDao().getInRange(0, Long.MAX_VALUE)
+
+    /** A runner whose schedule window covers [windowStart, windowEnd]. */
+    private fun runnerWithWindow(windowStart: Long, windowEnd: Long) = SegmentationRunner(
+        SegmentationStore(db), db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(),
+        db.placeDao(), db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao(),
+        FakeWindowChecker().apply {
+            intervals = listOf(WindowBounds(java.time.Instant.ofEpochMilli(windowStart), java.time.Instant.ofEpochMilli(windowEnd)))
+        },
+        SegmentationParams(),
+    )
+
+    private suspend fun noSessionGaps() =
+        db.gapDao().getInRange(0, Long.MAX_VALUE).filter { it.cause == GapCause.NO_SESSION }
+
+    private suspend fun killAndRestart(restartDelayMs: Long): Long {
+        val killedAt = t0 + 10 * minute
+        val restartAt = killedAt + restartDelayMs
+        val first = db.trackingSessionDao().upsert(
+            TrackingSession(
+                start = t0, end = killedAt, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE,
+                endReason = SessionEndReason.KILLED,
+            ),
+        )
+        val second = db.trackingSessionDao().upsert(
+            TrackingSession(start = restartAt, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE),
+        )
+        sessionId = first
+        db.locationPingDao().upsertAll((0..10 step 2).map { ping(t0 + it * minute, siteA) })
+        sessionId = second
+        db.locationPingDao().upsertAll((0..10 step 2).map { ping(restartAt + it * minute, siteB) })
+        return restartAt + 12 * minute
+    }
+
+    @Test
+    fun aShortKillAndRestartInsideTheWindowWritesNoNoSessionGap() = runBlocking<Unit> {
+        val now = killAndRestart(77_000L)
+
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute).run(now)
+
+        assertThat(noSessionGaps()).isEmpty()
+    }
+
+    @Test
+    fun aLongKillStillWritesTheNoSessionGap() = runBlocking<Unit> {
+        val now = killAndRestart(6 * minute)
+
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute).run(now)
+
+        assertThat(noSessionGaps()).hasSize(1)
+    }
+
+    @Test
+    fun noNoSessionGapBeforeTheFirstSessionEver() = runBlocking<Unit> {
+        // The window opened an hour before the first session (a fresh install at 08:00 in a 07:00 window).
+        sessionId = db.trackingSessionDao().upsert(
+            TrackingSession(start = t0, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE),
+        )
+        db.locationPingDao().upsertAll((0..10 step 2).map { ping(t0 + it * minute, siteA) })
+
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute).run(t0 + 12 * minute)
+
+        assertThat(noSessionGaps()).isEmpty()
+    }
 
     @Test
     fun twoSiteDayCreatesVisitsTripPlacesAndAdvancesCheckpoint() = runBlocking<Unit> {
