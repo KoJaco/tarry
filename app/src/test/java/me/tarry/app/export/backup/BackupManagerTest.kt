@@ -173,6 +173,108 @@ class BackupManagerTest {
         assertThat(settingsRepo.onboardingStartedAtMs()).isEqualTo(100L)
     }
 
+    /** [preview] with [extra] entries added to its settings, as a hand-edited backup file would carry them. */
+    private fun tampered(preview: RestorePreview, extra: List<PrefEntry>) = RestorePreview(
+        createdAt = preview.createdAt,
+        counts = preview.counts,
+        snapshot = preview.snapshot,
+        settings = (preview.settings.toEntries() + extra).toPreferences(),
+        declined = preview.declined,
+        pingCount = preview.pingCount,
+        open = preview.open,
+    )
+
+    private val hostile = listOf(
+        PrefEntry(Settings.ONBOARDING_COMPLETED_AT_KEY, "long", "1"),
+        PrefEntry(Settings.ONBOARDING_STARTED_AT_KEY, "long", "1"),
+        PrefEntry(Settings.ACCESS_PURCHASE_STATE_KEY, "string", "OWNED"),
+        PrefEntry(Settings.ACCESS_PURCHASE_CHECKED_KEY, "long", "1"),
+        PrefEntry(Settings.ACCESS_LAST_SEEN_KEY, "long", "1"),
+        PrefEntry(Settings.ACCESS_LOCKED_SINCE_KEY, "long", "1"),
+        PrefEntry(Settings.ACCESS_DEBUG_STATE_KEY, "string", "OWNED"),
+        PrefEntry(Settings.ACCESS_DEBUG_TRIAL_END_KEY, "long", "1"),
+        PrefEntry(Settings.ACCESS_TRIAL_CARD_KEY, "boolean", "true"),
+        PrefEntry(Settings.LAST_BACKUP_KEY, "long", "1"),
+    )
+
+    @Test
+    fun deviceLocalKeysAreNeverWrittenToABackup() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        settingsRepo.setTheme(ThemeMode.DARK)
+        settingsRepo.setOnboardingCompletedAtMs(123L)
+        settingsRepo.setAccessPurchase("OWNED", 5L)
+        settingsRepo.raiseAccessLastSeenMs(7L)
+        settingsRepo.setAccessLockedSinceMs(9L)
+        settingsRepo.setAccessDebug("TRIAL_ENDED", 11L)
+        val keys = decodeSettingsKeys(backupBytes())
+        assertThat(keys).contains("theme")
+        for (k in Settings.DEVICE_LOCAL_KEYS) assertThat(keys).doesNotContain(k)
+    }
+
+    @Test
+    fun aBackupCarryingDeviceLocalKeysCannotChangeThePhonesValues() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        settingsRepo.setOnboardingCompletedAtMs(123L)
+        settingsRepo.setOnboardingStartedAtMs(100L)
+        settingsRepo.setAccessPurchase("NONE", 5L)
+        settingsRepo.raiseAccessLastSeenMs(7L)
+        settingsRepo.setAccessLockedSinceMs(9L)
+        settingsRepo.setAccessDebug("TRIAL_ENDED", 11L)
+        val preview = tampered(previewOf(backupBytes()), hostile)
+
+        manager.restore(preview)
+
+        val p = settingsRepo.currentAccessPrefs()
+        assertThat(p.anchorMs).isEqualTo(123L)
+        assertThat(settingsRepo.onboardingStartedAtMs()).isEqualTo(100L)
+        assertThat(p.purchaseState).isEqualTo("NONE")
+        assertThat(p.purchaseCheckedMs).isEqualTo(5L)
+        assertThat(p.lastSeenMs).isEqualTo(7L)
+        assertThat(p.lockedSinceMs).isEqualTo(9L)
+        assertThat(p.debugState).isEqualTo("TRIAL_ENDED")
+        assertThat(p.debugTrialEndMs).isEqualTo(11L)
+    }
+
+    @Test
+    fun aKeyTheFilePlantsButThePhoneNeverHadStaysAbsent() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        val preview = tampered(previewOf(backupBytes()), hostile)
+
+        manager.restore(preview)
+
+        val p = settingsRepo.currentAccessPrefs()
+        assertThat(p.anchorMs).isNull()
+        assertThat(settingsRepo.onboardingStartedAtMs()).isNull()
+        assertThat(p.purchaseState).isNull()
+        assertThat(p.purchaseCheckedMs).isNull()
+        assertThat(p.lastSeenMs).isNull()
+        assertThat(p.lockedSinceMs).isNull()
+        assertThat(p.debugState).isNull()
+        assertThat(p.debugTrialEndMs).isNull()
+        assertThat(settingsRepo.settings.first().lastBackupMs).isEqualTo(1_700_000_000_000L) // the phone's own, set by the backup itself
+    }
+
+    @Test
+    fun deleteAllKeepsTheAccessState() = runBlocking<Unit> {
+        store.replaceAll(everythingSnapshot())
+        settingsRepo.setOnboardingCompletedAtMs(123L)
+        settingsRepo.setAccessPurchase("OWNED", 5L)
+        settingsRepo.raiseAccessLastSeenMs(7L)
+        settingsRepo.setAccessLockedSinceMs(9L)
+        settingsRepo.setAccessDebug("PENDING", 11L)
+
+        manager.deleteAll()
+
+        val p = settingsRepo.currentAccessPrefs()
+        assertThat(p.anchorMs).isEqualTo(123L)
+        assertThat(p.purchaseState).isEqualTo("OWNED")
+        assertThat(p.purchaseCheckedMs).isEqualTo(5L)
+        assertThat(p.lastSeenMs).isEqualTo(7L)
+        assertThat(p.lockedSinceMs).isEqualTo(9L)
+        assertThat(p.debugState).isEqualTo("PENDING")
+        assertThat(p.debugTrialEndMs).isEqualTo(11L)
+    }
+
     private fun decodeSettingsKeys(bytes: ByteArray) =
         decodeAll { ByteArrayInputStream(bytes) }.settings.map { it.key }
 

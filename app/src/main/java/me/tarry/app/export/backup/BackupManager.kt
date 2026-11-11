@@ -6,7 +6,6 @@ import android.provider.DocumentsContract
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
-import androidx.datastore.preferences.core.longPreferencesKey
 import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
@@ -160,7 +159,7 @@ class BackupManager @Inject constructor(
             createdAt = clock.nowMs(),
             zoneId = clock.zone().id,
             appVersionName = BuildConfig.VERSION_NAME,
-            settings = settingsStore.data.first().toEntries(skip = setOf(Settings.LAST_BACKUP_KEY, Settings.PRUNED_BEFORE_KEY, Settings.ONBOARDING_COMPLETED_AT_KEY, Settings.ONBOARDING_STARTED_AT_KEY)),
+            settings = settingsStore.data.first().toEntries(skip = Settings.DEVICE_LOCAL_KEYS),
             declinedSuggestions = declinedStore.data.first().toEntries(),
             tables = head.snapshot.toTables(),
         )
@@ -249,16 +248,8 @@ class BackupManager @Inject constructor(
         try {
             hooks.captureSuspended {
                 try {
-                    val lastBackup = oldSettings[longPreferencesKey(Settings.LAST_BACKUP_KEY)]
-                    val onboarded = oldSettings[longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)]
-                    val onboardingStarted = oldSettings[longPreferencesKey(Settings.ONBOARDING_STARTED_AT_KEY)]
-                    settingsStore.updateData { _ ->
-                        preview.settings.toMutablePreferences().also {
-                            if (lastBackup != null) it[longPreferencesKey(Settings.LAST_BACKUP_KEY)] = lastBackup
-                            if (onboarded != null) it[longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)] = onboarded
-                            if (onboardingStarted != null) it[longPreferencesKey(Settings.ONBOARDING_STARTED_AT_KEY)] = onboardingStarted
-                        }
-                    }
+                    // Device-local keys (last backup, onboarding stamps, access state) stay this phone's own, whatever the file says.
+                    settingsStore.updateData { _ -> preview.settings.withDeviceLocalFrom(oldSettings) }
                     declinedStore.updateData { _ -> preview.declined }
                     var prunedBefore: Long? = null
                     // Pass 2: the file is streamed again straight into the transaction.
