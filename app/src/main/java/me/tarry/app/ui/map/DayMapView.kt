@@ -32,6 +32,7 @@ import me.tarry.app.map.MapConfig
 import me.tarry.app.map.MarkerFollow
 import me.tarry.app.map.TripRoute
 import me.tarry.app.map.circlePolygon
+import me.tarry.app.map.dayFitPadding
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.geojson.Polygon
 import me.tarry.app.map.PinHit
@@ -140,14 +141,14 @@ fun DayMapView(
         // Keys rather than the raw time, so layers refresh when the emphasis moves, not on every drag frame.
         val activeTrip = activeTime?.let { t -> dayMap?.routes?.firstOrNull { t >= it.start && t < it.end }?.start }
         val activeVisit = activeTime?.let { t -> dayMap?.pins?.firstOrNull { t >= it.start && t < it.end }?.visitId }
-        LaunchedEffect(current, dayMap, colors, dark, activeTrip, activeVisit) {
+        LaunchedEffect(current, dayMap, colors, dark, activeTrip, activeVisit, bottomInsetPx) {
             val (map, style) = current ?: return@LaunchedEffect
             if (!style.isFullyLoaded || dayMap == null) return@LaunchedEffect
             // Added bottom-up on first use: visit areas, then trips, then pins (all below the marker).
             style.setVisitAreas(dayMap.pins, activeVisit, colors, dark, config)
             style.setRoutes(dayMap.routes, activeTrip, colors)
             style.setPins(dayMap.pins, activeVisit, colors, dark)
-            dayMap.bounds?.takeIf { dayFit.fit(date, it) }?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomInsetPx) }
+            dayMap.bounds?.takeIf { dayFit.fit(date, it, bottomInsetPx) }?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomInsetPx) }
         }
         LaunchedEffect(current, bottomInsetPx, topInsetPx) {
             val (map, _) = current ?: return@LaunchedEffect
@@ -198,7 +199,7 @@ private fun MapLibreMap.fitTo(bounds: GeoBounds, paddingPx: Int, topPx: Int, bot
             SinglePlaceZoom,
         )
     } else {
-        CameraUpdateFactory.newLatLngBounds(bounds.toLatLngBounds(), paddingPx, topPx + paddingPx, paddingPx, bottomPx + paddingPx)
+        dayFitPadding(paddingPx, topPx, bottomPx).let { CameraUpdateFactory.newLatLngBounds(bounds.toLatLngBounds(), it.left, it.top, it.right, it.bottom) }
     }
     moveCamera(CameraUpdateFactory.paddingTo(0.0, 0.0, 0.0, 0.0))
     moveCamera(update)

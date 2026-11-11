@@ -132,6 +132,36 @@ class DayMapModelTest {
     }
 
     @Test
+    fun aFitMadeBeforeTheOverlayWasMeasuredIsRedoneOnceItsHeightIsKnown() {
+        val day = LocalDate.of(2026, 10, 27)
+        val bounds = GeoBounds(site.lat, home.lng, home.lat, home.lng)
+        val fit = DayFit()
+        assertThat(fit.fit(day, bounds, bottomPx = 0)).isTrue() // the map shows before the strip is measured
+        assertThat(fit.fit(day, bounds, bottomPx = 0)).isFalse()
+        assertThat(fit.fit(day, bounds, bottomPx = 640)).isTrue() // measured: fit again around it
+        assertThat(fit.fit(day, bounds, bottomPx = 640)).isFalse()
+        assertThat(fit.fit(day, bounds, bottomPx = 700)).isFalse() // later size changes keep the user's camera
+        assertThat(fit.fit(day.plusDays(1), bounds, bottomPx = 640)).isTrue()
+    }
+
+    @Test
+    fun aFitMadeWithTheOverlayMeasuredIsNotRepeated() {
+        val day = LocalDate.of(2026, 10, 27)
+        val bounds = GeoBounds(site.lat, home.lng, home.lat, home.lng)
+        val fit = DayFit()
+        assertThat(fit.fit(day, bounds, bottomPx = 640)).isTrue()
+        assertThat(fit.fit(day, bounds, bottomPx = 640)).isFalse()
+    }
+
+    @Test
+    fun theFitKeepsTheMeasuredOverlayPlusAMarginFreeAtTheBottom() {
+        val p = dayFitPadding(marginPx = 44, topInsetPx = 120, overlayPx = 700)
+        assertThat(p).isEqualTo(FitPadding(left = 44, top = 164, right = 44, bottom = 744))
+        assertThat(dayFitPadding(44, 120, 0).bottom).isEqualTo(44)
+    }
+
+
+    @Test
     fun aStyleReloadWithTheSameMarkerKeepsTheUsersCamera() {
         // A light/dark switch reloads the style and re-runs the marker effect with the same marker: no re-centre.
         val day = LocalDate.of(2026, 10, 24)
