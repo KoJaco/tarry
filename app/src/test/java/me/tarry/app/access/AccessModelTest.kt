@@ -80,4 +80,25 @@ class AccessModelTest {
         assertThat(AccessState.Owned.runningTrialEndMs(anchor)).isNull()
         assertThat(AccessState.NotStarted.runningTrialEndMs(anchor)).isNull()
     }
+
+    @Test
+    fun theDebugSwitchCyclesThroughEveryValueAndWraps() {
+        var v = DebugAccess.OWNED
+        val seen = mutableListOf(v)
+        repeat(DebugAccess.entries.size) {
+            v = v.next()
+            seen += v
+        }
+        assertThat(seen.take(DebugAccess.entries.size)).containsExactlyElementsIn(DebugAccess.entries)
+        assertThat(seen.last()).isEqualTo(DebugAccess.OWNED)
+    }
+
+    @Test
+    fun debugTrialVariantsSetTheirEndRelativeToNow() {
+        assertThat(DebugAccess.TRIAL_6_DAYS.trialEndFor(anchor)).isEqualTo(anchor + 6 * day)
+        assertThat(DebugAccess.TRIAL_1_DAY.trialEndFor(anchor)).isEqualTo(anchor + day)
+        assertThat(DebugAccess.TRIAL_ENDED.trialEndFor(anchor)).isEqualTo(anchor)
+        assertThat(DebugAccess.PENDING.trialEndFor(anchor)).isEqualTo(anchor)
+        assertThat(DebugAccess.OWNED.trialEndFor(anchor)).isNull()
+    }
 }

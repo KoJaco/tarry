@@ -133,3 +133,14 @@ class DebugEntitlement @Inject constructor(
         }
     }
 }
+
+/** The next value of the debug switch, wrapping around. */
+fun DebugAccess.next(): DebugAccess = DebugAccess.entries[(ordinal + 1) % DebugAccess.entries.size]
+
+/** The trial end the debug override stores when this value is chosen at [nowMs]; locked variants end at once. */
+fun DebugAccess.trialEndFor(nowMs: Long): Long? = when (this) {
+    DebugAccess.TRIAL_6_DAYS -> nowMs + 6 * TrialClock.MS_PER_DAY
+    DebugAccess.TRIAL_1_DAY -> nowMs + TrialClock.MS_PER_DAY
+    DebugAccess.TRIAL_ENDED, DebugAccess.PENDING, DebugAccess.REVOKED -> nowMs
+    DebugAccess.OWNED, DebugAccess.REAL -> null
+}

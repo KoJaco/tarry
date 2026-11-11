@@ -59,6 +59,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import me.tarry.app.access.DebugAccess
 import me.tarry.app.ui.timeline.breakAfterDash
 import me.tarry.app.ui.timeline.keepWhole
 
@@ -68,6 +69,7 @@ data class SessionsActions(
     val onStartTestWindow: () -> Unit,
     val onDismissExportResult: () -> Unit,
     val onRunSegmentation: () -> Unit = {},
+    val onCycleDebugAccess: () -> Unit = {},
 )
 
 private val MinTouchTarget = 48.dp
@@ -83,6 +85,8 @@ fun SessionsContent(
     segmentation: SegmentationUi = SegmentationUi(),
     /** The manual "Run segmentation" button is a debug tool; its status text is shown in every build (rule 6). */
     showRunSegmentation: Boolean = false,
+    /** Debug builds only: the forced access state shown on a row that cycles it; null hides the row. */
+    debugAccess: DebugAccess? = null,
     modifier: Modifier = Modifier,
     today: LocalDate = LocalDate.now(),
 ) {
@@ -126,6 +130,13 @@ fun SessionsContent(
                         text = stringResource(R.string.sessions_test_window),
                         onClick = actions.onStartTestWindow,
                         modifier = Modifier.testTag("sessions_test_window"),
+                    )
+                }
+                if (debugAccess != null) {
+                    SecondaryButton(
+                        text = stringResource(R.string.access_debug_row, stringResource(debugAccess.labelRes())),
+                        onClick = actions.onCycleDebugAccess,
+                        modifier = Modifier.testTag("sessions_access_debug"),
                     )
                 }
                 RangeExport(today, actions.onExport)
@@ -434,3 +445,13 @@ private fun activityLogText(log: ArSessionLog?, zoneId: String): String {
 
 /** A count with the locale's digit grouping ("10,952"). */
 internal fun formatCount(count: Int, locale: Locale = Locale.getDefault()): String = java.text.NumberFormat.getIntegerInstance(locale).format(count)
+
+private fun DebugAccess.labelRes(): Int = when (this) {
+    DebugAccess.OWNED -> R.string.access_debug_owned
+    DebugAccess.TRIAL_6_DAYS -> R.string.access_debug_trial_6
+    DebugAccess.TRIAL_1_DAY -> R.string.access_debug_trial_1
+    DebugAccess.TRIAL_ENDED -> R.string.access_debug_trial_ended
+    DebugAccess.PENDING -> R.string.access_debug_pending
+    DebugAccess.REVOKED -> R.string.access_debug_revoked
+    DebugAccess.REAL -> R.string.access_debug_real
+}

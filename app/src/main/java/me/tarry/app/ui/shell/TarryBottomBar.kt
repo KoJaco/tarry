@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.tracking.AttentionCause
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.components.PreviewSurface
 import me.tarry.app.ui.components.TarryPreviews
@@ -102,6 +103,7 @@ fun TarryBottomBar(
     onToggleLongClick: () -> Unit = {},
     summarySelected: Boolean = false,
     onSummaryClick: () -> Unit = {},
+    attentionCause: AttentionCause? = null,
 ) {
     val colors = TarryTheme.colors
     var containerOrigin by remember { mutableStateOf<Offset?>(null) }
@@ -170,7 +172,7 @@ fun TarryBottomBar(
                 )
             }
             Slot(BottomBarTags.ToggleSlot, weight = ToggleSlotWeight, horizontalPadding = TarryTheme.space.xs) {
-                TrackingToggle(state = trackingState, onClick = onToggleClick, onLongClick = onToggleLongClick)
+                TrackingToggle(state = trackingState, onClick = onToggleClick, onLongClick = onToggleLongClick, attentionCause = attentionCause)
             }
         }
     }

@@ -48,6 +48,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
+import me.tarry.app.tracking.AttentionCause
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.components.PreviewSurface
 import me.tarry.app.ui.components.TarryPreviews
@@ -81,11 +82,14 @@ fun TrackingToggle(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** ATTENTION only: TRIAL_ENDED shows the locked "Unlock" pill. */
+    attentionCause: AttentionCause? = null,
 ) {
     val colors = TarryTheme.colors
     val shape = TarryTheme.shapes.pill
-    val stateLabel = stringResource(state.labelRes())
-    val description = stringResource(state.descriptionRes())
+    val locked = state == TrackingState.ATTENTION && attentionCause == AttentionCause.TRIAL_ENDED
+    val stateLabel = stringResource(if (locked) R.string.access_pill_unlock else state.labelRes())
+    val description = stringResource(if (locked) R.string.tracking_toggle_description_trial_ended else state.descriptionRes())
     val longClickLabel = stringResource(R.string.tracking_toggle_long_click_label)
     val haptics = LocalHapticFeedback.current
 
@@ -135,7 +139,7 @@ fun TrackingToggle(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(TarryTheme.space.s, Alignment.CenterHorizontally),
         ) {
-            StateMark(state)
+            StateMark(state, locked)
             FitLabel(
                 text = stateLabel,
                 color = content,
@@ -186,7 +190,7 @@ private fun TextLayoutResult.splitsAWord(text: String): Boolean =
 
 /** Dot or glyph that differs per state: filled dot, hollow dot, pause glyph, alert dot. */
 @Composable
-private fun StateMark(state: TrackingState) {
+private fun StateMark(state: TrackingState, locked: Boolean = false) {
     val colors = TarryTheme.colors
     when (state) {
         TrackingState.TRACKING ->
@@ -201,7 +205,16 @@ private fun StateMark(state: TrackingState) {
                 modifier = Modifier.size(18.dp),
             )
         TrackingState.ATTENTION ->
-            Box(Modifier.size(12.dp).background(colors.alertDot, CircleShape))
+            if (locked) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lock),
+                    contentDescription = null,
+                    tint = colors.onInk,
+                    modifier = Modifier.size(18.dp),
+                )
+            } else {
+                Box(Modifier.size(12.dp).background(colors.alertDot, CircleShape))
+            }
     }
 }
 

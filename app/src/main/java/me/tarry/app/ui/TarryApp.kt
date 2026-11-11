@@ -35,6 +35,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import me.tarry.app.tracking.AttentionCause
 import me.tarry.app.tracking.TrackingState
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.app.ui.catalog.JobsScreen
@@ -150,6 +151,7 @@ fun TarryApp(
     }
     TarryAppContent(
         trackingState = trackingState,
+        attentionCause = trackingDetails.attentionCause,
         backStack = backStack,
         onNavigate = { backStack.navigateTopLevel(it) },
         onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
@@ -321,6 +323,8 @@ fun TarryAppContent(
     /** Replaces the bottom navigation while visits are selected for a bulk edit (null = the normal bar). */
     selectionBar: (@Composable () -> Unit)? = null,
     onToggleLongClick: () -> Unit = {},
+    /** Why the toggle is in ATTENTION; TRIAL_ENDED turns the pill into "Unlock". */
+    attentionCause: AttentionCause? = null,
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute || it == SummaryRoute }
     // Onboarding and the paywall are full screen: no bottom bar and no tracking toggle.
@@ -333,6 +337,7 @@ fun TarryAppContent(
         } else selectionBar ?: {
             TarryBottomBar(
                 trackingState = trackingState,
+                attentionCause = attentionCause,
                 timelineSelected = topLevel != SettingsRoute && topLevel != SummaryRoute,
                 summarySelected = topLevel == SummaryRoute,
                 onSummaryClick = { onNavigate(SummaryRoute) },
