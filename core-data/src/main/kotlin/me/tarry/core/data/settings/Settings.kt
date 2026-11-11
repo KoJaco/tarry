@@ -4,6 +4,18 @@ enum class RoundingMode { NEAREST, UP }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** The device-local access values (8b) and the trial anchor; [purchaseState] is a plain string, the app maps it. */
+data class AccessPrefs(
+    /** When onboarding finished (UTC epoch ms): the trial anchor. Null before then. */
+    val anchorMs: Long? = null,
+    val purchaseState: String? = null,
+    val purchaseCheckedMs: Long? = null,
+    val lastSeenMs: Long? = null,
+    val lockedSinceMs: Long? = null,
+    val debugState: String? = null,
+    val debugTrialEndMs: Long? = null,
+)
+
 /** User-facing settings, persisted in Preferences DataStore. */
 data class Settings(
     /** One of [ALLOWED_ROUNDING_INCREMENTS]; 0 = no rounding. */
@@ -41,6 +53,38 @@ data class Settings(
         const val ONBOARDING_COMPLETED_AT_KEY = "onboarding_completed_at_ms"
         /** DataStore key of when onboarding was first shown (UTC epoch ms); device-local and kept out of backups like the completed stamp, so a half-finished onboarding resumes. */
         const val ONBOARDING_STARTED_AT_KEY = "onboarding_started_at_ms"
+        /** 8b access state, all device-local: the cached purchase state (NONE, PENDING, OWNED, REVOKED). */
+        const val ACCESS_PURCHASE_STATE_KEY = "access_purchase_state"
+        /** When the purchase state was last confirmed with the store (UTC epoch ms). */
+        const val ACCESS_PURCHASE_CHECKED_KEY = "access_purchase_checked_ms"
+        /** The latest time the trial clock has seen (UTC epoch ms); stops a clock set back from extending the trial. */
+        const val ACCESS_LAST_SEEN_KEY = "access_last_seen_ms"
+        /** When the tracking lock began (UTC epoch ms); windows after it are not segmented. Cleared once tracking is allowed again. */
+        const val ACCESS_LOCKED_SINCE_KEY = "access_locked_since_ms"
+        /** Debug builds only: the forced access state (see the Sessions screen switch). */
+        const val ACCESS_DEBUG_STATE_KEY = "access_debug_state"
+        /** Debug builds only: the trial end the forced state reports (UTC epoch ms). */
+        const val ACCESS_DEBUG_TRIAL_END_KEY = "access_debug_trial_end_ms"
+        /** Set once the near-end trial card has been shown or dismissed (8b.2). */
+        const val ACCESS_TRIAL_CARD_KEY = "access_trial_card_shown"
+
+        /**
+         * Keys that belong to this phone only. A backup never carries them and a restore never takes them from the file:
+         * the phone's own values (or their absence) are put back, so a hand-edited backup cannot move the trial anchor.
+         */
+        val DEVICE_LOCAL_KEYS: Set<String> = setOf(
+            LAST_BACKUP_KEY,
+            PRUNED_BEFORE_KEY,
+            ONBOARDING_COMPLETED_AT_KEY,
+            ONBOARDING_STARTED_AT_KEY,
+            ACCESS_PURCHASE_STATE_KEY,
+            ACCESS_PURCHASE_CHECKED_KEY,
+            ACCESS_LAST_SEEN_KEY,
+            ACCESS_LOCKED_SINCE_KEY,
+            ACCESS_DEBUG_STATE_KEY,
+            ACCESS_DEBUG_TRIAL_END_KEY,
+            ACCESS_TRIAL_CARD_KEY,
+        )
         const val DEFAULT_STAY_RADIUS_M = 100
         const val DEFAULT_WINDOW_END_GRACE_MIN = 60
         const val DEFAULT_TIMELINE_ZOOM_MINUTES = 15

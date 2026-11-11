@@ -137,7 +137,56 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { if (epochMs == null) it.remove(Keys.ONBOARDING_STARTED_AT_MS) else it[Keys.ONBOARDING_STARTED_AT_MS] = epochMs }
     }
 
+    /** The 8b access keys plus the trial anchor, as one value. Device-local; see [Settings.DEVICE_LOCAL_KEYS]. */
+    val accessPrefs: Flow<AccessPrefs> = dataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .map { it.toAccessPrefs() }
+        .distinctUntilChanged()
+
+    suspend fun currentAccessPrefs(): AccessPrefs = accessPrefs.first()
+
+    /** Caches the purchase state ([state] null removes it). */
+    suspend fun setAccessPurchase(state: String?, checkedMs: Long?) {
+        dataStore.edit {
+            if (state == null) it.remove(Keys.ACCESS_PURCHASE_STATE) else it[Keys.ACCESS_PURCHASE_STATE] = state
+            if (checkedMs == null) it.remove(Keys.ACCESS_PURCHASE_CHECKED_MS) else it[Keys.ACCESS_PURCHASE_CHECKED_MS] = checkedMs
+        }
+    }
+
+    /** Raises the high-water mark to [epochMs]; it never decreases. */
+    suspend fun raiseAccessLastSeenMs(epochMs: Long) {
+        dataStore.edit { p -> p[Keys.ACCESS_LAST_SEEN_MS] = maxOf(p[Keys.ACCESS_LAST_SEEN_MS] ?: epochMs, epochMs) }
+    }
+
+    suspend fun setAccessLockedSinceMs(epochMs: Long?) {
+        dataStore.edit { if (epochMs == null) it.remove(Keys.ACCESS_LOCKED_SINCE_MS) else it[Keys.ACCESS_LOCKED_SINCE_MS] = epochMs }
+    }
+
+    /** Debug builds only. A null [state] removes the override. */
+    suspend fun setAccessDebug(state: String?, trialEndMs: Long?) {
+        dataStore.edit {
+            if (state == null) it.remove(Keys.ACCESS_DEBUG_STATE) else it[Keys.ACCESS_DEBUG_STATE] = state
+            if (trialEndMs == null) it.remove(Keys.ACCESS_DEBUG_TRIAL_END_MS) else it[Keys.ACCESS_DEBUG_TRIAL_END_MS] = trialEndMs
+        }
+    }
+
+    private fun Preferences.toAccessPrefs() = AccessPrefs(
+        anchorMs = this[Keys.ONBOARDING_COMPLETED_AT_MS],
+        purchaseState = this[Keys.ACCESS_PURCHASE_STATE],
+        purchaseCheckedMs = this[Keys.ACCESS_PURCHASE_CHECKED_MS],
+        lastSeenMs = this[Keys.ACCESS_LAST_SEEN_MS],
+        lockedSinceMs = this[Keys.ACCESS_LOCKED_SINCE_MS],
+        debugState = this[Keys.ACCESS_DEBUG_STATE],
+        debugTrialEndMs = this[Keys.ACCESS_DEBUG_TRIAL_END_MS],
+    )
+
     private object Keys {
+        val ACCESS_PURCHASE_STATE = stringPreferencesKey(Settings.ACCESS_PURCHASE_STATE_KEY)
+        val ACCESS_PURCHASE_CHECKED_MS = longPreferencesKey(Settings.ACCESS_PURCHASE_CHECKED_KEY)
+        val ACCESS_LAST_SEEN_MS = longPreferencesKey(Settings.ACCESS_LAST_SEEN_KEY)
+        val ACCESS_LOCKED_SINCE_MS = longPreferencesKey(Settings.ACCESS_LOCKED_SINCE_KEY)
+        val ACCESS_DEBUG_STATE = stringPreferencesKey(Settings.ACCESS_DEBUG_STATE_KEY)
+        val ACCESS_DEBUG_TRIAL_END_MS = longPreferencesKey(Settings.ACCESS_DEBUG_TRIAL_END_KEY)
         val ONBOARDING_STARTED_AT_MS = longPreferencesKey(Settings.ONBOARDING_STARTED_AT_KEY)
         val ONBOARDING_COMPLETED_AT_MS = longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)
         val PRUNED_BEFORE_MS = longPreferencesKey(Settings.PRUNED_BEFORE_KEY)
