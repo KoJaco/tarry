@@ -176,7 +176,7 @@ A visit with no job uses `card` with a 1.5 dp **dashed** `outline` border.
 | TRACKING | `accent` fill, `onAccent` dot and text, animated `pulse` ring | "Tracking" | "Tracking: on" |
 | IDLE | `ink` 1.5 dp outline, hollow dot | "Off" | "Tracking: off" |
 | PAUSED | `inset` fill, a pause glyph in `accentStrong` (light) or `accent` (dark), static | "Paused · 45 m" (time left when known) | "Tracking: paused, 45 minutes left" |
-| ATTENTION | `ink` fill, `alertDot` dot and badge, `onInk` text | "Needs attention" | "Tracking: needs attention" |
+| ATTENTION | `ink` fill, `alertDot` dot and badge, `onInk` text | "Attention" | "Tracking: needs attention" |
 
 The PAUSED look deliberately differs from the MVP spec's "amber" because the accent is already apricot. It stays distinct through the fill, the glyph and the absence of a ring.
 

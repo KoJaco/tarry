@@ -250,6 +250,7 @@ fun DayCanvas(
     val minorLabels = remember(layout.minorLabels, formats, zone) { layout.minorLabels.map { formats.minute(it.epochMs, zone) } }
     val markerWords = MarkerWords(
         stringResource(R.string.timeline_marker_start), stringResource(R.string.timeline_marker_stop), stringResource(R.string.timeline_marker_off),
+        stringResource(R.string.timeline_marker_interrupted),
     )
     // The visible lines of each tracking marker's label.
     val markerLineTexts = remember(trackingMarkers, markerWords, formats, zone) {
@@ -292,7 +293,11 @@ fun DayCanvas(
     val offLabelHeightDp = metrics.lineDp(MaterialTheme.typography.labelSmall)
     val offStretches = remember(trackingMarkers, layout, dayEnd, now, dayStart) {
         val isToday = now in dayStart until dayEnd
-        offStretches(trackingMarkers, dayEnd, if (isToday) now else null).mapNotNull { s ->
+        clipOutOfVisits(
+            offStretches(trackingMarkers, dayEnd, if (isToday) now else null),
+            // A visit that carries on across a stop and restart is not time off.
+            layout.blocks.mapNotNull { b -> (b.item as? TimelineItem.Visit)?.let { it.start..it.end } },
+        ).mapNotNull { s ->
             val a = maxOf(s.start, layout.canvasStart)
             val b = minOf(s.end, layout.canvasEnd)
             if (b <= a) null else PlacedOff(s, ((a - layout.canvasStart) * dpPerMs), ((b - a) * dpPerMs))

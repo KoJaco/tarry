@@ -32,6 +32,13 @@ data class Settings(
         const val LAST_BACKUP_KEY = "last_backup_ms"
         /** DataStore key of the pruned-before watermark; derived from the stored data, so a backup file neither carries nor sets it. */
         const val PRUNED_BEFORE_KEY = "pings_pruned_before_ms"
+        /**
+         * DataStore key of the first-run onboarding completion time (UTC epoch ms). Device-local, like [LAST_BACKUP_KEY]:
+         * a backup file neither carries nor overwrites it, and delete-all keeps it. The 8b trial clock starts from it.
+         */
+        const val ONBOARDING_COMPLETED_AT_KEY = "onboarding_completed_at_ms"
+        /** DataStore key of when onboarding was first shown (UTC epoch ms); device-local and kept out of backups like the completed stamp, so a half-finished onboarding resumes. */
+        const val ONBOARDING_STARTED_AT_KEY = "onboarding_started_at_ms"
         const val DEFAULT_STAY_RADIUS_M = 100
         const val DEFAULT_WINDOW_END_GRACE_MIN = 60
         const val DEFAULT_TIMELINE_ZOOM_MINUTES = 15

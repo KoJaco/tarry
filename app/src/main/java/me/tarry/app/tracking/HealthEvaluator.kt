@@ -60,7 +60,10 @@ class HealthEvaluator @Inject constructor(private val config: TrackingConfig) {
             return if (fresh) precondition.copy(recordGap = false) else precondition
         }
         if (!s.serviceRunning) {
-            return if (s.nowMs - since > config.serviceStartGraceMs) SERVICE_ISSUE else null
+            // A restart within the short interruption shows nothing; the Gap then starts at the last-alive mark.
+            val lastAlive = s.lastHeartbeatMs?.takeIf { it >= since }
+            val down = s.nowMs - since > config.serviceStartGraceMs && (lastAlive == null || s.nowMs - lastAlive >= config.shortInterruptionMs)
+            return if (down) SERVICE_ISSUE else null
         }
         val heartbeat = s.lastHeartbeatMs ?: since
         if (s.nowMs - heartbeat <= config.noHeartbeatThresholdMs) return null

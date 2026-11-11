@@ -350,6 +350,40 @@ class HealthGapRecorderTest {
         scope.cancel()
     }
 
+    private fun recorderWithEpoch(epoch: Long?) =
+        HealthGapRecorder(store, timeline, alerts, clock, config, FakeWindowChecker(), { epoch })
+
+    @Test
+    fun openOnboardingWritesNoGapCauseOrAlert() = runBlocking<Unit> {
+        val r = recorderWithEpoch(null)
+        r.reportOutage(noFine)
+        r.reportOutage(killed, notBeforeMs = clock.now - 600_000)
+        r.reportAttention(AttentionCause.NO_FINE_LOCATION)
+
+        assertThat(gaps()).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
+        assertThat(store.current().openHealthGapId).isNull()
+        assertThat(alerts.posted).isEmpty()
+    }
+
+    @Test
+    fun theGapStartsAtTheEpochNotAtTheWindowStartOrAnEarlierHeartbeat() = runBlocking<Unit> {
+        store.setLastHeartbeat(clock.now - 5_000_000L)
+        val r = recorderWithEpoch(clock.now - 1_000_000L)
+        r.reportOutage(noBackground, notBeforeMs = clock.now - 3_000_000L)
+
+        assertThat(gaps().single().start).isEqualTo(clock.now - 1_000_000L)
+    }
+
+    @Test
+    fun withNoHeartbeatOrWindowStartAnOldEpochDoesNotBecomeTheGapStart() = runBlocking<Unit> {
+        // An upgrader's epoch is the original install time: a Gap must not reach back to it.
+        val r = recorderWithEpoch(clock.now - 90L * 24 * 3_600_000L)
+        r.reportOutage(noBackground)
+
+        assertThat(gaps().single().start).isEqualTo(clock.now)
+    }
+
     @Test
     fun attentionOnlyCauseIsReportedOnlyWhileNoGapIsOpen() = runBlocking<Unit> {
         assertThat(recorder.attentionOnlyCause()).isNull()

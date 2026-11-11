@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="health_title">Tracking health</string>
+
+    <string name="health_status_working">Working</string>
+    <string name="health_status_off">Off</string>
+    <string name="health_status_paused">Paused</string>
+    <string name="health_status_attention">Needs attention</string>
+    <string name="health_status_working_body">Tarry is recording your location now.</string>
+    <string name="health_status_off_body">Tarry is not recording right now. It starts by itself at the next work hours you set.</string>
+    <string name="health_status_paused_body">Tracking is paused. Resume it from the tracking button.</string>
+
+    <string name="health_section_checks">Checks</string>
+    <string name="health_check_location_services">Location services</string>
+    <string name="health_check_battery">Battery use</string>
+    <string name="health_state_allowed">Allowed</string>
+    <string name="health_state_not_allowed">Not allowed</string>
+    <string name="health_state_on">On</string>
+    <string name="health_state_off">Off</string>
+    <string name="health_state_unrestricted">Unrestricted</string>
+    <string name="health_state_optimised">Optimised</string>
+    <string name="health_check_description_ok">%1$s, %2$s</string>
+    <string name="health_check_description_fix">%1$s, %2$s. Tap to fix.</string>
+
+    <string name="health_section_why">Why tracking can stop</string>
+    <string name="health_why_body">Battery saver, or battery use set to “Restricted”, can stop Tarry in the background. On some phones, force stopping the app or swiping it away does the same. Turning off a permission stops tracking until you turn it back on. So does turning off location services.</string>
+
+    <string name="health_section_test">Test tracking</string>
+    <string name="health_test_intro">Asks the phone for one location fix, to check that tracking can work here. Nothing is recorded.</string>
+    <string name="health_test_button">Test tracking</string>
+    <string name="health_test_running">Looking for a fix…</string>
+    <string name="health_test_running_body">Looking for a fix. This can take up to half a minute.</string>
+    <string name="health_test_success">Got a fix: ±%1$d m, %2$d s old</string>
+    <string name="health_test_can_start">Tracking can start.</string>
+    <string name="health_test_timeout">No fix in %1$d s. Go outside or near a window and try again.</string>
+    <string name="health_test_denied">Location permission is off.</string>
+    <string name="health_test_denied_fix">Open permissions</string>
+</resources>

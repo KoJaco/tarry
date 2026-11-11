@@ -30,11 +30,23 @@ fun PermissionsScreen(
     viewModel: PermissionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
+
+    val actions = rememberPermissionsActions(viewModel, onDone)
+    PermissionsContent(state, actions, modifier)
+}
+
+/**
+ * The runtime launchers and system-settings intents behind [PermissionsActions], shared by the Permissions screen, onboarding
+ * and Tracking health. Refreshes [viewModel] after every runtime-dialog result. A runtime request that returns without a
+ * grant is not repeated (the system may no longer show it); the next tap opens the app's settings page instead.
+ */
+@Composable
+internal fun rememberPermissionsActions(viewModel: PermissionsViewModel, onDone: () -> Unit): PermissionsActions {
     val context = LocalContext.current
     // Steps already requested once, as comma-separated names so it survives rotation.
     var requested by rememberSaveable { mutableStateOf("") }
-
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refresh() }
 
     val multiple = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         viewModel.refresh()
@@ -60,7 +72,7 @@ fun PermissionsScreen(
         }
     }
 
-    val actions = remember(viewModel, context) {
+    val actions = remember(viewModel, context, onDone) {
         PermissionsActions(
             onGrant = { step ->
                 when (step) {
@@ -91,5 +103,5 @@ fun PermissionsScreen(
             onDone = onDone,
         )
     }
-    PermissionsContent(state, actions, modifier)
+    return actions
 }

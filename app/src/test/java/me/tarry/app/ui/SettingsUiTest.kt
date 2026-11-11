@@ -202,4 +202,26 @@ class SettingsUiTest {
         assertThat(themes).containsExactly(ThemeMode.DARK)
         composeRule.onAllNodes(radioOption).assertCountEquals(0)
     }
+
+    @Test
+    fun trackingHealthReplacesThePermissionsRowAndShowsTheTrackingState() {
+        var opened = 0
+        composeRule.setContent {
+            SettingsContent(
+                Settings(),
+                trackingState = me.tarry.app.tracking.TrackingState.ATTENTION,
+                onOpenTrackingHealth = { opened++ },
+            )
+        }
+        composeRule.onNodeWithText("Permissions").assertDoesNotExist()
+        composeRule.onNodeWithText("Needs attention").performScrollTo().assertExists()
+        composeRule.onNodeWithText("Tracking health").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        assertThat(opened).isEqualTo(1)
+    }
+
+    @Test
+    fun trackingHealthSubtitleSaysWorkingWhileTracking() {
+        composeRule.setContent { SettingsContent(Settings(), trackingState = me.tarry.app.tracking.TrackingState.TRACKING) }
+        composeRule.onNodeWithText("Working").performScrollTo().assertExists()
+    }
 }

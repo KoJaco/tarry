@@ -7,6 +7,10 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import me.tarry.app.tracking.ActivityTransitionClient
+import me.tarry.app.tracking.AndroidInstallTimeSource
+import me.tarry.app.tracking.CaptureEpoch
+import me.tarry.app.tracking.InstallTimeSource
+import me.tarry.app.tracking.TrackingCaptureEpoch
 import me.tarry.app.tracking.EffectiveScheduleWindowChecker
 import me.tarry.app.tracking.AndroidLocationPermissionChecker
 import me.tarry.app.tracking.AndroidHealthAlertNotifier
@@ -85,6 +89,12 @@ abstract class TrackingModule {
 
     @Binds
     abstract fun bindSegmentationTrigger(impl: WorkManagerSegmentationTrigger): SegmentationTrigger
+
+    @Binds
+    abstract fun bindCaptureEpoch(impl: TrackingCaptureEpoch): CaptureEpoch
+
+    @Binds
+    abstract fun bindInstallTimeSource(impl: AndroidInstallTimeSource): InstallTimeSource
 
     companion object {
         @Provides

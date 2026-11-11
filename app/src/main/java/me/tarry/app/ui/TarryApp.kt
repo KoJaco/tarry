@@ -18,6 +18,8 @@ import androidx.compose.ui.platform.LocalContext
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import android.net.Uri
 import android.provider.Settings
 import me.tarry.app.ui.shell.CustomDurationActions
@@ -47,11 +49,19 @@ import me.tarry.app.ui.navigation.ScheduleRoute
 import me.tarry.app.ui.schedule.ScheduleScreen
 import me.tarry.app.ui.places.PlaceDetailScreen
 import me.tarry.app.ui.places.PlacesScreen
+import me.tarry.app.ui.navigation.OnboardingRoute
 import me.tarry.app.ui.navigation.PermissionsRoute
+import me.tarry.app.ui.onboarding.OnboardingScreen
+import me.tarry.app.ui.theme.TarryTheme
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import me.tarry.app.ui.navigation.SessionsRoute
 import me.tarry.app.ui.navigation.SettingsRoute
 import me.tarry.app.ui.navigation.SummaryRoute
 import me.tarry.app.ui.navigation.TimelineRoute
+import me.tarry.app.ui.navigation.TrackingHealthRoute
+import me.tarry.app.ui.health.TrackingHealthScreen
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.permissions.PermissionsScreen
 import me.tarry.app.ui.sessions.SessionsScreen
@@ -110,12 +120,20 @@ fun TarryApp(
             onOpenReviewHandled()
         }
     }
-    var initialChecked by rememberSaveable { mutableStateOf(false) }
+    // Resolved once per process: a fresh install replaces the stack with onboarding before anything else is drawn.
+    var onboardingResolved by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (!initialChecked) {
-            initialChecked = true
-            if (shellViewModel.needsInitialPermissions()) openPermissions()
+        if (!onboardingResolved) {
+            if (resolveNeedsOnboarding(shellViewModel::needsOnboarding)) {
+                backStack.clear()
+                backStack.add(OnboardingRoute)
+            }
+            onboardingResolved = true
         }
+    }
+    if (!onboardingResolved) {
+        Box(Modifier.fillMaxSize().background(TarryTheme.colors.paper))
+        return
     }
     TarryAppContent(
         trackingState = trackingState,
@@ -150,7 +168,8 @@ fun TarryApp(
         },
         settingsContent = {
             SettingsScreen(
-                onOpenPermissions = { openPermissions() },
+                trackingState = trackingState,
+                onOpenTrackingHealth = { if (backStack.lastOrNull() != TrackingHealthRoute) backStack.add(TrackingHealthRoute) },
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
                 onOpenSchedule = { if (backStack.lastOrNull() != ScheduleRoute) backStack.add(ScheduleRoute) },
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
@@ -158,6 +177,12 @@ fun TarryApp(
                 onOpenAbout = { if (backStack.lastOrNull() != AboutRoute) backStack.add(AboutRoute) },
                 snackbarHostState = snackbarHostState,
             )
+        },
+        onboardingContent = {
+            OnboardingScreen(onFinished = { backStack.navigateTopLevel(TimelineRoute) })
+        },
+        trackingHealthContent = {
+            TrackingHealthScreen(onOpenPermissions = { openPermissions() })
         },
         permissionsContent = {
             PermissionsScreen(onDone = { if (backStack.lastOrNull() == PermissionsRoute) backStack.removeAt(backStack.lastIndex) })
@@ -263,6 +288,8 @@ fun TarryAppContent(
     settingsContent: @Composable () -> Unit,
     summaryContent: @Composable () -> Unit = {},
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
+    onboardingContent: @Composable () -> Unit = {},
+    trackingHealthContent: @Composable () -> Unit = {},
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
     scheduleContent: @Composable () -> Unit = {},
@@ -278,10 +305,14 @@ fun TarryAppContent(
     onToggleLongClick: () -> Unit = {},
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute || it == SummaryRoute }
+    // Onboarding is full screen: no bottom bar and no tracking toggle.
+    val fullScreen = backStack.lastOrNull() == OnboardingRoute
     Scaffold(
         modifier = modifier,
         snackbarHost = snackbarHost,
-        bottomBar = selectionBar ?: {
+        bottomBar = if (fullScreen) {
+            {}
+        } else selectionBar ?: {
             TarryBottomBar(
                 trackingState = trackingState,
                 timelineSelected = topLevel != SettingsRoute && topLevel != SummaryRoute,
@@ -307,6 +338,8 @@ fun TarryAppContent(
                 entry<TimelineRoute> { timelineContent() }
                 entry<SettingsRoute> { settingsContent() }
                 entry<SummaryRoute> { summaryContent() }
+                entry<OnboardingRoute> { onboardingContent() }
+                entry<TrackingHealthRoute> { trackingHealthContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }
                 entry<ScheduleRoute> { scheduleContent() }
@@ -318,4 +351,17 @@ fun TarryAppContent(
             },
         )
     }
+}
+
+/**
+ * Runs the start-up onboarding check. A failing check (a DataStore or Room read error) must not crash the app before the
+ * first frame: it is logged and treated as "no onboarding", so the app opens normally and the gate still resolves.
+ */
+internal suspend fun resolveNeedsOnboarding(check: suspend () -> Boolean): Boolean = try {
+    check()
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Log.e("TarryApp", "Onboarding check failed; continuing without onboarding", e)
+    false
 }

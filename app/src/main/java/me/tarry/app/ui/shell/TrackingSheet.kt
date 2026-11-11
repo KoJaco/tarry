@@ -204,7 +204,7 @@ internal fun pausedText(until: Instant?): String =
         stringResource(R.string.tracking_sheet_paused_until, time)
     }
 
-private fun AttentionCause?.messageRes(): Int = when (this) {
+internal fun AttentionCause?.messageRes(): Int = when (this) {
     AttentionCause.NO_FINE_LOCATION -> R.string.tracking_attention_no_fine_location
     AttentionCause.NO_BACKGROUND_LOCATION -> R.string.tracking_attention_no_background_location
     AttentionCause.LOCATION_OFF -> R.string.tracking_attention_location_off

@@ -1,6 +1,5 @@
 package me.tarry.app.ui.schedule
 
-import android.util.Log
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -13,12 +12,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.ScheduleChange
 import me.tarry.app.tracking.TrackingClock
-import me.tarry.app.tracking.TrackingController
-import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.core.data.model.Schedule
 import me.tarry.core.data.repository.ScheduleRepository
 import java.time.DayOfWeek
@@ -69,17 +65,15 @@ data class LoadedFor(val mode: ScheduleMode, val week: LocalDate)
 internal fun mondayOf(date: LocalDate): LocalDate = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
 /**
- * Backs the Schedule screen. Edits go to a draft; Save writes through [TrackingController.updateSchedule] (one re-arm and
+ * Backs the Schedule screen. Edits go to a draft; Save writes through [ScheduleSaver] (one re-arm and
  * reconcile) on the capture scope, so it finishes even if the user leaves right after tapping.
  */
 @HiltViewModel
 class ScheduleViewModel @Inject constructor(
     private val schedules: ScheduleRepository,
-    private val controller: TrackingController,
-    private val trackingState: TrackingStateRepository,
+    private val saver: ScheduleSaver,
     private val clock: TrackingClock,
     @param:CaptureScope private val captureScope: CoroutineScope,
-    private val reviewReminder: ReviewReminderScheduler,
 ) : ViewModel() {
     private val _state = MutableStateFlow(initialState())
     val state: StateFlow<ScheduleUiState> = _state.asStateFlow()
@@ -174,23 +168,13 @@ class ScheduleViewModel @Inject constructor(
         _state.update { it.copy(saving = true, saveFailed = false) }
         captureScope.launch {
             try {
-                controller.updateSchedule(change)
-                trackingState.refresh()
+                saver.save(change)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 // Keep the draft (still dirty) and say so; the user can retry.
                 _state.update { it.copy(saving = false, saveFailed = true) }
                 return@launch
-            }
-            // The review reminder follows the scheduled days. It is not part of the save: a failure here must not mark the save failed
-            // (the next app start re-arms it).
-            try {
-                reviewReminder.rearm()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w("ScheduleViewModel", "Review reminder re-arm failed after a schedule save", e)
             }
             load()
         }

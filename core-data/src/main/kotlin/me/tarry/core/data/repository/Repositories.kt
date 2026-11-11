@@ -43,6 +43,8 @@ class TrackingRepository @Inject constructor(
     suspend fun session(id: Long): TrackingSession? = sessions.getById(id)
     suspend fun sessionsInRange(from: Long, to: Long) = sessions.getInRange(from, to)
     suspend fun openSession(): TrackingSession? = sessions.getOpenSession()
+    /** True when any tracking session has ever been recorded. */
+    suspend fun anySession(): Boolean = sessions.any()
     fun observeSessions(): Flow<List<TrackingSession>> = sessions.observeAll()
     /** Sessions overlapping `[from, to)`, live; for the day timeline's start/stop markers. */
     fun observeSessionsOverlapping(from: Long, to: Long): Flow<List<TrackingSession>> = sessions.observeOverlapping(from, to)

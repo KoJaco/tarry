@@ -19,6 +19,19 @@ class FakeLocationClient : LocationClient {
         activeCollectors++
         return batches.onCompletion { activeCollectors-- }
     }
+
+    /** What [currentFix] returns; the test sets it (fix, timeout or denied). */
+    var currentFixResult: CurrentFixResult = CurrentFixResult.Timeout
+
+    /** When set, [currentFix] suspends until it completes, so a test can look at the running state. */
+    var currentFixGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+    val currentFixRequests = mutableListOf<Pair<LocationPriority, Long>>()
+
+    override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long): CurrentFixResult {
+        currentFixRequests += priority to timeoutMs
+        currentFixGate?.await()
+        return currentFixResult
+    }
 }
 
 class FakeActivityClient(var available: Boolean = true) : ActivityTransitionClient {

@@ -12,7 +12,7 @@ import me.tarry.app.tracking.TrackingController
 import me.tarry.app.tracking.TrackingDetails
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.tracking.TrackingStateRepository
-import me.tarry.app.ui.permissions.PermissionChecker
+import me.tarry.app.ui.onboarding.OnboardingGate
 import me.tarry.core.data.model.ManualOverrideEndMode
 import java.time.Instant
 import javax.inject.Inject
@@ -22,7 +22,7 @@ class ShellViewModel @Inject constructor(
     repository: TrackingStateRepository,
     private val controller: TrackingController,
     config: TrackingConfig,
-    private val permissions: PermissionChecker,
+    private val onboarding: OnboardingGate,
     // Controller calls must finish even if the user leaves the screen right after tapping.
     @param:CaptureScope private val captureScope: CoroutineScope,
 ) : ViewModel() {
@@ -36,8 +36,8 @@ class ShellViewModel @Inject constructor(
 
     val customDurationMaxMin: Int = config.customDurationMaxMin
 
-    /** True when fine location is missing, so the permission flow should open on first launch. */
-    fun needsInitialPermissions(): Boolean = !permissions.check().fineLocation
+    /** True on a fresh install, so first-run onboarding opens (see [OnboardingGate]). */
+    suspend fun needsOnboarding(): Boolean = onboarding.needsOnboarding()
 
     fun start(endMode: ManualOverrideEndMode, durationMin: Int?) {
         captureScope.launch { controller.start(endMode, durationMin) }

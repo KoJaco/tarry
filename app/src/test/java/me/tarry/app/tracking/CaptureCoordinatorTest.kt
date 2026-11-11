@@ -235,6 +235,7 @@ class CaptureCoordinatorTest {
     @Test
     fun locationUpdatesFailingWithGenericExceptionRecordsOutageGapAndAlert() = runBlocking {
         val failing = object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams) =
                 kotlinx.coroutines.flow.flow<List<Fix>> { throw IllegalStateException("boom") }
         }
@@ -294,7 +295,7 @@ class CaptureCoordinatorTest {
     }
 
     @Test
-    fun recoveryClosesAtLastPingWithKilledAndWritesGap() = runBlocking {
+    fun recoveryClosesAtLastPingWithKilledAndWritesGapWhenNoHeartbeatIsNewer() = runBlocking {
         val lastPing = clock.now - 1_800_000
         val id = seedOpenSession(lastPing)
 
@@ -311,6 +312,91 @@ class CaptureCoordinatorTest {
         assertThat(gap.sessionId).isEqualTo(id)
         assertThat(store.current().activeSessionId).isNull()
         assertThat(geofence.removeCalls).isGreaterThan(0)
+    }
+
+    @Test
+    fun recoveryClosesAtTheLastHeartbeatNotTheStalePing() = runBlocking {
+        val lastPing = clock.now - 1_800_000
+        val heartbeat = clock.now - 900_000
+        val id = seedOpenSession(lastPing)
+        store.setLastHeartbeat(heartbeat)
+
+        coordinator.recoverCrashedSession()
+
+        assertThat(trackingRepo.session(id)!!.end).isEqualTo(heartbeat)
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(heartbeat)
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun aHeartbeatFromBeforeTheSessionStartedIsIgnored() = runBlocking {
+        val lastPing = clock.now - 1_800_000
+        val id = seedOpenSession(lastPing)
+        store.setLastHeartbeat(trackingRepo.session(id)!!.start - 1)
+
+        coordinator.recoverCrashedSession()
+
+        assertThat(trackingRepo.session(id)!!.end).isEqualTo(lastPing)
+    }
+
+    @Test
+    fun aHeartbeatOrPingFromTheFutureIsIgnoredNotClamped() = runBlocking {
+        val lastPing = clock.now - 1_800_000
+        val id = seedOpenSession(lastPing)
+        trackingRepo.savePing(
+            LocationPing(
+                timestamp = clock.now + 600_000, zoneId = "Australia/Sydney", lat = -33.0, lng = 151.0, accuracyM = 10f,
+                source = PingSource.FUSED, sessionId = id,
+            ),
+        )
+        store.setLastHeartbeat(clock.now + 300_000)
+
+        coordinator.recoverCrashedSession()
+
+        assertThat(trackingRepo.session(id)!!.end).isEqualTo(lastPing)
+    }
+
+    @Test
+    fun aRestartWithinTheShortInterruptionWritesNoGap() = runBlocking {
+        val heartbeat = clock.now - config.shortInterruptionMs + 1
+        val id = seedOpenSession(clock.now - 1_800_000)
+        store.setLastHeartbeat(heartbeat)
+
+        coordinator.recoverCrashedSession()
+
+        val closed = trackingRepo.session(id)!!
+        assertThat(closed.end).isEqualTo(heartbeat)
+        assertThat(closed.endReason).isEqualTo(SessionEndReason.KILLED)
+        assertThat(timelineRepo.gapsInRange(0, Long.MAX_VALUE)).isEmpty()
+    }
+
+    @Test
+    fun aRestartAtTheShortInterruptionThresholdWritesTheGap() = runBlocking {
+        val heartbeat = clock.now - config.shortInterruptionMs
+        seedOpenSession(clock.now - 1_800_000)
+        store.setLastHeartbeat(heartbeat)
+
+        coordinator.recoverCrashedSession()
+
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(heartbeat)
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun theGapFromAHeartbeatEndStillClipsToTheWindows() = runBlocking {
+        val heartbeat = clock.now - 3_600_000
+        seedOpenSession(clock.now - 7_200_000)
+        store.setLastHeartbeat(heartbeat)
+        val windowEnd = clock.now - 1_800_000
+        windows.intervals = listOf(WindowBounds(java.time.Instant.ofEpochMilli(heartbeat), java.time.Instant.ofEpochMilli(windowEnd)))
+
+        coordinator.recoverCrashedSession()
+
+        val gap = timelineRepo.gapsInRange(0, Long.MAX_VALUE).single()
+        assertThat(gap.start).isEqualTo(heartbeat)
+        assertThat(gap.end).isEqualTo(windowEnd)
     }
 
     @Test
@@ -416,6 +502,7 @@ class CaptureCoordinatorTest {
     fun locationUpdatesDeadAfterAGenericFailureAreRestartedByEnsureLocationUpdates() = runBlocking {
         val calls = java.util.concurrent.atomic.AtomicInteger()
         val flaky = object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams) =
                 if (calls.getAndIncrement() == 0) {
                     kotlinx.coroutines.flow.flow<List<Fix>> { throw IllegalStateException("boom") }
@@ -453,6 +540,7 @@ class CaptureCoordinatorTest {
     fun permissionLostMidSessionGoesThroughTheFailureListenerWhenSet() = runBlocking {
         val seen = java.util.concurrent.CopyOnWriteArrayList<HealthIssue>()
         val denied = object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams) =
                 kotlinx.coroutines.flow.flow<List<Fix>> { throw SecurityException("revoked") }
         }

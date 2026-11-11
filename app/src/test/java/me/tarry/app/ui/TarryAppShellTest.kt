@@ -28,9 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation3.runtime.NavKey
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.navigation.JobsRoute
+import me.tarry.app.ui.navigation.OnboardingRoute
 import me.tarry.app.ui.navigation.PlaceDetailRoute
 import me.tarry.app.ui.navigation.PlacesRoute
+import me.tarry.app.ui.navigation.SettingsRoute
 import me.tarry.app.ui.navigation.SummaryRoute
+import me.tarry.app.ui.navigation.TrackingHealthRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.navigation.navigateTopLevel
 import me.tarry.app.ui.settings.SettingsContent
@@ -161,6 +164,35 @@ class TarryAppShellTest {
         composeRule.onNodeWithText("Jobs screen").assertIsDisplayed()
         settingsTab.assertIsSelected()
         settingsTab.performClick()
+        // The Tracking health row is a line taller than the old Permissions row, so Settings may come back scrolled past the top rows.
+        composeRule.onNodeWithText("Stop radius").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun trackingHealthRow_pushesHealthOverSettings_andBackReturnsToSettings() {
+        val backStack = mutableStateListOf<NavKey>(TimelineRoute)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = { backStack.navigateTopLevel(it) },
+                onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
+                onToggleClick = {},
+                settingsContent = { SettingsContent(Settings(), onOpenTrackingHealth = { backStack.add(TrackingHealthRoute) }) },
+                timelineContent = { Text("Timeline screen") },
+                trackingHealthContent = { Text("Health screen") },
+            )
+        }
+        settingsTab.performClick()
+
+        composeRule.onNodeWithText("Tracking health").performScrollTo().performClick()
+        composeRule.mainClock.advanceTimeBy(1_000)
+        composeRule.onNodeWithText("Health screen").assertIsDisplayed()
+        settingsTab.assertIsSelected()
+        assertThat(backStack.toList()).containsExactly(TimelineRoute, SettingsRoute, TrackingHealthRoute).inOrder()
+
+        backStack.removeAt(backStack.lastIndex)
+        composeRule.mainClock.advanceTimeBy(1_000)
         composeRule.onNodeWithText("Stop radius").assertIsDisplayed()
     }
 
@@ -193,6 +225,33 @@ class TarryAppShellTest {
         backStack.removeAt(backStack.lastIndex)
         composeRule.mainClock.advanceTimeBy(1_000)
         composeRule.onNodeWithText("Places screen").assertIsDisplayed()
+    }
+
+    @Test
+    fun onboardingRoute_isFullScreenWithoutTheBottomBarOrTheTrackingToggle() {
+        val backStack = mutableStateListOf<NavKey>(OnboardingRoute)
+        composeRule.setContent {
+            TarryAppContent(
+                trackingState = TrackingState.IDLE,
+                backStack = backStack,
+                onNavigate = { backStack.navigateTopLevel(it) },
+                onBack = {},
+                onToggleClick = {},
+                settingsContent = {},
+                timelineContent = { Text("Timeline screen") },
+                onboardingContent = { Text("Onboarding screen") },
+            )
+        }
+        composeRule.onNodeWithText("Onboarding screen").assertIsDisplayed()
+        timelineTab.assertDoesNotExist()
+        settingsTab.assertDoesNotExist()
+        summaryTab.assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("Tracking: off").assertDoesNotExist()
+
+        backStack.navigateTopLevel(TimelineRoute)
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Timeline screen").assertIsDisplayed()
+        timelineTab.assertIsDisplayed()
     }
 
     @Test

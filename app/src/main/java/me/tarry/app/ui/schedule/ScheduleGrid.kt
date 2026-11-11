@@ -100,7 +100,8 @@ fun ScheduleGrid(
     schedule: Schedule,
     onToggle: (DayOfWeek, Int) -> Unit,
     onStroke: (Schedule) -> Unit,
-    onDayHeaderClick: (DayOfWeek) -> Unit,
+    /** Null when the header has no action (onboarding): it is then plain text, not a button. */
+    onDayHeaderClick: ((DayOfWeek) -> Unit)?,
     modifier: Modifier = Modifier,
     highlightDay: DayOfWeek? = null,
     listState: LazyListState = rememberLazyListState(initialFirstVisibleItemIndex = ScheduleGridInitialSlot),
@@ -122,7 +123,7 @@ fun ScheduleGrid(
                     onOverflow = { oneLetter = true },
                     fullName = fullNames[day.ordinal],
                     highlighted = day == highlightDay,
-                    onClick = { onDayHeaderClick(day) },
+                    onClick = onDayHeaderClick?.let { click -> { click(day) } },
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -138,7 +139,7 @@ private fun hourLabelWidth(): Dp {
 }
 
 @Composable
-private fun DayHeader(label: String, onOverflow: () -> Unit, fullName: String, highlighted: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun DayHeader(label: String, onOverflow: () -> Unit, fullName: String, highlighted: Boolean, onClick: (() -> Unit)?, modifier: Modifier) {
     val c = TarryTheme.colors
     val edit = stringResource(R.string.schedule_edit_day, fullName)
     val today = stringResource(R.string.schedule_today)
@@ -146,10 +147,10 @@ private fun DayHeader(label: String, onOverflow: () -> Unit, fullName: String, h
         modifier = modifier
             .heightIn(min = 48.dp)
             .semantics {
-                contentDescription = edit
+                contentDescription = if (onClick != null) edit else fullName
                 if (highlighted) stateDescription = today
             }
-            .clickable(role = Role.Button, onClick = onClick),
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
         Text(

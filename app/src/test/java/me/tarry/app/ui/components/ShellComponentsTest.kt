@@ -63,7 +63,7 @@ class ShellComponentsTest {
     fun toggle_paused_textAndDescription() = assertToggle(TrackingState.PAUSED, "Paused", "Tracking: paused")
 
     @Test
-    fun toggle_attention_textAndDescription() = assertToggle(TrackingState.ATTENTION, "Needs attention", "Tracking: needs attention")
+    fun toggle_attention_textAndDescription() = assertToggle(TrackingState.ATTENTION, "Attention", "Tracking: needs attention")
 
 
     @Test

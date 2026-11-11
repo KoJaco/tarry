@@ -98,6 +98,8 @@ fun TimelineContent(
     dayMap: DayMap? = null,
     /** Tracking start/stop marks of the day, drawn on the canvas. */
     trackingMarkers: List<TrackingMarker> = emptyList(),
+    /** Why the day may be empty (outside the schedule, or the window starts later today); shown as a line in the empty state. */
+    dayTracking: DayTracking = DayTracking(),
     /** The day's job blocks (with job name, colour and lane) and the suggested blocks: drawn in the job column. */
     jobBlocks: List<JobBlockItem> = emptyList(),
     jobSuggestions: List<JobSuggestionItem> = emptyList(),
@@ -225,6 +227,14 @@ fun TimelineContent(
                 items.isEmpty() && jobBlocks.isEmpty() -> EmptyState(
                     title = stringResource(if (isToday) R.string.timeline_empty_title_today else R.string.timeline_empty_title_past),
                     body = stringResource(if (isToday) R.string.timeline_empty_body_today else R.string.timeline_empty_body_past),
+                    reason = when {
+                        dayTracking.reason == DayTrackingReason.OUTSIDE_SCHEDULE -> stringResource(R.string.timeline_empty_reason_outside_schedule)
+                        dayTracking.reason == DayTrackingReason.NEEDS_ATTENTION -> stringResource(R.string.timeline_empty_reason_attention)
+                        // The start is only ahead until it passes; the VM does not tick, so check it here.
+                        dayTracking.reason == DayTrackingReason.NOT_YET && dayTracking.startMs != null && dayTracking.startMs > now ->
+                            stringResource(R.string.timeline_empty_reason_not_yet, rememberTimeFormats().time(dayTracking.startMs, zone))
+                        else -> null
+                    },
                     modifier = Modifier.testTag("timeline_empty"),
                 )
                 else -> {

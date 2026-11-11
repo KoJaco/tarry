@@ -325,12 +325,17 @@ class CaptureCoordinator @Inject constructor(
         if (session != null) return
         val open = trackingRepo.openSession() ?: return
         val now = clock.nowMs()
-        val lastPing = trackingRepo.pingsForSession(open.id).lastOrNull()?.timestamp ?: open.start
-        val closedAt = minOf(lastPing, now)
+        val lastPing = trackingRepo.pingsForSession(open.id).lastOrNull { it.timestamp <= now }?.timestamp ?: open.start
+        // The heartbeat outlives PingFilter-dropped fixes, so it is the better "last alive" mark; one from before this
+        // session started belongs to an earlier session and must not extend it.
+        val heartbeat = statusStore.current().lastHeartbeatMs?.takeIf { it >= open.start && it <= now }
+        val closedAt = minOf(maxOf(lastPing, heartbeat ?: lastPing), now)
+        // A restart this quick is not worth a Gap: the Timeline shows no break.
+        val shortOutage = now - closedAt < config.shortInterruptionMs
         trackingRepo.saveSession(open.copy(end = closedAt, endReason = SessionEndReason.KILLED))
         // The dead time counts only where capture should have been running: a phone that died at 15:00 and
         // booted at 06:50 next day lost 15:00-17:00, not the night.
-        val windows = if (now > closedAt) {
+        val windows = if (now > closedAt && !shortOutage) {
             windowChecker.activeIntervals(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(now))
         } else {
             emptyList()
@@ -342,7 +347,9 @@ class CaptureCoordinator @Inject constructor(
         val graceEnd = graceStart?.let {
             minOf(now, it + (status.finishingUpCapMs ?: config.windowEndGraceMaxMs), windows.firstOrNull()?.start?.toEpochMilli() ?: Long.MAX_VALUE)
         }
-        val active = if (graceEnd != null && graceEnd > closedAt) {
+        val active = if (shortOutage) {
+            emptyList()
+        } else if (graceEnd != null && graceEnd > closedAt) {
             listOf(WindowBounds(Instant.ofEpochMilli(closedAt), Instant.ofEpochMilli(graceEnd))) + windows
         } else {
             windows
@@ -361,6 +368,8 @@ class CaptureCoordinator @Inject constructor(
             )
         }
         statusStore.clearSessionState()
+        // Keep the last-alive mark: a health check before the restart must start any Gap here, not at the window start.
+        statusStore.setLastHeartbeat(closedAt)
         // A dead process can leave its stay geofence and activity registration behind.
         geofenceClient.remove()
         activityClient.unregister()

@@ -120,7 +120,7 @@ class RestorePreview internal constructor(
 
 /**
  * Backs up to and restores from a user-chosen document. Settings → Data is the only caller; nothing runs on its own.
- * What is in the file: every Room table, the `settings` DataStore (except `last_backup_ms`, which describes this
+ * What is in the file: every Room table, the `settings` DataStore (except `last_backup_ms`, `onboarding_completed_at_ms` and `onboarding_started_at_ms`, which describe this
  * phone) and the declined suggestions. The `tracking_status` DataStore is local control state and is not included.
  */
 @Singleton
@@ -160,7 +160,7 @@ class BackupManager @Inject constructor(
             createdAt = clock.nowMs(),
             zoneId = clock.zone().id,
             appVersionName = BuildConfig.VERSION_NAME,
-            settings = settingsStore.data.first().toEntries(skip = setOf(Settings.LAST_BACKUP_KEY, Settings.PRUNED_BEFORE_KEY)),
+            settings = settingsStore.data.first().toEntries(skip = setOf(Settings.LAST_BACKUP_KEY, Settings.PRUNED_BEFORE_KEY, Settings.ONBOARDING_COMPLETED_AT_KEY, Settings.ONBOARDING_STARTED_AT_KEY)),
             declinedSuggestions = declinedStore.data.first().toEntries(),
             tables = head.snapshot.toTables(),
         )
@@ -250,9 +250,13 @@ class BackupManager @Inject constructor(
             hooks.captureSuspended {
                 try {
                     val lastBackup = oldSettings[longPreferencesKey(Settings.LAST_BACKUP_KEY)]
+                    val onboarded = oldSettings[longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)]
+                    val onboardingStarted = oldSettings[longPreferencesKey(Settings.ONBOARDING_STARTED_AT_KEY)]
                     settingsStore.updateData { _ ->
                         preview.settings.toMutablePreferences().also {
                             if (lastBackup != null) it[longPreferencesKey(Settings.LAST_BACKUP_KEY)] = lastBackup
+                            if (onboarded != null) it[longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)] = onboarded
+                            if (onboardingStarted != null) it[longPreferencesKey(Settings.ONBOARDING_STARTED_AT_KEY)] = onboardingStarted
                         }
                     }
                     declinedStore.updateData { _ -> preview.declined }

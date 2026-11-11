@@ -1,6 +1,7 @@
 package me.tarry.app.ui.timeline
 
 import com.google.common.truth.Truth.assertThat
+import me.tarry.app.tracking.TrackingConfig
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
@@ -73,6 +74,75 @@ class TrackingMarkersTest {
         val m = markers(session(at(8, 0), at(12, 0)), session(at(12, 0) + gapMs, null))
         assertThat(m.map { (it.stoppedMs != null) to (it.startedMs != null) })
             .containsExactly(false to true, true to false, false to true).inOrder()
+    }
+
+    @Test
+    fun aKilledStopRestartedWithinTheShortInterruptionShowsNothing() {
+        val short = TrackingConfig().shortInterruptionMs
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.KILLED), session(at(12, 0) + short - 1, null))
+        assertThat(m).containsExactly(TrackingMarker(at(8, 0), null))
+        assertThat(offStretches(m, dayEnd, now = at(20))).isEmpty()
+    }
+
+    @Test
+    fun aKilledStopRestartedLaterShowsAnInterruptedMarkerAndAStretch() {
+        val short = TrackingConfig().shortInterruptionMs
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.KILLED), session(at(12, 0) + short, null))
+        assertThat(m.map { it.reason }).containsExactly(null, SessionEndReason.KILLED, null).inOrder()
+        assertThat(offStretches(m, dayEnd, now = at(20))).containsExactly(OffStretch(at(12, 0), at(12, 0) + short, killed = true))
+        assertThat(markerLines(m[1], MarkerWords("Start", "Stop", "Off", "Interrupted")) { "t" }).containsExactly("Interrupted", "t").inOrder()
+    }
+
+    @Test
+    fun aUserStopAndStartWithinTheShortInterruptionStillCollapses() {
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.USER_PAUSE), session(at(12, 1), null))
+        assertThat(m).contains(TrackingMarker(startedMs = at(12, 1), stoppedMs = at(12, 0), reason = SessionEndReason.USER_PAUSE))
+    }
+
+    @Test
+    fun aDeliberateStopKeepsItsHatchUnderAVisit() {
+        val m = markers(session(at(8, 0), at(12, 0), SessionEndReason.USER_STOP), session(at(12, 30), null))
+        val stretches = offStretches(m, dayEnd, now = at(20))
+        assertThat(stretches.single().killed).isFalse()
+        assertThat(clipOutOfVisits(stretches, listOf(at(11, 0)..at(14, 0)))).isEqualTo(stretches)
+    }
+
+    @Test
+    fun aKilledStopJustBeforeMidnightRestartedJustAfterShowsNothing() {
+        val short = TrackingConfig().shortInterruptionMs
+        val killedAt = bounds.second - 2 * 60_000L
+        val restartAt = bounds.second + 60_000L
+        val m = markers(session(at(8, 0), killedAt, SessionEndReason.KILLED), session(restartAt, null))
+        assertThat(m).containsExactly(TrackingMarker(at(8, 0), null))
+        // Past the short interruption the restart no longer cancels the stop, and is still not a marker of this day.
+        val late = markers(session(at(8, 0), killedAt, SessionEndReason.KILLED), session(killedAt + short, null))
+        assertThat(late.map { it.reason }).containsExactly(null, SessionEndReason.KILLED).inOrder()
+    }
+
+    @Test
+    fun aKilledStopJustBeforeMidnightRestartedJustAfterShowsNoStartOnTheNextDay() {
+        val short = TrackingConfig().shortInterruptionMs
+        val prevDay = date.minusDays(1)
+        val killedAt = bounds.first - 2 * 60_000L
+        val restartAt = bounds.first + 60_000L
+        val m = markers(session(at(8, 0, prevDay), killedAt, SessionEndReason.KILLED), session(restartAt, at(17, 0), SessionEndReason.SCHEDULE_END))
+        assertThat(m).containsExactly(TrackingMarker(null, at(17, 0), SessionEndReason.SCHEDULE_END))
+        // Past the short interruption the restart is a real start again; a deliberate stop never cancels it.
+        val late = markers(session(at(8, 0, prevDay), killedAt, SessionEndReason.KILLED), session(killedAt + short, null))
+        assertThat(late).containsExactly(TrackingMarker(killedAt + short, null))
+        val deliberate = markers(session(at(8, 0, prevDay), killedAt, SessionEndReason.USER_STOP), session(restartAt, null))
+        assertThat(deliberate).containsExactly(TrackingMarker(restartAt, null))
+    }
+
+    @Test
+    fun aStretchInsideAContinuingVisitIsRemoved_oneOverlappingAnEdgeKeepsItsOutsidePart() {
+        val stretch = OffStretch(at(12, 0), at(12, 30), killed = true)
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(11, 0)..at(14, 0)))).isEmpty()
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(11, 0)..at(12, 10))))
+            .containsExactly(OffStretch(at(12, 10), at(12, 30), killed = true))
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(12, 20)..at(14, 0))))
+            .containsExactly(OffStretch(at(12, 0), at(12, 20), killed = true))
+        assertThat(clipOutOfVisits(listOf(stretch), listOf(at(9, 0)..at(10, 0)))).containsExactly(stretch)
     }
 
     @Test

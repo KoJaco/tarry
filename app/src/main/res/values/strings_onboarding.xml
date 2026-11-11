@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="onboarding_step_indicator">Step %1$d of %2$d</string>
+    <string name="onboarding_welcome_headline">Your work day, already written down.</string>
+    <string name="onboarding_welcome_body">Tarry quietly notes where you are during work hours, splits your day into on-site time and travel, and lets you drop jobs onto it later.</string>
+    <string name="onboarding_welcome_privacy">No account. No cloud. Your location stays on your phone unless you export it.</string>
+    <string name="onboarding_get_started">Get started</string>
+
+    <string name="onboarding_permission_allow">Allow</string>
+    <string name="onboarding_permission_open_settings">Open settings</string>
+    <string name="onboarding_permission_not_now">Not now</string>
+    <string name="onboarding_permission_not_now_description">Not now, skip the remaining permissions and set your hours</string>
+    <string name="onboarding_permission_skip_lost">If you skip: %1$s</string>
+
+    <string name="onboarding_schedule_title">When do you work?</string>
+    <string name="onboarding_schedule_body">Paint your hours once. Tarry starts and stops on its own.</string>
+    <string name="onboarding_schedule_save">Save hours</string>
+    <string name="onboarding_schedule_save_failed">Couldn\'t save your hours. Try again.</string>
+
+    <string name="onboarding_done_title_ready">You\'re set</string>
+    <string name="onboarding_done_title_blocked">Almost there</string>
+    <string name="onboarding_done_blocked_location">Tracking can\'t start until location is allowed all the time. Fix it in Settings → Tracking health.</string>
+    <string name="onboarding_done_blocked_alarms">Tracking may start late until exact alarms are allowed. Fix it in Settings → Tracking health.</string>
+    <string name="onboarding_done_tracking_now">Tracking now</string>
+    <string name="onboarding_done_next">Next: %1$s</string>
+    <string name="onboarding_done_no_hours">No hours set</string>
+    <string name="onboarding_done_body">Tarry starts and stops on its own. You can change your hours any time in Settings.</string>
+    <string name="onboarding_done_no_hours_body">Tarry won\'t start on its own until you paint some hours in Settings. You can also turn tracking on from the Timeline.</string>
+    <string name="onboarding_done_open">Open Tarry</string>
+</resources>

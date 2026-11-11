@@ -55,3 +55,17 @@ data object AboutRoute : NavKey
 /** Open-source licences (phase 8a). Pushed on top of [AboutRoute]. */
 @Serializable
 data object LicencesRoute : NavKey
+
+/**
+ * First-run onboarding (phase 8a.2): welcome, permissions, schedule, done. Shown full screen with no bottom bar, and it
+ * replaces the whole back stack, so Back on its first page leaves the app. "Open Tarry" and "Not now" go to [TimelineRoute].
+ */
+@Serializable
+data object OnboardingRoute : NavKey
+
+/**
+ * Tracking health (phase 8a.2): the live checks, why tracking can stop and Test tracking. Pushed on top of [SettingsRoute];
+ * it replaces the Permissions row there, and the Permissions screen is reached from it.
+ */
+@Serializable
+data object TrackingHealthRoute : NavKey

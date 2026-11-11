@@ -34,6 +34,10 @@ interface TrackingSessionDao {
     @Query("SELECT * FROM tracking_session WHERE start < :to AND (`end` IS NULL OR `end` > :from) ORDER BY start")
     fun observeOverlapping(from: Long, to: Long): Flow<List<TrackingSession>>
 
+    /** True when any session exists; tells an existing install from a fresh one. */
+    @Query("SELECT EXISTS(SELECT 1 FROM tracking_session)")
+    suspend fun any(): Boolean
+
     @Query("SELECT * FROM tracking_session WHERE `end` IS NULL ORDER BY start DESC LIMIT 1")
     suspend fun getOpenSession(): TrackingSession?
 

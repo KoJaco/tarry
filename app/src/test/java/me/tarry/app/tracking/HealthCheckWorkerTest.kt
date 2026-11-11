@@ -61,6 +61,7 @@ class HealthCheckWorkerTest {
     private val alarms = FakeAlarmScheduler()
     private val alerts = FakeAlertNotifier()
     private val clock = FakeClock(now = mondayAt(10).toEpochMilli(), zone = sydney)
+    private var epochMs: Long? = 0L
     private lateinit var health: HealthGapRecorder
     private lateinit var coordinator: CaptureCoordinator
     private lateinit var controller: TrackingController
@@ -86,8 +87,10 @@ class HealthCheckWorkerTest {
                 ScheduleInputsProvider(ScheduleRepository(db.scheduleDao()), trackingRepo, store, config, clock),
                 EffectiveScheduleCalculator(config), clock,
             ),
+            { epochMs },
         )
         wire(object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams): Flow<List<Fix>> = FakeLocationClient().updates(params)
         })
     }
@@ -201,6 +204,34 @@ class HealthCheckWorkerTest {
     }
 
     @Test
+    fun freshInstallInsideTheWindowStartsTheGapAtOnboardingCompletion() = runBlocking<Unit> {
+        // Window opened 07:00; the app was installed at 08:00 and set up at 08:02.
+        epochMs = mondayAt(8, 2).toEpochMilli()
+        clock.now = mondayAt(8, 30).toEpochMilli()
+        preconditions.value = Preconditions(backgroundLocation = false)
+
+        runWorker()
+
+        val gap = gaps().single()
+        assertThat(gap.cause).isEqualTo(GapCause.PERMISSION_LOST)
+        assertThat(gap.start).isEqualTo(mondayAt(8, 2).toEpochMilli())
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun onboardingStillOpenWritesNoGapAndPostsNoAlert() = runBlocking<Unit> {
+        epochMs = null
+        clock.now = mondayAt(8, 30).toEpochMilli()
+        preconditions.value = Preconditions(backgroundLocation = false)
+
+        runWorker()
+
+        assertThat(gaps()).isEmpty()
+        assertThat(alerts.posted).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
+    }
+
+    @Test
     fun laterChecksExtendTheGapAndRecoveryClosesIt() = runBlocking<Unit> {
         preconditions.value = Preconditions(locationEnabled = false)
         runWorker()
@@ -244,6 +275,56 @@ class HealthCheckWorkerTest {
         assertThat(gap.start).isEqualTo(lastPing)
         assertThat(gap.end).isEqualTo(clock.now)
         assertThat(trackingRepo.session(sessionId)!!.endReason).isEqualTo(SessionEndReason.KILLED)
+    }
+
+    private suspend fun seedKilledSession(heartbeat: Long) {
+        trackingRepo.saveSession(
+            TrackingSession(start = mondayAt(7).toEpochMilli(), zoneId = sydney.id, trigger = SessionTrigger.SCHEDULE),
+        )
+        store.setLastHeartbeat(heartbeat)
+    }
+
+    @Test
+    fun aShortRestartBeforeTheWorkerShowsNothing() = runBlocking<Unit> {
+        seedKilledSession(mondayAt(11, 1).toEpochMilli())
+        clock.now = mondayAt(11, 4).toEpochMilli()
+
+        runWorker()
+
+        assertThat(gaps()).isEmpty()
+        assertThat(alerts.posted).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
+        // The last-alive mark survives the recovery.
+        assertThat(store.current().lastHeartbeatMs).isEqualTo(mondayAt(11, 1).toEpochMilli())
+        // Nothing is reported, but the dead service is still restarted (as SYSTEM: via the short alarm).
+        assertThat(launcher.started).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(Instant.ofEpochMilli(clock.now + config.deferredStartDelayMs))
+    }
+
+    @Test
+    fun aLongerOutageStartsTheGapAtTheLastAliveMarkNotTheWindowStart() = runBlocking<Unit> {
+        seedKilledSession(mondayAt(11, 1).toEpochMilli())
+        clock.now = mondayAt(11, 4).toEpochMilli()
+        runWorker()
+        clock.now = mondayAt(11, 8).toEpochMilli()
+
+        runWorker()
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.SERVICE_NOT_RUNNING)
+        val gap = gaps().single()
+        assertThat(gap.start).isEqualTo(mondayAt(11, 1).toEpochMilli())
+        assertThat(gap.end).isEqualTo(clock.now)
+    }
+
+    @Test
+    fun aRestartWithinTheShortInterruptionRecordsNothing() = runBlocking<Unit> {
+        seedKilledSession(mondayAt(11, 1).toEpochMilli())
+        clock.now = mondayAt(11, 4).toEpochMilli()
+
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        assertThat(gaps()).isEmpty()
+        assertThat(store.current().attentionCause).isNull()
     }
 
     @Test
@@ -301,6 +382,7 @@ class HealthCheckWorkerTest {
     @Test
     fun permissionLostMidSessionOpensAGapAndEndsTheSession() = runBlocking<Unit> {
         wire(object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams): Flow<List<Fix>> = flow { throw SecurityException("revoked") }
         })
         permissions.fine = false
@@ -434,6 +516,7 @@ class HealthCheckWorkerTest {
         val calls = java.util.concurrent.atomic.AtomicInteger()
         val fake = FakeLocationClient()
         wire(object : LocationClient {
+            override suspend fun currentFix(priority: LocationPriority, timeoutMs: Long) = CurrentFixResult.Timeout
             override fun updates(params: LocationRequestParams): Flow<List<Fix>> =
                 if (calls.getAndIncrement() == 0) flow { throw IllegalStateException("boom") } else fake.updates(params)
         })

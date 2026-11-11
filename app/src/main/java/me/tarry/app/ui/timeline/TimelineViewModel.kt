@@ -36,6 +36,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import me.tarry.app.R
 import me.tarry.app.segmentation.SegmentationScheduler
+import me.tarry.app.tracking.TrackingConfig
+import me.tarry.app.tracking.TrackingState
+import me.tarry.app.tracking.TrackingStateRepository
+import me.tarry.app.tracking.ScheduleWindowChecker
+import me.tarry.app.tracking.WindowBounds
+import me.tarry.app.ui.schedule.mondayOf
+import me.tarry.core.data.repository.ScheduleRepository
+import java.time.Instant
 import me.tarry.app.ui.undo.UndoEvent
 import me.tarry.app.ui.undo.UndoEvents
 import me.tarry.app.ui.undo.noticeRes
@@ -146,6 +154,12 @@ private const val DEFAULT_MIN_STAY_MS = 5 * 60_000L
 
 private val RowOrder = compareBy<TimelineItem>({ it.start }, { it.typeOrder() })
 
+/** Why a day may show no tracking. */
+enum class DayTrackingReason { NONE, OUTSIDE_SCHEDULE, NOT_YET, NEEDS_ATTENTION }
+
+/** [reason] for the selected day; [startMs] is the first window start, set for [DayTrackingReason.NOT_YET]. */
+data class DayTracking(val reason: DayTrackingReason = DayTrackingReason.NONE, val startMs: Long? = null)
+
 /** The first value at once, then at most the latest one every [periodMs] (Room re-emits a whole day per ping). */
 private fun <T> Flow<T>.throttleLatest(periodMs: Long): Flow<T> = conflate().transform {
     emit(it)
@@ -192,6 +206,14 @@ class TimelineViewModel internal constructor(
     zoomMinutes: Flow<Int> = flowOf(ZoomLevel.Q15.snapMinutes),
     /** Saves the timeline zoom step in minutes. */
     private val saveZoomMinutes: suspend (Int) -> Unit = {},
+    /** A killed session restarted within this long leaves no marker on the day canvas. */
+    private val shortInterruptionMs: Long = TrackingConfig().shortInterruptionMs,
+    /** The stretches of `[from, to)` (UTC epoch ms) in which capture should run, from the effective schedule. */
+    private val activeIntervals: suspend (from: Long, to: Long) -> List<WindowBounds> = { _, _ -> emptyList() },
+    /** Emits whenever the schedule that applies to the week starting [monday] (ISO date) may have changed; the day's reason is then recomputed. */
+    private val scheduleChanges: (monday: String) -> Flow<Any?> = { flowOf(Unit) },
+    /** The live tracking state: ATTENTION inside an active interval is why today may be empty. */
+    private val trackingState: Flow<TrackingState> = flowOf(TrackingState.IDLE),
 ) : ViewModel() {
     @Inject
     constructor(
@@ -206,6 +228,10 @@ class TimelineViewModel internal constructor(
         jobBlocks: JobBlockRepository,
         declined: DeclinedSuggestionStore,
         settings: SettingsRepository,
+        trackingConfig: TrackingConfig,
+        schedules: ScheduleRepository,
+        windowChecker: ScheduleWindowChecker,
+        trackingStateRepo: TrackingStateRepository,
     ) :
         this(
             timeline, places, jobs, ZoneId.systemDefault(), { LocalDate.now(ZoneId.systemDefault()) },
@@ -224,6 +250,12 @@ class TimelineViewModel internal constructor(
             createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
             zoomMinutes = settings.settings.map { it.timelineZoomMinutes },
             saveZoomMinutes = settings::setTimelineZoomMinutes,
+            shortInterruptionMs = trackingConfig.shortInterruptionMs,
+            activeIntervals = { from, to -> windowChecker.activeIntervals(Instant.ofEpochMilli(from), Instant.ofEpochMilli(to)) },
+            scheduleChanges = { monday ->
+                combine(schedules.observeTemplate(), schedules.observeOverride(monday), tracking.observeActiveOverrides()) { _, _, _ -> Unit }
+            },
+            trackingState = trackingStateRepo.state,
         )
 
     private val _today = MutableStateFlow(todayProvider())
@@ -278,9 +310,32 @@ class TimelineViewModel internal constructor(
     val trackingMarkers: StateFlow<List<TrackingMarker>> = _selectedDate
         .flatMapLatest { date ->
             val (from, to) = dayBounds(date, zone)
-            trackingSessions(from, to).map { trackingMarkers(it, from, to) }
+            // Read past both midnights: a 23:58 kill with a 00:01 restart is not a visible break on either day (see [trackingMarkers]).
+            trackingSessions(from - shortInterruptionMs, to + shortInterruptionMs).map { trackingMarkers(it, from, to, shortInterruptionMs = shortInterruptionMs) }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), emptyList())
+
+    /**
+     * Why the selected day may have no tracking: outside the schedule, or the window has not started yet (today). Or, inside a window, tracking needs attention. Recomputed on
+     * a date change and whenever the schedule changes; [DayTrackingReason.NONE] while loading.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val dayTracking: StateFlow<DayTracking> = _selectedDate
+        .flatMapLatest { date ->
+            combine(scheduleChanges(mondayOf(date).toString()), trackingState) { _, state -> state }.map { dayTrackingFor(date, it) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), DayTracking())
+
+    private suspend fun dayTrackingFor(date: LocalDate, state: TrackingState): DayTracking {
+        val (from, to) = dayBounds(date, zone)
+        val intervals = activeIntervals(from, to)
+        val first = intervals.firstOrNull() ?: return DayTracking(DayTrackingReason.OUTSIDE_SCHEDULE)
+        val now = nowMs()
+        val insideInterval = intervals.any { it.start.toEpochMilli() <= now && now < it.end.toEpochMilli() }
+        if (state == TrackingState.ATTENTION && now in from until to && insideInterval) return DayTracking(DayTrackingReason.NEEDS_ATTENTION)
+        val start = first.start.toEpochMilli()
+        return if (now in from until to && start > now) DayTracking(DayTrackingReason.NOT_YET, start) else DayTracking()
+    }
 
     /** The selected day's job blocks with their job; empty while loading. Blocks of unknown or deleted jobs are left out. */
     val jobBlocks: StateFlow<List<JobBlockItem>> = _selectedDate

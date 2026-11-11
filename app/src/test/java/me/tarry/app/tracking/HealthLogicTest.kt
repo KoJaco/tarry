@@ -83,8 +83,17 @@ class HealthLogicTest {
     }
 
     @Test
+    fun notRunningIsForgivenUntilTheShortInterruptionHasPassedSinceTheLastAliveMark() {
+        val since = now - 3_600_000
+        val within = snapshot(running = false, since = since, heartbeat = now - config.shortInterruptionMs + 1)
+        assertThat(evaluator.evaluate(within)).isNull()
+        val past = snapshot(running = false, since = since, heartbeat = now - config.shortInterruptionMs)
+        assertThat(evaluator.evaluate(past)).isEqualTo(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED))
+    }
+
+    @Test
     fun notRunningAfterTheGraceIsServiceNotRunningWithAKilledGap() {
-        val s = snapshot(running = false, since = now - config.serviceStartGraceMs - 1)
+        val s = snapshot(running = false, since = now - config.serviceStartGraceMs - 1, heartbeat = null)
         assertThat(evaluator.evaluate(s)).isEqualTo(HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED))
     }
 
@@ -179,7 +188,7 @@ class HealthLogicTest {
     @Test
     fun attentionServiceNotRunning() = assertAttention(
         AttentionCause.SERVICE_NOT_RUNNING,
-        snapshot(running = false, since = now - config.serviceStartGraceMs - 1),
+        snapshot(running = false, since = now - config.serviceStartGraceMs - 1, heartbeat = null),
     )
 
     @Test

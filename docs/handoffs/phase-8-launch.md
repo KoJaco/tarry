@@ -135,6 +135,12 @@
 - **8a carry-overs:** the killed-session "Off" edge case, release-friendly Sessions text, the nine icon swaps and the small nits from `phase-8-start.md`.
 - **PRs:** 8a ships as 8a.1 (docs, Data, About, carry-overs) and 8a.2 (onboarding, diagnostics, reminder, killed-session fix).
 
+## Owner decisions, 2026-11-10 (8a.2)
+- **8a.1 merged** (PR #33), including the review reminder (moved up from 8a.2) and the logo as the launcher icon. 8a.2 ships as one PR on `feat/phase-8a2`.
+- **Killed session:** a dead session ends at its last heartbeat, not its last saved ping. If tracking is back within 5 min inside a scheduled window, nothing shows (no marker, no hatch, no gap). A longer outage keeps a marker labelled "Interrupted" and a real gap, but no hatch across a visit that carries on both sides.
+- **Tracking health** replaces the Permissions row in Settings → Tracking; the Permissions screen stays, reached from health and the attention sheet.
+- **Onboarding Done** saves the schedule and lets the normal reconcile start tracking if the user is inside a window now.
+
 ## Questions for the owner (ask while planning, rule 12)
 1. **When the trial ends,** what locks? The recommendation is tracking only, never data access.
 2. **The price:** final AUD price, and whether to let Play convert it per country or set a few by hand.
