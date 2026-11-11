@@ -59,7 +59,7 @@ class SegmentationRunner @Inject constructor(
     private val windowChecker: ScheduleWindowChecker,
     private val params: SegmentationParams,
     private val config: TrackingConfig = TrackingConfig(),
-    private val accessLock: AccessLockSource = AccessLockSource { null },
+    private val accessLock: AccessLockSource = AccessLockSource { emptyList() },
 ) {
     suspend fun run(nowMs: Long) {
         mutex.withLock { store.transaction { runLocked(nowMs) } }
@@ -113,14 +113,14 @@ class SegmentationRunner @Inject constructor(
                     weightMs = weights[it.id] ?: 0L, merged = it.mergedIntoId != null, ignored = it.ignored,
                 )
             },
-            // Windows after the trial lock began are not expected to have a session, so they are not passed on.
-            windows = windowsBeforeLock(
+            // Windows inside a locked span (open or closed) are not expected to have a session, so they are not passed on.
+            windows = windowsOutsideLocks(
                 boundedWindows(
                     windowChecker.activeIntervals(Instant.ofEpochMilli(from), Instant.ofEpochMilli(to))
                         .map { TimeRange(it.start.toEpochMilli(), it.end.toEpochMilli()) },
                     firstSessionStart,
                 ),
-                accessLock.lockedSinceMs(),
+                accessLock.lockedSpans(),
             ),
             sessions = segmentationSessions(sessions, now, config.shortInterruptionMs),
             healthGaps = allGaps.filter { it.cause.toSegmentationOrNull() == null }.map { TimeRange(it.start, it.end) },

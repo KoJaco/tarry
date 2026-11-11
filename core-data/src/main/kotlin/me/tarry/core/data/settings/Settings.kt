@@ -12,8 +12,34 @@ data class AccessPrefs(
     val purchaseCheckedMs: Long? = null,
     val lastSeenMs: Long? = null,
     val lockedSinceMs: Long? = null,
+    val lastAllowedMs: Long? = null,
+    /** Closed lock spans, encoded; see [lockedSpans]. */
+    val lockIntervals: String? = null,
     val debugState: String? = null,
     val debugTrialEndMs: Long? = null,
+) {
+    /** Every span tracking was locked: the closed ones, then the open one (which ends at [Long.MAX_VALUE]). Half-open. */
+    fun lockedSpans(): List<LockSpan> {
+        val closed = lockIntervals.orEmpty().split(',').mapNotNull { part ->
+            val (s, e) = part.split(':').takeIf { it.size == 2 } ?: return@mapNotNull null
+            val start = s.toLongOrNull() ?: return@mapNotNull null
+            val end = e.toLongOrNull() ?: return@mapNotNull null
+            LockSpan(start, end)
+        }
+        return closed + listOfNotNull(lockedSinceMs?.let { LockSpan(it, Long.MAX_VALUE) })
+    }
+}
+
+/** A span [startMs, endMs) (UTC epoch ms) during which tracking was locked. */
+data class LockSpan(val startMs: Long, val endMs: Long)
+
+/** What one access decision asks the settings store to remember; see [SettingsRepository.updateAccess]. */
+data class AccessBookkeeping(
+    /** The time the decision was made at (the clock, or the high-water mark if later). */
+    val nowMs: Long,
+    val allowed: Boolean,
+    /** Where a new lock would begin (the trial end, if known); never earlier than the last time tracking was allowed. */
+    val lockBeganMs: Long?,
 )
 
 /** User-facing settings, persisted in Preferences DataStore. */
@@ -62,6 +88,10 @@ data class Settings(
         /** When the tracking lock began (UTC epoch ms); windows after it are not segmented. Cleared once tracking is allowed again. */
         const val ACCESS_LOCKED_SINCE_KEY = "access_locked_since_ms"
         /** Debug builds only: the forced access state (see the Sessions screen switch). */
+        /** The last time tracking was allowed (UTC epoch ms), so a lock never starts before it. */
+        const val ACCESS_LAST_ALLOWED_KEY = "access_last_allowed_ms"
+        /** Closed lock spans as "start:end,start:end" (UTC epoch ms), oldest first, capped; the open one is [ACCESS_LOCKED_SINCE_KEY]. */
+        const val ACCESS_LOCK_INTERVALS_KEY = "access_lock_intervals"
         const val ACCESS_DEBUG_STATE_KEY = "access_debug_state"
         /** Debug builds only: the trial end the forced state reports (UTC epoch ms). */
         const val ACCESS_DEBUG_TRIAL_END_KEY = "access_debug_trial_end_ms"
@@ -81,6 +111,8 @@ data class Settings(
             ACCESS_PURCHASE_CHECKED_KEY,
             ACCESS_LAST_SEEN_KEY,
             ACCESS_LOCKED_SINCE_KEY,
+            ACCESS_LAST_ALLOWED_KEY,
+            ACCESS_LOCK_INTERVALS_KEY,
             ACCESS_DEBUG_STATE_KEY,
             ACCESS_DEBUG_TRIAL_END_KEY,
             ACCESS_TRIAL_CARD_KEY,

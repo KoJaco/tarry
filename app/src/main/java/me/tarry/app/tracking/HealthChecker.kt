@@ -102,6 +102,8 @@ class HealthChecker @Inject constructor(
         recorder.reportOutage(issue, health.shouldRunSinceMs)
         // A warning-only issue loses no capture time, so there is nothing to restart.
         if (issue.recordGap) controller.reconcile(ReconcileSource.SYSTEM)
+        // Locked with capture still running: the trial-end alarm was late or missed, so stop it now.
+        else if (health.locked && health.serviceRunning) controller.reconcile(ReconcileSource.SYSTEM)
         return issue
     }
 }

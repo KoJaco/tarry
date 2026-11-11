@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.settings.LockSpan
 import me.tarry.segmentation.TimeRange
 import org.junit.Test
 
@@ -70,14 +71,20 @@ class SegmentationInputsTest {
     }
 
     @Test
-    fun windowsAreClippedAtTheMomentTheLockBegan() {
+    fun lockedSpansAreCutOutOfTheWindows() {
         val windows = listOf(TimeRange(100, 200), TimeRange(300, 400), TimeRange(500, 600))
-        // A window wholly after the lock is dropped, one straddling it ends there, earlier ones are untouched.
-        assertThat(windowsBeforeLock(windows, 350)).containsExactly(TimeRange(100, 200), TimeRange(300, 350)).inOrder()
-        assertThat(windowsBeforeLock(windows, 300)).containsExactly(TimeRange(100, 200))
-        assertThat(windowsBeforeLock(windows, 50)).isEmpty()
-        assertThat(windowsBeforeLock(windows, 1_000)).isEqualTo(windows)
-        // Not locked: nothing changes.
-        assertThat(windowsBeforeLock(windows, null)).isEqualTo(windows)
+        // An open span (still locked) drops what follows it and cuts a window it begins inside.
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(350, Long.MAX_VALUE))))
+            .containsExactly(TimeRange(100, 200), TimeRange(300, 350)).inOrder()
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(300, Long.MAX_VALUE)))).containsExactly(TimeRange(100, 200))
+        // A closed span in the middle leaves the windows either side of it, and cuts a straddling one in two.
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(150, 350))))
+            .containsExactly(TimeRange(100, 150), TimeRange(350, 400), TimeRange(500, 600)).inOrder()
+        // Several spans, closed and open, all apply.
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(0, 120), LockSpan(310, 390), LockSpan(550, Long.MAX_VALUE))))
+            .containsExactly(TimeRange(120, 200), TimeRange(300, 310), TimeRange(390, 400), TimeRange(500, 550)).inOrder()
+        // No span: nothing changes.
+        assertThat(windowsOutsideLocks(windows, emptyList())).isEqualTo(windows)
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(1_000, 2_000)))).isEqualTo(windows)
     }
 }

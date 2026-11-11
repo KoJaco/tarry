@@ -32,7 +32,9 @@ class AndroidHealthAlertNotifier @Inject constructor(
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_tracking)
             .setColor(ContextCompat.getColor(context, R.color.tarry_accent))
-            .setContentTitle(context.getString(R.string.tracking_alert_title))
+            .setContentTitle(
+                context.getString(if (cause == AttentionCause.TRIAL_ENDED) R.string.tracking_alert_trial_ended_title else R.string.tracking_alert_title),
+            )
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setCategory(NotificationCompat.CATEGORY_ERROR)

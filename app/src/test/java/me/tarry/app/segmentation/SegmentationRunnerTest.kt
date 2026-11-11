@@ -24,6 +24,7 @@ import me.tarry.core.data.model.VisitOrigin
 import me.tarry.core.data.repository.EditClock
 import me.tarry.core.data.repository.EditResult
 import me.tarry.core.data.repository.TimelineEditor
+import me.tarry.core.data.settings.LockSpan
 import me.tarry.segmentation.SegmentationParams
 import org.junit.After
 import org.junit.Before
@@ -94,14 +95,14 @@ class SegmentationRunnerTest {
     private suspend fun trips() = db.tripDao().getInRange(0, Long.MAX_VALUE)
 
     /** A runner whose schedule window covers [windowStart, windowEnd]. */
-    private fun runnerWithWindow(windowStart: Long, windowEnd: Long, lockedSinceMs: Long? = null) = SegmentationRunner(
+    private fun runnerWithWindow(windowStart: Long, windowEnd: Long, lockSpans: List<LockSpan> = emptyList()) = SegmentationRunner(
         SegmentationStore(db), db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(),
         db.placeDao(), db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao(),
         FakeWindowChecker().apply {
             intervals = listOf(WindowBounds(java.time.Instant.ofEpochMilli(windowStart), java.time.Instant.ofEpochMilli(windowEnd)))
         },
         SegmentationParams(),
-        accessLock = AccessLockSource { lockedSinceMs },
+        accessLock = AccessLockSource { lockSpans },
     )
 
     private suspend fun noSessionGaps() =
@@ -149,9 +150,49 @@ class SegmentationRunnerTest {
         // The same long kill that writes a gap above, but tracking was locked from the kill on: nothing was expected after it.
         val now = killAndRestart(6 * minute)
 
-        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute, lockedSinceMs = t0 + 10 * minute).run(now)
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute, lockSpans = listOf(LockSpan(t0 + 10 * minute, Long.MAX_VALUE))).run(now)
 
         assertThat(noSessionGaps()).isEmpty()
+    }
+
+    /** Three sessions with a 6 min outage (10 to 16) and a 14 min one (26 to 40) between them; returns "now". */
+    private suspend fun threeSessionsTwoOutages(): Long {
+        suspend fun session(startMin: Int, endMin: Int?, site: Pair<Double, Double>) {
+            sessionId = db.trackingSessionDao().upsert(
+                TrackingSession(
+                    start = t0 + startMin * minute, end = endMin?.let { t0 + it * minute }, zoneId = "Australia/Sydney",
+                    trigger = SessionTrigger.SCHEDULE, endReason = if (endMin != null) SessionEndReason.KILLED else null,
+                ),
+            )
+            val last = endMin ?: (startMin + 12)
+            db.locationPingDao().upsertAll((startMin..last step 2).map { ping(t0 + it * minute, site) })
+        }
+        session(0, 10, siteA)
+        session(16, 26, siteB)
+        session(40, null, -33.9500 to 151.3000)
+        return t0 + 52 * minute
+    }
+
+    @Test
+    fun aLockThatEndedStillKeepsItsSpanFreeOfGapsWhenSegmentationRerunsFromTheStart() = runBlocking<Unit> {
+        // Locked 8 to 20 and unlocked since: the span stays on record, so a rewind (an upgrade, the overlap) writes no gap in it.
+        val now = threeSessionsTwoOutages()
+        val span = LockSpan(t0 + 8 * minute, t0 + 20 * minute)
+
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute, lockSpans = listOf(span)).run(now)
+
+        val gaps = noSessionGaps()
+        assertThat(gaps).hasSize(1)
+        assertThat(gaps.single().start).isEqualTo(t0 + 26 * minute)
+    }
+
+    @Test
+    fun withoutAnySpanBothOutagesAreGaps() = runBlocking<Unit> {
+        val now = threeSessionsTwoOutages()
+
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute).run(now)
+
+        assertThat(noSessionGaps().map { it.start }).containsExactly(t0 + 10 * minute, t0 + 26 * minute)
     }
 
     @Test

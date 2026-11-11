@@ -1122,6 +1122,7 @@ class TrackingControllerTest {
         assertThat(trackingRepo.openSession()).isNull()
         assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
         assertThat(launcher.stopCalls).isGreaterThan(0)
+// The window-end work (segmentation) still runs when the lock is what ended the session.        assertThat(segmentation.windowEnds).isEqualTo(1)
     }
 
     @Test
@@ -1144,5 +1145,39 @@ class TrackingControllerTest {
 
         assertThat(trackingRepo.openSession()).isNull()
         assertThat(launcher.stopCalls).isGreaterThan(0)
+    }
+
+    @Test
+    fun theLockEndsAManualStartSoUnlockingLaterDoesNotResumeIt() = runBlocking<Unit> {
+        clock.now = mondayAt(20).toEpochMilli()
+        assertThat(controller.start(ManualOverrideEndMode.UNTIL_STOPPED)).isEqualTo(StartResult.STARTED)
+        assertThat(overrides().single().active).isTrue()
+        launcher.started.clear()
+
+        entitlement.access = AccessState.TrialEnded
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(overrides().single().active).isFalse()
+
+        clock.now += 3 * 24 * 60 * 60 * 1000L
+        entitlement.access = AccessState.Owned
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(launcher.started).isEmpty()
+    }
+
+    @Test
+    fun theLockEndsASessionThatIsInTheWindowEndGrace() = runBlocking<Unit> {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile()
+        assertThat(store.current().finishingUp).isTrue()
+
+        entitlement.access = AccessState.TrialEnded
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(segmentation.windowEnds).isEqualTo(1)
     }
 }

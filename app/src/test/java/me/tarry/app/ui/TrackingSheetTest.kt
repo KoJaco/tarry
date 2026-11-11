@@ -105,6 +105,8 @@ class TrackingSheetTest {
     @Test
     fun trialEndedShowsTheMessageAndUnlockOpensThePaywall() {
         show(TrackingState.ATTENTION, TrackingDetails(attentionCause = AttentionCause.TRIAL_ENDED))
+        composeRule.onNodeWithText("Trial ended").assertIsDisplayed()
+        composeRule.onNodeWithText("Tracking needs attention").assertDoesNotExist()
         composeRule.onNodeWithText("Trial ended · Unlock Tarry to keep tracking. Your data stays yours.").assertIsDisplayed()
         composeRule.onNodeWithText("Unlock Tarry").assertHeightIsAtLeast(48.dp).performClick()
         assertThat(calls).containsExactly("paywall", "done").inOrder()

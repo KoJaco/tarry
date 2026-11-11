@@ -1,5 +1,6 @@
 package me.tarry.app.access
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -10,10 +11,14 @@ import kotlinx.coroutines.flow.transformLatest
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.core.data.settings.AccessPrefs
+import me.tarry.core.data.settings.AccessBookkeeping
 import me.tarry.core.data.settings.SettingsRepository
 import javax.inject.Inject
 
-/** The only gate for starting tracking. Nothing else in the app decides access. */
+/**
+ * The only gate for starting tracking. Nothing else in the app decides access. Gates must use [current] or [canTrack]:
+ * [state] is for screens, starts at [AccessState.NotStarted] until first collected, and is never a safe gate.
+ */
 interface Entitlement {
     val state: StateFlow<AccessState>
 
@@ -55,30 +60,43 @@ abstract class PrefsEntitlement(
         return s.canTrack(now)
     }
 
+    /**
+     * Decides and does the bookkeeping in one atomic settings edit (see [SettingsRepository.updateAccess]). The decision
+     * never depends on the bookkeeping succeeding: if the write fails the state was already computed, and if even the
+     * read fails the app fails open (reads of the settings store already do).
+     */
     private suspend fun refresh(): Pair<AccessState, Long> {
-        val prefs = settings.currentAccessPrefs()
-        val now = TrialClock.effectiveNowMs(clock.nowMs(), prefs.lastSeenMs)
-        // At most one write a minute, so the stamp cannot feed back into the state flow in a loop.
-        val seen = prefs.lastSeenMs
-        if (seen == null || now - seen >= HIGH_WATER_STEP_MS) settings.raiseAccessLastSeenMs(now)
-        val s = evaluate(prefs, now)
-        val locked = prefs.lockedSinceMs
-        if (s.canTrack(now)) {
-            if (locked != null) settings.setAccessLockedSinceMs(null)
-        } else if (locked == null) {
-            // The lock began when the trial ended, if that is known, else now.
-            val began = when (s) {
-                is AccessState.Pending -> s.trialEndsAtMs
-                is AccessState.Revoked -> s.trialEndsAtMs
-                else -> prefs.anchorMs?.let { TrialClock.endsAtMs(it) }
+        var decided: Pair<AccessState, Long>? = null
+        try {
+            settings.updateAccess { prefs ->
+                val now = TrialClock.effectiveNowMs(clock.nowMs(), prefs.lastSeenMs)
+                val s = evaluate(prefs, now)
+                decided = s to now
+                val allowed = s.canTrack(now)
+                AccessBookkeeping(now, allowed, if (allowed) null else lockBegan(s, prefs))
             }
-            settings.setAccessLockedSinceMs(minOf(began ?: now, now))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Bookkeeping only; fall through to the decision.
         }
-        return s to now
+        decided?.let { return it }
+        val prefs = try {
+            settings.currentAccessPrefs()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AccessPrefs()
+        }
+        val now = TrialClock.effectiveNowMs(clock.nowMs(), prefs.lastSeenMs)
+        return evaluate(prefs, now) to now
     }
 
-    private companion object {
-        const val HIGH_WATER_STEP_MS = 60_000L
+    /** The lock begins when the trial ended, if that is known (the store never lets it begin before tracking was last allowed). */
+    private fun lockBegan(s: AccessState, prefs: AccessPrefs): Long? = when (s) {
+        is AccessState.Pending -> s.trialEndsAtMs
+        is AccessState.Revoked -> s.trialEndsAtMs
+        else -> prefs.anchorMs?.let { TrialClock.endsAtMs(it) }
     }
 }
 

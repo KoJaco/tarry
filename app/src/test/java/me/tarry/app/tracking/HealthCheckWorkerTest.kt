@@ -689,11 +689,44 @@ class HealthCheckWorkerTest {
         assertThat(store.current().attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
 
         entitlement.access = AccessState.Owned
-        // Unlocking reconciles, which starts the session; the worker then finds a healthy window.
-        coordinator.begin(SessionTrigger.SCHEDULE)
+        // Unlocking reconciles, which asks the service to start; once it is up the worker finds a healthy window.
+        controller.reconcile(ReconcileSource.UI)
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+        controller.onServiceStarted(SessionTrigger.SCHEDULE)
         runWorker()
 
         assertThat(alerts.clearCalls).isGreaterThan(0)
         assertThat(store.current().attentionCause).isNull()
+    }
+
+    @Test
+    fun aLockedWindowWithCaptureStillRunningIsStoppedByTheWorker() = runBlocking<Unit> {
+        // The trial-end alarm was late or missed: the next health check must still end the session.
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        entitlement.access = AccessState.TrialEnded
+
+        runWorker()
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
+        assertThat(gaps()).isEmpty()
+        assertThat(alerts.posted).containsExactly(AttentionCause.TRIAL_ENDED)
+    }
+
+    @Test
+    fun lockedWhileTheWindowEndGraceRunsStopsItAndStaysAttentionOnly() = runBlocking<Unit> {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile()
+        assertThat(store.current().finishingUp).isTrue()
+        entitlement.access = AccessState.TrialEnded
+
+        runWorker()
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
+        assertThat(gaps()).isEmpty()
     }
 }

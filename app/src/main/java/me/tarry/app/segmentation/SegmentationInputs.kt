@@ -2,6 +2,7 @@ package me.tarry.app.segmentation
 
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.SessionEndReason
+import me.tarry.core.data.settings.LockSpan
 import me.tarry.segmentation.TimeRange
 
 /**
@@ -39,18 +40,29 @@ internal fun boundedWindows(windows: List<TimeRange>, firstSessionStartMs: Long?
     }
 }
 
-/** Where the tracking lock began (UTC epoch ms), or null while tracking is allowed. */
+/** The spans tracking was locked (closed ones and the open one), or none while it never was. */
 fun interface AccessLockSource {
-    suspend fun lockedSinceMs(): Long?
+    suspend fun lockedSpans(): List<LockSpan>
 }
 
 /**
- * Clips [windows] to end no later than [lockedSinceMs], the moment tracking was locked: nothing was expected to be
- * captured after it, so no NO_SESSION gap belongs there. A window wholly after it is dropped; null leaves them alone.
+ * Removes every locked span from [windows]: nothing was expected to be captured while tracking was locked, so no
+ * NO_SESSION gap belongs there, whether the lock is still on or ended long ago. A window straddling a span is cut around it.
  */
-internal fun windowsBeforeLock(windows: List<TimeRange>, lockedSinceMs: Long?): List<TimeRange> {
-    if (lockedSinceMs == null) return windows
-    return windows.mapNotNull {
-        if (it.startMs >= lockedSinceMs) null else TimeRange(it.startMs, minOf(it.endMs, lockedSinceMs))
+internal fun windowsOutsideLocks(windows: List<TimeRange>, spans: List<LockSpan>): List<TimeRange> {
+    if (spans.isEmpty()) return windows
+    var result = windows
+    for (span in spans.sortedBy { it.startMs }) {
+        result = result.flatMap {
+            if (it.endMs <= span.startMs || it.startMs >= span.endMs) {
+                listOf(it)
+            } else {
+                listOfNotNull(
+                    if (it.startMs < span.startMs) TimeRange(it.startMs, span.startMs) else null,
+                    if (it.endMs > span.endMs) TimeRange(span.endMs, it.endMs) else null,
+                )
+            }
+        }
     }
+    return result
 }

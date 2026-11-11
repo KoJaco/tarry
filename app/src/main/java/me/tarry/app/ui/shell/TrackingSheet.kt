@@ -135,7 +135,13 @@ fun TrackingSheetContent(
                 SheetRow(stringResource(R.string.tracking_sheet_resume), onDone, R.drawable.ic_play_arrow) { actions.onResume() }
             }
             TrackingState.ATTENTION -> {
-                SheetTitle(R.string.tracking_sheet_attention_title)
+                SheetTitle(
+                    if (details.attentionCause == AttentionCause.TRIAL_ENDED) {
+                        R.string.tracking_sheet_trial_ended_title
+                    } else {
+                        R.string.tracking_sheet_attention_title
+                    },
+                )
                 Text(
                     text = stringResource(details.attentionCause.messageRes()),
                     style = MaterialTheme.typography.bodyMedium,

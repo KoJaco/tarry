@@ -191,6 +191,8 @@ class BackupManagerTest {
         PrefEntry(Settings.ACCESS_PURCHASE_CHECKED_KEY, "long", "1"),
         PrefEntry(Settings.ACCESS_LAST_SEEN_KEY, "long", "1"),
         PrefEntry(Settings.ACCESS_LOCKED_SINCE_KEY, "long", "1"),
+        PrefEntry(Settings.ACCESS_LAST_ALLOWED_KEY, "long", "1"),
+        PrefEntry(Settings.ACCESS_LOCK_INTERVALS_KEY, "string", "1:2"),
         PrefEntry(Settings.ACCESS_DEBUG_STATE_KEY, "string", "OWNED"),
         PrefEntry(Settings.ACCESS_DEBUG_TRIAL_END_KEY, "long", "1"),
         PrefEntry(Settings.ACCESS_TRIAL_CARD_KEY, "boolean", "true"),
@@ -249,6 +251,8 @@ class BackupManagerTest {
         assertThat(p.purchaseCheckedMs).isNull()
         assertThat(p.lastSeenMs).isNull()
         assertThat(p.lockedSinceMs).isNull()
+        assertThat(p.lastAllowedMs).isNull()
+        assertThat(p.lockIntervals).isNull()
         assertThat(p.debugState).isNull()
         assertThat(p.debugTrialEndMs).isNull()
         assertThat(settingsRepo.settings.first().lastBackupMs).isEqualTo(1_700_000_000_000L) // the phone's own, set by the backup itself

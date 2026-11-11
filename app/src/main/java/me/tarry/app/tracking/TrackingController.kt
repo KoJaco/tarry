@@ -391,6 +391,8 @@ class TrackingController @Inject constructor(
         // Access: once the trial has ended nothing starts and a running session stops, but the alarm keeps re-arming.
         val allowed = entitlement.canTrack()
         val active = effective.isActive && allowed
+        // A manual START must not outlive the lock: buying days later would silently resume it.
+        if (!allowed) deactivateActive(ManualOverrideType.START, now.toEpochMilli())
         // While a trial runs unowned, its end is an alarm too, so a running session stops on time.
         val trialEnd = if (allowed) entitlement.current().runningTrialEndMs(now.toEpochMilli())?.let { Instant.ofEpochMilli(it) } else null
 

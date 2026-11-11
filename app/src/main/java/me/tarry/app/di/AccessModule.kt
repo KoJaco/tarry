@@ -8,6 +8,7 @@ import me.tarry.app.BuildConfig
 import me.tarry.app.access.DebugEntitlement
 import me.tarry.app.access.Entitlement
 import me.tarry.app.access.RealEntitlement
+import me.tarry.app.access.entitlementLockSource
 import me.tarry.app.segmentation.AccessLockSource
 import me.tarry.core.data.settings.SettingsRepository
 import javax.inject.Provider
@@ -19,10 +20,17 @@ import javax.inject.Singleton
 object AccessModule {
     @Provides @Singleton
     fun provideEntitlement(real: Provider<RealEntitlement>, debug: Provider<DebugEntitlement>): Entitlement =
-        if (BuildConfig.DEBUG) debug.get() else real.get()
+        chooseEntitlement(BuildConfig.DEBUG, real, debug)
 
-    /** When the lock began, for the segmentation glue (the stamp is written by the entitlement). */
+    /** The lock spans for the segmentation glue, read through the entitlement. */
     @Provides
-    fun provideAccessLockSource(settings: SettingsRepository): AccessLockSource =
-        AccessLockSource { settings.currentAccessPrefs().lockedSinceMs }
+    fun provideAccessLockSource(entitlement: Provider<Entitlement>, settings: SettingsRepository): AccessLockSource =
+        AccessLockSource { entitlementLockSource(entitlement.get(), settings).lockedSpans() }
 }
+
+/** Release builds get [RealEntitlement] and never construct the debug one. */
+internal fun chooseEntitlement(
+    debugBuild: Boolean,
+    real: Provider<RealEntitlement>,
+    debug: Provider<DebugEntitlement>,
+): Entitlement = if (debugBuild) debug.get() else real.get()
