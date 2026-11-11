@@ -41,7 +41,9 @@ android {
         unitTests.all {
             // Opt-in local replay of real traces: -Ptarry.replay=<dir of CSVs>
             providers.gradleProperty("tarry.replay").orNull?.let { dir -> it.systemProperty("tarry.replay", dir) }
-            it.testLogging.showStandardStreams = providers.gradleProperty("tarry.replay").isPresent
+            // Opt-in demo backup for marketing screenshots: -Ptarry.demo=today (or an ISO date). Writes app/build/demo/tarry-demo.json
+            providers.gradleProperty("tarry.demo").orNull?.let { day -> it.systemProperty("tarry.demo", day) }
+            it.testLogging.showStandardStreams = providers.gradleProperty("tarry.replay").isPresent || providers.gradleProperty("tarry.demo").isPresent
             // A hung test fails the build instead of stalling it for hours (a missing timeout once did).
             it.timeout.set(Duration.ofMinutes(10))
             // Robolectric reaches into JDK internals; required on JDK 17+ (we run JDK 25).
