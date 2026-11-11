@@ -68,4 +68,16 @@ class SegmentationInputsTest {
         // No session ever: nothing could have been captured, so no window yields a NO_SESSION gap.
         assertThat(boundedWindows(windows, null)).isEmpty()
     }
+
+    @Test
+    fun windowsAreClippedAtTheMomentTheLockBegan() {
+        val windows = listOf(TimeRange(100, 200), TimeRange(300, 400), TimeRange(500, 600))
+        // A window wholly after the lock is dropped, one straddling it ends there, earlier ones are untouched.
+        assertThat(windowsBeforeLock(windows, 350)).containsExactly(TimeRange(100, 200), TimeRange(300, 350)).inOrder()
+        assertThat(windowsBeforeLock(windows, 300)).containsExactly(TimeRange(100, 200))
+        assertThat(windowsBeforeLock(windows, 50)).isEmpty()
+        assertThat(windowsBeforeLock(windows, 1_000)).isEqualTo(windows)
+        // Not locked: nothing changes.
+        assertThat(windowsBeforeLock(windows, null)).isEqualTo(windows)
+    }
 }

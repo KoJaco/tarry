@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import me.tarry.app.access.AccessState
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.TrackingSession
@@ -61,6 +62,7 @@ class HealthCheckWorkerTest {
     private val alarms = FakeAlarmScheduler()
     private val alerts = FakeAlertNotifier()
     private val clock = FakeClock(now = mondayAt(10).toEpochMilli(), zone = sydney)
+    private val entitlement = FakeEntitlement(clock)
     private var epochMs: Long? = 0L
     private lateinit var health: HealthGapRecorder
     private lateinit var coordinator: CaptureCoordinator
@@ -106,9 +108,9 @@ class HealthCheckWorkerTest {
         )
         controller = TrackingController(
             coordinator, launcher, store, trackingRepo, ScheduleRepository(db.scheduleDao()), inputs, calculator, alarms, FakeSegmentationTrigger(), health,
-            clock, config, FakeWindowEndGrace(),
+            clock, config, FakeWindowEndGrace(), entitlement,
         )
-        val snapshots = TrackingSnapshotProvider(inputs, calculator, store, preconditions, coordinator, clock)
+        val snapshots = TrackingSnapshotProvider(inputs, calculator, store, preconditions, coordinator, clock, entitlement)
         checker = HealthChecker(snapshots, HealthEvaluator(config), health, controller, coordinator)
     }
 
@@ -661,5 +663,37 @@ class HealthCheckWorkerTest {
 
         checker.check()
         assertThat(activityClient.registerCalls).isEqualTo(3)
+    }
+
+    // --- trial lock (phase 8b.1) ---
+
+    @Test
+    fun aLockedWindowIsAttentionOnlyWithOneAlertNoGapAndNoReconcile() = runBlocking<Unit> {
+        entitlement.access = AccessState.TrialEnded
+
+        runWorker()
+        runWorker()
+
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
+        assertThat(gaps()).isEmpty()
+        assertThat(alerts.posted).containsExactly(AttentionCause.TRIAL_ENDED)
+        // Attention-only: nothing lost, so no restart attempt (no reconcile, so no alarm and no start).
+        assertThat(alarms.armed).isEmpty()
+        assertThat(launcher.started).isEmpty()
+    }
+
+    @Test
+    fun unlockingClearsTheTrialEndedCause() = runBlocking<Unit> {
+        entitlement.access = AccessState.TrialEnded
+        runWorker()
+        assertThat(store.current().attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
+
+        entitlement.access = AccessState.Owned
+        // Unlocking reconciles, which starts the session; the worker then finds a healthy window.
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        runWorker()
+
+        assertThat(alerts.clearCalls).isGreaterThan(0)
+        assertThat(store.current().attentionCause).isNull()
     }
 }

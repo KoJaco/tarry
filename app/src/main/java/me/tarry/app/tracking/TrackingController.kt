@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import me.tarry.app.BuildConfig
+import me.tarry.app.access.Entitlement
+import me.tarry.app.access.runningTrialEndMs
 import me.tarry.core.data.db.entity.ManualOverride
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.GapCause
@@ -43,6 +45,9 @@ enum class StartFailure {
 /** Manual pause lengths offered by the toggle sheet and the notification action. */
 enum class PauseKind { PAUSE_30M, PAUSE_1H, UNTIL_NEXT_WINDOW }
 
+/** What a manual start did: it began, or the trial has ended and tracking is locked (nothing was saved). */
+enum class StartResult { STARTED, LOCKED }
+
 /** Who is asking for a reconcile; decides whether it may start the service directly. */
 enum class ReconcileSource {
     /** The schedule alarm: the exact-alarm exemption allows a direct start (ADR 0003). */
@@ -80,6 +85,7 @@ class TrackingController @Inject constructor(
     private val clock: TrackingClock,
     private val config: TrackingConfig,
     private val windowEndGrace: WindowEndGraceSource,
+    private val entitlement: Entitlement,
 ) {
     private val mutex = Mutex()
 
@@ -109,13 +115,16 @@ class TrackingController @Inject constructor(
     }
 
     /** Manual START. [durationMin] is required for DURATION. Replaces any active manual override. */
-    suspend fun start(endMode: ManualOverrideEndMode, durationMin: Int? = null) = mutex.withLock {
+    suspend fun start(endMode: ManualOverrideEndMode, durationMin: Int? = null): StartResult = mutex.withLock {
         require(endMode != ManualOverrideEndMode.DURATION || (durationMin ?: 0) > 0) { "DURATION needs durationMin" }
+        // Locked: refuse before anything is saved, so no START override is left behind to start tracking later.
+        if (!entitlement.canTrack()) return@withLock StartResult.LOCKED
         val now = clock.nowMs()
         deactivateActive(null, now)
         val end = if (endMode == ManualOverrideEndMode.DURATION) now + durationMin!! * MS_PER_MIN else null
         trackingRepo.saveOverride(override(ManualOverrideType.START, endMode, now, end))
         reconcileLocked(ReconcileSource.UI)
+        StartResult.STARTED
     }
 
     /** Manual PAUSE; capture resumes by itself when it ends. Replaces any active pause. */
@@ -148,12 +157,14 @@ class TrackingController @Inject constructor(
     }
 
     /** Manual START that ends at the exact instant [untilMs] (must be after now). Replaces any active manual override. */
-    suspend fun startUntil(untilMs: Long) = mutex.withLock {
+    suspend fun startUntil(untilMs: Long): StartResult = mutex.withLock {
         val now = clock.nowMs()
         require(untilMs > now) { "untilMs must be in the future" }
+        if (!entitlement.canTrack()) return@withLock StartResult.LOCKED
         deactivateActive(null, now)
         trackingRepo.saveOverride(override(ManualOverrideType.START, ManualOverrideEndMode.DURATION, now, untilMs))
         reconcileLocked(ReconcileSource.UI)
+        StartResult.STARTED
     }
 
     /** Manual PAUSE that ends at the exact instant [untilMs] (must be after now). Replaces any active pause. */
@@ -313,7 +324,8 @@ class TrackingController @Inject constructor(
      */
     suspend fun onServiceStarted(trigger: SessionTrigger) = mutex.withLock {
         val effective = effectiveNow()
-        if (!effective.isActive) {
+        // The trial may have ended between the start and now: no session without access.
+        if (!effective.isActive || !entitlement.canTrack()) {
             launcher.stop()
             return@withLock
         }
@@ -376,9 +388,14 @@ class TrackingController @Inject constructor(
         val inputs = inputsProvider.inputs(now, now, zone)
         expireOverrides(inputs, now, zone)
         val effective = calculator.calculate(inputs, now, zone)
+        // Access: once the trial has ended nothing starts and a running session stops, but the alarm keeps re-arming.
+        val allowed = entitlement.canTrack()
+        val active = effective.isActive && allowed
+        // While a trial runs unowned, its end is an alarm too, so a running session stops on time.
+        val trialEnd = if (allowed) entitlement.current().runningTrialEndMs(now.toEpochMilli())?.let { Instant.ofEpochMilli(it) } else null
 
         var deferredStart = false
-        if (effective.isActive) {
+        if (active) {
             if (!coordinator.isActive) {
                 if (source == ReconcileSource.SYSTEM) {
                     deferredStart = true
@@ -393,7 +410,11 @@ class TrackingController @Inject constructor(
             }
         } else if (coordinator.isActive) {
             val paused = effective.winningOverride?.type == ManualOverrideType.PAUSE
-            if (paused) {
+            if (!allowed) {
+                // Locked: no window-end grace, the session ends now (SCHEDULE_END; the enum is unchanged).
+                stopCapture(SessionEndReason.SCHEDULE_END)
+                segmentationTrigger.onWindowEnd()
+            } else if (paused) {
                 stopCapture(SessionEndReason.USER_PAUSE)
             } else if (!keepOpenForGrace(now.toEpochMilli())) {
                 stopCapture(SessionEndReason.SCHEDULE_END)
@@ -402,8 +423,9 @@ class TrackingController @Inject constructor(
         }
         // Not supposed to run (window ended, paused, stopped): any open outage ends here.
         // A grace session is still capture that should be running: its outage (rule 6) stays open.
-        if (!effective.isActive && graceStartMs == null) health.closeOutage(now.toEpochMilli())
-        val next = if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition
+        if (!active && graceStartMs == null) health.closeOutage(now.toEpochMilli())
+        val nextSchedule = if (deferredStart) now.plusMillis(config.deferredStartDelayMs) else effective.nextTransition
+        val next = if (trialEnd != null && (nextSchedule == null || trialEnd.isBefore(nextSchedule))) trialEnd else nextSchedule
         // During the grace the cap is the one extra alarm; settling itself is driven by capture events, never a timer.
         val graceCap = graceStartMs?.let { Instant.ofEpochMilli(it + graceMaxMs()) }
         rearm(if (graceCap != null && (next == null || graceCap.isBefore(next))) graceCap else next)

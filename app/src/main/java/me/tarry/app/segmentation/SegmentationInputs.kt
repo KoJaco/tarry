@@ -38,3 +38,19 @@ internal fun boundedWindows(windows: List<TimeRange>, firstSessionStartMs: Long?
         if (it.endMs <= firstSessionStartMs) null else TimeRange(maxOf(it.startMs, firstSessionStartMs), it.endMs)
     }
 }
+
+/** Where the tracking lock began (UTC epoch ms), or null while tracking is allowed. */
+fun interface AccessLockSource {
+    suspend fun lockedSinceMs(): Long?
+}
+
+/**
+ * Clips [windows] to end no later than [lockedSinceMs], the moment tracking was locked: nothing was expected to be
+ * captured after it, so no NO_SESSION gap belongs there. A window wholly after it is dropped; null leaves them alone.
+ */
+internal fun windowsBeforeLock(windows: List<TimeRange>, lockedSinceMs: Long?): List<TimeRange> {
+    if (lockedSinceMs == null) return windows
+    return windows.mapNotNull {
+        if (it.startMs >= lockedSinceMs) null else TimeRange(it.startMs, minOf(it.endMs, lockedSinceMs))
+    }
+}

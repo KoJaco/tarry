@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import me.tarry.app.R
+import me.tarry.app.access.AccessIntents
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,7 +39,7 @@ class AndroidHealthAlertNotifier @Inject constructor(
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOnlyAlertOnce(true)
             .setAutoCancel(true)
-            .setContentIntent(TrackingIntents.openApp(context))
+            .setContentIntent(if (cause == AttentionCause.TRIAL_ENDED) AccessIntents.openPaywall(context) else TrackingIntents.openApp(context))
             .build()
         manager.notify(NOTIFICATION_ID, notification)
     }
@@ -55,6 +56,7 @@ class AndroidHealthAlertNotifier @Inject constructor(
         AttentionCause.SERVICE_NOT_RUNNING -> R.string.tracking_attention_service_not_running
         AttentionCause.NO_FIX_WHILE_MOVING -> R.string.tracking_attention_no_fix_while_moving
         AttentionCause.EXACT_ALARM_DENIED -> R.string.tracking_attention_exact_alarm_denied
+        AttentionCause.TRIAL_ENDED -> R.string.tracking_attention_trial_ended
     }
 
     companion object {

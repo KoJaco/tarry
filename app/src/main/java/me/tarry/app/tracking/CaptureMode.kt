@@ -11,4 +11,7 @@ enum class AttentionCause {
     SERVICE_NOT_RUNNING,
     NO_FIX_WHILE_MOVING,
     EXACT_ALARM_DENIED,
+
+    /** The trial ended and tracking is locked; attention-only, never a Gap. Fixed by unlocking, not by a setting. */
+    TRIAL_ENDED,
 }

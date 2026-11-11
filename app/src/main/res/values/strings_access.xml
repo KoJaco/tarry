@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Access (trial and purchase), phase 8b.1. "Billing" means billable-time rounding elsewhere, so none of these say it. -->
+    <string name="access_pill_unlock">Unlock</string>
+    <string name="tracking_toggle_description_trial_ended">Tracking: trial ended, unlock Tarry</string>
+    <string name="tracking_attention_trial_ended">Trial ended · Unlock Tarry to keep tracking. Your data stays yours.</string>
+    <string name="tracking_sheet_fix_unlock">Unlock Tarry</string>
+
+    <!-- Placeholder purchase screen; 8b.2 replaces it. -->
+    <string name="paywall_title">Unlock Tarry</string>
+    <string name="paywall_placeholder">Purchase arrives in the next update</string>
+    <string name="paywall_data_promise">You can still view, edit, export, back up and delete everything.</string>
+    <string name="paywall_close">Close</string>
+
+    <!-- Debug-only access switch on the Sessions screen. -->
+    <string name="access_debug_row">Access state: %1$s</string>
+    <string name="access_debug_owned">Owned</string>
+    <string name="access_debug_trial_6">Trial (6 days left)</string>
+    <string name="access_debug_trial_1">Trial (1 day left)</string>
+    <string name="access_debug_trial_ended">Trial ended</string>
+    <string name="access_debug_pending">Pending</string>
+    <string name="access_debug_revoked">Revoked</string>
+    <string name="access_debug_real">Real</string>
+</resources>

@@ -94,13 +94,14 @@ class SegmentationRunnerTest {
     private suspend fun trips() = db.tripDao().getInRange(0, Long.MAX_VALUE)
 
     /** A runner whose schedule window covers [windowStart, windowEnd]. */
-    private fun runnerWithWindow(windowStart: Long, windowEnd: Long) = SegmentationRunner(
+    private fun runnerWithWindow(windowStart: Long, windowEnd: Long, lockedSinceMs: Long? = null) = SegmentationRunner(
         SegmentationStore(db), db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(),
         db.placeDao(), db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao(),
         FakeWindowChecker().apply {
             intervals = listOf(WindowBounds(java.time.Instant.ofEpochMilli(windowStart), java.time.Instant.ofEpochMilli(windowEnd)))
         },
         SegmentationParams(),
+        accessLock = AccessLockSource { lockedSinceMs },
     )
 
     private suspend fun noSessionGaps() =
@@ -141,6 +142,16 @@ class SegmentationRunnerTest {
         runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute).run(now)
 
         assertThat(noSessionGaps()).hasSize(1)
+    }
+
+    @Test
+    fun aLockedDayWritesNoNoSessionGap() = runBlocking<Unit> {
+        // The same long kill that writes a gap above, but tracking was locked from the kill on: nothing was expected after it.
+        val now = killAndRestart(6 * minute)
+
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute, lockedSinceMs = t0 + 10 * minute).run(now)
+
+        assertThat(noSessionGaps()).isEmpty()
     }
 
     @Test

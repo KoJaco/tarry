@@ -39,7 +39,7 @@ class TrackingStateReducer @Inject constructor(private val evaluator: HealthEval
             }
         }
         val h = inputs.health
-        val issue = if (h.shouldRun) evaluator.evaluate(h) else evaluator.standingIssue(h.preconditions)
+        val issue = evaluator.issue(h)
         if (issue != null) return ReducedTrackingState(TrackingState.ATTENTION, issue.cause)
         if (!h.shouldRun) return ReducedTrackingState(TrackingState.IDLE)
         // Inside the start grace period, a failed start has already recorded why.

@@ -23,7 +23,8 @@ class HealthLogicTest {
         degraded: Boolean = false,
         pre: Preconditions = Preconditions(),
         finishingUp: Boolean = false,
-    ) = HealthSnapshot(now, shouldRun, if (shouldRun) since else null, running, heartbeat, mode, degraded, pre, finishingUp)
+        locked: Boolean = false,
+    ) = HealthSnapshot(now, shouldRun, if (shouldRun) since else null, running, heartbeat, mode, degraded, pre, finishingUp, locked)
 
     private fun reduce(
         health: HealthSnapshot = snapshot(),
@@ -255,5 +256,41 @@ class HealthLogicTest {
     fun standingIssuesNeverRecordAGap() {
         assertThat(evaluator.standingIssue(Preconditions(fineLocation = false))?.recordGap).isFalse()
         assertThat(evaluator.standingIssue(Preconditions(exactAlarms = false))?.recordGap).isFalse()
+    }
+
+    // --- trial lock (phase 8b.1) ---
+
+    @Test
+    fun lockedIsAnAttentionOnlyTrialEndedIssueWithNoGap() {
+        val s = snapshot(shouldRun = false, running = false, locked = true)
+        val issue = evaluator.issue(s)!!
+        assertThat(issue.cause).isEqualTo(AttentionCause.TRIAL_ENDED)
+        assertThat(issue.recordGap).isFalse()
+    }
+
+    @Test
+    fun lockedWinsOverAStandingPermissionIssue() {
+        val s = snapshot(shouldRun = false, running = false, locked = true, pre = Preconditions(fineLocation = false))
+        assertThat(evaluator.issue(s)?.cause).isEqualTo(AttentionCause.TRIAL_ENDED)
+    }
+
+    @Test
+    fun lockedReducesToAttentionTrialEndedAboveIdle() {
+        val r = reduce(snapshot(shouldRun = false, running = false, locked = true))
+        assertThat(r.state).isEqualTo(TrackingState.ATTENTION)
+        assertThat(r.attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
+    }
+
+    @Test
+    fun aUserStopStillReadsIdleWhileLocked() {
+        val r = reduce(snapshot(shouldRun = false, running = false, locked = true), pause = ManualOverrideEndMode.UNTIL_STOPPED)
+        assertThat(r.state).isEqualTo(TrackingState.IDLE)
+    }
+
+    @Test
+    fun notLockedKeepsTheOldDecision() {
+        assertThat(evaluator.issue(snapshot())).isNull()
+        assertThat(evaluator.issue(snapshot(shouldRun = false, running = false, pre = Preconditions(fineLocation = false)))?.cause)
+            .isEqualTo(AttentionCause.NO_FINE_LOCATION)
     }
 }

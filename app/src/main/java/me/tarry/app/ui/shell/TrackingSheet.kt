@@ -53,6 +53,8 @@ data class TrackingSheetActions(
     /** Permission causes: the shell navigates to the permissions screen. */
     val onOpenPermissionsScreen: () -> Unit,
     val onOpenAppSettings: () -> Unit,
+    /** Trial ended: the shell opens the paywall. */
+    val onOpenPaywall: () -> Unit,
 )
 
 /** Per-state bottom sheet opened by the toggle: container-radius top corners, pill action buttons. */
@@ -140,7 +142,7 @@ fun TrackingSheetContent(
                     color = TarryTheme.colors.muted,
                 )
                 val fix = details.attentionCause.fix(actions)
-                SheetRow(stringResource(fix.labelRes), onDone, R.drawable.ic_settings) { fix.action() }
+                SheetRow(stringResource(fix.labelRes), onDone, fix.iconRes) { fix.action() }
             }
         }
     }
@@ -211,16 +213,18 @@ internal fun AttentionCause?.messageRes(): Int = when (this) {
     AttentionCause.SERVICE_NOT_RUNNING -> R.string.tracking_attention_service_not_running
     AttentionCause.NO_FIX_WHILE_MOVING -> R.string.tracking_attention_no_fix_while_moving
     AttentionCause.EXACT_ALARM_DENIED -> R.string.tracking_attention_exact_alarm_denied
+    AttentionCause.TRIAL_ENDED -> R.string.tracking_attention_trial_ended
     null -> R.string.tracking_attention_unknown
 }
 
-private class AttentionFix(val labelRes: Int, val action: () -> Unit)
+private class AttentionFix(val labelRes: Int, val action: () -> Unit, @DrawableRes val iconRes: Int = R.drawable.ic_settings)
 
 private fun AttentionCause?.fix(actions: TrackingSheetActions): AttentionFix = when (this) {
     AttentionCause.LOCATION_OFF ->
         AttentionFix(R.string.tracking_sheet_fix_open_location_settings, actions.onOpenLocationSettings)
     AttentionCause.NO_FINE_LOCATION, AttentionCause.NO_BACKGROUND_LOCATION, AttentionCause.EXACT_ALARM_DENIED ->
         AttentionFix(R.string.tracking_sheet_fix_open_permissions, actions.onOpenPermissionsScreen)
+    AttentionCause.TRIAL_ENDED -> AttentionFix(R.string.tracking_sheet_fix_unlock, actions.onOpenPaywall, R.drawable.ic_lock)
     AttentionCause.SERVICE_NOT_RUNNING, AttentionCause.NO_FIX_WHILE_MOVING, null ->
         AttentionFix(R.string.tracking_sheet_fix_open_app_settings, actions.onOpenAppSettings)
 }
