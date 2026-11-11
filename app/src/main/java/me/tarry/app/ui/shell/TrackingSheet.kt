@@ -217,7 +217,7 @@ internal fun AttentionCause?.messageRes(): Int = when (this) {
     null -> R.string.tracking_attention_unknown
 }
 
-private class AttentionFix(val labelRes: Int, val action: () -> Unit, @DrawableRes val iconRes: Int = R.drawable.ic_settings)
+private class AttentionFix(val labelRes: Int, val action: () -> Unit, @param:DrawableRes val iconRes: Int = R.drawable.ic_settings)
 
 private fun AttentionCause?.fix(actions: TrackingSheetActions): AttentionFix = when (this) {
     AttentionCause.LOCATION_OFF ->
