@@ -34,6 +34,13 @@ class TrackingCaptureEpochTest {
     }
 
     @Test
+    fun onboardingLeftOpenButTrackingHasRunCountsOutagesFromTheOnboardingStart() = runBlocking<Unit> {
+        settings.setOnboardingStartedAtMs(2_000L)
+        tracked = true
+        assertThat(epoch.notBeforeMs()).isEqualTo(2_000L)
+    }
+
+    @Test
     fun onboardingFinishedIsTheLaterOfInstallAndCompletion() = runBlocking<Unit> {
         settings.setOnboardingStartedAtMs(2_000L)
         settings.setOnboardingCompletedAtMs(3_000L)

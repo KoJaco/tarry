@@ -8,8 +8,8 @@ import me.tarry.core.data.settings.SettingsRepository
 import javax.inject.Inject
 
 /**
- * The earliest time a Gap may start on this install; null while first-run onboarding is open (nothing is lost before
- * the user has set the app up).
+ * The earliest time a Gap may start on this install; null until the app is set up (onboarding finished, or a session has
+ * run): nothing is lost before that.
  */
 fun interface CaptureEpoch {
     suspend fun notBeforeMs(): Long?
@@ -46,10 +46,11 @@ class TrackingCaptureEpoch internal constructor(
     override suspend fun notBeforeMs(): Long? {
         val started = settings.onboardingStartedAtMs()
         val completed = settings.onboardingCompletedAtMs()
-        if (started != null && completed == null) return null
-        // Nothing stamped and never tracked: a fresh install whose first start-up runs before the onboarding gate has
-        // stamped anything. It is not set up yet either. (An upgrader before its first launch has sessions.)
-        if (started == null && completed == null && !anySession()) return null
-        return maxOf(installTime.firstInstallTimeMs(), if (started != null) completed ?: 0L else 0L)
+        // Onboarding not finished (or not even stamped yet, on the first start-up) and never tracked: not set up, nothing
+        // is lost. Once a session has run, every outage counts again (rule 6), even if onboarding was left open: the
+        // seeded schedule and a granted location can start tracking before Save hours.
+        if (completed == null && !anySession()) return null
+        val onboarded = if (started != null) completed ?: started else 0L
+        return maxOf(installTime.firstInstallTimeMs(), onboarded)
     }
 }
