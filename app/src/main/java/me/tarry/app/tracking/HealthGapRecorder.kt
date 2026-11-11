@@ -71,7 +71,9 @@ class HealthGapRecorder @Inject constructor(
             val closeAt = if (continuous) clampedEnd(open, now) else open.end
             timelineRepo.saveGap(open.copy(end = closeAt, updatedAt = now))
         }
-        val start = (status.lastHeartbeatMs ?: notBefore ?: now).coerceAtLeast(notBefore ?: 0L).coerceAtMost(now)
+        // The epoch is only a floor: with no heartbeat the Gap starts at the caller's bound or now, never at the epoch
+        // itself (for an upgrader that is the original install time, possibly months ago).
+        val start = (status.lastHeartbeatMs ?: notBeforeMs ?: now).coerceAtLeast(notBefore ?: 0L).coerceAtMost(now)
         val near = timelineRepo.gapsInRange(start - config.gapMergeToleranceMs, now + 1)
             .filter { it.id != open?.id }
         val adopted = near.filter { it.cause == issue.gapCause }.maxByOrNull { it.end }

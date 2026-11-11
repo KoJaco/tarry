@@ -376,11 +376,12 @@ class HealthGapRecorderTest {
     }
 
     @Test
-    fun theEpochBoundsTheGapEvenWithoutAWindowStart() = runBlocking<Unit> {
-        val r = recorderWithEpoch(clock.now - 1_000_000L)
+    fun withNoHeartbeatOrWindowStartAnOldEpochDoesNotBecomeTheGapStart() = runBlocking<Unit> {
+        // An upgrader's epoch is the original install time: a Gap must not reach back to it.
+        val r = recorderWithEpoch(clock.now - 90L * 24 * 3_600_000L)
         r.reportOutage(noBackground)
 
-        assertThat(gaps().single().start).isEqualTo(clock.now - 1_000_000L)
+        assertThat(gaps().single().start).isEqualTo(clock.now)
     }
 
     @Test
