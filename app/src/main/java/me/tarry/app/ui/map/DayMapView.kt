@@ -74,15 +74,13 @@ private const val TinySpanDeg = 0.001
 private val BannerTop = 48.dp
 /**
  * Margin around the day when fitting it, inside the attribution strip and the bottom overlay (the card and strip, whose
- * measured height is added by the caller). The biggest pin is 56 dp across, so half of it plus some air.
+ * measured height is added by the caller): half a pin plus some air.
  */
-private val FitPadding = 44.dp
+private val FitPadding = 32.dp
 /** Map height kept free of the bottom overlay when fitting or centring, so a tall overlay (large font) never forces a world view. */
 private val MinVisibleMap = 200.dp
 private const val PinStroke = 2f
 private const val ActivePinStroke = 3f
-/** Pins smaller than this (style units) hide their number. */
-private const val LabelMinRadius = 13f
 private const val BreakEndRadius = 4f
 private const val FadedRouteOpacity = 0.3f
 
@@ -356,10 +354,6 @@ private fun Style.setPins(pins: List<VisitPin>, activeVisit: String?, colors: Ta
                 PropertyFactory.textSize(13f),
                 PropertyFactory.symbolSortKey(Expression.get("sk")),
                 PropertyFactory.textColor(Expression.toColor(Expression.get("text"))),
-                // A small circle has no room for its number (it is in the strip card and the drawer).
-                PropertyFactory.textOpacity(
-                    Expression.step(Expression.get("r"), Expression.literal(0f), Expression.literal(LabelMinRadius), Expression.literal(1f)),
-                ),
                 PropertyFactory.textAllowOverlap(true),
                 PropertyFactory.textIgnorePlacement(true),
             ),

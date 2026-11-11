@@ -5,51 +5,33 @@ import org.junit.Test
 
 class PinSizingTest {
     private val min = 60_000L
-    private val hour = 60 * min
 
     private fun pin(id: String, number: Int, lat: Double, lng: Double, startMin: Long, lengthMin: Long) =
         VisitPin(id, number, GeoPoint(lat, lng), null, null, start = startMin * min, end = (startMin + lengthMin) * min)
 
     @Test
-    fun dwellRadiusMatchesTheReferenceValues() {
-        assertThat(dwellRadius(5 * min)).isWithin(0.06f).of(10.0f)
-        assertThat(dwellRadius(15 * min)).isWithin(0.06f).of(12.3f)
-        assertThat(dwellRadius(30 * min)).isWithin(0.06f).of(14.4f)
-        assertThat(dwellRadius(hour)).isWithin(0.06f).of(17.5f)
-        assertThat(dwellRadius(150 * min)).isWithin(0.06f).of(23.6f)
-        assertThat(dwellRadius(4 * hour)).isEqualTo(28f)
-        assertThat(dwellRadius(10 * hour)).isEqualTo(28f)
-        assertThat(dwellRadius(0)).isEqualTo(7f)
+    fun everyPinIsTheSameSizeWhateverTheTimeSpent() {
+        // The day strip shows how long each visit was; the pins don't repeat it.
+        val short = groupCoincidentPins(listOf(pin("a", 1, 1.0, 1.0, 0, 5))).single()
+        val long = groupCoincidentPins(listOf(pin("b", 2, 2.0, 2.0, 10, 300))).single()
+        assertThat(short.radius).isEqualTo(13f)
+        assertThat(long.radius).isEqualTo(13f)
     }
 
     @Test
-    fun aGroupIsSizedByItsTotalTime() {
-        val groups = groupCoincidentPins(listOf(pin("a", 1, 1.0, 1.0, 0, 60), pin("b", 2, 1.0, 1.0, 300, 60)))
-        val group = groups.single()
-        assertThat(group.durationMs).isEqualTo(2 * hour)
-        assertThat(group.radius).isWithin(0.01f).of(dwellRadius(2 * hour))
+    fun aGroupKeepsEveryVisitIdAndALongLabelWidensItsCircle() {
+        val group = groupCoincidentPins(listOf(pin("a", 1, 1.0, 1.0, 0, 60), pin("b", 12, 1.0, 1.0, 300, 60))).single()
         assertThat(group.visitIds).containsExactly("a", "b").inOrder()
-    }
-
-    @Test
-    fun aLongLabelWidensASmallDwellCircle() {
-        val group = PinGroup(pin("a", 10, 1.0, 1.0, 0, 5), listOf(10, 11, 12), durationMs = 5 * min)
+        assertThat(group.label).isEqualTo("1, 12")
         assertThat(group.radius).isEqualTo(13f + (group.label.length - 2) * 3.5f)
-        assertThat(group.radius).isGreaterThan(dwellRadius(5 * min))
     }
 
     @Test
-    fun aShortLabelNeverWidensTheCircle() {
-        val group = groupCoincidentPins(listOf(pin("a", 7, 1.0, 1.0, 0, 5))).single()
-        assertThat(group.radius).isEqualTo(dwellRadius(5 * min))
-    }
-
-    @Test
-    fun drawingOrderIsLargestFirstSoShortStopsSitOnTop() {
+    fun drawingOrderPutsWiderGroupsUnderLonePins() {
         val groups = groupCoincidentPins(
-            listOf(pin("short", 1, 1.0, 1.0, 0, 5), pin("long", 2, 2.0, 2.0, 10, 150), pin("mid", 3, 3.0, 3.0, 200, 30)),
+            listOf(pin("lone", 1, 1.0, 1.0, 0, 5), pin("pair", 2, 2.0, 2.0, 10, 150), pin("pair2", 3, 2.0, 2.0, 200, 30)),
         )
-        assertThat(sortedForDrawing(groups).map { it.first.visitId }).containsExactly("long", "mid", "short").inOrder()
+        assertThat(sortedForDrawing(groups).map { it.first.visitId }).containsExactly("pair", "lone").inOrder()
     }
 
     @Test
