@@ -2,6 +2,9 @@ package me.tarry.app.map
 
 import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.DecimalStyle
+import java.util.Locale
 
 /** Epoch ms of each whole local hour inside `[start, end]` in [zone] (so half-hour zones and DST days stay on the clock). */
 fun hourMarks(start: Long, end: Long, zone: ZoneId): List<Long> {
@@ -16,11 +19,11 @@ fun hourMarks(start: Long, end: Long, zone: ZoneId): List<Long> {
     return marks
 }
 
-/** "9", "12", "1" (12-hour) or "09", "13" (24-hour) for the local hour of [epochMs]. */
-fun hourLabel(epochMs: Long, zone: ZoneId, is24Hour: Boolean): String {
-    val hour = Instant.ofEpochMilli(epochMs).atZone(zone).hour
-    return if (is24Hour) "%02d".format(hour) else (if (hour % 12 == 0) 12 else hour % 12).toString()
-}
+/** "9", "12", "1" (12-hour) or "09", "13" (24-hour) for the local hour of [epochMs], with [locale]'s digits. */
+fun hourLabel(epochMs: Long, zone: ZoneId, is24Hour: Boolean, locale: Locale = Locale.getDefault()): String =
+    DateTimeFormatter.ofPattern(if (is24Hour) "HH" else "h", locale)
+        .withDecimalStyle(DecimalStyle.of(locale))
+        .format(Instant.ofEpochMilli(epochMs).atZone(zone))
 
 /** 1 to label every hour; 2 to label every second one when labels would sit closer than [MinLabelGapDp] or text is large. */
 fun hourLabelStride(hourSpacingDp: Float, fontScale: Float): Int =
