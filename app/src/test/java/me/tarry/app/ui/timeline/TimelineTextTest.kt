@@ -44,6 +44,17 @@ class TimelineTextTest {
     }
 
     @Test
+    fun aLocaleWritingTheMarkerFirstKeepsItOnTheStart() {
+        val f = TimeFormats(Locale.SIMPLIFIED_CHINESE, false)
+        val (a, b) = f.rangeParts(at(16, 13), at(16, 41), zone)
+        val marker = f.time(at(16, 13), zone).substringBefore("4")
+        assertThat(marker).isNotEmpty()
+        assertThat(a).isEqualTo(f.time(at(16, 13), zone))
+        assertThat(b).doesNotContain(marker)
+        assertThat(b).contains("4:41")
+    }
+
+    @Test
     fun differentHalfDaysKeepBothMarkers() {
         assertThat(parts(false, at(11, 50), at(12, 10))).isEqualTo("11:50 AM|12:10 PM")
     }

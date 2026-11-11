@@ -34,7 +34,7 @@ internal class TimeFormats(locale: Locale, val is24Hour: Boolean) {
     private val meridiemFormat = DateTimeFormatter.ofPattern("a", locale)
 
     /**
-     * The two texts of a range for display. In 12-hour mode the am/pm marker is dropped from the start when both ends carry
+     * The two texts of a range for display. In 12-hour mode the am/pm marker is written once when both ends carry
      * the same one ("4:13-4:41 pm"); "11:50 am-12:10 pm" and 24-hour ranges keep both ends whole.
      */
     fun rangeParts(startMs: Long, endMs: Long, zone: ZoneId): Pair<String, String> {
@@ -43,9 +43,17 @@ internal class TimeFormats(locale: Locale, val is24Hour: Boolean) {
         if (is24Hour) return startText to endText
         val startMarker = meridiemFormat.format(Instant.ofEpochMilli(startMs).atZone(zone))
         val endMarker = meridiemFormat.format(Instant.ofEpochMilli(endMs).atZone(zone))
-        if (startMarker != endMarker) return startText to endText
-        val bare = startText.replace(startMarker, "").trim { it.isWhitespace() || it == ' ' || it == ' ' }
-        return bare.ifEmpty { startText } to endText
+        if (startMarker != endMarker || startMarker.isEmpty()) return startText to endText
+        val space = { c: Char -> c.isWhitespace() || c == Char(0x00A0) || c == Char(0x202F) }
+        // Keep the one marker on the outside of the range: after it where the locale writes it after the time
+        // ("4:13-4:41 pm"), before it where the locale writes it first (Chinese, Korean: marker then time).
+        return when {
+            startText.trimEnd(space).endsWith(startMarker) ->
+                startText.trimEnd(space).removeSuffix(startMarker).trimEnd(space) to endText
+            endText.trimStart(space).startsWith(endMarker) ->
+                startText to endText.trimStart(space).removePrefix(endMarker).trimStart(space)
+            else -> startText to endText
+        }
     }
 
     private fun formatter(locale: Locale, skeleton: String): DateTimeFormatter =
