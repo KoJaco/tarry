@@ -1122,7 +1122,8 @@ class TrackingControllerTest {
         assertThat(trackingRepo.openSession()).isNull()
         assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
         assertThat(launcher.stopCalls).isGreaterThan(0)
-// The window-end work (segmentation) still runs when the lock is what ended the session.        assertThat(segmentation.windowEnds).isEqualTo(1)
+        // The window-end work (segmentation) still runs when the lock is what ended the session.
+        assertThat(segmentation.windowEnds).isEqualTo(1)
     }
 
     @Test
