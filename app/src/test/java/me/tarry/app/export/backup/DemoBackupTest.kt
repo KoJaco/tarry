@@ -12,7 +12,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import me.tarry.app.segmentation.SegmentationRunner
 import me.tarry.app.segmentation.SegmentationUpgrade
+import me.tarry.app.tracking.FakeWindowChecker
+import me.tarry.app.tracking.WindowBounds
+import me.tarry.core.data.db.SegmentationStore
+import me.tarry.core.data.db.entity.SegmentationCheckpoint
 import me.tarry.app.tracking.FakeClock
 import me.tarry.app.ui.timeline.Segment
 import me.tarry.app.ui.timeline.coverage
@@ -89,14 +94,20 @@ class DemoBackupTest {
         assertThat(snap.gaps.all { day(it.start) in workingDays.take(5) }).isTrue()
         assertThat(snap.sessions.none { it.end == null }).isTrue()
 
-        // Every day: 3 to 7 visits, ended before 16:30, in order, at least one job block.
+        // Every day: 3 to 7 visits, the last one running to the window end, in order, at least one job block.
         for (d in workingDays) {
             val visits = snap.visits.filter { day(it.start) == d }.sortedBy { it.start }
             assertThat(visits.size).isIn(3..7)
             assertThat(snap.jobBlocks.count { day(it.start) == d }).isAtLeast(1)
-            val endLimit = d.atTime(16, 30).atZone(zone).toInstant().toEpochMilli()
-            assertThat(visits.maxOf { it.end }).isAtMost(endLimit)
+            assertThat(visits.last().end).isEqualTo(window(d).last)
             assertThat(visits.zipWithNext().all { (a, b) -> a.end <= b.start }).isTrue()
+            // Sessions and the known gaps between them tile the schedule window exactly: nothing uncovered, nothing past it.
+            val w = window(d)
+            val covered = (snap.sessions.filter { day(it.start) == d }.map { it.start..it.end!! } +
+                snap.gaps.filter { it.cause == GapCause.SERVICE_KILLED && day(it.start) == d }.map { it.start..it.end }).sortedBy { it.first }
+            assertThat(covered.first().first).isEqualTo(w.first)
+            assertThat(covered.last().last).isEqualTo(w.last)
+            assertThat(covered.zipWithNext().all { (a, b) -> a.last == b.first }).isTrue()
         }
         assertThat(snap.visits.any { day(it.start) == today }).isTrue()
 
@@ -118,6 +129,40 @@ class DemoBackupTest {
         // The file carries the current segmentation version and a checkpoint at the last ping, so restore queues no re-run.
         assertThat(settingsRepo.segmentationVersion()).isEqualTo(SegmentationUpgrade.SEGMENTATION_VERSION)
         assertThat(snap.checkpoints.single().processedUntil).isEqualTo(snap.pings.maxOf { it.timestamp })
+    }
+
+    /** The schedule window of [d] in epoch ms: 07:00-17:00, Friday 07:00-14:00. */
+    private fun window(d: LocalDate): LongRange {
+        val end = if (d.dayOfWeek == java.time.DayOfWeek.FRIDAY) 14 else 17
+        return d.atTime(7, 0).atZone(zone).toInstant().toEpochMilli()..d.atTime(end, 0).atZone(zone).toInstant().toEpochMilli()
+    }
+
+    @Test
+    fun resegmentingTheRestoredDemoAddsNoNoSessionOrExtraNoFixGaps() = runBlocking<Unit> {
+        val file = File(folder.root, "demo.json")
+        file.outputStream().use { BackupCodec.encode(DemoBackup.build(today), it) }
+        manager.restore(manager.preview { file.inputStream() })
+        val before = store.snapshot()
+
+        val checker = FakeWindowChecker().apply {
+            intervals = DemoBackup.workingDays(today).map {
+                val w = window(it)
+                WindowBounds(Instant.ofEpochMilli(w.first), Instant.ofEpochMilli(w.last))
+            }
+        }
+        val runner = SegmentationRunner(
+            SegmentationStore(db), db.locationPingDao(), db.trackingSessionDao(), db.segmentationCheckpointDao(),
+            db.placeDao(), db.visitDao(), db.tripDao(), db.gapDao(), db.excludedRangeDao(), checker, SegmentationParams(),
+        )
+        // Re-run over the whole history, as an upgrade rewind would, and on until the evening of today.
+        db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = before.sessions.minOf { it.start }))
+        runner.run(window(today).last + 30 * 60_000L)
+
+        val gaps = db.gapDao().getInRange(0, Long.MAX_VALUE).filter { !it.deleted }
+        assertThat(gaps.filter { it.cause == GapCause.NO_SESSION }).isEmpty()
+        assertThat(gaps.count { it.cause == GapCause.NO_FIX }).isAtMost(1)
+        assertThat(gaps.count { it.cause == GapCause.SERVICE_KILLED }).isEqualTo(1)
+        assertThat(gaps.size).isAtMost(2)
     }
 
     @Test

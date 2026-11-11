@@ -214,19 +214,35 @@ object DemoBackup {
         val day = Day()
         val rnd = Random(date.toEpochDay())
         val friday = date.dayOfWeek == DayOfWeek.FRIDAY
-        val plan = (if (friday) shortDays[index % shortDays.size] else longDays[index % longDays.size]).split(' ')
-        val limit = date.atTime(if (friday) 13 else 16, 30).atZone(zone).toInstant().toEpochMilli()
-        var t = date.atTime(7, 0).atZone(zone).toInstant().toEpochMilli()
+        val rawPlan = (if (friday) shortDays[index % shortDays.size] else longDays[index % longDays.size]).split(' ')
+        val windowStart = date.atTime(7, 0).atZone(zone).toInstant().toEpochMilli()
+        val windowEnd = date.atTime(if (friday) 14 else 17, 0).atZone(zone).toInstant().toEpochMilli()
+        var t = windowStart
 
         // The visit that waits out a NO_FIX (basement car park) is the first long one away from the depot; the killed
         // session lands in the middle of the longest one. Both in week one only.
-        val gapAt = if (index == 2) plan.indexOfFirst { it[0] != 'D' && it.drop(1).toInt() > 60 } else -1
-        val killAt = if (index == 4) plan.indices.maxBy { plan[it].drop(1).toInt() } else -1
+        val gapAt = if (index == 2) rawPlan.indexOfFirst { it[0] != 'D' && it.drop(1).toInt() > 60 } else -1
+        val killAt = if (index == 4) rawPlan.indices.maxBy { rawPlan[it].drop(1).toInt() } else -1
+
+        // The day fills the whole schedule window: the plan always ends at the depot, the stays before it are scaled to
+        // fit, and the last visit runs to the window end. The session therefore covers the window with nothing left over.
+        val codes = rawPlan.map { it[0] } + (if (rawPlan.last()[0] == 'D') emptyList() else listOf('D'))
+        val base = rawPlan.map { it.drop(1).toInt() } + (if (rawPlan.last()[0] == 'D') emptyList() else listOf(30))
+        var travelMs = if (gapAt >= 0) 25 * 60_000L else 0L
+        for (n in 1 until codes.size) {
+            val from = places.getValue(codes[n - 1])
+            val to = places.getValue(codes[n])
+            travelMs += legSteps(from, to.lat + if (n == gapAt) 0.0004 else 0.0, to.lng) * 30_000L
+        }
+        val lastMin = 40
+        val scale = ((windowEnd - windowStart - travelMs) / 60_000.0 - lastMin) / base.dropLast(1).sum()
+        val mins = base.mapIndexed { n, m -> if (n == base.lastIndex) 0 else (m * scale / 2).toInt() * 2 }
+        val plan = codes.indices.map { "${codes[it]}${mins[it]}" }
 
         var prev: Vis? = null
         plan.forEachIndexed { n, stop ->
             val place = places.getValue(stop[0])
-            val minutes = stop.drop(1).toInt()
+            val minutes = if (n == plan.lastIndex) 0 else stop.drop(1).toInt()
             val before = prev
             if (before != null) {
                 val toLat = place.lat + if (n == gapAt) 0.0004 else 0.0
@@ -240,9 +256,9 @@ object DemoBackup {
                     t = resume
                 }
             }
-            val end = t + minutes * 60_000L
+            val end = if (n == plan.lastIndex) windowEnd else t + minutes * 60_000L
             if (n == killAt) {
-                val kill = t + (minutes * 0.4).toInt() / 2 * 2 * 60_000L
+                val kill = t + ((end - t) / 60_000L * 0.4).toInt() / 2 * 2 * 60_000L
                 val restart = kill + 8 * 60_000L
                 stillPings(day, place, t, kill, rnd)
                 stillPings(day, place, restart, end, rnd)
@@ -260,7 +276,7 @@ object DemoBackup {
             t = end
         }
         require(day.visits.size in 3..7) { "day $index has ${day.visits.size} visits" }
-        require(t <= limit) { "day $index ends after its limit" }
+        require(t == windowEnd && day.visits.last().end - day.visits.last().start >= 20 * 60_000L) { "day $index does not fit its window" }
 
         // Needs-review visits: one in the middle of each of the last three days.
         if (index >= DAYS - 3) day.visits[day.visits.size / 2].review = true
@@ -271,6 +287,12 @@ object DemoBackup {
         return day
     }
 
+    /** Number of 30 s steps of the drive from [from] to the point (about 29 km/h through the inner suburbs, at least 8). */
+    private fun legSteps(from: Place, toLat: Double, toLng: Double): Int {
+        val seconds = (haversineM(from.lat, from.lng, toLat, toLng) * 1.35 / 8.0).toLong().coerceAtLeast(240)
+        return (seconds / 30).toInt().coerceAtLeast(8)
+    }
+
     private class Leg(val pings: List<PingSpec>, val arrive: Long, val distanceM: Float)
 
     /**
@@ -279,9 +301,7 @@ object DemoBackup {
      * fix is the one at the car park entrance.
      */
     private fun leg(from: Place, toLat: Double, toLng: Double, start: Long, rnd: Random, finalPing: Boolean): Leg {
-        val straight = haversineM(from.lat, from.lng, toLat, toLng)
-        val seconds = (straight * 1.35 / 8.0).toLong().coerceAtLeast(240) // about 29 km/h through the inner suburbs
-        val steps = (seconds / 30).toInt().coerceAtLeast(8)
+        val steps = legSteps(from, toLat, toLng)
         val bendLat = -(toLng - from.lng) * 0.12
         val bendLng = (toLat - from.lat) * 0.12
         val out = ArrayList<PingSpec>()
