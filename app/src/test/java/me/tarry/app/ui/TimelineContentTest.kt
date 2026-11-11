@@ -272,7 +272,7 @@ class TimelineContentTest {
 
         val dayStart = fmt(at(0, 0))
         val dayEnd = fmt(date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli())
-        composeRule.onNodeWithText("${bare(dayStart)}–​${dayEnd.keepWhole()} (from previous day) (continues)").assertExists()
+        composeRule.onNodeWithText("${dayStart.keepWhole()}–​${dayEnd.keepWhole()} (from previous day) (continues)").assertExists()
         description(
             "timeline_row_v",
             "Visit at Night shift, from $dayStart to $dayEnd (from previous day) (continues), 24 hours",

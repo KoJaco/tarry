@@ -112,14 +112,75 @@ class TimelineTextTest {
         }
     }
 
+    private fun plain(s: String): String =
+        s.replace(Char(0x00A0), ' ').replace(Char(0x202F), ' ').replace(Char(0x200B).toString(), "")
+
+    private fun nextDay(hour: Int, min: Int = 0): Long =
+        date.plusDays(1).atTime(hour, min).atZone(zone).toInstant().toEpochMilli()
+
     @Test
-    fun shortVisitReadsTimeAndDurationAndLongVisitsKeepTheRange() {
-        show(
+    fun aRangeClampedAtMidnightKeepsBothMarkers() {
+        // 6:00 AM to the next day's 12:00 AM: both ends say AM, but they are on different dates.
+        assertThat(parts(false, at(6), nextDay(0))).isEqualTo("6:00 AM|12:00 AM")
+        assertThat(parts(false, at(0), nextDay(0))).isEqualTo("12:00 AM|12:00 AM")
+    }
+
+    @Test
+    fun aRangeOnOneDateStillMerges() {
+        assertThat(parts(false, at(0), at(0, 30))).isEqualTo("12:00|12:30 AM")
+        assertThat(parts(false, at(22), at(23, 59))).isEqualTo("10:00|11:59 PM")
+    }
+
+    /** The range line the timeline would draw for each item (one composition: a rule allows one setContent). */
+    private fun rangeTexts(fontScale: Float, vararg items: TimelineItem): List<String> {
+        val texts = MutableList(items.size) { "" }
+        composeRule.setContent {
+            val density = LocalDensity.current
+            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
+                TarryTheme {
+                    val (start, end) = dayBounds(date, zone)
+                    items.forEachIndexed { i, item -> texts[i] = clampedTimes(item, start, end, zone).range }
+                }
+            }
+        }
+        composeRule.waitForIdle()
+        return texts.map(::plain)
+    }
+
+    @Test
+    fun shortVisitReadsTimeAndDurationExactly() {
+        val (short, long) = rangeTexts(
             1f,
             TimelineItem.Visit("short", at(16, 13), at(16, 19), "Cafe"),
             TimelineItem.Visit("long", at(9), at(11), "Marina"),
         )
-        assertThat(texts("timeline_row_short").joinToString("|")).doesNotContain("–")
-        assertThat(texts("timeline_row_long").joinToString("|")).contains("9:00–")
+        assertThat(short).isEqualTo("4:13 PM · 6m")
+        assertThat(long).isEqualTo("9:00–11:00 AM")
+    }
+
+    @Test
+    fun visitRangesReadTheSameAtFontScale2() {
+        val (short, long) = rangeTexts(
+            2f,
+            TimelineItem.Visit("short", at(16, 13), at(16, 19), "Cafe"),
+            TimelineItem.Visit("long", at(9), at(11), "Marina"),
+        )
+        assertThat(short).isEqualTo("4:13 PM · 6m")
+        assertThat(long).isEqualTo("9:00–11:00 AM")
+    }
+
+    @Test
+    fun midnightClampedItemsKeepTheirMarkers() {
+        val (endsAtMidnight, startedYesterday, longClamped) = rangeTexts(
+            1f,
+            // Clamped at the end of the day: 11:55 PM to midnight is short, so time and duration plus the note.
+            TimelineItem.Visit("a", at(23, 55), nextDay(1), "Night"),
+            TimelineItem.Visit("b", at(0) - 30 * minute, at(0, 5), "Night"),
+            // Long: 6:00 AM to the next midnight keeps AM on both ends.
+            TimelineItem.Visit("c", at(6), nextDay(3), "Shift"),
+        )
+        assertThat(endsAtMidnight).isEqualTo("11:55 PM · 5m (continues)")
+        assertThat(startedYesterday).isEqualTo("12:00 AM · 5m (from previous day)")
+        assertThat(longClamped).isEqualTo("6:00 AM–12:00 AM (continues)")
     }
 }

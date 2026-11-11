@@ -35,12 +35,16 @@ internal class TimeFormats(locale: Locale, val is24Hour: Boolean) {
 
     /**
      * The two texts of a range for display. In 12-hour mode the am/pm marker is written once when both ends carry
-     * the same one ("4:13-4:41 pm"); "11:50 am-12:10 pm" and 24-hour ranges keep both ends whole.
+     * the same one ("4:13-4:41 pm"); "11:50 am-12:10 pm" and 24-hour ranges keep both ends whole. Ends on different
+     * local dates never merge: a range clamped at the next midnight ("6:00 AM-12:00 AM") has one marker per end.
      */
     fun rangeParts(startMs: Long, endMs: Long, zone: ZoneId): Pair<String, String> {
         val startText = time(startMs, zone)
         val endText = time(endMs, zone)
         if (is24Hour) return startText to endText
+        if (Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate() != Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate()) {
+            return startText to endText
+        }
         val startMarker = meridiemFormat.format(Instant.ofEpochMilli(startMs).atZone(zone))
         val endMarker = meridiemFormat.format(Instant.ofEpochMilli(endMs).atZone(zone))
         if (startMarker != endMarker || startMarker.isEmpty()) return startText to endText
