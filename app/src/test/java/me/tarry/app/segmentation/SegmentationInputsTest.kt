@@ -25,6 +25,16 @@ class SegmentationInputsTest {
     }
 
     @Test
+    fun aRunBeforeTheRestartBridgesTheKilledSessionToNowOnlyWithinTheShortLimit() {
+        // Crash recovery closed the session; segmentation runs before the restart has saved its session.
+        val killed = listOf(session(0, 10 * minute, SessionEndReason.KILLED))
+        assertThat(segmentationSessions(killed, nowMs = 11 * minute, shortInterruptionMs = shortMs))
+            .containsExactly(TimeRange(0, 11 * minute))
+        assertThat(segmentationSessions(killed, nowMs = 15 * minute, shortInterruptionMs = shortMs))
+            .containsExactly(TimeRange(0, 10 * minute))
+    }
+
+    @Test
     fun anOutageOfTheShortLimitOrMoreIsNotBridged() {
         val out = segmentationSessions(
             listOf(session(0, 10 * minute, SessionEndReason.KILLED), session(15 * minute, 20 * minute, SessionEndReason.USER_STOP)),
@@ -55,6 +65,7 @@ class SegmentationInputsTest {
     fun windowsAreClippedAtTheFirstSessionAndAnEarlierWindowIsDropped() {
         val windows = listOf(TimeRange(0, 100), TimeRange(150, 300), TimeRange(400, 500))
         assertThat(boundedWindows(windows, 200)).containsExactly(TimeRange(200, 300), TimeRange(400, 500)).inOrder()
-        assertThat(boundedWindows(windows, null)).isEqualTo(windows)
+        // No session ever: nothing could have been captured, so no window yields a NO_SESSION gap.
+        assertThat(boundedWindows(windows, null)).isEmpty()
     }
 }
