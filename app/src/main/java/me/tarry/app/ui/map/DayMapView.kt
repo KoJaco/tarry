@@ -54,7 +54,6 @@ import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
 import org.maplibre.android.style.layers.Property
 import org.maplibre.android.style.layers.PropertyFactory
-import org.maplibre.android.style.layers.SymbolLayer
 import org.maplibre.android.style.sources.GeoJsonSource
 import org.maplibre.geojson.Feature
 import org.maplibre.geojson.FeatureCollection
@@ -67,7 +66,6 @@ private const val MarkerId = "day-marker"
 private const val AreasId = "day-areas"
 private const val RouteWidth = 4f
 private const val PinCircleLayer = "$PinsId-circle"
-private const val PinFont = "Noto Sans Bold" // served by the OpenFreeMap glyph endpoint the style already uses
 private const val SinglePlaceZoom = 16.0
 /** A box smaller than this (degrees) is effectively one place: zoom to it instead of fitting. */
 private const val TinySpanDeg = 0.001
@@ -318,20 +316,18 @@ private fun Style.setMarker(marker: GeoPoint?, colors: TarryColors) {
 
 /** Pins carry their own colours as properties so job colours need no per-job layers. */
 private fun Style.setPins(pins: List<VisitPin>, activeVisit: String?, colors: TarryColors, dark: Boolean) {
-    // Largest first, with a sort key to match: short stops are drawn on top of long ones and stay tappable.
+    // One plain circle per place (no stop numbers: the strip and card say which stop is which).
     val features = sortedForDrawing(groupCoincidentPins(pins)).map { group ->
         val pin = group.first
         val job = pin.jobId?.let { JobPalette.lookup(pin.jobColorArgb, it).colors(dark) }
         val active = group.isActive(activeVisit)
         Feature.fromGeometry(pin.position.toPoint()).apply {
             addStringProperty("id", pin.visitId)
-            addStringProperty("n", group.label)
             addNumberProperty("r", group.radius)
             addNumberProperty("sk", -group.radius)
             addBooleanProperty("active", active)
             addStringProperty("fill", mapColor((job?.container ?: colors.card).toArgb()))
             addStringProperty("stroke", mapColor((if (active) colors.ink else job?.border ?: colors.outline).toArgb()))
-            addStringProperty("text", mapColor((job?.text ?: colors.ink).toArgb()))
         }
     }
     source("$PinsId-src").setGeoJson(FeatureCollection.fromFeatures(features))
@@ -345,17 +341,6 @@ private fun Style.setPins(pins: List<VisitPin>, activeVisit: String?, colors: Ta
                 PropertyFactory.circleStrokeWidth(
                     Expression.switchCase(Expression.get("active"), Expression.literal(ActivePinStroke), Expression.literal(PinStroke)),
                 ),
-            ),
-        )
-        addBelowMarker(
-            SymbolLayer("$PinsId-label", "$PinsId-src").withProperties(
-                PropertyFactory.textField(Expression.get("n")),
-                PropertyFactory.textFont(arrayOf(PinFont)),
-                PropertyFactory.textSize(13f),
-                PropertyFactory.symbolSortKey(Expression.get("sk")),
-                PropertyFactory.textColor(Expression.toColor(Expression.get("text"))),
-                PropertyFactory.textAllowOverlap(true),
-                PropertyFactory.textIgnorePlacement(true),
             ),
         )
     }

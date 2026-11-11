@@ -119,7 +119,7 @@ class DayScrubberTest {
     @Test
     fun theCardShowsAVisitThatNeedsReviewWithAddJob() {
         show()
-        composeRule.onNodeWithText("1 · Office", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Office", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Needs review", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("map_scrub_add_job").assertHeightIsAtLeast(48.dp).performClick()
         assertThat(addJobFor).containsExactly("a")
@@ -130,7 +130,7 @@ class DayScrubberTest {
     fun theCardShowsAVisitsJobChip() {
         time = at(11)
         show()
-        composeRule.onNodeWithText("2 · Site", useUnmergedTree = true).assertExists()
+        composeRule.onNodeWithText("Site", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithText("Fitout · Billable", useUnmergedTree = true).assertExists()
         composeRule.onNodeWithTag("map_scrub_add_job").assertDoesNotExist()
     }
@@ -328,7 +328,7 @@ class DayScrubberTest {
     fun theVisitCardReadsTheTimelinesCompactRangeAndDuration() {
         show()
         assertThat(cardTexts()).contains("8:00–10:00 AM · 2 h")
-        assertThat(cardTexts()).contains("1 · Office")
+        assertThat(cardTexts()).contains("Office")
     }
 
     @Test
@@ -353,18 +353,6 @@ class DayScrubberTest {
         assertThat(config[SemanticsProperties.ContentDescription]).containsExactly("Add job to Office")
     }
 
-    @Test
-    fun visitNumbersMatchThePinNumbering() {
-        val rows = listOf(
-            TimelineItem.Visit("z", at(9), at(10), "Z"),
-            TimelineItem.Trip("t", at(10), at(11), 1f, TripMode.WALK),
-            TimelineItem.Visit("b", at(9), at(10), "B"),
-            TimelineItem.Visit("c", at(12), at(13), "C"),
-        )
-        assertThat(rows.visitNumbers()).containsExactly("b", 1, "z", 2, "c", 3)
-    }
-
-    // ---- Minimise / maximise ----
 
     private fun overlayHeightPx() = composeRule.onNodeWithTag("map_overlay").fetchSemanticsNode().size.height
 

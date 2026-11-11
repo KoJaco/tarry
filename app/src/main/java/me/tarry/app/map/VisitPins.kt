@@ -71,16 +71,16 @@ data class PinGroup(
     val label: String get() = numbers.joinToString(", ")
 
     /**
-     * Marker radius in px at the map's scale: one size for every pin (the day strip shows how long each visit was),
-     * widened so a longer label ("6, 7") stays inside the circle.
+     * Marker radius in px at the map's scale: one size for every pin, with no number inside (the day strip shows how long
+     * each visit was, and the card which stop it is).
      */
-    val radius: Float get() = if (label.length <= 2) PinRadius else PinRadius + (label.length - 2) * PinRadiusPerChar
+    val radius: Float get() = PinRadius
 
     /** True when the group contains the visit the scrubber is on. */
     fun isActive(activeVisit: String?): Boolean = activeVisit != null && activeVisit in visitIds
 }
 
-/** Pins are drawn largest first so a lone pin sits on top of a wider grouped one and stays tappable. */
+/** Draw order, largest first with the sort key to match (every pin is one size now, so the order given is kept). */
 fun sortedForDrawing(groups: List<PinGroup>): List<PinGroup> = groups.sortedByDescending { it.radius }
 
 /** A pin the tap box found: its radius in style units and how far its centre is from the tap, in px. */
@@ -97,7 +97,6 @@ fun pickPin(hits: List<PinHit>, pxPerStyleUnit: Float): String? {
 }
 
 private const val PinRadius = 13f
-private const val PinRadiusPerChar = 3.5f
 
 /**
  * Pins at the same spot (the same place centre, to about 10 cm) become one [PinGroup] so their numbers are not printed over

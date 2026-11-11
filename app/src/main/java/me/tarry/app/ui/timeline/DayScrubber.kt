@@ -275,7 +275,6 @@ internal fun DayScrubber(
     // The item under the thumb, looked up once per frame for the card and the strip's emphasis.
     val liveScrub = model.itemAt(time)
     val live = liveScrub?.let { itemsById[it.id] }
-    val visitNumbers = remember(items) { items.visitNumbers() }
 
     // Drawing objects made once, not per block per frame.
     val gapEffect = remember(density) { PathEffect.dashPathEffect(floatArrayOf(with(density) { GapDash.toPx() }, with(density) { GapDash.toPx() })) }
@@ -313,7 +312,6 @@ internal fun DayScrubber(
                 SelectedItemCard(
                     item = live,
                     items = items,
-                    visitNumber = (live as? TimelineItem.Visit)?.let { visitNumbers[it.id] },
                     job = (live as? TimelineItem.Visit)?.let { visitJobs[it.id] },
                     jobColors = (live as? TimelineItem.Visit)?.let { jobColors[it.id] },
                     description = cardDescription,
@@ -325,7 +323,8 @@ internal fun DayScrubber(
                     onAddJob = onAddJob,
                     onMinimise = { setMinimised(true) },
                     minimiseFocus = minimiseFocus,
-                    modifier = Modifier.padding(start = TarryTheme.space.l, end = TarryTheme.space.xs, top = TarryTheme.space.xs),
+                    // Expanded: the standard 12 dp above the card row (the minimised overlay keeps its slimmer top).
+                    modifier = Modifier.padding(start = TarryTheme.space.l, end = TarryTheme.space.xs, top = TarryTheme.space.m),
                 )
             }
             // The time label floats above the thumb in a 48 dp band of its own: the whole band is the touch target, so
@@ -530,10 +529,6 @@ private fun Modifier.overlaySwipe(thresholdPx: Float, onSwipe: (down: Boolean) -
     }
 }
 
-/** Each visit's pin number on the map: 1..n in start order (ties by id), as [me.tarry.app.map.visitPins] numbers them. */
-internal fun List<TimelineItem>.visitNumbers(): Map<String, Int> =
-    filterIsInstance<TimelineItem.Visit>().sortedWith(compareBy({ it.start }, { it.id })).mapIndexed { i, v -> v.id to i + 1 }.toMap()
-
 /** The spoken name of an item: the visit's place, the trip's mode or the gap's cause. */
 @Composable
 private fun itemLabel(item: TimelineItem): String = when (item) {
@@ -553,8 +548,6 @@ private fun itemLabel(item: TimelineItem): String = when (item) {
 private fun SelectedItemCard(
     item: TimelineItem?,
     items: List<TimelineItem>,
-    /** The visit's pin number on the map (the pin hides it when small). */
-    visitNumber: Int?,
     job: JobBlockItem?,
     jobColors: JobColors?,
     description: String,
@@ -600,7 +593,7 @@ private fun SelectedItemCard(
                 when (item) {
                     is TimelineItem.Visit -> {
                         val place = itemLabel(item)
-                        CardTitle(if (visitNumber != null) stringResource(R.string.map_card_visit_title, visitNumber, place) else place, titleMin, c.ink)
+                        CardTitle(place, titleMin, c.ink)
                         // The timeline's compact range (a short visit already carries its duration).
                         val range = times!!.range
                         CardSub(

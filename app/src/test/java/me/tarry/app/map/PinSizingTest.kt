@@ -19,19 +19,13 @@ class PinSizingTest {
     }
 
     @Test
-    fun aGroupKeepsEveryVisitIdAndALongLabelWidensItsCircle() {
-        val group = groupCoincidentPins(listOf(pin("a", 1, 1.0, 1.0, 0, 60), pin("b", 12, 1.0, 1.0, 300, 60))).single()
-        assertThat(group.visitIds).containsExactly("a", "b").inOrder()
-        assertThat(group.label).isEqualTo("1, 12")
-        assertThat(group.radius).isEqualTo(13f + (group.label.length - 2) * 3.5f)
-    }
-
-    @Test
-    fun drawingOrderPutsWiderGroupsUnderLonePins() {
-        val groups = groupCoincidentPins(
-            listOf(pin("lone", 1, 1.0, 1.0, 0, 5), pin("pair", 2, 2.0, 2.0, 10, 150), pin("pair2", 3, 2.0, 2.0, 200, 30)),
-        )
-        assertThat(sortedForDrawing(groups).map { it.first.visitId }).containsExactly("pair", "lone").inOrder()
+    fun aRevisitedPlaceIsOneCircleTheSameSizeAsALoneVisit() {
+        // No stop numbers on the pins, so a revisited place ("1, 5, 7, 9") no longer widens.
+        val group = groupCoincidentPins(
+            listOf(pin("a", 1, 1.0, 1.0, 0, 60), pin("b", 5, 1.0, 1.0, 300, 60), pin("c", 12, 1.0, 1.0, 400, 60)),
+        ).single()
+        assertThat(group.visitIds).containsExactly("a", "b", "c").inOrder()
+        assertThat(group.radius).isEqualTo(13f)
     }
 
     @Test
