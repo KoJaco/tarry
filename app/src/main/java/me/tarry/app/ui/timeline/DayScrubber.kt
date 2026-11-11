@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -59,6 +60,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -133,6 +137,8 @@ private val TickLength = 5.dp
 private val TickGap = 2.dp
 /** The time pill gets a band of its own, the full touch height, so it never overlaps the card or the strip. */
 private val PillBand = MinTouch
+/** Minimised, the card surface starts this far down the pill band: the empty top of the band stays a touch target but shows map. */
+private val MinimisedSurfaceInset = 16.dp
 /** Fill strength of strip items other than the one under the thumb; outlines and lines stay full strength (>= 3:1). */
 private const val FadedAlpha = 0.4f
 /** The line under the thumb is this much thicker, so it stands out without fading the others. */
@@ -280,13 +286,19 @@ internal fun DayScrubber(
         )
     }
     val solidStroke = remember(density) { Stroke(with(density) { BlockStroke.toPx() }) }
+    val containerShape = TarryTheme.shapes.container
 
     Column(modifier) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag("map_overlay")
-                .background(c.card, TarryTheme.shapes.container)
+                .drawBehind {
+                    // Minimised, the surface starts lower so more map shows; the pill band above it keeps its 48 dp target.
+                    val top = MinimisedSurfaceInset.toPx() * minimisedProgress
+                    val outline = containerShape.createOutline(size.copy(height = size.height - top), layoutDirection, this)
+                    translate(top = top) { drawOutline(outline, c.card) }
+                }
                 .overlaySwipe(with(density) { SwipeThreshold.toPx() }) { down -> setMinimised(down) }
                 .padding(bottom = TarryTheme.space.xs),
         ) {
@@ -651,6 +663,7 @@ private fun SelectedItemCard(
                 )
             }
             if (open != null) {
+                Spacer(Modifier.width(TarryTheme.space.s))
                 Box(Modifier.size(MinTouch), contentAlignment = Alignment.Center) {
                     IconCircleButton(
                         icon = R.drawable.ic_chevron_right,

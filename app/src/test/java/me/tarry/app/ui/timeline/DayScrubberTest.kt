@@ -375,6 +375,9 @@ class DayScrubberTest {
         val minimise = boundsOf("map_scrub_minimise")
         val open = boundsOf("map_scrub_open")
         assertThat(minimise.right).isAtMost(open.left + 1f)
+        // A small gap between the two round buttons (8 dp).
+        val gapPx = with(composeRule.density) { 8.dp.toPx() }
+        assertThat(open.left - minimise.right).isWithin(1f).of(gapPx)
         assertThat(minimise.width).isWithin(1f).of(open.width)
         assertThat(minimise.height).isWithin(1f).of(open.height)
         composeRule.onNodeWithTag("map_scrub_minimise").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
