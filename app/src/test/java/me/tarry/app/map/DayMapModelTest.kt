@@ -160,6 +160,18 @@ class DayMapModelTest {
         assertThat(dayFitPadding(44, 120, 0).bottom).isEqualTo(44)
     }
 
+    @Test
+    fun aTallOverlayIsCappedSoTheMapKeepsRoomToFit() {
+        // Font 2.0 on the emulator: a 1050 px map under a ~750 px overlay fitted the whole world.
+        assertThat(cappedBottomInset(bottomPx = 750, topPx = 120, viewHeightPx = 1050, minVisiblePx = 525)).isEqualTo(405)
+        // Room to spare: unchanged; not measured yet: unchanged.
+        assertThat(cappedBottomInset(bottomPx = 300, topPx = 120, viewHeightPx = 1500, minVisiblePx = 525)).isEqualTo(300)
+        assertThat(cappedBottomInset(bottomPx = 750, topPx = 120, viewHeightPx = 0, minVisiblePx = 525)).isEqualTo(750)
+        // A map smaller than the floor: no negative padding.
+        assertThat(cappedBottomInset(bottomPx = 750, topPx = 120, viewHeightPx = 400, minVisiblePx = 525)).isEqualTo(0)
+        assertThat(dayFitPadding(44, 120, 750, viewHeightPx = 1050, minVisiblePx = 525).bottom).isEqualTo(1050 - 164 - 525)
+    }
+
 
     @Test
     fun aStyleReloadWithTheSameMarkerKeepsTheUsersCamera() {

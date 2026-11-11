@@ -77,8 +77,21 @@ class DayFit {
 /** Pixels kept free on each side when fitting a day: [margin] of air, the attribution strip on top, the measured overlay below. */
 data class FitPadding(val left: Int, val top: Int, val right: Int, val bottom: Int)
 
-fun dayFitPadding(marginPx: Int, topInsetPx: Int, overlayPx: Int): FitPadding =
-    FitPadding(marginPx, topInsetPx + marginPx, marginPx, overlayPx + marginPx)
+fun dayFitPadding(marginPx: Int, topInsetPx: Int, overlayPx: Int, viewHeightPx: Int = 0, minVisiblePx: Int = 0): FitPadding {
+    val top = topInsetPx + marginPx
+    val bottom = cappedBottomInset(overlayPx + marginPx, top, viewHeightPx, minVisiblePx)
+    return FitPadding(marginPx, top, marginPx, bottom)
+}
+
+/**
+ * [bottomPx] reduced so at least [minVisiblePx] of a [viewHeightPx]-tall map stays free below [topPx]. A tall overlay at a
+ * large font scale would otherwise leave no room, and MapLibre then fits the whole world. Pins may then sit under the
+ * overlay, which beats a world view. [viewHeightPx] 0 (not measured yet) means no cap.
+ */
+fun cappedBottomInset(bottomPx: Int, topPx: Int, viewHeightPx: Int, minVisiblePx: Int): Int {
+    if (viewHeightPx <= 0) return bottomPx
+    return bottomPx.coerceAtMost(maxOf(0, viewHeightPx - topPx - minVisiblePx))
+}
 
 /**
  * Whether the day map's camera should follow a new scrubber marker. A day's first position is skipped so it doesn't undo

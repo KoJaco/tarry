@@ -13,11 +13,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -32,6 +34,7 @@ import me.tarry.app.map.MapConfig
 import me.tarry.app.map.MarkerFollow
 import me.tarry.app.map.TripRoute
 import me.tarry.app.map.circlePolygon
+import me.tarry.app.map.cappedBottomInset
 import me.tarry.app.map.dayFitPadding
 import org.maplibre.android.style.layers.FillLayer
 import org.maplibre.geojson.Polygon
@@ -74,6 +77,8 @@ private val BannerTop = 48.dp
  * measured height is added by the caller). The biggest pin is 56 dp across, so half of it plus some air.
  */
 private val FitPadding = 44.dp
+/** Map height kept free of the bottom overlay when fitting or centring, so a tall overlay (large font) never forces a world view. */
+private val MinVisibleMap = 200.dp
 private const val PinStroke = 2f
 private const val ActivePinStroke = 3f
 /** Pins smaller than this (style units) hide their number. */
@@ -112,8 +117,11 @@ fun DayMapView(
     val pxPerStyleUnit = LocalDensity.current.density
     val fitPaddingPx = with(LocalDensity.current) { FitPadding.toPx() }.toInt()
     val topInsetPx = with(LocalDensity.current) { MapAttributionClearance.toPx() }.toDouble()
+    val minVisiblePx = with(LocalDensity.current) { MinVisibleMap.toPx() }.toInt()
+    var viewHeightPx by remember { mutableIntStateOf(0) }
+    val bottomPx = cappedBottomInset(bottomInsetPx, topInsetPx.toInt(), viewHeightPx, minVisiblePx)
 
-    Box(modifier) {
+    Box(modifier.onSizeChanged { viewHeightPx = it.height }) {
         TarryMap(
             contentDescription = contentDescription,
             modifier = Modifier.fillMaxSize(),
@@ -141,19 +149,19 @@ fun DayMapView(
         // Keys rather than the raw time, so layers refresh when the emphasis moves, not on every drag frame.
         val activeTrip = activeTime?.let { t -> dayMap?.routes?.firstOrNull { t >= it.start && t < it.end }?.start }
         val activeVisit = activeTime?.let { t -> dayMap?.pins?.firstOrNull { t >= it.start && t < it.end }?.visitId }
-        LaunchedEffect(current, dayMap, colors, dark, activeTrip, activeVisit, bottomInsetPx) {
+        LaunchedEffect(current, dayMap, colors, dark, activeTrip, activeVisit, bottomPx) {
             val (map, style) = current ?: return@LaunchedEffect
             if (!style.isFullyLoaded || dayMap == null) return@LaunchedEffect
             // Added bottom-up on first use: visit areas, then trips, then pins (all below the marker).
             style.setVisitAreas(dayMap.pins, activeVisit, colors, dark, config)
             style.setRoutes(dayMap.routes, activeTrip, colors)
             style.setPins(dayMap.pins, activeVisit, colors, dark)
-            dayMap.bounds?.takeIf { dayFit.fit(date, it, bottomInsetPx) }?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomInsetPx) }
+            dayMap.bounds?.takeIf { dayFit.fit(date, it, bottomPx) }?.let { map.fitTo(it, fitPaddingPx, topInsetPx.toInt(), bottomPx) }
         }
-        LaunchedEffect(current, bottomInsetPx, topInsetPx) {
+        LaunchedEffect(current, bottomPx, topInsetPx) {
             val (map, _) = current ?: return@LaunchedEffect
             // Centre between the attribution strip and whatever floats over the bottom.
-            map.moveCamera(CameraUpdateFactory.paddingTo(0.0, topInsetPx, 0.0, bottomInsetPx.toDouble()))
+            map.moveCamera(CameraUpdateFactory.paddingTo(0.0, topInsetPx, 0.0, bottomPx.toDouble()))
         }
         LaunchedEffect(current, marker, colors) {
             val (map, style) = current ?: return@LaunchedEffect
