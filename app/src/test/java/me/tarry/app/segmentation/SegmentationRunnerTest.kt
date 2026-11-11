@@ -13,6 +13,7 @@ import me.tarry.core.data.db.entity.ExcludedRange
 import me.tarry.core.data.db.entity.Gap
 import me.tarry.core.data.db.entity.LocationPing
 import me.tarry.core.data.db.entity.Place
+import me.tarry.core.data.db.entity.SegmentationCheckpoint
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.db.entity.Visit
 import me.tarry.core.data.model.GapCause
@@ -140,6 +141,46 @@ class SegmentationRunnerTest {
         runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute).run(now)
 
         assertThat(noSessionGaps()).hasSize(1)
+    }
+
+    @Test
+    fun aKillWithNoRestartIsBridgedForTheShortLimitThenTheNextRunWritesTheGap() = runBlocking<Unit> {
+        val killedAt = t0 + 10 * minute
+        sessionId = db.trackingSessionDao().upsert(
+            TrackingSession(
+                start = t0, end = killedAt, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE,
+                endReason = SessionEndReason.KILLED,
+            ),
+        )
+        db.locationPingDao().upsertAll((0..10 step 2).map { ping(t0 + it * minute, siteA) })
+        val runner = runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute)
+
+        // A run between crash recovery and the (still pending) restart shows nothing.
+        runner.run(killedAt + 2 * minute)
+        assertThat(noSessionGaps()).isEmpty()
+
+        // No restart came: the overlap re-processes the bridged stretch and the outage shows.
+        runner.run(killedAt + 20 * minute)
+        assertThat(noSessionGaps().single().start).isEqualTo(killedAt)
+    }
+
+    @Test
+    fun aKilledSessionEndingBeforeTheRangeStillBridgesToARestartInsideIt() = runBlocking<Unit> {
+        val killedAt = t0 + 10 * minute
+        val restartAt = killedAt + 4 * minute
+        db.trackingSessionDao().upsert(
+            TrackingSession(
+                start = t0, end = killedAt, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE,
+                endReason = SessionEndReason.KILLED,
+            ),
+        )
+        db.trackingSessionDao().upsert(TrackingSession(start = restartAt, zoneId = "Australia/Sydney", trigger = SessionTrigger.SCHEDULE))
+        // The range starts 30 s after the kill: the killed session lies wholly before it.
+        db.segmentationCheckpointDao().upsert(SegmentationCheckpoint(processedUntil = killedAt + 30_000L + SegmentationParams().overlapMs))
+
+        runnerWithWindow(t0 - 60 * minute, t0 + 120 * minute).run(restartAt + 10 * minute)
+
+        assertThat(noSessionGaps()).isEmpty()
     }
 
     @Test

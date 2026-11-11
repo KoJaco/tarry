@@ -16,6 +16,8 @@ internal fun segmentationSessions(sessions: List<TrackingSession>, nowMs: Long, 
         val end = maxOf(s.end ?: nowMs, s.start)
         // The last session bridges to now: a run between crash recovery and the restart must not show the outage
         // either. If no restart comes, the health path records the Gap once the short interruption has passed.
+        // This also bridges the zero-length KILLED session a failed start writes; that failure's own SERVICE_KILLED
+        // health Gap reaches segmentation as a health gap, so the time still shows.
         val nextStart = sorted.getOrNull(i + 1)?.start ?: nowMs
         if (s.end != null && s.endReason == SessionEndReason.KILLED && nextStart >= end && nextStart - end < shortInterruptionMs) {
             TimeRange(s.start, nextStart)

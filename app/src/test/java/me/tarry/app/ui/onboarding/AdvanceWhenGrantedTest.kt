@@ -59,6 +59,7 @@ class AdvanceWhenGrantedTest {
     fun aRevokeThenGrantOnThePageAdvances() {
         satisfied = true
         show()
+        composeRule.waitForIdle()
         satisfied = false
         composeRule.waitForIdle()
         satisfied = true

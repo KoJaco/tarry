@@ -62,3 +62,14 @@ drive-by refactors. `gradlew.bat testDebugUnitTest :segmentation:test lintDebug 
 explicit paths (include this handoff in the first), never `.idea/` or `.claude/`, each ending with exactly
 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`. Do not push. No adb, no device installs, no
 `connectedDebugAndroidTest` (an emulator is attached for the planner; don't touch it). Report files, tests, decisions, skips.
+
+## Deviations after the emulator re-check and review (2026-11-11, planner)
+The code differs from the decisions above in these deliberate ways (each with a test):
+- **Epoch is only a floor.** With no heartbeat and no caller bound the Gap starts at now, never at the epoch (an
+  upgrader's epoch is its original install time).
+- **Not set up = no onboarding completion and no session ever** → `null`. This covers the first start-up before the
+  gate stamps anything (the emulator wrote a 3 s Gap at install time) and replaces "onboarding open → null": once a
+  session has run, outages count even if onboarding was left open (rule 6), floored at the onboarding start.
+- **No session ever → no windows** for segmentation (the emulator wrote a 30-min NO_SESSION gap during onboarding).
+- **The last KILLED session bridges to now** within the short interruption: a run between crash recovery and the
+  restart showed the short kill on the emulator.
