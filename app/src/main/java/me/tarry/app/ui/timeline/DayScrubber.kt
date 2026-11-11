@@ -1,7 +1,28 @@
 package me.tarry.app.ui.timeline
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.positionChange
+import me.tarry.app.ui.components.rememberReducedMotion
+import kotlin.math.abs
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +41,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
@@ -115,6 +137,10 @@ private val PillBand = MinTouch
 private const val FadedAlpha = 0.4f
 /** The line under the thumb is this much thicker, so it stands out without fading the others. */
 private val ActiveLineExtra = 1.5.dp
+private const val OverlayMotionMillis = 200
+private val EmphasizedEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+/** A vertical swipe must travel this far (and mostly vertically) to minimise or maximise; a scrub never does. */
+private val SwipeThreshold = 32.dp
 
 /** The scrubber's rows: [TimelineItem]s as [ScrubItem]s (same ids, so a tapped visit block opens its drawer). */
 internal fun List<TimelineItem>.toScrubItems(): List<ScrubItem> = map {
@@ -154,9 +180,28 @@ internal fun DayScrubber(
     onOpenTrip: (String) -> Unit = {},
     /** "Add job" on a visit that needs review. */
     onAddJob: (TimelineItem.Visit) -> Unit = {},
+    /** Minimised: only the time pill and the strip show (no card), with a button on the right to show details again. */
+    minimised: Boolean = false,
+    onMinimisedChange: (Boolean) -> Unit = {},
 ) {
     val c = TarryTheme.colors
     val dark = TarryTheme.isDark
+    val reducedMotion = rememberReducedMotion()
+    // 0 = expanded, 1 = minimised: drives the strip row's room for the maximise button. Instant under reduced motion.
+    val minimisedProgress by animateFloatAsState(
+        targetValue = if (minimised) 1f else 0f,
+        animationSpec = if (reducedMotion) snap() else tween(OverlayMotionMillis, easing = EmphasizedEasing),
+        label = "overlayMinimised",
+    )
+    // After a toggle the pressed button is gone: focus moves to its counterpart, never left on nothing.
+    var toggled by remember { mutableStateOf(false) }
+    val minimiseFocus = remember { FocusRequester() }
+    val maximiseFocus = remember { FocusRequester() }
+    LaunchedEffect(minimised) {
+        if (toggled) runCatching { (if (minimised) maximiseFocus else minimiseFocus).requestFocus() }
+    }
+    val minimisedChange by rememberUpdatedState(onMinimisedChange)
+    val setMinimised: (Boolean) -> Unit = { toggled = true; minimisedChange(it) }
     val formats = rememberTimeFormats()
     val timeText = formats.time(time, zone)
     val current by rememberUpdatedState(time)
@@ -240,27 +285,43 @@ internal fun DayScrubber(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .testTag("map_overlay")
                 .background(c.card, TarryTheme.shapes.container)
+                .overlaySwipe(with(density) { SwipeThreshold.toPx() }) { down -> setMinimised(down) }
                 .padding(bottom = TarryTheme.space.xs),
         ) {
-            SelectedItemCard(
-                item = live,
-                items = items,
-                visitNumber = (live as? TimelineItem.Visit)?.let { visitNumbers[it.id] },
-                job = (live as? TimelineItem.Visit)?.let { visitJobs[it.id] },
-                jobColors = (live as? TimelineItem.Visit)?.let { jobColors[it.id] },
-                description = cardDescription,
-                dayStart = dayStart,
-                dayEnd = dayEnd,
-                zone = zone,
-                onOpenVisit = onOpenVisit,
-                onOpenTrip = onOpenTrip,
-                onAddJob = onAddJob,
-                modifier = Modifier.padding(start = TarryTheme.space.l, end = TarryTheme.space.xs, top = TarryTheme.space.xs),
-            )
+            // The card collapses away when minimised; its size animates (instantly under reduced motion).
+            AnimatedVisibility(
+                visible = !minimised,
+                enter = if (reducedMotion) EnterTransition.None else
+                    fadeIn(tween(OverlayMotionMillis, easing = EmphasizedEasing)) + expandVertically(tween(OverlayMotionMillis, easing = EmphasizedEasing)),
+                exit = if (reducedMotion) ExitTransition.None else
+                    fadeOut(tween(OverlayMotionMillis, easing = EmphasizedEasing)) + shrinkVertically(tween(OverlayMotionMillis, easing = EmphasizedEasing)),
+            ) {
+                SelectedItemCard(
+                    item = live,
+                    items = items,
+                    visitNumber = (live as? TimelineItem.Visit)?.let { visitNumbers[it.id] },
+                    job = (live as? TimelineItem.Visit)?.let { visitJobs[it.id] },
+                    jobColors = (live as? TimelineItem.Visit)?.let { jobColors[it.id] },
+                    description = cardDescription,
+                    dayStart = dayStart,
+                    dayEnd = dayEnd,
+                    zone = zone,
+                    onOpenVisit = onOpenVisit,
+                    onOpenTrip = onOpenTrip,
+                    onAddJob = onAddJob,
+                    onMinimise = { setMinimised(true) },
+                    minimiseFocus = minimiseFocus,
+                    modifier = Modifier.padding(start = TarryTheme.space.l, end = TarryTheme.space.xs, top = TarryTheme.space.xs),
+                )
+            }
             // The time label floats above the thumb in a 48 dp band of its own: the whole band is the touch target, so
-            // it never overlaps the card above or the strip below.
-            BoxWithConstraints(Modifier.fillMaxWidth().height(PillBand).padding(horizontal = StepTouch + TarryTheme.space.xs)) {
+            // it never overlaps the card above or the strip below. Its right edge follows the strip's.
+            BoxWithConstraints(
+                Modifier.fillMaxWidth().height(PillBand)
+                    .padding(start = StepTouch + TarryTheme.space.xs, end = StepTouch + TarryTheme.space.xs + MinTouch * minimisedProgress),
+            ) {
                 var labelWidth by remember { mutableStateOf(0) }
                 val trackPx = constraints.maxWidth - 2 * inset
                 val thumbX = inset + model.fractionAt(time) * trackPx
@@ -384,6 +445,30 @@ internal fun DayScrubber(
                 StepButton(R.drawable.ic_chevron_right, nextLabel, enabled = next != null, Modifier.testTag("map_scrub_next")) {
                     next?.let(onTimeChange)
                 }
+                // Minimised: the strip makes room on the right for the button that brings the details back.
+                if (minimised || minimisedProgress > 0f) {
+                    val showLabel = stringResource(R.string.map_overlay_show)
+                    val hiddenState = stringResource(R.string.map_overlay_state_hidden)
+                    Box(
+                        Modifier
+                            .width(MinTouch * minimisedProgress)
+                            .height(MinTouch)
+                            .clipToBounds()
+                            .graphicsLayer { alpha = minimisedProgress; translationX = (1f - minimisedProgress) * 8.dp.toPx() },
+                    ) {
+                        IconCircleButton(
+                            icon = R.drawable.ic_chevron_up,
+                            contentDescription = showLabel,
+                            onClick = { setMinimised(false) },
+                            containerColor = c.inset,
+                            modifier = Modifier
+                                .wrapContentWidth(Alignment.Start, unbounded = true)
+                                .semantics { stateDescription = hiddenState }
+                                .focusRequester(maximiseFocus)
+                                .testTag("map_scrub_maximise"),
+                        )
+                    }
+                }
             }
         }
     }
@@ -403,6 +488,33 @@ internal fun DayScrubber(
             },
             onDismiss = { pickedDay = null },
         )
+    }
+}
+
+/**
+ * A vertical swipe on the overlay: down calls [onSwipe] with true (minimise), up with false (maximise). It must travel
+ * [thresholdPx] and be mostly vertical, so the strip's horizontal scrub (which consumes its moves) never triggers it.
+ * The buttons are the accessible alternative (WCAG 2.5.7).
+ */
+private fun Modifier.overlaySwipe(thresholdPx: Float, onSwipe: (down: Boolean) -> Unit): Modifier = pointerInput(thresholdPx) {
+    awaitEachGesture {
+        val first = awaitFirstDown(requireUnconsumed = false)
+        var dx = 0f
+        var dy = 0f
+        while (true) {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull { it.id == first.id } ?: return@awaitEachGesture
+            if (change.isConsumed || !change.pressed) return@awaitEachGesture
+            val delta = change.positionChange()
+            dx += delta.x
+            dy += delta.y
+            if (abs(dx) > thresholdPx / 2 && abs(dx) >= abs(dy)) return@awaitEachGesture
+            if (abs(dy) > thresholdPx && abs(dy) > 2 * abs(dx)) {
+                change.consume()
+                onSwipe(dy > 0)
+                return@awaitEachGesture
+            }
+        }
     }
 }
 
@@ -440,6 +552,8 @@ private fun SelectedItemCard(
     onOpenVisit: (String) -> Unit,
     onOpenTrip: (String) -> Unit,
     onAddJob: (TimelineItem.Visit) -> Unit,
+    onMinimise: () -> Unit,
+    minimiseFocus: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
     val c = TarryTheme.colors
@@ -522,8 +636,22 @@ private fun SelectedItemCard(
                     }
                 }
             }
+            // Minimise sits left of Open (and takes Open's place on a gap, which has nothing to open).
+            val shownState = stringResource(R.string.map_overlay_state_shown)
             Box(Modifier.size(MinTouch), contentAlignment = Alignment.Center) {
-                if (open != null) {
+                IconCircleButton(
+                    icon = R.drawable.ic_chevron_down,
+                    contentDescription = stringResource(R.string.map_overlay_hide),
+                    onClick = onMinimise,
+                    containerColor = c.inset,
+                    modifier = Modifier
+                        .semantics { stateDescription = shownState }
+                        .focusRequester(minimiseFocus)
+                        .testTag("map_scrub_minimise"),
+                )
+            }
+            if (open != null) {
+                Box(Modifier.size(MinTouch), contentAlignment = Alignment.Center) {
                     IconCircleButton(
                         icon = R.drawable.ic_chevron_right,
                         contentDescription = stringResource(R.string.map_card_open),

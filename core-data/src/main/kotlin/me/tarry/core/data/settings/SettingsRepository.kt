@@ -86,6 +86,10 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.TIMELINE_ZOOM_LEVEL] = minutes }
     }
 
+    suspend fun setMapOverlayMinimised(minimised: Boolean) {
+        dataStore.edit { it[Keys.MAP_OVERLAY_MINIMISED] = minimised }
+    }
+
     /** The segmentation algorithm version that last processed the stored data; 0 if never recorded. */
     suspend fun segmentationVersion(): Int =
         dataStore.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }
@@ -150,6 +154,7 @@ class SettingsRepository @Inject constructor(
         val WINDOW_END_GRACE_MAX_MIN = intPreferencesKey("window_end_grace_max_min")
         val SEGMENTATION_VERSION = intPreferencesKey("segmentation_version")
         val TIMELINE_ZOOM_LEVEL = intPreferencesKey("timeline_zoom_level")
+        val MAP_OVERLAY_MINIMISED = booleanPreferencesKey("map_overlay_minimised")
         val LAST_BACKUP_MS = longPreferencesKey(Settings.LAST_BACKUP_KEY)
     }
 
@@ -178,6 +183,7 @@ class SettingsRepository @Inject constructor(
                 ?.takeIf { it in Settings.ALLOWED_WINDOW_END_GRACE_MIN } ?: d.windowEndGraceMaxMin,
             timelineZoomMinutes = this[Keys.TIMELINE_ZOOM_LEVEL]
                 ?.takeIf { it in Settings.ALLOWED_TIMELINE_ZOOM_MINUTES } ?: d.timelineZoomMinutes,
+            mapOverlayMinimised = this[Keys.MAP_OVERLAY_MINIMISED] ?: d.mapOverlayMinimised,
             lastBackupMs = this[Keys.LAST_BACKUP_MS],
         )
     }

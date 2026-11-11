@@ -42,4 +42,9 @@
     <string name="map_card_gap_title">No location · %1$s</string>
     <string name="map_card_open">Open details</string>
     <string name="map_card_add_job_description">Add job to %1$s</string>
+    <!-- Minimise / maximise the overlay -->
+    <string name="map_overlay_hide">Hide details</string>
+    <string name="map_overlay_show">Show details</string>
+    <string name="map_overlay_state_shown">Details shown</string>
+    <string name="map_overlay_state_hidden">Details hidden</string>
 </resources>

@@ -24,6 +24,13 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
+import androidx.compose.ui.test.assertWidthIsEqualTo
+import me.tarry.app.ui.components.LocalMotionPreferences
+import me.tarry.app.ui.components.MotionPreferences
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.unit.Density
@@ -66,18 +73,24 @@ class DayScrubberTest {
     private val openedTrips = mutableListOf<String>()
     private val siteJob = JobBlockItem("jb", "job", "Fitout", 0xFF3366CC.toInt(), at(11), at(13), billable = true, notes = null)
 
-    private fun show(dark: Boolean = false, fontScale: Float = 1f, rows: List<TimelineItem> = items) {
+    private var minimised by mutableStateOf(false)
+    private val minimisedChanges = mutableListOf<Boolean>()
+
+    private fun show(dark: Boolean = false, fontScale: Float = 1f, rows: List<TimelineItem> = items, reducedMotion: Boolean = false) {
         val (start, end) = dayBounds(day, zone)
         val model = ScrubberModel(rows.toScrubItems(), start, end, listOf(RoutePoint(at(8), -33.9, 151.2, 5f)))
         composeRule.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = fontScale)) {
+                CompositionLocalProvider(LocalMotionPreferences provides MotionPreferences { reducedMotion }) {
                 TarryTheme(darkTheme = dark) {
                     DayScrubber(
                         model, mapOf("b" to siteJob), time, { time = it }, { opened += it },
                         date = day, today = day, zone = zone, onJump = { _, _ -> },
                         items = rows, onOpenTrip = { openedTrips += it }, onAddJob = { addJobFor += it.id },
+                        minimised = minimised, onMinimisedChange = { minimised = it; minimisedChanges += it },
                     )
+                }
                 }
             }
         }
@@ -349,5 +362,159 @@ class DayScrubberTest {
             TimelineItem.Visit("c", at(12), at(13), "C"),
         )
         assertThat(rows.visitNumbers()).containsExactly("b", 1, "z", 2, "c", 3)
+    }
+
+    // ---- Minimise / maximise ----
+
+    private fun overlayHeightPx() = composeRule.onNodeWithTag("map_overlay").fetchSemanticsNode().size.height
+
+    @Test
+    fun theMinimiseButtonSitsLeftOfOpenWithTheSameSize() {
+        time = at(11)
+        show()
+        val minimise = boundsOf("map_scrub_minimise")
+        val open = boundsOf("map_scrub_open")
+        assertThat(minimise.right).isAtMost(open.left + 1f)
+        assertThat(minimise.width).isWithin(1f).of(open.width)
+        assertThat(minimise.height).isWithin(1f).of(open.height)
+        composeRule.onNodeWithTag("map_scrub_minimise").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun onAGapCardMinimiseTakesTheOpenButtonsPlace() {
+        time = at(13, 30)
+        show()
+        composeRule.onNodeWithTag("map_scrub_open").assertDoesNotExist()
+        composeRule.onNodeWithTag("map_scrub_minimise").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        assertThat(boundsOf("map_scrub_minimise").right).isAtMost(boundsOf("map_scrub_card").right + 1f)
+    }
+
+    @Test
+    fun minimisingHidesTheCardAndShowsMaximiseRightOfTheStrip_andStripStillScrubs() {
+        show()
+        composeRule.onNodeWithTag("map_scrub_maximise").assertDoesNotExist()
+        val expandedHeight = overlayHeightPx()
+        composeRule.onNodeWithTag("map_scrub_minimise").performClick()
+        composeRule.waitForIdle()
+        assertThat(minimisedChanges).containsExactly(true)
+        composeRule.onNodeWithTag("map_scrub_card").assertDoesNotExist()
+        composeRule.onNodeWithTag("map_scrub_maximise").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        assertThat(boundsOf("map_scrub_next").right).isAtMost(boundsOf("map_scrub_maximise").left + 1f)
+        // The overlay is shorter, so the map's bottom inset (its measured height) shrinks with it.
+        assertThat(overlayHeightPx()).isLessThan(expandedHeight)
+        // The strip scrubs exactly as before.
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput {
+            down(Offset(width * 0.05f, height / 2f))
+            moveBy(Offset(width * 0.45f, 0f))
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput { up() }
+        assertThat(time).isEqualTo(at(11))
+        assertThat(minimisedChanges).containsExactly(true)
+        // And maximise brings the card back.
+        composeRule.onNodeWithTag("map_scrub_maximise").performClick()
+        composeRule.waitForIdle()
+        assertThat(minimisedChanges).containsExactly(true, false).inOrder()
+        composeRule.onNodeWithTag("map_scrub_maximise").assertDoesNotExist()
+        composeRule.onNodeWithTag("map_scrub_card").assertExists()
+        assertThat(overlayHeightPx()).isEqualTo(expandedHeight)
+    }
+
+    @Test
+    fun aVerticalSwipeDownMinimisesAndUpMaximises() {
+        show()
+        composeRule.onNodeWithTag("map_scrub_card").performTouchInput { swipeDown() }
+        composeRule.waitForIdle()
+        assertThat(minimised).isTrue()
+        composeRule.onNodeWithTag("map_scrub_card").assertDoesNotExist()
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput { swipeUp() }
+        composeRule.waitForIdle()
+        assertThat(minimised).isFalse()
+        composeRule.onNodeWithTag("map_scrub_card").assertExists()
+    }
+
+    @Test
+    fun aHorizontalDragNeverTogglesTheOverlay() {
+        show()
+        composeRule.onNodeWithTag("map_scrub_card").performTouchInput { swipeRight() }
+        composeRule.onNodeWithTag("map_scrub_card").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput { swipeRight() }
+        composeRule.onNodeWithTag("map_scrubber").performTouchInput { swipeLeft() }
+        composeRule.onNodeWithTag("map_scrub_time").performTouchInput { swipeRight() }
+        composeRule.waitForIdle()
+        assertThat(minimisedChanges).isEmpty()
+        assertThat(minimised).isFalse()
+    }
+
+    @Test
+    fun reducedMotionTogglesInstantly() {
+        show(reducedMotion = true)
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("map_scrub_minimise").performClick()
+        repeat(3) { composeRule.mainClock.advanceTimeByFrame() } // 48 ms: far short of the 200 ms animation
+        composeRule.onNodeWithTag("map_scrub_card").assertDoesNotExist()
+        composeRule.onNodeWithTag("map_scrub_maximise").assertWidthIsEqualTo(48.dp)
+    }
+
+    @Test
+    fun normalMotionAnimatesBeforeSettling() {
+        show()
+        composeRule.mainClock.autoAdvance = false
+        composeRule.onNodeWithTag("map_scrub_minimise").performClick()
+        composeRule.mainClock.advanceTimeByFrame()
+        composeRule.mainClock.advanceTimeBy(48)
+        composeRule.onNodeWithTag("map_scrub_card").assertExists() // still collapsing
+        composeRule.mainClock.advanceTimeBy(400)
+        composeRule.onNodeWithTag("map_scrub_card").assertDoesNotExist()
+        composeRule.onNodeWithTag("map_scrub_maximise").assertWidthIsEqualTo(48.dp)
+    }
+
+    @Test
+    fun theToggleButtonsAreDescribedAndExposeTheState() {
+        show()
+        val hide = composeRule.onNodeWithTag("map_scrub_minimise").fetchSemanticsNode().config
+        assertThat(hide[SemanticsProperties.ContentDescription]).containsExactly("Hide details")
+        assertThat(hide[SemanticsProperties.StateDescription]).isEqualTo("Details shown")
+        composeRule.onNodeWithTag("map_scrub_minimise").performClick()
+        composeRule.waitForIdle()
+        val showing = composeRule.onNodeWithTag("map_scrub_maximise").fetchSemanticsNode().config
+        assertThat(showing[SemanticsProperties.ContentDescription]).containsExactly("Show details")
+        assertThat(showing[SemanticsProperties.StateDescription]).isEqualTo("Details hidden")
+    }
+
+    @Test
+    fun startingMinimisedShowsNoCard() {
+        minimised = true
+        show()
+        composeRule.onNodeWithTag("map_scrub_card").assertDoesNotExist()
+        composeRule.onNodeWithTag("map_scrub_maximise").assertExists()
+        composeRule.onNodeWithTag("map_scrub_time").assertExists()
+        composeRule.onNodeWithTag("map_scrubber").assertExists()
+    }
+
+    private fun checkMinimisedLayout(dark: Boolean, scale: Float) {
+        minimised = true
+        show(dark, scale)
+        composeRule.onNodeWithTag("map_scrub_maximise").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithTag("map_scrubber").assertHeightIsAtLeast(64.dp)
+        composeRule.onNodeWithTag("map_scrub_time").assertHeightIsAtLeast(48.dp)
+        assertThat(boundsOf("map_scrub_time").overlaps(boundsOf("map_scrubber"))).isFalse()
+        assertThat(boundsOf("map_scrub_next").right).isAtMost(boundsOf("map_scrub_maximise").left + 1f)
+    }
+
+    @Test fun minimisedLightNormalText() = checkMinimisedLayout(dark = false, scale = 1f)
+
+    @Test fun minimisedLightLargeText() = checkMinimisedLayout(dark = false, scale = 2f)
+
+    @Test fun minimisedDarkNormalText() = checkMinimisedLayout(dark = true, scale = 1f)
+
+    @Test fun minimisedDarkLargeText() = checkMinimisedLayout(dark = true, scale = 2f)
+
+    @Test
+    fun theExpandedCardHasRoomForBothButtonsAtLargeText() {
+        time = at(11)
+        show(fontScale = 2f)
+        assertThat(boundsOf("map_scrub_minimise").overlaps(boundsOf("map_scrub_open"))).isFalse()
+        composeRule.onNodeWithTag("map_scrub_open").assertWidthIsAtLeast(48.dp)
     }
 }

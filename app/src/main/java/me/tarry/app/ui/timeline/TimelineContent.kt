@@ -118,6 +118,9 @@ fun TimelineContent(
     zoomLevel: ZoomLevel = ZoomLevel.Q15,
     /** The zoom settled on a level (a pinch released, or the Zoom menu): the host saves it. */
     onZoomLevelChange: (ZoomLevel) -> Unit = {},
+    /** The Map tab's overlay shows only the time pill and strip (no card). */
+    mapOverlayMinimised: Boolean = false,
+    onMapOverlayMinimisedChange: (Boolean) -> Unit = {},
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -204,6 +207,8 @@ fun TimelineContent(
                         items = rows,
                         onOpenTrip = { onEdit(EditTarget.Trip(it)) },
                         onAddJob = { onEdit(EditTarget.NewJob(it.start, it.end)) },
+                        minimised = mapOverlayMinimised,
+                        onMinimisedChange = onMapOverlayMinimisedChange,
                         date = date,
                         today = today,
                         zone = zone,
