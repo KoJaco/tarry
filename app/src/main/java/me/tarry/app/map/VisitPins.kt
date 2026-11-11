@@ -58,17 +58,45 @@ fun placesNear(
         .filter { it.second <= withinM }
         .sortedBy { it.second }
 
-/** One drawn marker: the visits (in number order) whose pins share a spot. Takes the first visit's id and colours. */
-data class PinGroup(val first: VisitPin, val numbers: List<Int>) {
+/**
+ * One drawn marker: the visits (in number order) whose pins share a spot. Takes the first visit's id and colours.
+ * [visitIds] are the ids of all its visits.
+ */
+data class PinGroup(
+    val first: VisitPin,
+    val numbers: List<Int>,
+    val visitIds: List<String> = listOf(first.visitId),
+) {
     /** "6" for a lone visit, "6, 7" for visits at the same spot. */
     val label: String get() = numbers.joinToString(", ")
 
-    /** Marker radius in px at the map's scale: the single-pin radius, widened so a longer label stays inside the circle. */
-    val radius: Float get() = if (label.length <= 2) PinRadius else PinRadius + (label.length - 2) * PinRadiusPerChar
+    /**
+     * Marker radius in px at the map's scale: one size for every pin, with no number inside (the day strip shows how long
+     * each visit was, and the card which stop it is).
+     */
+    val radius: Float get() = PinRadius
+
+    /** True when the group contains the visit the scrubber is on. */
+    fun isActive(activeVisit: String?): Boolean = activeVisit != null && activeVisit in visitIds
+}
+
+/** Draw order, largest first with the sort key to match (every pin is one size now, so the order given is kept). */
+fun sortedForDrawing(groups: List<PinGroup>): List<PinGroup> = groups.sortedByDescending { it.radius }
+
+/** A pin the tap box found: its radius in style units and how far its centre is from the tap, in px. */
+data class PinHit(val id: String, val radiusStyle: Float, val centreDistancePx: Float)
+
+/**
+ * The tapped pin among overlapping candidates: of the circles that contain the tap, the smallest (it is drawn on top);
+ * with none containing it, the one whose edge is nearest.
+ */
+fun pickPin(hits: List<PinHit>, pxPerStyleUnit: Float): String? {
+    fun edge(h: PinHit) = h.centreDistancePx - h.radiusStyle * pxPerStyleUnit
+    val inside = hits.filter { edge(it) <= 0f }
+    return if (inside.isNotEmpty()) inside.minByOrNull { it.radiusStyle }?.id else hits.minByOrNull { edge(it) }?.id
 }
 
 private const val PinRadius = 13f
-private const val PinRadiusPerChar = 3.5f
 
 /**
  * Pins at the same spot (the same place centre, to about 10 cm) become one [PinGroup] so their numbers are not printed over
@@ -77,4 +105,6 @@ private const val PinRadiusPerChar = 3.5f
 fun groupCoincidentPins(pins: List<VisitPin>): List<PinGroup> =
     pins.groupBy { Math.round(it.position.lat * 1e6) to Math.round(it.position.lng * 1e6) }
         .values
-        .map { PinGroup(it.first(), it.map { pin -> pin.number }) }
+        .map { g ->
+            PinGroup(g.first(), g.map { it.number }, g.map { it.visitId })
+        }

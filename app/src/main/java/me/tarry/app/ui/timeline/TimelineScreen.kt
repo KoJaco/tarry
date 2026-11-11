@@ -35,7 +35,10 @@ fun TimelineScreen(
     // After midnight the old "today" would stay selected; re-derive it when the user comes back.
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshToday() }
     // The saved zoom is read asynchronously: hold the canvas back until it is known so it never flashes at 1x.
-    zoomLevel?.let { level -> TimelineContent(
+    val overlayMinimised by viewModel.mapOverlayMinimised.collectAsStateWithLifecycle()
+    // Likewise the overlay state: the Map tab starts in the stored state, never flashing the other one.
+    val minimised = overlayMinimised
+    if (minimised != null) zoomLevel?.let { level -> TimelineContent(
         date = date,
         items = items,
         onPreviousDay = viewModel::previousDay,
@@ -67,6 +70,8 @@ fun TimelineScreen(
         onReviewOnlyRequestHandled = viewModel::consumeReviewOnlyRequest,
         zoomLevel = level,
         onZoomLevelChange = viewModel::setZoomLevel,
+        mapOverlayMinimised = minimised,
+        onMapOverlayMinimisedChange = viewModel::setMapOverlayMinimised,
         modifier = modifier,
     ) }
     editTarget?.let { target ->

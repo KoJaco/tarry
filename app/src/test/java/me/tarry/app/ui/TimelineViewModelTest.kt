@@ -572,6 +572,23 @@ class TimelineViewModelTest {
     }
 
     @Test
+    fun theMapOverlayStateIsUnknownUntilLoadedThenStoredAndSaved() = runBlocking {
+        val stored = kotlinx.coroutines.flow.MutableSharedFlow<Boolean>()
+        val saved = mutableListOf<Boolean>()
+        val vm = TimelineViewModel(timeline, places, jobs, zone, { day }, overlayMinimised = stored, saveMapOverlayMinimised = { saved += it }).managed()
+
+        assertThat(vm.mapOverlayMinimised.value).isNull()
+        withTimeout(10_000) { stored.subscriptionCount.first { it > 0 } }
+        stored.emit(true)
+        assertThat(withTimeout(10_000) { vm.mapOverlayMinimised.first { it != null } }).isTrue()
+
+        vm.setMapOverlayMinimised(false)
+        withTimeout(10_000) { while (saved.isEmpty()) kotlinx.coroutines.delay(10) }
+        assertThat(saved).containsExactly(false)
+        Unit
+    }
+
+    @Test
     fun aVisitAtAnIgnoredPlaceNeverNeedsReview() = runBlocking {
         places.save(place("p", name = "Home").copy(ignored = true))
         timeline.saveVisit(visit("v", at(day, 9), at(day, 10), "p"))

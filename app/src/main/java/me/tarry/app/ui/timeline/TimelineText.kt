@@ -31,6 +31,35 @@ internal class TimeFormats(locale: Locale, val is24Hour: Boolean) {
     /** A minor mark's label: the minutes past the hour with a leading colon (":30"). */
     fun minute(epochMs: Long, zone: ZoneId): String = minuteFormat.format(Instant.ofEpochMilli(epochMs).atZone(zone))
 
+    private val meridiemFormat = DateTimeFormatter.ofPattern("a", locale)
+
+    /**
+     * The two texts of a range for display. In 12-hour mode the am/pm marker is written once when both ends carry
+     * the same one ("4:13-4:41 pm"); "11:50 am-12:10 pm" and 24-hour ranges keep both ends whole. Ends on different
+     * local dates never merge: a range clamped at the next midnight ("6:00 AM-12:00 AM") has one marker per end.
+     */
+    fun rangeParts(startMs: Long, endMs: Long, zone: ZoneId): Pair<String, String> {
+        val startText = time(startMs, zone)
+        val endText = time(endMs, zone)
+        if (is24Hour) return startText to endText
+        if (Instant.ofEpochMilli(startMs).atZone(zone).toLocalDate() != Instant.ofEpochMilli(endMs).atZone(zone).toLocalDate()) {
+            return startText to endText
+        }
+        val startMarker = meridiemFormat.format(Instant.ofEpochMilli(startMs).atZone(zone))
+        val endMarker = meridiemFormat.format(Instant.ofEpochMilli(endMs).atZone(zone))
+        if (startMarker != endMarker || startMarker.isEmpty()) return startText to endText
+        val space = { c: Char -> c.isWhitespace() || c == Char(0x00A0) || c == Char(0x202F) }
+        // Keep the one marker on the outside of the range: after it where the locale writes it after the time
+        // ("4:13-4:41 pm"), before it where the locale writes it first (Chinese, Korean: marker then time).
+        return when {
+            startText.trimEnd(space).endsWith(startMarker) ->
+                startText.trimEnd(space).removeSuffix(startMarker).trimEnd(space) to endText
+            endText.trimStart(space).startsWith(endMarker) ->
+                startText to endText.trimStart(space).removePrefix(endMarker).trimStart(space)
+            else -> startText to endText
+        }
+    }
+
     private fun formatter(locale: Locale, skeleton: String): DateTimeFormatter =
         DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale)
 }
@@ -42,6 +71,38 @@ internal fun rememberTimeFormats(): TimeFormats {
     val configuration = LocalConfiguration.current
     val locale = androidx.compose.ui.text.intl.Locale.current.platformLocale
     return remember(context, configuration, locale) { TimeFormats(locale, DateFormat.is24HourFormat(context)) }
+}
+
+internal object TimelineText {
+    /** Items strictly shorter than this show one time and a duration instead of a range. */
+    const val ShortItemMs: Long = 10 * 60_000L
+
+    fun isShort(durationMs: Long): Boolean = durationMs < ShortItemMs
+
+    /** Whole minutes of a short item; 0 means "under a minute". */
+    fun shortMinutes(durationMs: Long): Int = (durationMs / 60_000L).coerceAtLeast(0).toInt()
+}
+
+/** "6m" (plural-safe, compact) or "<1m" for a short item's duration. */
+@Composable
+internal fun compactDuration(ms: Long): String {
+    val minutes = TimelineText.shortMinutes(ms)
+    return if (minutes < 1) {
+        stringResource(R.string.timeline_short_duration_less_than_min)
+    } else {
+        pluralStringResource(R.plurals.timeline_short_duration_min, minutes, minutes)
+    }
+}
+
+/** "1m gap" or "<1m gap". */
+@Composable
+internal fun compactGap(ms: Long): String {
+    val minutes = TimelineText.shortMinutes(ms)
+    return if (minutes < 1) {
+        stringResource(R.string.timeline_gap_short_less_than_min)
+    } else {
+        pluralStringResource(R.plurals.timeline_gap_short_min, minutes, minutes)
+    }
 }
 
 /** An item's start and end clamped to the day, with the range texts (marked when it crosses midnight). */
@@ -56,6 +117,12 @@ internal fun clampedTimes(item: TimelineItem, dayStart: Long, dayEnd: Long, zone
     val formats = rememberTimeFormats()
     val startText = formats.time(start, zone)
     val endText = formats.time(end, zone)
+    val (rangeStart, rangeEnd) = formats.rangeParts(start, end, zone)
+    val rangeText = if (TimelineText.isShort(end - start)) {
+        stringResource(R.string.timeline_compact_line, startText.keepWhole(), compactDuration(end - start))
+    } else {
+        stringResource(R.string.timeline_time_range, rangeStart.keepWhole(), rangeEnd.keepWhole()).breakAfterDash()
+    }
     val suffix = listOfNotNull(
         if (item.start < dayStart) stringResource(R.string.timeline_range_from_previous_day) else null,
         if (item.end > dayEnd) stringResource(R.string.timeline_range_continues) else null,
@@ -64,7 +131,7 @@ internal fun clampedTimes(item: TimelineItem, dayStart: Long, dayEnd: Long, zone
     return ClampedTimes(
         start,
         end,
-        stringResource(R.string.timeline_time_range, startText.keepWhole(), endText.keepWhole()).breakAfterDash().withSuffix(),
+        rangeText.withSuffix(),
         stringResource(R.string.timeline_spoken_range, startText, endText).withSuffix(),
     )
 }

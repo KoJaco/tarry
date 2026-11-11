@@ -81,10 +81,11 @@ class GroupCoincidentPinsTest {
     }
 
     @Test
-    fun aSharedMarkerIsWiderThanALoneOne() {
+    fun aSharedMarkerIsTheSameSizeAsALoneOne() {
+        // Pins carry no stop numbers, so a shared marker has nothing to widen for.
         val lone = groupCoincidentPins(listOf(pin("a", 7, 1.0, 1.0))).single()
         val shared = groupCoincidentPins(listOf(pin("a", 6, 1.0, 1.0), pin("b", 7, 1.0, 1.0))).single()
-        assertThat(shared.radius).isGreaterThan(lone.radius)
+        assertThat(shared.radius).isEqualTo(lone.radius)
     }
 
     @Test

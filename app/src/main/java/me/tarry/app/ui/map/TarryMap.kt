@@ -38,7 +38,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import kotlinx.coroutines.delay
+import me.tarry.app.ui.components.rememberReducedMotion
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -55,8 +72,11 @@ import org.maplibre.android.maps.Style
 
 private val MinTouch = 48.dp
 
-/** Height of the top strip the attribution takes; maps keep their content clear of it. */
-internal val MapAttributionClearance = MinTouch
+/** The collapsed credit's info button: a 48 dp target in the top-right corner. */
+private val AttributionButton = MinTouch
+
+/** Height of the top strip the info button takes; maps keep their content clear of it (the full line is brief and sits beside it). */
+internal val MapAttributionClearance = AttributionButton
 
 /** The credit line grows with the font scale only up to this, so it stays one line over the map (the dialog it opens scales fully). */
 private const val AttributionMaxFontScale = 1.3f
@@ -183,28 +203,91 @@ private fun TarryMapView(
     }
 }
 
-/** The compact credit line over the map; tapping it opens the credits with links (OSM attribution guidelines). */
+/** How long the full credit line stays before it collapses to the info button. */
+internal const val AttributionCollapseMs = 5_000L
+private const val AttributionMotionMillis = 200
+private val AttributionEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+private val InfoVisual = 28.dp
+private val InfoIcon = 20.dp
+
+/** Whether this process has already shown the full credit line on a map; only the first map of a session shows it unasked. */
+internal object AttributionSession {
+    @Volatile var shown = false
+
+    /** True once per process: the caller shows the full line, later maps start collapsed to the info button. */
+    fun claimFirst(): Boolean = synchronized(this) { (!shown).also { shown = true } }
+}
+
+/**
+ * The credit over the map. The full line (OSM attribution guidelines) shows when the first map of the session appears,
+ * collapses after [collapseAfterMs] to a small round info button, and the button brings it back (collapsing again after
+ * the delay or on a second tap). Tapping the line opens the credits with links. Both targets are 48 dp.
+ */
 @Composable
-internal fun MapAttribution(modifier: Modifier = Modifier) {
+internal fun MapAttribution(
+    modifier: Modifier = Modifier,
+    /** Null: expanded only for the first map in this process. */
+    startExpanded: Boolean? = null,
+    collapseAfterMs: Long = AttributionCollapseMs,
+) {
     var open by rememberSaveable { mutableStateOf(false) }
+    val initial = remember { startExpanded ?: AttributionSession.claimFirst() }
+    var expanded by rememberSaveable { mutableStateOf(initial) }
+    // Bumped by each tap on the info button so the delay restarts.
+    var shownAt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(expanded, shownAt, open) {
+        if (expanded && !open) {
+            delay(collapseAfterMs)
+            expanded = false
+        }
+    }
     val c = TarryTheme.colors
     val action = stringResource(R.string.map_attribution_action)
-    Box(
-        modifier = modifier
-            .heightIn(min = MinTouch)
-            .widthIn(min = MinTouch)
-            .clickable(onClickLabel = action, role = Role.Button) { open = true }
-            .padding(TarryTheme.space.xs),
-        contentAlignment = Alignment.TopEnd,
-    ) {
-        Text(
-            text = stringResource(R.string.map_attribution_short),
-            style = MaterialTheme.typography.labelSmall.let { it.copy(fontSize = it.fontSize * attributionFontFactor(LocalDensity.current.fontScale)) },
-            color = c.ink,
+    val reduced = rememberReducedMotion()
+    val spec = tween<Float>(AttributionMotionMillis, easing = AttributionEasing)
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = if (reduced) EnterTransition.None else
+                fadeIn(spec) + expandHorizontally(tween(AttributionMotionMillis, easing = AttributionEasing), expandFrom = Alignment.End),
+            exit = if (reduced) ExitTransition.None else
+                fadeOut(spec) + shrinkHorizontally(tween(AttributionMotionMillis, easing = AttributionEasing), shrinkTowards = Alignment.End),
+        ) {
+            Box(
+                modifier = Modifier
+                    .heightIn(min = MinTouch)
+                    .clickable(onClickLabel = action, role = Role.Button) { open = true }
+                    .padding(start = TarryTheme.space.xs, end = TarryTheme.space.xs)
+                    .testTag("map_attribution_line"),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = stringResource(R.string.map_attribution_short),
+                    style = MaterialTheme.typography.labelSmall.let { it.copy(fontSize = it.fontSize * attributionFontFactor(LocalDensity.current.fontScale)) },
+                    color = c.ink,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .background(attributionBackdrop(c), TarryTheme.shapes.pill)
+                        .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.xs),
+                )
+            }
+        }
+        // A minimal round button with the full 48 dp target; it toggles the line.
+        Box(
             modifier = Modifier
-                .background(attributionBackdrop(c), TarryTheme.shapes.pill)
-                .padding(horizontal = TarryTheme.space.s, vertical = TarryTheme.space.xs),
-        )
+                .size(AttributionButton)
+                .clip(CircleShape)
+                .semantics { this.contentDescription = action }
+                .clickable(role = Role.Button) {
+                    if (expanded) expanded = false else { expanded = true; shownAt++ }
+                }
+                .testTag("map_attribution_info"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size(InfoVisual).background(attributionBackdrop(c), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_info), contentDescription = null, tint = c.ink, modifier = Modifier.size(InfoIcon))
+            }
+        }
     }
     if (open) {
         val links = TextLinkStyles(SpanStyle(color = c.ink, textDecoration = TextDecoration.Underline))

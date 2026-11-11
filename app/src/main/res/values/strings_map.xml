@@ -13,7 +13,6 @@
     <string name="map_attribution_close">Close</string>
     <string name="map_route_missing">No route for this day: its location history is not available. Visits are shown at their places.</string>
     <string name="map_nothing_recorded">Nothing recorded on this day.</string>
-    <string name="map_scrub_description">Time on the map</string>
     <string name="map_scrub_previous_visit">Previous visit</string>
     <string name="map_scrub_next_visit">Next visit</string>
     <string name="map_scrub_jump">Jump to a date and time</string>
@@ -27,4 +26,24 @@
         <item quantity="other">%d trips</item>
     </plurals>
     <string name="map_place_mini_description">Map of %1$s, %2$s radius</string>
+    <!-- Day strip and the card for the item under the thumb -->
+    <string name="map_scrub_strip_description">Day from %1$s to %2$s, %3$s, %4$s.</string>
+    <string name="map_scrub_strip_at">At %1$s: %2$s.</string>
+    <plurals name="map_visit_count">
+        <item quantity="one">%d visit</item>
+        <item quantity="other">%d visits</item>
+    </plurals>
+    <string name="map_card_visit_times">%1$s · %2$s</string>
+    <string name="map_card_job_billable">%1$s · %2$s</string>
+    <string name="map_card_trip_title">%1$s · %2$s · %3$s</string>
+    <string name="map_card_trip_to">→ %1$s</string>
+    <string name="map_card_trip_from">Near %1$s</string>
+    <string name="map_card_gap_title">No location · %1$s</string>
+    <string name="map_card_open">Open details</string>
+    <string name="map_card_add_job_description">Add job to %1$s</string>
+    <!-- Minimise / maximise the overlay -->
+    <string name="map_overlay_hide">Hide details</string>
+    <string name="map_overlay_show">Show details</string>
+    <string name="map_overlay_state_shown">Details shown</string>
+    <string name="map_overlay_state_hidden">Details hidden</string>
 </resources>

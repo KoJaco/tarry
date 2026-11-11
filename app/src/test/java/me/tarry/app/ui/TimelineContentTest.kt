@@ -70,6 +70,9 @@ class TimelineContentTest {
 
     private fun t(hour: Int, minute: Int): String = fmt(at(hour, minute))
 
+    /** The time without its am/pm marker, as a range drops it from the start when both ends share one. */
+    private fun bare(text: String): String = text.takeWhile { it.isDigit() || it == ':' }
+
     /** The same recipe as the app: the locale's best pattern for "hm" / "Hm". */
     private fun fmt(epochMs: Long): String {
         val locale = java.util.Locale.getDefault()
@@ -126,7 +129,7 @@ class TimelineContentTest {
     fun visitBlockShowsPlaceAndRange() {
         show(listOf(TimelineItem.Visit("v", at(9, 12), at(11, 40), "12 Smith St")))
         composeRule.onNodeWithText("12 Smith St").assertExists()
-        composeRule.onNodeWithText("${t(9, 12).keepWhole()}–​${t(11, 40).keepWhole()}").assertExists()
+        composeRule.onNodeWithText("${bare(t(9, 12))}–​${t(11, 40).keepWhole()}").assertExists()
         composeRule.onNodeWithText("Nothing yet today").assertDoesNotExist()
     }
 
@@ -454,7 +457,7 @@ class TimelineContentTest {
     fun twelveHourSettingShowsAmPmTimesLabelsAndSpeech() {
         is24Hour = false
         show(listOf(TimelineItem.Visit("v", at(21, 5), at(22, 40), "A")), nowMs = at(22, 15))
-        assertThat(rangeTexts("timeline_row_v")).contains("9:05 PM–10:40 PM")
+        assertThat(rangeTexts("timeline_row_v")).contains("9:05–10:40 PM")
         assertThat(hourLabels()).containsAtLeast("9 PM", "10 PM")
         composeRule.onNodeWithTag("timeline_row_v").assert(
             SemanticsMatcher("12-hour speech") {

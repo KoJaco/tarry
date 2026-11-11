@@ -55,16 +55,42 @@ fun buildDayMap(
 
 /**
  * Whether the day map's camera should fit the whole day: once per day, at the first non-empty bounds. An empty day (today
- * before anything is recorded) doesn't use up the fit, so the first visit or trip still brings the camera in.
+ * before anything is recorded) doesn't use up the fit, so the first visit or trip still brings the camera in. A fit made
+ * before the bottom overlay was measured ([bottomPx] 0) is redone once when its height is known, so the day is never left
+ * fitted to the full map with the card and strip covering part of it.
  */
 class DayFit {
     private var fittedFor: LocalDate? = null
+    private var fittedBottomPx = 0
 
-    fun fit(day: LocalDate, bounds: GeoBounds?): Boolean {
-        if (bounds == null || fittedFor == day) return false
+    fun fit(day: LocalDate, bounds: GeoBounds?, bottomPx: Int = 0): Boolean {
+        if (bounds == null) return false
+        val first = fittedFor != day
+        val measuredLater = !first && fittedBottomPx == 0 && bottomPx > 0
+        if (!first && !measuredLater) return false
         fittedFor = day
+        fittedBottomPx = bottomPx
         return true
     }
+}
+
+/** Pixels kept free on each side when fitting a day: [margin] of air, the attribution strip on top, the measured overlay below. */
+data class FitPadding(val left: Int, val top: Int, val right: Int, val bottom: Int)
+
+fun dayFitPadding(marginPx: Int, topInsetPx: Int, overlayPx: Int, viewHeightPx: Int = 0, minVisiblePx: Int = 0): FitPadding {
+    val top = topInsetPx + marginPx
+    val bottom = cappedBottomInset(overlayPx + marginPx, top, viewHeightPx, minVisiblePx)
+    return FitPadding(marginPx, top, marginPx, bottom)
+}
+
+/**
+ * [bottomPx] reduced so at least [minVisiblePx] of a [viewHeightPx]-tall map stays free below [topPx]. A tall overlay at a
+ * large font scale would otherwise leave no room, and MapLibre then fits the whole world. Pins may then sit under the
+ * overlay, which beats a world view. [viewHeightPx] 0 (not measured yet) means no cap.
+ */
+fun cappedBottomInset(bottomPx: Int, topPx: Int, viewHeightPx: Int, minVisiblePx: Int): Int {
+    if (viewHeightPx <= 0) return bottomPx
+    return bottomPx.coerceAtMost(maxOf(0, viewHeightPx - topPx - minVisiblePx))
 }
 
 /**

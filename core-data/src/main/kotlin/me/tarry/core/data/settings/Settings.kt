@@ -23,6 +23,8 @@ data class Settings(
     val windowEndGraceMaxMin: Int = DEFAULT_WINDOW_END_GRACE_MIN,
     /** One of [ALLOWED_TIMELINE_ZOOM_MINUTES]: the timeline's tick and job-snap step in minutes (15, 10 or 5). */
     val timelineZoomMinutes: Int = DEFAULT_TIMELINE_ZOOM_MINUTES,
+    /** Whether the Map tab's overlay is minimised to the time pill and strip (no card). Device-local UI state. */
+    val mapOverlayMinimised: Boolean = false,
     /** When the last user-initiated backup finished (UTC epoch ms); null if none yet. */
     val lastBackupMs: Long? = null,
 ) {

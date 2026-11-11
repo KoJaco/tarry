@@ -230,6 +230,16 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun mapOverlayMinimised_defaultsToFalseAndRoundTrips() = runTest {
+        val r = repo()
+        assertThat(r.settings.first().mapOverlayMinimised).isFalse()
+        r.setMapOverlayMinimised(true)
+        assertThat(r.settings.first()).isEqualTo(Settings(mapOverlayMinimised = true))
+        r.setMapOverlayMinimised(false)
+        assertThat(r.settings.first().mapOverlayMinimised).isFalse()
+    }
+
+    @Test
     fun segmentationVersion_defaultsToZeroAndRoundTrips() = runTest {
         val r = repo()
         assertThat(r.segmentationVersion()).isEqualTo(0)

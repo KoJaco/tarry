@@ -206,6 +206,10 @@ class TimelineViewModel internal constructor(
     zoomMinutes: Flow<Int> = flowOf(ZoomLevel.Q15.snapMinutes),
     /** Saves the timeline zoom step in minutes. */
     private val saveZoomMinutes: suspend (Int) -> Unit = {},
+    /** Whether the Map tab's overlay is minimised, live. */
+    overlayMinimised: Flow<Boolean> = flowOf(false),
+    /** Saves whether the Map tab's overlay is minimised. */
+    private val saveMapOverlayMinimised: suspend (Boolean) -> Unit = {},
     /** A killed session restarted within this long leaves no marker on the day canvas. */
     private val shortInterruptionMs: Long = TrackingConfig().shortInterruptionMs,
     /** The stretches of `[from, to)` (UTC epoch ms) in which capture should run, from the effective schedule. */
@@ -250,6 +254,8 @@ class TimelineViewModel internal constructor(
             createJob = { editor.createJob(it, JobPalette.slots.map { slot -> slot.key }) },
             zoomMinutes = settings.settings.map { it.timelineZoomMinutes },
             saveZoomMinutes = settings::setTimelineZoomMinutes,
+            overlayMinimised = settings.settings.map { it.mapOverlayMinimised },
+            saveMapOverlayMinimised = settings::setMapOverlayMinimised,
             shortInterruptionMs = trackingConfig.shortInterruptionMs,
             activeIntervals = { from, to -> windowChecker.activeIntervals(Instant.ofEpochMilli(from), Instant.ofEpochMilli(to)) },
             scheduleChanges = { monday ->
@@ -583,6 +589,15 @@ class TimelineViewModel internal constructor(
     /** Saves the settled zoom level (kept across days and restarts). */
     fun setZoomLevel(level: ZoomLevel) {
         viewModelScope.launch { saveZoomMinutes(level.snapMinutes) }
+    }
+
+    /** Whether the Map tab's overlay is minimised; null until the setting has loaded. */
+    val mapOverlayMinimised: StateFlow<Boolean?> = overlayMinimised
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** Saves the overlay state (kept across restarts). */
+    fun setMapOverlayMinimised(minimised: Boolean) {
+        viewModelScope.launch { saveMapOverlayMinimised(minimised) }
     }
 
     /** Decline on a suggested block: it is not suggested again (the pair is remembered across restarts). */
