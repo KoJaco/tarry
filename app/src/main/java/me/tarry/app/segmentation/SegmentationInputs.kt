@@ -66,3 +66,10 @@ internal fun windowsOutsideLocks(windows: List<TimeRange>, spans: List<LockSpan>
     }
     return result
 }
+
+/**
+ * Cuts every locked span out of the health Gap [ranges], the same way as for windows: a Gap written late (recovery after the
+ * phone was dead, a late close) can run past the lock start, and the locked part must not read as a Gap to segmentation.
+ */
+internal fun healthGapsOutsideLocks(ranges: List<TimeRange>, spans: List<LockSpan>): List<TimeRange> =
+    windowsOutsideLocks(ranges, spans)
