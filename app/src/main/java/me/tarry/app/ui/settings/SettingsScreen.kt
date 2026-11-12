@@ -87,6 +87,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.BuildConfig
 import me.tarry.app.R
 import me.tarry.app.ui.components.SectionHeader
+import me.tarry.app.ui.access.AccessRow
+import me.tarry.app.ui.access.AccessSummaryViewModel
 import me.tarry.app.ui.about.versionLabel
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.schedule.WeekScheduleSummary
@@ -108,13 +110,16 @@ fun SettingsScreen(
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenPaywall: () -> Unit = {},
     snackbarHostState: SnackbarHostState? = null,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
+    accessViewModel: AccessSummaryViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val schedule by viewModel.schedule.collectAsStateWithLifecycle()
     val data by viewModel.data.collectAsStateWithLifecycle()
+    val access by accessViewModel.row.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // Both go through the system file picker (SAF): nothing is read or written unless the user picks a document.
     val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE)) { uri ->
@@ -153,6 +158,8 @@ fun SettingsScreen(
         onOpenJobs = onOpenJobs,
         onOpenPlaces = onOpenPlaces,
         onOpenAbout = onOpenAbout,
+        access = access,
+        onOpenPaywall = onOpenPaywall,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onGraceSelected = viewModel::setWindowEndGraceMaxMin,
         onThemeSelected = viewModel::setTheme,
@@ -193,6 +200,9 @@ fun SettingsContent(
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    /** The access row (null hides it, while the trial has not started) and where it goes. */
+    access: AccessRow? = null,
+    onOpenPaywall: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onGraceSelected: (Int) -> Unit = {},
     onThemeSelected: (ThemeMode) -> Unit = {},
@@ -341,6 +351,19 @@ fun SettingsContent(
             style = MaterialTheme.typography.headlineMedium,
             color = TarryTheme.colors.ink,
         )
+        if (access != null) {
+            SectionHeader(stringResource(R.string.settings_section_access), Modifier.padding(top = space.m))
+            val accessTitle = when (access) {
+                is AccessRow.Trial -> pluralStringResource(R.plurals.access_trial_days_left, access.daysLeft, access.daysLeft)
+                AccessRow.TrialEnded -> stringResource(R.string.settings_access_trial_ended)
+                AccessRow.Pending -> stringResource(R.string.settings_access_pending)
+                AccessRow.Owned -> stringResource(R.string.settings_access_owned)
+                AccessRow.Revoked -> stringResource(R.string.settings_access_revoked)
+            }
+            SettingsGroup {
+                row(accessTitle, onClick = onOpenPaywall, icon = R.drawable.ic_lock)
+            }
+        }
         SectionHeader(stringResource(R.string.settings_section_tracking), Modifier.padding(top = space.m))
         val stayRadiusTitle = stringResource(R.string.settings_stay_radius)
         val graceTitle = stringResource(R.string.settings_grace)

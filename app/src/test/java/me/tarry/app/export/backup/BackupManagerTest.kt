@@ -208,6 +208,7 @@ class BackupManagerTest {
         settingsRepo.raiseAccessLastSeenMs(7L)
         settingsRepo.setAccessLockedSinceMs(9L)
         settingsRepo.setAccessDebug("TRIAL_ENDED", 11L)
+        settingsRepo.setAccessTrialCardShown()
         val keys = decodeSettingsKeys(backupBytes())
         assertThat(keys).contains("theme")
         for (k in Settings.DEVICE_LOCAL_KEYS) assertThat(keys).doesNotContain(k)
@@ -235,6 +236,8 @@ class BackupManagerTest {
         assertThat(p.lockedSinceMs).isEqualTo(9L)
         assertThat(p.debugState).isEqualTo("TRIAL_ENDED")
         assertThat(p.debugTrialEndMs).isEqualTo(11L)
+        // The file said "shown"; this phone never showed it, so it stays unshown.
+        assertThat(p.trialCardShown).isFalse()
     }
 
     @Test
@@ -266,6 +269,7 @@ class BackupManagerTest {
         settingsRepo.raiseAccessLastSeenMs(7L)
         settingsRepo.setAccessLockedSinceMs(9L)
         settingsRepo.setAccessDebug("PENDING", 11L)
+        settingsRepo.setAccessTrialCardShown()
 
         manager.deleteAll()
 
@@ -277,6 +281,7 @@ class BackupManagerTest {
         assertThat(p.lockedSinceMs).isEqualTo(9L)
         assertThat(p.debugState).isEqualTo("PENDING")
         assertThat(p.debugTrialEndMs).isEqualTo(11L)
+        assertThat(p.trialCardShown).isTrue()
     }
 
     private fun decodeSettingsKeys(bytes: ByteArray) =

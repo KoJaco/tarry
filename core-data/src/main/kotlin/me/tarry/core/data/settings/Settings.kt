@@ -17,6 +17,8 @@ data class AccessPrefs(
     val lockIntervals: String? = null,
     val debugState: String? = null,
     val debugTrialEndMs: Long? = null,
+    /** The near-end trial card was shown or dismissed (never shown again). */
+    val trialCardShown: Boolean = false,
 ) {
     /** Every span tracking was locked: the closed ones, then the open one (which ends at [Long.MAX_VALUE]). Half-open. */
     fun lockedSpans(): List<LockSpan> {
@@ -95,7 +97,7 @@ data class Settings(
         const val ACCESS_DEBUG_STATE_KEY = "access_debug_state"
         /** Debug builds only: the trial end the forced state reports (UTC epoch ms). */
         const val ACCESS_DEBUG_TRIAL_END_KEY = "access_debug_trial_end_ms"
-        /** Set once the near-end trial card has been shown or dismissed (8b.2). */
+        /** Set once the near-end trial card has been shown or dismissed. */
         const val ACCESS_TRIAL_CARD_KEY = "access_trial_card_shown"
 
         /**
