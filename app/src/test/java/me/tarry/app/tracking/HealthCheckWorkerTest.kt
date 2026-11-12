@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.runBlocking
@@ -728,5 +729,27 @@ class HealthCheckWorkerTest {
         assertThat(store.current().finishingUp).isFalse()
         assertThat(store.current().attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
         assertThat(gaps()).isEmpty()
+    }
+
+    @Test
+    fun theStateRepositoryReReducesWhenTheAccessStateChangesWithoutAHealthCheck() = runBlocking<Unit> {
+        val inputs = ScheduleInputsProvider(ScheduleRepository(db.scheduleDao()), trackingRepo, store, config, clock)
+        val snapshots = TrackingSnapshotProvider(inputs, EffectiveScheduleCalculator(config), store, preconditions, coordinator, clock, entitlement)
+        val repo = DefaultTrackingStateRepository(snapshots, TrackingStateReducer(HealthEvaluator(config)), store, trackingRepo, entitlement, captureScope)
+        val collector = captureScope.launch { repo.details.collect { } }
+        val stateCollector = captureScope.launch { repo.state.collect { } }
+        withTimeout(5_000) { while (repo.state.value == TrackingState.IDLE && repo.details.value.attentionCause == null) delay(20) }
+        assertThat(repo.details.value.attentionCause).isNotEqualTo(AttentionCause.TRIAL_ENDED)
+
+        entitlement.access = AccessState.TrialEnded
+        entitlement.state.value = AccessState.TrialEnded
+        withTimeout(5_000) { while (repo.details.value.attentionCause != AttentionCause.TRIAL_ENDED) delay(20) }
+        assertThat(repo.state.value).isEqualTo(TrackingState.ATTENTION)
+
+        entitlement.access = AccessState.Owned
+        entitlement.state.value = AccessState.Owned
+        withTimeout(5_000) { while (repo.details.value.attentionCause == AttentionCause.TRIAL_ENDED) delay(20) }
+        collector.cancel()
+        stateCollector.cancel()
     }
 }
