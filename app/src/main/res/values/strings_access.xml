@@ -3,7 +3,7 @@
     <!-- Access (trial and purchase), phase 8b.1. "Billing" means billable-time rounding elsewhere, so none of these say it. -->
     <string name="access_pill_unlock">Unlock</string>
     <string name="tracking_toggle_description_trial_ended">Tracking: trial ended, unlock Tarry</string>
-    <string name="tracking_attention_trial_ended">Trial ended · Unlock Tarry to keep tracking. Your data stays yours.</string>
+    <string name="tracking_attention_trial_ended">Unlock Tarry to keep tracking. Your data stays yours.</string>
     <string name="tracking_sheet_fix_unlock">Unlock Tarry</string>
     <string name="tracking_sheet_trial_ended_title">Trial ended</string>
     <string name="tracking_alert_trial_ended_title">Trial ended</string>
