@@ -108,7 +108,7 @@ class AboutUiTest {
     fun licencesListsEveryNoticeAndOpensItsText() {
         composeRule.setContent { LicencesContent(OssNotices, textFor = { "TEXT OF ${it.assetFile}" }) }
 
-        for (name in listOf("Nunito", "Nunito Sans", "MapLibre Native", "OpenStreetMap data", "Android and Google libraries")) {
+        for (name in listOf("Nunito", "Nunito Sans", "MapLibre Native", "OpenStreetMap data", "Android and Google libraries", "Google Play Billing Library")) {
             composeRule.onNodeWithText(name).performScrollTo().assertIsDisplayed()
         }
         composeRule.onNodeWithText("BSD-2-Clause").assertIsDisplayed()
