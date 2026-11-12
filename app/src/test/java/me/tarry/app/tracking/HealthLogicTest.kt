@@ -282,9 +282,13 @@ class HealthLogicTest {
     }
 
     @Test
-    fun aUserStopStillReadsIdleWhileLocked() {
-        val r = reduce(snapshot(shouldRun = false, running = false, locked = true), pause = ManualOverrideEndMode.UNTIL_STOPPED)
-        assertThat(r.state).isEqualTo(TrackingState.IDLE)
+    fun theLockShowsEvenAfterAUserStopOrPause() {
+        val locked = snapshot(shouldRun = false, running = false, locked = true)
+        for (mode in listOf(ManualOverrideEndMode.UNTIL_STOPPED, ManualOverrideEndMode.END_OF_DAY)) {
+            val r = reduce(locked, pause = mode)
+            assertThat(r.state).isEqualTo(TrackingState.ATTENTION)
+            assertThat(r.attentionCause).isEqualTo(AttentionCause.TRIAL_ENDED)
+        }
     }
 
     @Test
