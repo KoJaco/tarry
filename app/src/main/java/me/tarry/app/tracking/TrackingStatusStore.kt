@@ -52,6 +52,8 @@ data class TrackingStatus(
     val scheduleEdits: List<ScheduleEdit> = emptyList(),
     /** The local date the review reminder last fired (or was skipped as empty); a once-a-day guard, local state only. */
     val lastReviewReminderDate: LocalDate? = null,
+    /** True while the open session runs in Saver because the battery is low (and the switch is on). Cleared at session end. */
+    val lowBatterySaverActive: Boolean = false,
 )
 
 /** Activity Recognition transitions seen in one session: how many, how many were ignored (an equal or newer one was already applied), and the last one. */
@@ -100,6 +102,7 @@ class TrackingStatusStore @Inject constructor(
             lastHeartbeatMs = p[HEARTBEAT],
             captureMode = p[CAPTURE_MODE].toEnumOrNull<CaptureMode>(),
             activeSessionId = p[ACTIVE_SESSION],
+            lowBatterySaverActive = p[LOW_BATTERY_SAVER] ?: false,
             attentionCause = p[ATTENTION_CAUSE].toEnumOrNull<AttentionCause>(),
             openHealthGapId = p[OPEN_GAP],
             debugTestWindowStartMs = p[TEST_WINDOW_START],
@@ -144,6 +147,7 @@ class TrackingStatusStore @Inject constructor(
     suspend fun setLastHeartbeat(timeMs: Long?) = set(HEARTBEAT, timeMs)
     suspend fun setCaptureMode(mode: CaptureMode?) = set(CAPTURE_MODE, mode?.name)
     suspend fun setActiveSessionId(id: Long?) = set(ACTIVE_SESSION, id)
+    suspend fun setLowBatterySaverActive(active: Boolean) = set(LOW_BATTERY_SAVER, if (active) true else null)
     suspend fun setAttentionCause(cause: AttentionCause?) = set(ATTENTION_CAUSE, cause?.name)
     suspend fun setOpenHealthGapId(id: String?) = set(OPEN_GAP, id)
     suspend fun setDebugTestWindowStart(timeMs: Long?) = set(TEST_WINDOW_START, timeMs)
@@ -194,6 +198,7 @@ class TrackingStatusStore @Inject constructor(
             it.remove(HEARTBEAT)
             it.remove(CAPTURE_MODE)
             it.remove(ACTIVE_SESSION)
+            it.remove(LOW_BATTERY_SAVER)
         }
     }
 
@@ -205,6 +210,7 @@ class TrackingStatusStore @Inject constructor(
         val HEARTBEAT = longPreferencesKey("last_heartbeat_ms")
         val CAPTURE_MODE = stringPreferencesKey("capture_mode")
         val ACTIVE_SESSION = longPreferencesKey("active_session_id")
+        val LOW_BATTERY_SAVER = booleanPreferencesKey("low_battery_saver_active")
         val ATTENTION_CAUSE = stringPreferencesKey("attention_cause")
         val OPEN_GAP = stringPreferencesKey("open_health_gap_uuid")
         val TEST_WINDOW_START = longPreferencesKey("debug_test_window_start_ms")

@@ -105,7 +105,7 @@ class TrackingControllerTest {
         coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo,
             store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakeStayRadius(), permissions,
-            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
+            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         controller = TrackingController(
             coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, segmentation, health, clock, config, windowEndGrace,
@@ -494,7 +494,7 @@ class TrackingControllerTest {
         }
         val failingCoordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, FakeLocationClient(), activity, failingGeofence, FakeStayRadius(),
-            permissions, FakeWindowChecker(), health, clock, captureScope,
+            permissions, FakeWindowChecker(), health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val c = TrackingController(

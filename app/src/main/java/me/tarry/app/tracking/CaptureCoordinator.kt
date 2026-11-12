@@ -4,6 +4,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -18,6 +22,7 @@ import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.repository.TimelineRepository
 import me.tarry.core.data.repository.TrackingRepository
+import me.tarry.core.data.settings.PowerMode
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -43,6 +48,8 @@ class CaptureCoordinator @Inject constructor(
     private val windowChecker: ScheduleWindowChecker,
     private val health: HealthGapRecorder,
     private val clock: TrackingClock,
+    private val powerSettings: PowerSettingsSource,
+    private val battery: BatterySource,
     @param:CaptureScope private val scope: CoroutineScope,
 ) {
     private val mutex = Mutex()
@@ -57,6 +64,10 @@ class CaptureCoordinator @Inject constructor(
     private var graceWatch = false
     private var locationJob: Job? = null
     private var lastLocationParams: LocationRequestParams? = null
+    private var powerJob: Job? = null
+    private var lowBatteryActive = false
+    private var effectiveMode = PowerMode.BALANCED
+    private val lowBatteryRule = LowBatteryRule(config)
 
     /**
      * Set by [TrackingController] so a capture failure that must also stop the service goes through the single
@@ -121,10 +132,15 @@ class CaptureCoordinator @Inject constructor(
             // The service is up, so the outage (if any) is over; the health check re-raises anything still broken.
             health.closeOutage(now)
             activityRegistered = registerActivity()
-            val m = CaptureModeMachine(config, activityRecognitionAvailable = activityRegistered)
+            val power = powerSettings.settings.first()
+            lowBatteryActive = lowBatteryRule.next(false, battery.read())
+            effectiveMode = power.effective(lowBatteryActive)
+            statusStore.setLowBatterySaverActive(power.lowBatterySaver && lowBatteryActive)
+            val m = CaptureModeMachine(config, activityRecognitionAvailable = activityRegistered, profile = config.profiles.getValue(effectiveMode))
             m.stayRadiusM = stayRadius.stayRadiusM()
             machine = m
             apply(m.start())
+            watchPower()
         } catch (t: Throwable) {
             // Never leave a session open without a machine: fixes would be ignored while the heartbeat looks alive.
             session = null
@@ -132,6 +148,8 @@ class CaptureCoordinator @Inject constructor(
             activityRegistered = false
             locationJob?.cancel()
             locationJob = null
+            powerJob?.cancel()
+            powerJob = null
             withContext(NonCancellable) {
                 trackingRepo.saveSession(opened.copy(end = clock.nowMs(), endReason = SessionEndReason.KILLED))
                 statusStore.clearSessionState()
@@ -141,6 +159,30 @@ class CaptureCoordinator @Inject constructor(
             }
             throw t
         }
+    }
+
+    /**
+     * Follows the battery-use settings and the battery while the session is open (an OS broadcast or a settings change,
+     * not a timer of ours). When the effective mode changes the machine gets the new profile and re-issues its request.
+     */
+    private fun watchPower() {
+        powerJob?.cancel()
+        val readings = battery.changes.map<BatteryReading, BatteryReading?> { it }.onStart { emit(null) }
+        powerJob = scope.launch {
+            combine(powerSettings.settings, readings) { s, r -> s to r }.collect { (s, r) -> onPowerInputs(s, r) }
+        }
+    }
+
+    private suspend fun onPowerInputs(s: PowerSettings, reading: BatteryReading?) = mutex.withLock {
+        val m = machine ?: return@withLock
+        if (session == null) return@withLock
+        lowBatteryActive = lowBatteryRule.next(lowBatteryActive, reading)
+        val shown = s.lowBatterySaver && lowBatteryActive
+        if (statusStore.current().lowBatterySaverActive != shown) statusStore.setLowBatterySaverActive(shown)
+        val effective = s.effective(lowBatteryActive)
+        if (effective == effectiveMode) return@withLock
+        effectiveMode = effective
+        apply(m.setProfile(config.profiles.getValue(effective)))
     }
 
     /** Activity Recognition is optional: any failure means distance-only gating. */
@@ -158,6 +200,8 @@ class CaptureCoordinator @Inject constructor(
         session = null
         machine = null
         activityRegistered = false
+        powerJob?.cancel()
+        powerJob = null
         locationJob?.cancel()
         locationJob = null
         trackingRepo.saveSession(open.copy(end = clock.nowMs(), endReason = reason))

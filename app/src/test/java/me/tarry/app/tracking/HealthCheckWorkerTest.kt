@@ -102,7 +102,7 @@ class HealthCheckWorkerTest {
         val calculator = EffectiveScheduleCalculator(config)
         coordinator = CaptureCoordinator(
             config, trackingRepo, timeline, store, locationClient, activityClient, FakeGeofenceClient(), FakeStayRadius(), permissions,
-            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
+            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         controller = TrackingController(
             coordinator, launcher, store, trackingRepo, ScheduleRepository(db.scheduleDao()), inputs, calculator, alarms, FakeSegmentationTrigger(), health,

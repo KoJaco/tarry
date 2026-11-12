@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.onCompletion
 import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.settings.PowerMode
 import me.tarry.core.data.settings.Settings
 import java.time.Instant
 import java.time.ZoneId
@@ -133,4 +134,24 @@ class FakeStayRadius(var radiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat
 
 class FakeWindowEndGrace(var maxMin: Int = Settings.DEFAULT_WINDOW_END_GRACE_MIN) : WindowEndGraceSource {
     override suspend fun graceMaxMin() = maxMin
+}
+
+class FakePowerSettings(
+    mode: PowerMode = PowerMode.PRECISE,
+    lowBatterySaver: Boolean = true,
+) : PowerSettingsSource {
+    val flow = kotlinx.coroutines.flow.MutableStateFlow(PowerSettings(mode, lowBatterySaver))
+    override val settings: Flow<PowerSettings> get() = flow
+}
+
+class FakeBatterySource(var reading: BatteryReading? = null) : BatterySource {
+    val flow = MutableSharedFlow<BatteryReading>(extraBufferCapacity = 8)
+    override fun read() = reading
+    override val changes: Flow<BatteryReading> get() = flow
+
+    /** A platform change: the reading and the broadcast. */
+    suspend fun change(r: BatteryReading) {
+        reading = r
+        flow.emit(r)
+    }
 }

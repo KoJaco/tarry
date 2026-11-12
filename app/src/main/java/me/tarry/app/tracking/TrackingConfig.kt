@@ -1,6 +1,30 @@
 package me.tarry.app.tracking
 
+import me.tarry.core.data.settings.PowerMode
+
 enum class LocationPriority { PASSIVE, LOW_POWER, BALANCED, HIGH_ACCURACY }
+
+/**
+ * One capture profile per power mode (docs/handoffs/phase-battery-build.md). Intervals double as the fastest update
+ * rate. Accuracy first: moving capture stays HIGH_ACCURACY in Precise and Balanced.
+ */
+data class CaptureProfile(
+    /** STATIONARY request. The stay geofence radius is a user setting (Settings.stayGeofenceRadiusM). */
+    val stationaryPriority: LocationPriority,
+    val stationaryIntervalMs: Long,
+    /** MOVING request. */
+    val movingPriority: LocationPriority,
+    val movingIntervalMs: Long,
+    /** Fixes may be held and delivered together up to this long (0: delivered as they arrive). */
+    val movingMaxUpdateDelayMs: Long,
+    /**
+     * Upper bound on the moving request kept after a no-progress demotion (see [TrackingConfig.noProgressKeepsMovingRequest]),
+     * measured by fix times from the demotion (no timer): if AR never reports STILL (a phone in a car cradle, a stale
+     * moving activity), the first fix this long after the demotion switches to the stationary request. The stay geofence
+     * and the safety net still catch a later departure.
+     */
+    val noProgressKeptRequestMaxMs: Long,
+)
 
 /**
  * Every tracking tunable (AGENTS rule 5). Defaults come from docs/specs/tarry-mvp.md
@@ -16,10 +40,7 @@ data class TrackingConfig(
      */
     val stationaryExitFixes: Int = 2,
     val stationaryExitMinMs: Long = 60_000L,
-    // STATIONARY location request. The stay geofence radius is a user setting (Settings.stayGeofenceRadiusM).
-    // Accuracy first, battery later (dogfood-2): both modes use GPS, the mode only sets the interval.
-    val stationaryPriority: LocationPriority = LocationPriority.HIGH_ACCURACY,
-    val stationaryFixIntervalMs: Long = 60_000L,
+    // The stay geofence radius is a user setting (Settings.stayGeofenceRadiusM); the location requests are in [profiles].
     /**
      * Demotion of MOVING without displacement (a berthed boat or a parked car can keep reporting a moving activity).
      * After [noProgressFixes] consecutive accepted fixes that all stay within the stay radius times
@@ -37,17 +58,11 @@ data class TrackingConfig(
      * stationary request at once (a battery knob).
      */
     val noProgressKeepsMovingRequest: Boolean = true,
-    /**
-     * Upper bound on that kept moving request, measured by fix times from the demotion (no timer): if AR never reports
-     * STILL (a phone in a car cradle, a stale moving activity), the first fix this long after the demotion switches to
-     * the stationary request. The stay geofence and the safety net still catch a later departure.
-     */
-    val noProgressKeptRequestMaxMs: Long = 20 * 60_000L,
-    // MOVING location request.
-    val movingPriority: LocationPriority = LocationPriority.HIGH_ACCURACY,
-    val movingIntervalMs: Long = 10_000L,
-    /** No batching: fixes are delivered as they arrive. */
-    val movingMaxUpdateDelayMs: Long = 0L,
+    /** The location request profile of each [PowerMode] (the user's mode, or Saver while the battery is low). */
+    val profiles: Map<PowerMode, CaptureProfile> = DEFAULT_PROFILES,
+    /** Low-battery switch to Saver: on at or below this percent, off again at or above [lowBatteryExitPercent] or when charging. */
+    val lowBatteryEnterPercent: Int = 20,
+    val lowBatteryExitPercent: Int = 25,
     /** Wait for an accurate fix instead of delivering a cached coarse one as new. */
     val waitForAccurateLocation: Boolean = true,
     /** Max age of a delivered fix; 0 means no stale cached fix is delivered as an update. */
@@ -125,4 +140,24 @@ data class TrackingConfig(
     val debugTestWindowLengthMs: Long = 10 * 60_000L,
     /** Settings > Tracking health > Test tracking: how long the single one-off location request may wait for a fix. */
     val testFixTimeoutMs: Long = 30_000L,
+)
+
+private const val MINUTE_MS = 60_000L
+
+private val DEFAULT_PROFILES: Map<PowerMode, CaptureProfile> = mapOf(
+    PowerMode.PRECISE to CaptureProfile(
+        stationaryPriority = LocationPriority.HIGH_ACCURACY, stationaryIntervalMs = 60_000L,
+        movingPriority = LocationPriority.HIGH_ACCURACY, movingIntervalMs = 10_000L, movingMaxUpdateDelayMs = 0L,
+        noProgressKeptRequestMaxMs = 20 * MINUTE_MS,
+    ),
+    PowerMode.BALANCED to CaptureProfile(
+        stationaryPriority = LocationPriority.HIGH_ACCURACY, stationaryIntervalMs = 180_000L,
+        movingPriority = LocationPriority.HIGH_ACCURACY, movingIntervalMs = 10_000L, movingMaxUpdateDelayMs = 30_000L,
+        noProgressKeptRequestMaxMs = 5 * MINUTE_MS,
+    ),
+    PowerMode.SAVER to CaptureProfile(
+        stationaryPriority = LocationPriority.BALANCED, stationaryIntervalMs = 300_000L,
+        movingPriority = LocationPriority.HIGH_ACCURACY, movingIntervalMs = 30_000L, movingMaxUpdateDelayMs = 120_000L,
+        noProgressKeptRequestMaxMs = 3 * MINUTE_MS,
+    ),
 )
