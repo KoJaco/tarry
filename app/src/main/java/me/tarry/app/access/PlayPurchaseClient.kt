@@ -90,6 +90,7 @@ class PlayPurchaseClient @Inject constructor(
         if (details == null) refresh()
         val d = details
         if (d == null || !connect()) {
+            _offer.value = OfferState.Unavailable
             LaunchResult.Unavailable
         } else {
             val params = BillingFlowParams.newBuilder()
