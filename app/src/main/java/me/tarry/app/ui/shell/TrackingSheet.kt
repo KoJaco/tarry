@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.shape.CornerSize
@@ -114,6 +115,14 @@ fun TrackingSheetContent(
                         text = stringResource(R.string.tracking_notification_finishing),
                         style = MaterialTheme.typography.bodyMedium,
                         color = TarryTheme.colors.muted,
+                    )
+                }
+                if (details.lowBatterySaverActive) {
+                    Text(
+                        text = stringResource(R.string.battery_sheet_low),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TarryTheme.colors.muted,
+                        modifier = Modifier.testTag("battery_low_line"),
                     )
                 }
                 SheetRow(stringResource(R.string.tracking_sheet_pause_30m), onDone, R.drawable.ic_pause) { actions.onPause(PauseKind.PAUSE_30M) }

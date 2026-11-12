@@ -22,6 +22,7 @@ import me.tarry.app.ui.schedule.WeekScheduleSummary
 import me.tarry.app.ui.schedule.summarize
 import me.tarry.core.data.model.Schedule
 import me.tarry.app.ui.settings.SettingsContent
+import me.tarry.core.data.settings.PowerMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
 import org.junit.Rule
@@ -74,7 +75,7 @@ class SettingsUiTest {
     @Test
     fun gracePickerListsFourOptionsWithDetailsAndSelectingOneCallsBack() {
         show()
-        composeRule.onNodeWithText("After the window ends").performClick()
+        composeRule.onNodeWithText("After the window ends").performScrollTo().performClick()
         composeRule.onAllNodes(radioOption).assertCountEquals(4)
         composeRule.onNode(option("Stop on time")).assertExists()
         composeRule.onNode(option("Up to 15 min")).assertExists()
@@ -223,5 +224,78 @@ class SettingsUiTest {
     fun trackingHealthSubtitleSaysWorkingWhileTracking() {
         composeRule.setContent { SettingsContent(Settings(), trackingState = me.tarry.app.tracking.TrackingState.TRACKING) }
         composeRule.onNodeWithText("Working").performScrollTo().assertExists()
+    }
+
+    // Battery use (phase-battery).
+
+    private fun showPower(
+        settings: Settings = Settings(),
+        active: Boolean = false,
+        fontScale: Float = 1f,
+        dark: Boolean = false,
+        onMode: (PowerMode) -> Unit = {},
+        onSwitch: (Boolean) -> Unit = {},
+    ) = composeRule.setContent {
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        androidx.compose.runtime.CompositionLocalProvider(
+            androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density, fontScale = fontScale),
+        ) {
+            me.tarry.app.ui.theme.TarryTheme(darkTheme = dark) {
+                SettingsContent(settings, lowBatterySaverActive = active, onPowerModeSelected = onMode, onLowBatterySaverChange = onSwitch)
+            }
+        }
+    }
+
+    @Test
+    fun batteryUseRowShowsBalancedByDefaultAndIsATallEnoughTarget() {
+        showPower()
+        composeRule.onNodeWithText("Battery use").performScrollTo().assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("Balanced").assertExists()
+    }
+
+    @Test
+    fun batteryUseRowSaysSaverBatteryLowWhileTheSwitchIsActive() {
+        showPower(active = true)
+        composeRule.onNodeWithText("Saver · battery low").performScrollTo().assertExists()
+    }
+
+    @Test
+    fun theLowBatteryNoteIsNotShownWhenTheSwitchIsOff() {
+        showPower(Settings(lowBatterySaver = false), active = true)
+        composeRule.onNodeWithText("Saver · battery low").assertDoesNotExist()
+    }
+
+    @Test
+    fun batteryPickerListsThreeModesWithTheirDetailsAndSelectingOneCallsBack() {
+        val modes = mutableListOf<PowerMode>()
+        showPower(onMode = { modes += it })
+        composeRule.onNodeWithText("Battery use").performScrollTo().performClick()
+
+        composeRule.onAllNodes(radioOption).assertCountEquals(3)
+        composeRule.onNode(option("Balanced")).assertIsSelected()
+        composeRule.onNodeWithText("How often Tarry checks your location.", substring = true).assertExists()
+        composeRule.onNodeWithText("Most detail, most battery.", substring = true).assertExists()
+        composeRule.onNodeWithText("every few minutes at a site. Recommended.", substring = true).assertExists()
+        composeRule.onNodeWithText("stops under about 10 minutes may be missed", substring = true).assertExists()
+
+        composeRule.onNode(option("Saver")).performScrollTo().performClick()
+
+        assertThat(modes).containsExactly(PowerMode.SAVER)
+    }
+
+    @Test
+    fun theLowBatterySwitchRowCallsBackAndIsATallEnoughTarget() {
+        val changes = mutableListOf<Boolean>()
+        showPower(onSwitch = { changes += it })
+        composeRule.onNodeWithText("Switch to Saver at 20% battery").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
+        composeRule.onNodeWithText("Uses Saver until you charge or the battery is back above 25%.").assertExists()
+        assertThat(changes).containsExactly(false)
+    }
+
+    @Test
+    fun theBatteryRowsWorkAtLargeTextAndInTheDarkTheme() {
+        showPower(fontScale = 2f, dark = true)
+        composeRule.onNodeWithText("Battery use").performScrollTo().assertHeightIsAtLeast(48.dp)
+        composeRule.onNodeWithText("Switch to Saver at 20% battery").performScrollTo().assertHeightIsAtLeast(48.dp)
     }
 }

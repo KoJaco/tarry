@@ -35,6 +35,7 @@ class DefaultTrackingStateRepository @Inject constructor(
     private val reducer: TrackingStateReducer,
     private val statusStore: TrackingStatusStore,
     private val trackingRepo: TrackingRepository,
+    private val powerSettings: PowerSettingsSource,
     @param:CaptureScope private val scope: CoroutineScope,
 ) : TrackingStateRepository {
     private val refreshTick = MutableStateFlow(0)
@@ -50,7 +51,11 @@ class DefaultTrackingStateRepository @Inject constructor(
         reduced.map { it.state }.stateIn(scope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), reduced.value.state)
 
     override val details: StateFlow<TrackingDetails> =
-        reduced.map { TrackingDetails(it.attentionCause, it.pausedUntil, it.finishingUp) }
+        combine(
+            reduced,
+            statusStore.status.map { it.lowBatterySaverActive }.distinctUntilChanged(),
+            powerSettings.settings.map { it.mode }.distinctUntilChanged(),
+        ) { r, lowBattery, mode -> TrackingDetails(r.attentionCause, r.pausedUntil, r.finishingUp, mode, lowBattery) }
             .stateIn(scope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), TrackingDetails())
 
     override fun refresh() {

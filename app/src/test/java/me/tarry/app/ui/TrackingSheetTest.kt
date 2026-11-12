@@ -100,4 +100,17 @@ class TrackingSheetTest {
         show(TrackingState.TRACKING)
         composeRule.onNodeWithText("Stop").assertHeightIsAtLeast(48.dp)
     }
+
+    @Test
+    fun trackingWithTheLowBatterySwitchActiveSaysSoInOneMutedLine() {
+        show(TrackingState.TRACKING, TrackingDetails(lowBatterySaverActive = true))
+        composeRule.onNodeWithText("Battery low: using Saver").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop").assertIsDisplayed()
+    }
+
+    @Test
+    fun trackingWithoutTheSwitchActiveHasNoBatteryLine() {
+        show(TrackingState.TRACKING)
+        composeRule.onNodeWithText("Battery low: using Saver").assertDoesNotExist()
+    }
 }
