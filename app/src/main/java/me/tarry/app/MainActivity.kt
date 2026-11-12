@@ -22,6 +22,7 @@ import me.tarry.core.data.settings.ThemeMode
 import me.tarry.app.ui.theme.DarkTarryColors
 import me.tarry.app.ui.theme.LightTarryColors
 import me.tarry.app.access.AccessIntents
+import me.tarry.app.access.PurchaseClient
 import me.tarry.app.reminder.ReviewReminderIntents
 import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.segmentation.SegmentationScheduler
@@ -49,6 +50,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var reviewReminder: ReviewReminderScheduler
 
     @Inject @CaptureScope lateinit var captureScope: CoroutineScope
+
+    @Inject lateinit var purchaseClient: PurchaseClient
 
     /** The reminder notification was tapped: show today's Timeline with the Needs review filter on, once. */
     private var openReview by mutableStateOf(false)
@@ -126,6 +129,8 @@ class MainActivity : ComponentActivity() {
         // fix what it can (the app is in the foreground, so it may start the service directly).
         trackingState.refresh()
         segmentationScheduler.enqueueNow()
+        // What this Google account owns can change behind the app (a refund, a purchase on another device).
+        captureScope.launch { purchaseClient.refresh() }
         captureScope.launch {
             controller.reconcile(ReconcileSource.UI)
             healthChecker.clearResolved()

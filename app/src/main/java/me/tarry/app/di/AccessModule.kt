@@ -7,6 +7,8 @@ import dagger.hilt.components.SingletonComponent
 import me.tarry.app.BuildConfig
 import me.tarry.app.access.DebugEntitlement
 import me.tarry.app.access.Entitlement
+import me.tarry.app.access.PlayPurchaseClient
+import me.tarry.app.access.PurchaseClient
 import me.tarry.app.access.RealEntitlement
 import me.tarry.app.access.entitlementLockSource
 import me.tarry.app.segmentation.AccessLockSource
@@ -21,6 +23,9 @@ object AccessModule {
     @Provides @Singleton
     fun provideEntitlement(real: Provider<RealEntitlement>, debug: Provider<DebugEntitlement>): Entitlement =
         chooseEntitlement(BuildConfig.DEBUG, real, debug)
+
+    @Provides @Singleton
+    fun providePurchaseClient(client: PlayPurchaseClient): PurchaseClient = client
 
     /** The lock spans for the segmentation glue, read through the entitlement. */
     @Provides
