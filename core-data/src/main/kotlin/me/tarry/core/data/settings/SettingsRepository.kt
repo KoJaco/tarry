@@ -81,6 +81,14 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.WINDOW_END_GRACE_MAX_MIN] = minutes }
     }
 
+    suspend fun setPowerMode(mode: PowerMode) {
+        dataStore.edit { it[Keys.POWER_MODE] = mode.name }
+    }
+
+    suspend fun setLowBatterySaver(enabled: Boolean) {
+        dataStore.edit { it[Keys.LOW_BATTERY_SAVER] = enabled }
+    }
+
     suspend fun setTimelineZoomMinutes(minutes: Int) {
         require(minutes in Settings.ALLOWED_TIMELINE_ZOOM_MINUTES) { "Invalid timeline zoom: $minutes" }
         dataStore.edit { it[Keys.TIMELINE_ZOOM_LEVEL] = minutes }
@@ -152,6 +160,8 @@ class SettingsRepository @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val STAY_GEOFENCE_RADIUS_M = intPreferencesKey("stay_geofence_radius_m")
         val WINDOW_END_GRACE_MAX_MIN = intPreferencesKey("window_end_grace_max_min")
+        val POWER_MODE = stringPreferencesKey("tracking_power_mode")
+        val LOW_BATTERY_SAVER = booleanPreferencesKey("low_battery_saver")
         val SEGMENTATION_VERSION = intPreferencesKey("segmentation_version")
         val TIMELINE_ZOOM_LEVEL = intPreferencesKey("timeline_zoom_level")
         val MAP_OVERLAY_MINIMISED = booleanPreferencesKey("map_overlay_minimised")
@@ -181,6 +191,8 @@ class SettingsRepository @Inject constructor(
                 ?.takeIf { it in Settings.ALLOWED_STAY_RADII_M } ?: d.stayGeofenceRadiusM,
             windowEndGraceMaxMin = this[Keys.WINDOW_END_GRACE_MAX_MIN]
                 ?.takeIf { it in Settings.ALLOWED_WINDOW_END_GRACE_MIN } ?: d.windowEndGraceMaxMin,
+            powerMode = enumOrDefault(this[Keys.POWER_MODE], d.powerMode),
+            lowBatterySaver = this[Keys.LOW_BATTERY_SAVER] ?: d.lowBatterySaver,
             timelineZoomMinutes = this[Keys.TIMELINE_ZOOM_LEVEL]
                 ?.takeIf { it in Settings.ALLOWED_TIMELINE_ZOOM_MINUTES } ?: d.timelineZoomMinutes,
             mapOverlayMinimised = this[Keys.MAP_OVERLAY_MINIMISED] ?: d.mapOverlayMinimised,
