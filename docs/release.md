@@ -39,7 +39,7 @@ to CI as secrets.
    stays unlocked.
 7. **App content** (Policy → App content), everything below in §4.
 8. **Store listing**: `docs/store-listing.md`; screenshots from `tmp/marketing-2026-11-11/stills/`; feature graphic
-   1024×500 (to make); icon 512×512 from `docs/brand/logo/`.
+   `tmp/play-assets/feature-graphic-1024x500.png`; icon `tmp/play-assets/icon-512.png`.
 9. **Production** → countries: all → create release → promote the tested internal build → send for review.
    (Organisation accounts are exempt from the 12-tester / 14-day closed test; if Play Console asks for it anyway, it is
    on the Dashboard under "Production access".) First review usually takes from a few days up to about a week for apps
