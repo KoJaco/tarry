@@ -89,11 +89,11 @@ data class Settings(
         const val ACCESS_LAST_SEEN_KEY = "access_last_seen_ms"
         /** When the tracking lock began (UTC epoch ms); windows after it are not segmented. Cleared once tracking is allowed again. */
         const val ACCESS_LOCKED_SINCE_KEY = "access_locked_since_ms"
-        /** Debug builds only: the forced access state (see the Sessions screen switch). */
         /** The last time tracking was allowed (UTC epoch ms), so a lock never starts before it. */
         const val ACCESS_LAST_ALLOWED_KEY = "access_last_allowed_ms"
         /** Closed lock spans as "start:end,start:end" (UTC epoch ms), oldest first, capped; the open one is [ACCESS_LOCKED_SINCE_KEY]. */
         const val ACCESS_LOCK_INTERVALS_KEY = "access_lock_intervals"
+        /** Debug builds only: the forced access state (see the Sessions screen switch). */
         const val ACCESS_DEBUG_STATE_KEY = "access_debug_state"
         /** Debug builds only: the trial end the forced state reports (UTC epoch ms). */
         const val ACCESS_DEBUG_TRIAL_END_KEY = "access_debug_trial_end_ms"

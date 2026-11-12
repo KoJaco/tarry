@@ -26,11 +26,14 @@ data class ReducedTrackingState(
 )
 
 /**
- * Pure reducer behind the toggle. Precedence: user Stop/Pause, then outages (ATTENTION), then TRACKING or IDLE.
+ * Pure reducer behind the toggle. Precedence: the trial lock (TRIAL_ENDED, even after a Stop or Pause), user Stop/Pause, then outages (ATTENTION), then TRACKING or IDLE.
  * Outside a window only standing configuration problems (permissions, exact alarms) raise ATTENTION.
  */
 class TrackingStateReducer @Inject constructor(private val evaluator: HealthEvaluator) {
     fun reduce(inputs: TrackingStateInputs): ReducedTrackingState {
+        if (inputs.health.locked) {
+            evaluator.issue(inputs.health)?.let { return ReducedTrackingState(TrackingState.ATTENTION, it.cause) }
+        }
         inputs.pauseEndMode?.let { mode ->
             return if (mode == ManualOverrideEndMode.UNTIL_STOPPED) {
                 ReducedTrackingState(TrackingState.IDLE)

@@ -87,4 +87,16 @@ class SegmentationInputsTest {
         assertThat(windowsOutsideLocks(windows, emptyList())).isEqualTo(windows)
         assertThat(windowsOutsideLocks(windows, listOf(LockSpan(1_000, 2_000)))).isEqualTo(windows)
     }
+
+    @Test
+    fun aHealthGapWrittenAfterTheLockStartIsCutAtTheLock() {
+        val hour = 3_600_000L
+        // Trial ends 17:00 inside a 09:00-18:00 window; the phone dies at 16:30 and recovery at 20:00 writes 16:30-18:00.
+        val gap = TimeRange(16 * hour + 30 * 60_000L, 18 * hour)
+        val lock = listOf(LockSpan(17 * hour, Long.MAX_VALUE))
+        assertThat(healthGapsOutsideLocks(listOf(gap), lock)).containsExactly(TimeRange(gap.startMs, 17 * hour))
+        // A Gap wholly inside the lock disappears; one wholly before it is untouched.
+        assertThat(healthGapsOutsideLocks(listOf(TimeRange(17 * hour + 1, 18 * hour)), lock)).isEmpty()
+        assertThat(healthGapsOutsideLocks(listOf(TimeRange(0, hour)), lock)).containsExactly(TimeRange(0, hour))
+    }
 }
