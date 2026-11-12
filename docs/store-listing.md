@@ -7,7 +7,7 @@ Source: `docs/brand/brand-and-copy.md` §7–8. No claims beyond what ships. Bat
 **Short description (≤ 80):** Your work day, written down. Sites, travel and jobs, private on your phone.
 
 **Category:** Business (alternative: Productivity) · **Tags:** time tracking, mileage/travel, invoicing
-**Contact email:** the support email · **Website:** the landing page · **Privacy policy:** hosted `docs/privacy-policy.md`
+**Contact email:** hello@tarry.me · **Website:** https://www.tarry.me · **Privacy policy:** https://www.tarry.me/privacy
 
 ## Full description (≤ 4000)
 

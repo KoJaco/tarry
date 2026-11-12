@@ -45,4 +45,4 @@ If this policy changes, the new version will be posted at this address with a ne
 in the app's release notes.
 
 ## Contact
-Questions: **SUPPORT_EMAIL_PLACEHOLDER**
+Questions: **hello@tarry.me**

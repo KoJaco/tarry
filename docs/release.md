@@ -46,7 +46,7 @@ to CI as secrets.
    with background location.
 
 ## 4. App content answers
-- **Privacy policy URL:** the hosted `docs/privacy-policy.md` (fill `AboutLinks.PRIVACY_URL` with the same URL first).
+- **Privacy policy URL:** https://www.tarry.me/privacy (host `docs/privacy-policy.md` there; the app already links to it).
 - **Ads:** No ads.
 - **App access:** All functionality is available without special access (no login). Note for reviewers: "Tracking runs
   during the work hours you set in Settings → Schedule; use Start in the top bar to try it at any time."
