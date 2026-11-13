@@ -372,6 +372,24 @@ class DayScrubberTest {
     }
 
     @Test
+    fun expandedTheRoundButtonsKeepTheSame16dpInsetAsTheLeftSide() {
+        time = at(11)
+        show()
+        val inset = with(composeRule.density) { 16.dp.toPx() }
+        val overlay = boundsOf("map_overlay")
+        assertThat(overlay.right - boundsOf("map_scrub_open").right).isWithin(1f).of(inset)
+    }
+
+    @Test
+    fun minimisedTheMaximiseButtonKeepsThe16dpInset() {
+        show()
+        composeRule.onNodeWithTag("map_scrub_minimise").performClick()
+        composeRule.waitForIdle()
+        val inset = with(composeRule.density) { 16.dp.toPx() }
+        assertThat(boundsOf("map_overlay").right - boundsOf("map_scrub_maximise").right).isWithin(1f).of(inset)
+    }
+
+    @Test
     fun onAGapCardMinimiseTakesTheOpenButtonsPlace() {
         time = at(13, 30)
         show()

@@ -29,7 +29,7 @@ FEATURES
 • Battery modes: Balanced by default, Precise when you want every detail, Saver for long days, and an automatic switch to Saver at low battery.
 
 PRIVATE BY DEFAULT. NOT BY SETTING.
-Tarry has no account, no server and no analytics. Your location is processed on your phone and never leaves it, unless you export a file yourself. The only things it fetches from the internet are map tiles and street addresses (the phone's built-in geocoder), and Google Play handles your purchase.
+Tarry has no account, no server and no analytics. Your location is processed on your phone and never leaves it, unless you export a file yourself. The only things it fetches from the internet are map tiles and street addresses (the phone's built-in geocoder), and Google Play handles your purchase (Google's billing library may send Google diagnostics about the purchase, never your Tarry data).
 • No sign-up, no email, no tracking pixels.
 • Location stays on your device.
 • You choose where backups and exports go.

@@ -63,6 +63,10 @@ to CI as secrets.
     - **Purchase history:** handled by Google Play; Play's own billing data does not need declaring by the developer
       (check the current Play help article "Data safety: purchase history" before submitting; if unsure, declare
       Purchase history — collected, not shared, App functionality).
+    - **App info and performance → Diagnostics:** the Play Billing Library bundles Google's logging component
+      (datatransport), which may send Google diagnostics about the purchase flow. Play asks developers to declare data
+      their SDKs collect, so declare Diagnostics — collected, not shared, App functionality — unless Play's SDK index
+      entry for the Billing Library says it's exempt. No Tarry data goes into it (ADR 0004).
   - Encrypted in transit: **Yes** (HTTPS). Users can request deletion: **Yes** — Settings → Data → Delete all data
     (everything is on the device; uninstalling also removes it).
 - **Location permissions declaration** (background location):

@@ -1,6 +1,6 @@
 # Tarry privacy policy
 
-_Last updated: 13 November 2026_
+_Last updated: 14 November 2026_
 
 Tarry is an Android app made by Kori Jacobsen in Australia ("we"). This policy explains what the app does with your
 information. The short version: **your data stays on your phone.** Tarry has no account, no server and no analytics.
@@ -21,9 +21,11 @@ Tarry only connects to the internet for three things:
 2. **Street addresses** — to name a place ("12 Smith St"), the app asks your phone's built-in Android geocoder, which may
    send the place's coordinates to Google to look up the address. This is governed by Google's privacy policy.
 3. **Your purchase** — the 7-day trial runs on your phone. If you buy Tarry, Google Play handles the payment and tells the
-   app whether you own it. We receive no payment details and send none of your app data to Google Play.
+   app whether you own it. We receive no payment details and send none of your app data to Google Play. Google's Play
+   Billing Library, which the app uses for this, may also send Google technical diagnostics about the purchase process.
+   These contain none of your Tarry data, and we never see them. This is governed by Google's privacy policy.
 
-Nothing else is sent. There are no ads, no analytics, no crash-reporting tools and no trackers.
+Nothing else is sent. We add no ads, no analytics, no crash-reporting tools and no trackers.
 
 ## Exports and backups
 You can export CSV/PDF reports and full backups. These files go only where you choose to save or send them. Once you
