@@ -781,4 +781,62 @@ class CaptureCoordinatorTest {
         kotlinx.coroutines.delay(300)
         assertThat(location.requests).hasSize(before)
     }
+
+    /** Delegates to [inner]; writes fail with an IOException while [failWrites] is set. */
+    private class FlakyDataStore(private val inner: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>) :
+        androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+        @Volatile var failWrites = false
+        override val data = inner.data
+        override suspend fun updateData(
+            transform: suspend (t: androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences,
+        ): androidx.datastore.preferences.core.Preferences {
+            if (failWrites) throw java.io.IOException("disk full")
+            return inner.updateData(transform)
+        }
+    }
+
+    @Test
+    fun aFailingStatusWriteDoesNotStopThePowerWatcher() = runBlocking {
+        val flaky = FlakyDataStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("flaky.preferences_pb") })
+        val flakyStore = TrackingStatusStore(flaky)
+        val c = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, flakyStore, location, activityClient, geofence, stayRadius, permissions, windows,
+            health, clock, power, battery, captureScope,
+        )
+        battery.reading = BatteryReading(50, charging = false)
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = true)
+        c.begin(SessionTrigger.SCHEDULE)
+
+        flaky.failWrites = true
+        battery.change(BatteryReading(15, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.SAVER) }
+
+        battery.change(BatteryReading(40, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.BALANCED) }
+
+        flaky.failWrites = false
+        battery.change(BatteryReading(10, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.SAVER) }
+        eventually { flakyStore.current().lowBatterySaverActive }
+        assertThat(flakyStore.current().attentionCause).isNull()
+        assertThat(alerts.posted).isEmpty()
+    }
+
+    @Test
+    fun switchingOnAtALowLevelAfterADipDoesNotStartSaver() = runBlocking {
+        battery.reading = BatteryReading(50, charging = false)
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = false)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        battery.change(BatteryReading(15, charging = false)) // the dip happens with the switch off
+        kotlinx.coroutines.delay(300)
+        battery.change(BatteryReading(22, charging = false))
+        kotlinx.coroutines.delay(300)
+        val before = location.requests.size
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = true)
+        kotlinx.coroutines.delay(300)
+
+        assertThat(location.requests).hasSize(before)
+        assertThat(store.current().lowBatterySaverActive).isFalse()
+    }
 }

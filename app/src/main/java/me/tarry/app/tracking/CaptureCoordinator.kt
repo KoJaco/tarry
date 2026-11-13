@@ -133,10 +133,10 @@ class CaptureCoordinator @Inject constructor(
             health.closeOutage(now)
             activityRegistered = registerActivity()
             val power = powerSettings.settings.first()
-            lowBatteryActive = lowBatteryRule.next(false, battery.read())
+            lowBatteryActive = power.lowBatterySaver && lowBatteryRule.next(false, battery.read())
             effectiveMode = power.effective(lowBatteryActive)
             statusStore.setLowBatterySaverActive(power.lowBatterySaver && lowBatteryActive)
-            val m = CaptureModeMachine(config, activityRecognitionAvailable = activityRegistered, profile = config.profiles.getValue(effectiveMode))
+            val m = CaptureModeMachine(config, config.profiles.getValue(effectiveMode), activityRecognitionAvailable = activityRegistered)
             m.stayRadiusM = stayRadius.stayRadiusM()
             machine = m
             apply(m.start())
@@ -169,20 +169,31 @@ class CaptureCoordinator @Inject constructor(
         powerJob?.cancel()
         val readings = battery.changes.map<BatteryReading, BatteryReading?> { it }.onStart { emit(null) }
         powerJob = scope.launch {
-            combine(powerSettings.settings, readings) { s, r -> s to r }.collect { (s, r) -> onPowerInputs(s, r) }
+            combine(powerSettings.settings, readings) { s, r -> s to r }.collect { (s, r) ->
+                // One failed event (a DataStore IOException, a client error) must not end the watcher: it keeps following the battery.
+                try {
+                    onPowerInputs(s, r)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Best effort; the next settings change or battery broadcast tries again.
+                }
+            }
         }
     }
 
     private suspend fun onPowerInputs(s: PowerSettings, reading: BatteryReading?) = mutex.withLock {
         val m = machine ?: return@withLock
         if (session == null) return@withLock
-        lowBatteryActive = lowBatteryRule.next(lowBatteryActive, reading)
-        val shown = s.lowBatterySaver && lowBatteryActive
-        if (statusStore.current().lowBatterySaverActive != shown) statusStore.setLowBatterySaverActive(shown)
+        // Tracked only while the switch is on: switching it on later at a low level does not start Saver until the next reading.
+        lowBatteryActive = s.lowBatterySaver && lowBatteryRule.next(lowBatteryActive, reading)
         val effective = s.effective(lowBatteryActive)
-        if (effective == effectiveMode) return@withLock
+        val switched = effective != effectiveMode
         effectiveMode = effective
-        apply(m.setProfile(config.profiles.getValue(effective)))
+        // The mode does not change, so only the re-issued request is applied (no capture-mode write that could fail first).
+        if (switched) m.setProfile(config.profiles.getValue(effective)).effects.filterIsInstance<CaptureEffect.RequestLocation>().forEach { startLocation(it.params) }
+        // The status flag is display only and written after the switch, so a failing write cannot hold the profile back.
+        if (statusStore.current().lowBatterySaverActive != lowBatteryActive) statusStore.setLowBatterySaverActive(lowBatteryActive)
     }
 
     /** Activity Recognition is optional: any failure means distance-only gating. */
