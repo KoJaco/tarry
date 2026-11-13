@@ -7,11 +7,9 @@ import androidx.core.net.toUri
 object AboutLinks {
     const val SOURCE_URL = "https://github.com/KoJaco/tarry"
 
-    // TODO(phase 8c): owner fills before release
-    const val PRIVACY_URL = "https://tarry.app/privacy"
+    const val PRIVACY_URL = "https://www.tarry.me/privacy"
 
-    // TODO(phase 8c): owner fills before release
-    const val SUPPORT_EMAIL = "support@tarry.app"
+    const val SUPPORT_EMAIL = "hello@tarry.me"
 
     /** `mailto:` intent with the support subject. [subject] is passed in so it can come from strings.xml. */
     fun supportIntent(subject: String): Intent =

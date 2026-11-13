@@ -18,14 +18,30 @@ android {
         applicationId = "me.tarry.app"
         minSdk = 29
         targetSdk = 37
+        // Bump both for every Play upload (docs/release.md). The release workflow checks the tag is v<versionName>.
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Release signing comes only from CI secrets (AGENTS rule 10): the release workflow writes the upload key to a temp
+    // file and sets these environment variables. Locally they are unset, so release builds stay unsigned.
+    val uploadStoreFile = System.getenv("TARRY_UPLOAD_STORE_FILE")?.takeIf { it.isNotBlank() }
+    signingConfigs {
+        if (uploadStoreFile != null) {
+            create("upload") {
+                storeFile = file(uploadStoreFile)
+                storePassword = System.getenv("TARRY_UPLOAD_STORE_PASSWORD")
+                keyAlias = System.getenv("TARRY_UPLOAD_KEY_ALIAS")
+                keyPassword = System.getenv("TARRY_UPLOAD_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            if (uploadStoreFile != null) signingConfig = signingConfigs.getByName("upload")
             optimization {
                 enable = true
                 packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
