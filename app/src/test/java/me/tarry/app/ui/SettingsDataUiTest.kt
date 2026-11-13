@@ -348,6 +348,6 @@ class SettingsDataUiTest {
     fun aboutRowShowsTheVersionTheAboutScreenUses() {
         composeRule.setContent { SettingsContent(Settings()) }
 
-        composeRule.onNodeWithText("1.0 (1)").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("${me.tarry.app.BuildConfig.VERSION_NAME} (${me.tarry.app.BuildConfig.VERSION_CODE})").performScrollTo().assertIsDisplayed()
     }
 }
