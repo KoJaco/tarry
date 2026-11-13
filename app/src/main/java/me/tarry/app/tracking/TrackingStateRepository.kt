@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import me.tarry.app.access.Entitlement
 import me.tarry.core.data.repository.TrackingRepository
+import me.tarry.core.data.settings.PowerMode
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,6 +38,7 @@ class DefaultTrackingStateRepository @Inject constructor(
     private val statusStore: TrackingStatusStore,
     private val trackingRepo: TrackingRepository,
     private val entitlement: Entitlement,
+    private val powerSettings: PowerSettingsSource,
     @param:CaptureScope private val scope: CoroutineScope,
 ) : TrackingStateRepository {
     private val refreshTick = MutableStateFlow(0)
@@ -53,14 +55,23 @@ class DefaultTrackingStateRepository @Inject constructor(
         reduced.map { it.state }.stateIn(scope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), reduced.value.state)
 
     override val details: StateFlow<TrackingDetails> =
-        reduced.map { TrackingDetails(it.attentionCause, it.pausedUntil, it.finishingUp) }
+        combine(
+            reduced,
+            statusStore.status.map { it.lowBatterySaverActive }.distinctUntilChanged(),
+            powerSettings.settings.map { it.mode }.distinctUntilChanged(),
+        ) { r, lowBattery, mode -> detailsOf(r, lowBattery, mode) }
             .stateIn(scope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), TrackingDetails())
 
     override fun refresh() {
         refreshTick.value++
     }
 
-    private companion object {
-        const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
+    internal companion object {
+        private const val SUBSCRIPTION_TIMEOUT_MS = 5_000L
+
+        /** The stored low-battery flag is only shown while TRACKING: a flag left behind by a killed session must not show. */
+        fun detailsOf(r: ReducedTrackingState, lowBatteryFlag: Boolean, mode: PowerMode) = TrackingDetails(
+            r.attentionCause, r.pausedUntil, r.finishingUp, mode, lowBatteryFlag && r.state == TrackingState.TRACKING,
+        )
     }
 }

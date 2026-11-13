@@ -235,4 +235,16 @@ class TrackingHealthContentTest {
         val body = composeRule.onNodeWithText("Tarry is recording your location now.", substring = true).fetchSemanticsNode().boundsInRoot.left
         assertThat(body).isWithin(1f).of(title)
     }
+
+    @Test
+    fun theBatteryUseLineNamesTheChosenMode() {
+        show(TrackingHealthUiState(TrackingState.TRACKING, null, allOk, powerMode = me.tarry.core.data.settings.PowerMode.PRECISE))
+        composeRule.onNodeWithText("Battery use: Precise").assertExists()
+    }
+
+    @Test
+    fun theBatteryUseLineSaysSaverBatteryLowWhileTheSwitchIsActive() {
+        show(TrackingHealthUiState(TrackingState.TRACKING, null, allOk, lowBatterySaverActive = true), fontScale = 2f)
+        composeRule.onNodeWithText("Battery use: Saver, battery low").assertExists()
+    }
 }

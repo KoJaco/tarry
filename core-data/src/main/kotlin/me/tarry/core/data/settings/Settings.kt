@@ -43,6 +43,8 @@ data class AccessBookkeeping(
     /** Where a new lock would begin (the trial end, if known); never earlier than the last time tracking was allowed. */
     val lockBeganMs: Long?,
 )
+/** How often capture asks for a location; the profile of each is in the app's `TrackingConfig`. */
+enum class PowerMode { PRECISE, BALANCED, SAVER }
 
 /** User-facing settings, persisted in Preferences DataStore. */
 data class Settings(
@@ -65,6 +67,10 @@ data class Settings(
     val timelineZoomMinutes: Int = DEFAULT_TIMELINE_ZOOM_MINUTES,
     /** Whether the Map tab's overlay is minimised to the time pill and strip (no card). Device-local UI state. */
     val mapOverlayMinimised: Boolean = false,
+    /** The chosen tracking mode (Settings > Battery use). Balanced for new installs and upgrades. */
+    val powerMode: PowerMode = PowerMode.BALANCED,
+    /** Use [PowerMode.SAVER] while the battery is low (20% in; back above 25% or charging out). */
+    val lowBatterySaver: Boolean = true,
     /** When the last user-initiated backup finished (UTC epoch ms); null if none yet. */
     val lastBackupMs: Long? = null,
 ) {

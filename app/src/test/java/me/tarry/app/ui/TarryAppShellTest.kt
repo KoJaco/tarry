@@ -193,7 +193,7 @@ class TarryAppShellTest {
 
         backStack.removeAt(backStack.lastIndex)
         composeRule.mainClock.advanceTimeBy(1_000)
-        composeRule.onNodeWithText("Stop radius").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop radius").performScrollTo().assertIsDisplayed()
     }
 
     @Test

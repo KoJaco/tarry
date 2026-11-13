@@ -30,6 +30,8 @@ import me.tarry.app.tracking.FakeLauncher
 import me.tarry.app.tracking.FakeLocationClient
 import me.tarry.app.tracking.FakePermissions
 import me.tarry.app.tracking.FakeSegmentationTrigger
+import me.tarry.app.tracking.FakeBatterySource
+import me.tarry.app.tracking.FakePowerSettings
 import me.tarry.app.tracking.FakeStayRadius
 import me.tarry.app.tracking.FakeWindowEndGrace
 import me.tarry.app.tracking.HealthGapRecorder
@@ -112,7 +114,7 @@ class ScheduleViewModelTest {
         )
         val coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakeStayRadius(),
-            FakePermissions(), EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
+            FakePermissions(), EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         controller = TrackingController(
             coordinator, FakeLauncher(), store, trackingRepo, scheduleRepo, inputs, calculator, FakeAlarmScheduler(),

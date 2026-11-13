@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import me.tarry.app.R
 import me.tarry.app.tracking.TrackingState
+import me.tarry.app.ui.settings.labelRes
 import me.tarry.app.ui.components.SecondaryButton
 import me.tarry.app.ui.components.SectionHeader
 import me.tarry.app.ui.components.SettingsGroup
@@ -139,6 +140,18 @@ private fun StatusCard(state: TrackingHealthUiState) {
             color = colors.muted,
             // Starts where the title text starts, after the icon.
             modifier = Modifier.padding(start = StatusIconSize + TarryTheme.space.s, top = TarryTheme.space.xs),
+        )
+        Text(
+            text = if (state.lowBatterySaverActive) {
+                stringResource(R.string.battery_health_row_low)
+            } else {
+                stringResource(R.string.battery_health_row, stringResource(state.powerMode.labelRes()))
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = colors.muted,
+            modifier = Modifier
+                .padding(start = StatusIconSize + TarryTheme.space.s, top = TarryTheme.space.xs)
+                .testTag("health_battery_use"),
         )
     }
 }

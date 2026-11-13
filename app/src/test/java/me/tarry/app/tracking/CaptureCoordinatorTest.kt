@@ -20,6 +20,7 @@ import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.repository.TimelineRepository
 import me.tarry.core.data.repository.TrackingRepository
+import me.tarry.core.data.settings.PowerMode
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -36,6 +37,7 @@ class CaptureCoordinatorTest {
     val folder = TemporaryFolder()
 
     private val config = TrackingConfig()
+    private val precise = config.profiles.getValue(PowerMode.PRECISE)
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val captureScope = CoroutineScope(Dispatchers.Unconfined + SupervisorJob())
 
@@ -51,6 +53,8 @@ class CaptureCoordinatorTest {
     private val windows = FakeWindowChecker()
     private val clock = FakeClock()
     private val alerts = FakeAlertNotifier()
+    private val power = FakePowerSettings()
+    private val battery = FakeBatterySource()
     private lateinit var health: HealthGapRecorder
     private lateinit var coordinator: CaptureCoordinator
 
@@ -67,7 +71,7 @@ class CaptureCoordinatorTest {
         health = HealthGapRecorder(store, timelineRepo, alerts, clock, config, windows)
         coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, activityClient, geofence, stayRadius, permissions, windows,
-            health, clock, captureScope,
+            health, clock, power, battery, captureScope,
         )
     }
 
@@ -93,7 +97,7 @@ class CaptureCoordinatorTest {
         assertThat(status.activeSessionId).isEqualTo(open.id)
         assertThat(status.captureMode).isEqualTo(CaptureMode.MOVING)
         assertThat(status.lastHeartbeatMs).isEqualTo(clock.now)
-        assertThat(location.requests.single().intervalMs).isEqualTo(config.movingIntervalMs)
+        assertThat(location.requests.single().intervalMs).isEqualTo(precise.movingIntervalMs)
         assertThat(activityClient.registered).isTrue()
         assertThat(geofence.stay).isNull()
     }
@@ -146,7 +150,7 @@ class CaptureCoordinatorTest {
 
         assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
         assertThat(geofence.stay).isEqualTo(FakeGeofenceClient.Stay(-33.0, 151.0, stayRadius.radiusM))
-        assertThat(location.requests.last().intervalMs).isEqualTo(config.stationaryFixIntervalMs)
+        assertThat(location.requests.last().intervalMs).isEqualTo(precise.stationaryIntervalMs)
 
         coordinator.onGeofenceExit()
         assertThat(store.current().captureMode).isEqualTo(CaptureMode.MOVING)
@@ -241,7 +245,7 @@ class CaptureCoordinatorTest {
         }
         val c = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, failing, activityClient, geofence, stayRadius, permissions, windows,
-            health, clock, captureScope,
+            health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         c.begin(SessionTrigger.SCHEDULE)
         // The outage is reported from the capture scope, so wait for it.
@@ -437,22 +441,22 @@ class CaptureCoordinatorTest {
         // Fused now delivers every fix (no request-level distance filter), so a stationary phone is still heard.
         val noAr = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, FakeActivityClient(available = false), geofence, stayRadius,
-            permissions, windows, health, clock, captureScope,
+            permissions, windows, health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         noAr.begin(SessionTrigger.SCHEDULE)
         var offset = 0L
         var lastTime = 0L
-        while (offset <= config.stationaryEntryDurationMs + config.movingIntervalMs) {
+        while (offset <= config.stationaryEntryDurationMs + precise.movingIntervalMs) {
             // About half a metre of drift per fix.
             noAr.onFixes(listOf(fix(offset, lat = -33.0 + offset / 20_000 * 0.000005)))
             lastTime = clock.now + offset
-            offset += config.movingIntervalMs
+            offset += precise.movingIntervalMs
         }
 
         assertThat(store.current().lastHeartbeatMs).isEqualTo(lastTime)
         assertThat(store.current().captureMode).isEqualTo(CaptureMode.STATIONARY)
         assertThat(trackingRepo.pingsForSession(trackingRepo.openSession()!!.id)).isNotEmpty()
-        assertThat(location.requests.last().intervalMs).isEqualTo(config.stationaryFixIntervalMs)
+        assertThat(location.requests.last().intervalMs).isEqualTo(precise.stationaryIntervalMs)
     }
 
     @Test
@@ -462,7 +466,7 @@ class CaptureCoordinatorTest {
             override suspend fun unregister() = Unit
         }
         val c = CaptureCoordinator(
-            config, trackingRepo, timelineRepo, store, location, throwing, geofence, stayRadius, permissions, windows, health, clock,
+            config, trackingRepo, timelineRepo, store, location, throwing, geofence, stayRadius, permissions, windows, health, clock, FakePowerSettings(), FakeBatterySource(),
             captureScope,
         )
         c.begin(SessionTrigger.SCHEDULE)
@@ -483,7 +487,7 @@ class CaptureCoordinatorTest {
         }
         val c = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, location, activityClient, failingGeofence, stayRadius, permissions, windows,
-            health, clock, captureScope,
+            health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
 
         val thrown = runCatching { c.begin(SessionTrigger.SCHEDULE) }.exceptionOrNull()
@@ -512,7 +516,7 @@ class CaptureCoordinatorTest {
         }
         val c = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, flaky, activityClient, geofence, stayRadius, permissions, windows,
-            health, clock, captureScope,
+            health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         c.begin(SessionTrigger.SCHEDULE)
         kotlinx.coroutines.withTimeout(5_000) {
@@ -523,7 +527,7 @@ class CaptureCoordinatorTest {
         }
 
         assertThat(location.requests).hasSize(1)
-        assertThat(location.requests.single().intervalMs).isEqualTo(config.movingIntervalMs)
+        assertThat(location.requests.single().intervalMs).isEqualTo(precise.movingIntervalMs)
         // A live request is left alone.
         c.ensureCapture()
         assertThat(calls.get()).isEqualTo(2)
@@ -546,7 +550,7 @@ class CaptureCoordinatorTest {
         }
         val c = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, denied, activityClient, geofence, stayRadius, permissions, windows,
-            health, clock, captureScope,
+            health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         c.failureListener = { _, issue -> seen += issue }
         c.begin(SessionTrigger.SCHEDULE)
@@ -705,5 +709,134 @@ class CaptureCoordinatorTest {
         assertThat(coordinator.isSettled()).isFalse()
         clock.now += 1
         assertThat(coordinator.isSettled()).isTrue()
+    }
+
+    /** The power watcher reads the status store on its own dispatcher, so its effects land a moment after the trigger. */
+    private suspend fun eventually(timeoutMs: Long = 5_000, condition: suspend () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (!condition()) {
+            check(System.currentTimeMillis() < deadline) { "condition not met in $timeoutMs ms" }
+            kotlinx.coroutines.delay(10)
+        }
+    }
+
+    private fun req(mode: PowerMode) = config.profiles.getValue(mode).let { it.movingIntervalMs to it.movingMaxUpdateDelayMs }
+
+    @Test
+    fun beginAtLowBatteryWithTheSwitchOnRequestsSaverAndShowsIt() = runBlocking {
+        battery.reading = BatteryReading(15, charging = false)
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = true)
+
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        val r = location.requests.last()
+        assertThat(r.intervalMs to r.maxUpdateDelayMs).isEqualTo(req(PowerMode.SAVER))
+        assertThat(store.current().lowBatterySaverActive).isTrue()
+    }
+
+    @Test
+    fun theBatteryRecoveringAndTheSwitchTurnedOffGoBackToTheChosenMode() = runBlocking {
+        battery.reading = BatteryReading(15, charging = false)
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = true)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        battery.change(BatteryReading(30, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.BALANCED) }
+        eventually { !store.current().lowBatterySaverActive }
+
+        battery.change(BatteryReading(18, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.SAVER) }
+        eventually { store.current().lowBatterySaverActive }
+
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = false)
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.BALANCED) }
+        eventually { !store.current().lowBatterySaverActive }
+    }
+
+    @Test
+    fun aPowerModeChangeMidSessionRerequestsAndNothingElseDoes() = runBlocking {
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        val before = location.requests.size
+
+        power.flow.value = PowerSettings(PowerMode.PRECISE, lowBatterySaver = false)
+        kotlinx.coroutines.delay(300)
+        assertThat(location.requests).hasSize(before) // lowBatterySaver is not part of the effective mode here
+
+        power.flow.value = PowerSettings(PowerMode.SAVER, lowBatterySaver = false)
+        eventually { location.requests.size == before + 1 }
+        assertThat(location.requests.last().intervalMs).isEqualTo(config.profiles.getValue(PowerMode.SAVER).movingIntervalMs)
+    }
+
+    @Test
+    fun theLowBatteryStateEndsWithTheSession() = runBlocking {
+        battery.reading = BatteryReading(15, charging = false)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        assertThat(store.current().lowBatterySaverActive).isTrue()
+
+        coordinator.end(SessionEndReason.SCHEDULE_END)
+
+        assertThat(store.current().lowBatterySaverActive).isFalse()
+        val before = location.requests.size
+        battery.change(BatteryReading(10, charging = false))
+        kotlinx.coroutines.delay(300)
+        assertThat(location.requests).hasSize(before)
+    }
+
+    /** Delegates to [inner]; writes fail with an IOException while [failWrites] is set. */
+    private class FlakyDataStore(private val inner: androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>) :
+        androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences> {
+        @Volatile var failWrites = false
+        override val data = inner.data
+        override suspend fun updateData(
+            transform: suspend (t: androidx.datastore.preferences.core.Preferences) -> androidx.datastore.preferences.core.Preferences,
+        ): androidx.datastore.preferences.core.Preferences {
+            if (failWrites) throw java.io.IOException("disk full")
+            return inner.updateData(transform)
+        }
+    }
+
+    @Test
+    fun aFailingStatusWriteDoesNotStopThePowerWatcher() = runBlocking {
+        val flaky = FlakyDataStore(createTrackingStatusDataStore(ioScope) { folder.root.resolve("flaky.preferences_pb") })
+        val flakyStore = TrackingStatusStore(flaky)
+        val c = CaptureCoordinator(
+            config, trackingRepo, timelineRepo, flakyStore, location, activityClient, geofence, stayRadius, permissions, windows,
+            health, clock, power, battery, captureScope,
+        )
+        battery.reading = BatteryReading(50, charging = false)
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = true)
+        c.begin(SessionTrigger.SCHEDULE)
+
+        flaky.failWrites = true
+        battery.change(BatteryReading(15, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.SAVER) }
+
+        battery.change(BatteryReading(40, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.BALANCED) }
+
+        flaky.failWrites = false
+        battery.change(BatteryReading(10, charging = false))
+        eventually { location.requests.last().let { it.intervalMs to it.maxUpdateDelayMs } == req(PowerMode.SAVER) }
+        eventually { flakyStore.current().lowBatterySaverActive }
+        assertThat(flakyStore.current().attentionCause).isNull()
+        assertThat(alerts.posted).isEmpty()
+    }
+
+    @Test
+    fun switchingOnAtALowLevelAfterADipDoesNotStartSaver() = runBlocking {
+        battery.reading = BatteryReading(50, charging = false)
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = false)
+        coordinator.begin(SessionTrigger.SCHEDULE)
+
+        battery.change(BatteryReading(15, charging = false)) // the dip happens with the switch off
+        kotlinx.coroutines.delay(300)
+        battery.change(BatteryReading(22, charging = false))
+        kotlinx.coroutines.delay(300)
+        val before = location.requests.size
+        power.flow.value = PowerSettings(PowerMode.BALANCED, lowBatterySaver = true)
+        kotlinx.coroutines.delay(300)
+
+        assertThat(location.requests).hasSize(before)
+        assertThat(store.current().lowBatterySaverActive).isFalse()
     }
 }
