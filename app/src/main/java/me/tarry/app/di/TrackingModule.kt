@@ -35,6 +35,10 @@ import me.tarry.app.tracking.ScheduleAlarmScheduler
 import me.tarry.app.tracking.SegmentationTrigger
 import me.tarry.app.tracking.ControllerReconcileTrigger
 import me.tarry.app.tracking.ReconcileTrigger
+import me.tarry.app.tracking.AndroidBatterySource
+import me.tarry.app.tracking.BatterySource
+import me.tarry.app.tracking.PowerSettingsSource
+import me.tarry.app.tracking.SettingsPowerSettingsSource
 import me.tarry.app.tracking.SettingsStayRadiusSource
 import me.tarry.app.tracking.SettingsWindowEndGraceSource
 import me.tarry.app.tracking.StayRadiusSource
@@ -77,6 +81,12 @@ abstract class TrackingModule {
 
     @Binds
     abstract fun bindAlarmScheduler(impl: AndroidScheduleAlarmScheduler): ScheduleAlarmScheduler
+
+    @Binds
+    abstract fun bindPowerSettingsSource(impl: SettingsPowerSettingsSource): PowerSettingsSource
+
+    @Binds
+    abstract fun bindBatterySource(impl: AndroidBatterySource): BatterySource
 
     @Binds
     abstract fun bindStayRadiusSource(impl: SettingsStayRadiusSource): StayRadiusSource

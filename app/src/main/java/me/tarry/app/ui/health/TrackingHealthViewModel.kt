@@ -17,6 +17,7 @@ import me.tarry.app.tracking.PreconditionChecker
 import me.tarry.app.tracking.TrackingClock
 import me.tarry.app.tracking.TrackingConfig
 import me.tarry.app.tracking.TrackingStateRepository
+import me.tarry.core.data.settings.PowerMode
 import me.tarry.app.ui.permissions.PermissionChecker
 import javax.inject.Inject
 
@@ -40,11 +41,13 @@ class TrackingHealthViewModel @Inject constructor(
 
     val uiState: StateFlow<TrackingHealthUiState> =
         combine(repository.state, repository.details, checks, test) { state, details, checks, test ->
-            TrackingHealthUiState(state, details.attentionCause, checks, test)
+            TrackingHealthUiState(state, details.attentionCause, checks, test, details.powerMode, details.lowBatterySaverActive)
         }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS),
-            TrackingHealthUiState(repository.state.value, repository.details.value.attentionCause, checks.value, test.value),
+            repository.details.value.let {
+                TrackingHealthUiState(repository.state.value, it.attentionCause, checks.value, test.value, it.powerMode, it.lowBatterySaverActive)
+            },
         )
 
     private fun readChecks() = buildHealthChecks(permissions.check(), preconditions.check())
@@ -60,7 +63,7 @@ class TrackingHealthViewModel @Inject constructor(
         if (testJob?.isActive == true) return
         test.value = TestFixState.Running
         testJob = viewModelScope.launch {
-            val result = locationClient.currentFix(config.movingPriority, config.testFixTimeoutMs)
+            val result = locationClient.currentFix(config.profiles.getValue(PowerMode.PRECISE).movingPriority, config.testFixTimeoutMs)
             test.update {
                 when (result) {
                     is CurrentFixResult.Success -> successOf(result.fix, clock.nowMs(), blockedBy())

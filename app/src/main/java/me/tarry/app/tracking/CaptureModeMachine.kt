@@ -40,6 +40,7 @@ data class MachineStep(val mode: CaptureMode, val effects: List<CaptureEffect>)
  */
 class CaptureModeMachine(
     private val config: TrackingConfig,
+    private var profile: CaptureProfile,
     activityRecognitionAvailable: Boolean = true,
 ) {
     private var activityRecognitionAvailable = activityRecognitionAvailable
@@ -75,6 +76,17 @@ class CaptureModeMachine(
     /** Time of the fix the current STATIONARY stay was entered at; null while MOVING. */
     var stationarySinceMs: Long? = null
         private set
+
+    /**
+     * Switches the request profile (a power mode change, or the low-battery switch). The mode and the geofence do not
+     * change; if the profile did, the request in force is re-issued with the new numbers. The same profile does nothing.
+     */
+    fun setProfile(p: CaptureProfile): MachineStep {
+        if (p == profile) return step()
+        profile = p
+        val request = if (mode == CaptureMode.MOVING || movingRequestKept) requestMoving() else requestStationary()
+        return MachineStep(mode, listOf(request))
+    }
 
     /** Session start: always begin MOVING so the first fix is quick. */
     fun start(): MachineStep {
@@ -142,7 +154,7 @@ class CaptureModeMachine(
         while (recentFixes.size > config.staleRepeatMemory) recentFixes.removeFirst()
         if (mode == CaptureMode.STATIONARY) {
             val since = stationarySinceMs
-            if (movingRequestKept && since != null && fix.timeMs - since >= config.noProgressKeptRequestMaxMs) {
+            if (movingRequestKept && since != null && fix.timeMs - since >= profile.noProgressKeptRequestMaxMs) {
                 // AR never reported STILL (a cradle, a stale moving activity): stop paying for the moving request.
                 movingRequestKept = false
                 val rest = onStationaryFix(fix, repeated)
@@ -234,10 +246,10 @@ class CaptureModeMachine(
 
     private fun requestStationary() = CaptureEffect.RequestLocation(
         LocationRequestParams(
-            priority = config.stationaryPriority,
-            intervalMs = config.stationaryFixIntervalMs,
+            priority = profile.stationaryPriority,
+            intervalMs = profile.stationaryIntervalMs,
             maxUpdateDelayMs = 0L,
-            minUpdateIntervalMs = config.stationaryFixIntervalMs,
+            minUpdateIntervalMs = profile.stationaryIntervalMs,
             waitForAccurateLocation = config.waitForAccurateLocation,
             maxUpdateAgeMs = config.maxUpdateAgeMs,
         ),
@@ -256,10 +268,10 @@ class CaptureModeMachine(
 
     private fun requestMoving() = CaptureEffect.RequestLocation(
         LocationRequestParams(
-            priority = config.movingPriority,
-            intervalMs = config.movingIntervalMs,
-            maxUpdateDelayMs = config.movingMaxUpdateDelayMs,
-            minUpdateIntervalMs = config.movingIntervalMs,
+            priority = profile.movingPriority,
+            intervalMs = profile.movingIntervalMs,
+            maxUpdateDelayMs = profile.movingMaxUpdateDelayMs,
+            minUpdateIntervalMs = profile.movingIntervalMs,
             waitForAccurateLocation = config.waitForAccurateLocation,
             maxUpdateAgeMs = config.maxUpdateAgeMs,
         ),

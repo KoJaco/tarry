@@ -75,7 +75,7 @@ class TrackingReceiversTest {
         val coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo,
             store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakeStayRadius(), FakePermissions(),
-            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
+            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         controller = TrackingController(
             coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, FakeSegmentationTrigger(), health, clock, config, FakeWindowEndGrace(), FakeEntitlement(clock),

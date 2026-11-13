@@ -48,6 +48,8 @@ class SettingsRepositoryTest {
         assertThat(s.stayGeofenceRadiusM).isEqualTo(100)
         assertThat(s.windowEndGraceMaxMin).isEqualTo(60)
         assertThat(s.timelineZoomMinutes).isEqualTo(15)
+        assertThat(s.powerMode).isEqualTo(PowerMode.BALANCED)
+        assertThat(s.lowBatterySaver).isTrue()
         assertThat(s.lastBackupMs).isNull()
     }
 
@@ -282,5 +284,23 @@ class SettingsRepositoryTest {
         assertThat(actual.rawPingRetentionDays).isNull()
         assertThat(actual.roundingIncrementMin).isEqualTo(15)
         assertThat(actual.theme).isEqualTo(ThemeMode.DARK)
+    }
+
+    @Test
+    fun powerSettings_roundTrip_andUnknownStoredModeIsBalanced() = runTest {
+        val file = tmp.newFile("power.preferences_pb")
+        val store = createSettingsDataStore(newScope()) { file }
+        val r = SettingsRepository(store)
+        for (m in PowerMode.entries) {
+            r.setPowerMode(m)
+            assertThat(r.settings.first().powerMode).isEqualTo(m)
+        }
+        r.setLowBatterySaver(false)
+        assertThat(r.settings.first().lowBatterySaver).isFalse()
+        r.setLowBatterySaver(true)
+        assertThat(r.settings.first().lowBatterySaver).isTrue()
+
+        store.edit { it[androidx.datastore.preferences.core.stringPreferencesKey("tracking_power_mode")] = "TURBO" }
+        assertThat(r.settings.first().powerMode).isEqualTo(PowerMode.BALANCED)
     }
 }

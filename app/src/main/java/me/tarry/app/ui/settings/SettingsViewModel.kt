@@ -33,6 +33,7 @@ import me.tarry.app.ui.schedule.mondayOf
 import me.tarry.app.ui.schedule.summarize
 import me.tarry.core.data.model.Schedule
 import me.tarry.core.data.repository.ScheduleRepository
+import me.tarry.core.data.settings.PowerMode
 import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.SettingsRepository
@@ -64,6 +65,14 @@ class SettingsViewModel @Inject constructor(
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun setPowerMode(mode: PowerMode) {
+        viewModelScope.launch { repository.setPowerMode(mode) }
+    }
+
+    fun setLowBatterySaver(enabled: Boolean) {
+        viewModelScope.launch { repository.setLowBatterySaver(enabled) }
+    }
 
     /** Applies from the next stop; a stop already being tracked keeps its radius. */
     fun setStayGeofenceRadiusM(meters: Int) {

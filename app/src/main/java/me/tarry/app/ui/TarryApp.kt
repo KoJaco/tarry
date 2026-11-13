@@ -184,6 +184,7 @@ fun TarryApp(
         settingsContent = {
             SettingsScreen(
                 trackingState = trackingState,
+                lowBatterySaverActive = trackingDetails.lowBatterySaverActive,
                 onOpenTrackingHealth = { if (backStack.lastOrNull() != TrackingHealthRoute) backStack.add(TrackingHealthRoute) },
                 onOpenSessions = { if (backStack.lastOrNull() != SessionsRoute) backStack.add(SessionsRoute) },
                 onOpenSchedule = { if (backStack.lastOrNull() != ScheduleRoute) backStack.add(ScheduleRoute) },
