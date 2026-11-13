@@ -12,6 +12,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import me.tarry.app.ui.access.AccessSummaryViewModel
 import me.tarry.app.ui.drawer.EditDrawer
 import me.tarry.app.ui.drawer.EditTarget
 
@@ -19,7 +20,9 @@ import me.tarry.app.ui.drawer.EditTarget
 @Composable
 fun TimelineScreen(
     modifier: Modifier = Modifier,
+    onOpenPaywall: () -> Unit = {},
     viewModel: TimelineViewModel = hiltViewModel(),
+    accessViewModel: AccessSummaryViewModel = hiltViewModel(),
 ) {
     val date by viewModel.selectedDate.collectAsStateWithLifecycle()
     val today by viewModel.today.collectAsStateWithLifecycle()
@@ -29,6 +32,7 @@ fun TimelineScreen(
     val jobSuggestions by viewModel.jobSuggestions.collectAsStateWithLifecycle()
     val zoomLevel by viewModel.zoomLevel.collectAsStateWithLifecycle()
     val reviewOnlyRequested by viewModel.reviewOnlyRequested.collectAsStateWithLifecycle()
+    val trialCard by accessViewModel.trialCard.collectAsStateWithLifecycle()
     var editTarget by rememberSaveable(stateSaver = EditTargetSaver) { mutableStateOf<EditTarget?>(null) }
     var showMap by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -72,6 +76,12 @@ fun TimelineScreen(
         onZoomLevelChange = viewModel::setZoomLevel,
         mapOverlayMinimised = minimised,
         onMapOverlayMinimisedChange = viewModel::setMapOverlayMinimised,
+        showTrialCard = trialCard,
+        onUnlockTrialCard = {
+            accessViewModel.dismissTrialCard()
+            onOpenPaywall()
+        },
+        onDismissTrialCard = accessViewModel::dismissTrialCard,
         modifier = modifier,
     ) }
     editTarget?.let { target ->

@@ -171,7 +171,7 @@ fun TarryApp(
         } else {
             null
         },
-        timelineContent = { TimelineScreen(viewModel = timelineViewModel) },
+        timelineContent = { TimelineScreen(onOpenPaywall = { openPaywallScreen() }, viewModel = timelineViewModel) },
         summaryContent = {
             SummaryScreen(
                 onOpenDay = { date ->
@@ -190,6 +190,7 @@ fun TarryApp(
                 onOpenJobs = { if (backStack.lastOrNull() != JobsRoute) backStack.add(JobsRoute) },
                 onOpenPlaces = { if (backStack.lastOrNull() != PlacesRoute) backStack.add(PlacesRoute) },
                 onOpenAbout = { if (backStack.lastOrNull() != AboutRoute) backStack.add(AboutRoute) },
+                onOpenPaywall = { openPaywallScreen() },
                 snackbarHostState = snackbarHostState,
             )
         },

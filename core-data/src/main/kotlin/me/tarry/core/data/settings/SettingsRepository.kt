@@ -153,6 +153,11 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    /** Marks the trial card as shown or dismissed, for good. */
+    suspend fun setAccessTrialCardShown() {
+        dataStore.edit { it[Keys.ACCESS_TRIAL_CARD_SHOWN] = true }
+    }
+
     /** Raises the high-water mark to [epochMs]; it never decreases. */
     suspend fun raiseAccessLastSeenMs(epochMs: Long) {
         dataStore.edit { p -> p[Keys.ACCESS_LAST_SEEN_MS] = maxOf(p[Keys.ACCESS_LAST_SEEN_MS] ?: epochMs, epochMs) }
@@ -213,6 +218,7 @@ class SettingsRepository @Inject constructor(
         lockIntervals = this[Keys.ACCESS_LOCK_INTERVALS],
         debugState = this[Keys.ACCESS_DEBUG_STATE],
         debugTrialEndMs = this[Keys.ACCESS_DEBUG_TRIAL_END_MS],
+        trialCardShown = this[Keys.ACCESS_TRIAL_CARD_SHOWN] ?: false,
     )
 
     private object Keys {
@@ -224,6 +230,7 @@ class SettingsRepository @Inject constructor(
         val ACCESS_LOCK_INTERVALS = stringPreferencesKey(Settings.ACCESS_LOCK_INTERVALS_KEY)
         val ACCESS_DEBUG_STATE = stringPreferencesKey(Settings.ACCESS_DEBUG_STATE_KEY)
         val ACCESS_DEBUG_TRIAL_END_MS = longPreferencesKey(Settings.ACCESS_DEBUG_TRIAL_END_KEY)
+        val ACCESS_TRIAL_CARD_SHOWN = booleanPreferencesKey(Settings.ACCESS_TRIAL_CARD_KEY)
         val ONBOARDING_STARTED_AT_MS = longPreferencesKey(Settings.ONBOARDING_STARTED_AT_KEY)
         val ONBOARDING_COMPLETED_AT_MS = longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)
         val PRUNED_BEFORE_MS = longPreferencesKey(Settings.PRUNED_BEFORE_KEY)

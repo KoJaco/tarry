@@ -1,0 +1,2 @@
+Google Play Billing Library. Copyright Google LLC. Used under the Android Software Development Kit License Agreement:
+https://developer.android.com/studio/terms
