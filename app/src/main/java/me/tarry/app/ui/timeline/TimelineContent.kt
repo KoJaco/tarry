@@ -45,6 +45,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.res.stringResource
 import me.tarry.app.R
 import me.tarry.app.ui.components.EmptyState
+import me.tarry.app.ui.access.TrialEndCard
 import me.tarry.app.ui.components.LoadingBlocks
 import me.tarry.app.ui.components.rememberReducedMotion
 import androidx.compose.ui.res.pluralStringResource
@@ -121,6 +122,10 @@ fun TimelineContent(
     /** The Map tab's overlay shows only the time pill and strip (no card). */
     mapOverlayMinimised: Boolean = false,
     onMapOverlayMinimisedChange: (Boolean) -> Unit = {},
+    /** The near-end trial card (8b.2): shown above the day header while true; unlock and dismiss are the host's. */
+    showTrialCard: Boolean = false,
+    onUnlockTrialCard: () -> Unit = {},
+    onDismissTrialCard: () -> Unit = {},
 ) {
     val selecting = selection.isNotEmpty()
     BackHandler(enabled = selecting, onBack = onClearSelection)
@@ -156,6 +161,7 @@ fun TimelineContent(
     ) {
         // The gutter is per child so the map can run edge to edge.
         val gutter = Modifier.padding(horizontal = TarryTheme.space.gutter)
+        if (showTrialCard) TrialEndCard(onUnlock = onUnlockTrialCard, onDismiss = onDismissTrialCard, modifier = gutter.testTag("trial_card"))
         DayHeader(date, today, onPreviousDay, onNextDay, onSelectDate, gutter)
         WeekStrip(date, today, onSelectDate, gutter)
         ReviewRow(

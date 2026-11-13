@@ -105,7 +105,7 @@ class HealthCheckWorkerTest {
         val calculator = EffectiveScheduleCalculator(config)
         coordinator = CaptureCoordinator(
             config, trackingRepo, timeline, store, locationClient, activityClient, FakeGeofenceClient(), FakeStayRadius(), permissions,
-            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
+            EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         controller = TrackingController(
             coordinator, launcher, store, trackingRepo, ScheduleRepository(db.scheduleDao()), inputs, calculator, alarms, FakeSegmentationTrigger(), health,
@@ -735,7 +735,7 @@ class HealthCheckWorkerTest {
     fun theStateRepositoryReReducesWhenTheAccessStateChangesWithoutAHealthCheck() = runBlocking<Unit> {
         val inputs = ScheduleInputsProvider(ScheduleRepository(db.scheduleDao()), trackingRepo, store, config, clock)
         val snapshots = TrackingSnapshotProvider(inputs, EffectiveScheduleCalculator(config), store, preconditions, coordinator, clock, entitlement)
-        val repo = DefaultTrackingStateRepository(snapshots, TrackingStateReducer(HealthEvaluator(config)), store, trackingRepo, entitlement, captureScope)
+        val repo = DefaultTrackingStateRepository(snapshots, TrackingStateReducer(HealthEvaluator(config)), store, trackingRepo, entitlement, FakePowerSettings(), captureScope)
         val collector = captureScope.launch { repo.details.collect { } }
         val stateCollector = captureScope.launch { repo.state.collect { } }
         withTimeout(5_000) { while (repo.state.value == TrackingState.IDLE && repo.details.value.attentionCause == null) delay(20) }

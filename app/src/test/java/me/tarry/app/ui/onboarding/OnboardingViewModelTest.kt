@@ -29,6 +29,8 @@ import me.tarry.app.tracking.FakeLauncher
 import me.tarry.app.tracking.FakeLocationClient
 import me.tarry.app.tracking.FakePermissions
 import me.tarry.app.tracking.FakeSegmentationTrigger
+import me.tarry.app.tracking.FakeBatterySource
+import me.tarry.app.tracking.FakePowerSettings
 import me.tarry.app.tracking.FakeStayRadius
 import me.tarry.app.tracking.FakeWindowEndGrace
 import me.tarry.app.tracking.HealthGapRecorder
@@ -117,7 +119,7 @@ class OnboardingViewModelTest {
         val health = HealthGapRecorder(store, timelineRepo, FakeAlertNotifier(), clock, config, windows)
         val coordinator = CaptureCoordinator(
             config, trackingRepo, timelineRepo, store, FakeLocationClient(), FakeActivityClient(), FakeGeofenceClient(), FakeStayRadius(),
-            FakePermissions(), windows, health, clock, captureScope,
+            FakePermissions(), windows, health, clock, FakePowerSettings(), FakeBatterySource(), captureScope,
         )
         controller = TrackingController(
             coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, FakeAlarmScheduler(),

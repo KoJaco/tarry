@@ -21,7 +21,10 @@ import com.google.common.truth.Truth.assertThat
 import me.tarry.app.access.DebugAccess
 import me.tarry.app.tracking.AttentionCause
 import me.tarry.app.tracking.TrackingState
-import me.tarry.app.ui.access.PaywallScreen
+import me.tarry.app.access.AccessState
+import me.tarry.app.access.OfferState
+import me.tarry.app.ui.access.PaywallContent
+import me.tarry.app.ui.access.PaywallUi
 import me.tarry.app.ui.navigation.PaywallRoute
 import me.tarry.app.ui.navigation.TimelineRoute
 import me.tarry.app.ui.sessions.SessionsActions
@@ -36,7 +39,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The trial-ended pill, the placeholder paywall and the debug access switch (phase 8b.1). */
+/** The trial-ended pill, the paywall route and the debug access switch (phase 8b). */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], application = android.app.Application::class, qualifiers = "w360dp-h640dp-xxhdpi")
@@ -105,29 +108,6 @@ class AccessUiTest {
     }
 
     @Test
-    fun placeholderPaywallShowsTheTitleThePlaceholderLineAndTheDataPromise() {
-        var closed = 0
-        composeRule.setContent { TarryTheme { PaywallScreen(onClose = { closed++ }) } }
-        composeRule.onNodeWithText("Unlock Tarry").assertIsDisplayed()
-        composeRule.onNodeWithText("Purchase arrives in the next update").assertIsDisplayed()
-        composeRule.onNodeWithText("You can still view, edit, export, back up and delete everything.").assertIsDisplayed()
-        composeRule.onNodeWithText("Close").assertHeightIsAtLeast(48.dp).performClick()
-        assertThat(closed).isEqualTo(1)
-    }
-
-    @Test
-    fun placeholderPaywallFitsAtFontScaleTwoInDark() {
-        composeRule.setContent {
-            val density = LocalDensity.current
-            CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
-                TarryTheme(darkTheme = true) { PaywallScreen(onClose = {}) }
-            }
-        }
-        composeRule.onNodeWithText("Unlock Tarry").assertIsDisplayed()
-        composeRule.onNodeWithText("You can still view, edit, export, back up and delete everything.").assertIsDisplayed()
-    }
-
-    @Test
     fun paywallRouteIsFullScreenWithoutTheBottomBar() {
         val backStack = mutableStateListOf<NavKey>(TimelineRoute, PaywallRoute)
         composeRule.setContent {
@@ -140,11 +120,13 @@ class AccessUiTest {
                     onBack = {},
                     onToggleClick = {},
                     settingsContent = {},
-                    paywallContent = { PaywallScreen(onClose = {}) },
+                    paywallContent = {
+                        PaywallContent(PaywallUi(AccessState.TrialEnded, OfferState.Available("A$29.00")), {}, {}, {}, {})
+                    },
                 )
             }
         }
-        composeRule.onNodeWithText("Purchase arrives in the next update").assertIsDisplayed()
+        composeRule.onNodeWithText("One price. No subscription.").assertIsDisplayed()
         composeRule.onNodeWithText("Unlock").assertDoesNotExist()
     }
 

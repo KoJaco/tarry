@@ -8,11 +8,46 @@
     <string name="tracking_sheet_trial_ended_title">Trial ended</string>
     <string name="tracking_alert_trial_ended_title">Trial ended</string>
 
-    <!-- Placeholder purchase screen; 8b.2 replaces it. -->
+    <!-- Purchase screen (8b.2). -->
     <string name="paywall_title">Unlock Tarry</string>
-    <string name="paywall_placeholder">Purchase arrives in the next update</string>
+    <string name="paywall_heading">One price. No subscription.</string>
     <string name="paywall_data_promise">You can still view, edit, export, back up and delete everything.</string>
     <string name="paywall_close">Close</string>
+    <string name="paywall_status_trial_ended">Your free trial has ended</string>
+    <string name="paywall_status_revoked">Your purchase was refunded or cancelled</string>
+    <string name="paywall_tick_tracking">Unlimited tracking and history</string>
+    <string name="paywall_tick_jobs">Jobs, summary and exports</string>
+    <string name="paywall_tick_backup">Backups and restore</string>
+    <string name="paywall_tick_updates">All future updates to the core app</string>
+    <string name="paywall_price_line">%1$s once. Yours for life, on your Google account.</string>
+    <string name="paywall_price_loading">Checking the price</string>
+    <string name="paywall_unlock_for">Unlock for %1$s</string>
+    <string name="paywall_unlock_plain">Unlock</string>
+    <string name="paywall_restore">Restore purchase</string>
+    <string name="paywall_restore_found">Purchase restored</string>
+    <string name="paywall_restore_not_found">No purchase found on this Google account</string>
+    <string name="paywall_privacy">Google Play handles your purchase. Your data stays on this phone.</string>
+    <string name="paywall_unavailable">Can\'t reach Google Play right now</string>
+    <string name="paywall_try_again">Try again</string>
+    <string name="paywall_pending">Payment pending. Tracking unlocks when Google Play confirms it.</string>
+    <string name="paywall_owned">Tarry is unlocked. Thank you.</string>
+    <string name="paywall_done">Done</string>
+    <string name="paywall_error">Something went wrong. Try again.</string>
+    <plurals name="access_trial_days_left">
+        <item quantity="one">Free trial · %d day left</item>
+        <item quantity="other">Free trial · %d days left</item>
+    </plurals>
+
+    <!-- Settings row and Timeline card for the access state. -->
+    <string name="settings_section_access">Tarry</string>
+    <string name="settings_access_trial_ended">Trial ended · Unlock Tarry</string>
+    <string name="settings_access_pending">Payment pending</string>
+    <string name="settings_access_owned">Unlocked</string>
+    <string name="settings_access_revoked">Purchase refunded · Unlock Tarry</string>
+    <string name="trial_card_title">Trial ends tomorrow</string>
+    <string name="trial_card_body">Unlock Tarry to keep tracking after your free trial.</string>
+    <string name="trial_card_action">Unlock</string>
+    <string name="trial_card_dismiss">Dismiss</string>
 
     <!-- Debug-only access switch on the Sessions screen. -->
     <string name="access_debug_row">Access state: %1$s</string>

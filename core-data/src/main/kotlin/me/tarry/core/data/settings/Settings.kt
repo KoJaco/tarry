@@ -17,6 +17,8 @@ data class AccessPrefs(
     val lockIntervals: String? = null,
     val debugState: String? = null,
     val debugTrialEndMs: Long? = null,
+    /** The near-end trial card was shown or dismissed (never shown again). */
+    val trialCardShown: Boolean = false,
 ) {
     /** Every span tracking was locked: the closed ones, then the open one (which ends at [Long.MAX_VALUE]). Half-open. */
     fun lockedSpans(): List<LockSpan> {
@@ -41,6 +43,8 @@ data class AccessBookkeeping(
     /** Where a new lock would begin (the trial end, if known); never earlier than the last time tracking was allowed. */
     val lockBeganMs: Long?,
 )
+/** How often capture asks for a location; the profile of each is in the app's `TrackingConfig`. */
+enum class PowerMode { PRECISE, BALANCED, SAVER }
 
 /** User-facing settings, persisted in Preferences DataStore. */
 data class Settings(
@@ -63,6 +67,10 @@ data class Settings(
     val timelineZoomMinutes: Int = DEFAULT_TIMELINE_ZOOM_MINUTES,
     /** Whether the Map tab's overlay is minimised to the time pill and strip (no card). Device-local UI state. */
     val mapOverlayMinimised: Boolean = false,
+    /** The chosen tracking mode (Settings > Battery use). Balanced for new installs and upgrades. */
+    val powerMode: PowerMode = PowerMode.BALANCED,
+    /** Use [PowerMode.SAVER] while the battery is low (20% in; back above 25% or charging out). */
+    val lowBatterySaver: Boolean = true,
     /** When the last user-initiated backup finished (UTC epoch ms); null if none yet. */
     val lastBackupMs: Long? = null,
 ) {
@@ -95,7 +103,7 @@ data class Settings(
         const val ACCESS_DEBUG_STATE_KEY = "access_debug_state"
         /** Debug builds only: the trial end the forced state reports (UTC epoch ms). */
         const val ACCESS_DEBUG_TRIAL_END_KEY = "access_debug_trial_end_ms"
-        /** Set once the near-end trial card has been shown or dismissed (8b.2). */
+        /** Set once the near-end trial card has been shown or dismissed. */
         const val ACCESS_TRIAL_CARD_KEY = "access_trial_card_shown"
 
         /**

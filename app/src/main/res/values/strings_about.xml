@@ -29,6 +29,8 @@
     <string name="licences_maplibre">MapLibre Native</string>
     <string name="licences_osm">OpenStreetMap data</string>
     <string name="licences_android_libs">Android and Google libraries</string>
+    <string name="licences_play_billing">Google Play Billing Library</string>
+    <string name="licences_android_sdk_terms">Android Software Development Kit License Agreement</string>
     <string name="licences_open_failed">Couldn\'t open this licence.</string>
     <string name="licences_ofl">OFL-1.1</string>
     <string name="licences_bsd2">BSD-2-Clause</string>

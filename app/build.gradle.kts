@@ -101,6 +101,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.play.services.location)
+    implementation(libs.play.billing.ktx)
     implementation(libs.maplibre.android.sdk)
     implementation(libs.okhttp)
     testImplementation(libs.junit)

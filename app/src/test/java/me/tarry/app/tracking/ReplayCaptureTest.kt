@@ -36,7 +36,7 @@ class ReplayCaptureTest {
         val switchLog = mutableListOf<String>()
         for ((session, sessionRows) in rows.groupBy { it.session }.toSortedMap(compareBy { it ?: -1L })) {
             val filter = PingFilter(config)
-            val machine = CaptureModeMachine(config)
+            val machine = CaptureModeMachine(config, config.profiles.getValue(me.tarry.core.data.settings.PowerMode.PRECISE))
             machine.start()
             var lastActivity: ActivityType? = null
             var prev: Fix? = null

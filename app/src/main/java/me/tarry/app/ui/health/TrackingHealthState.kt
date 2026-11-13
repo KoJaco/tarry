@@ -3,6 +3,7 @@ package me.tarry.app.ui.health
 import me.tarry.app.tracking.AttentionCause
 import me.tarry.app.tracking.Fix
 import me.tarry.app.tracking.Preconditions
+import me.tarry.core.data.settings.PowerMode
 import me.tarry.app.tracking.TrackingState
 import me.tarry.app.ui.permissions.PermissionSnapshot
 
@@ -62,6 +63,9 @@ data class TrackingHealthUiState(
     val attentionCause: AttentionCause? = null,
     val checks: List<HealthCheck> = emptyList(),
     val test: TestFixState = TestFixState.Idle,
+    /** The mode the user chose, and whether the low-battery switch has put capture in Saver right now. */
+    val powerMode: PowerMode = PowerMode.BALANCED,
+    val lowBatterySaverActive: Boolean = false,
 ) {
     val testRunning: Boolean get() = test == TestFixState.Running
 }

@@ -87,6 +87,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import me.tarry.app.BuildConfig
 import me.tarry.app.R
 import me.tarry.app.ui.components.SectionHeader
+import me.tarry.app.ui.access.AccessRow
+import me.tarry.app.ui.access.AccessSummaryViewModel
 import me.tarry.app.ui.about.versionLabel
 import me.tarry.app.ui.components.SettingsGroup
 import me.tarry.app.ui.schedule.WeekScheduleSummary
@@ -94,6 +96,7 @@ import me.tarry.app.ui.schedule.scheduleSummaryText
 import me.tarry.app.ui.theme.TarryTheme
 import me.tarry.app.ui.theme.surfaceEdge
 import me.tarry.app.ui.components.TarrySheet
+import me.tarry.core.data.settings.PowerMode
 import me.tarry.core.data.settings.RoundingMode
 import me.tarry.core.data.settings.Settings
 import me.tarry.core.data.settings.ThemeMode
@@ -108,13 +111,18 @@ fun SettingsScreen(
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenPaywall: () -> Unit = {},
+    /** The low-battery switch has put capture in Saver right now (the Battery use row says so). */
+    lowBatterySaverActive: Boolean = false,
     snackbarHostState: SnackbarHostState? = null,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = hiltViewModel(),
+    accessViewModel: AccessSummaryViewModel = hiltViewModel(),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val schedule by viewModel.schedule.collectAsStateWithLifecycle()
     val data by viewModel.data.collectAsStateWithLifecycle()
+    val access by accessViewModel.row.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // Both go through the system file picker (SAF): nothing is read or written unless the user picks a document.
     val createBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(BACKUP_MIME_TYPE)) { uri ->
@@ -153,8 +161,13 @@ fun SettingsScreen(
         onOpenJobs = onOpenJobs,
         onOpenPlaces = onOpenPlaces,
         onOpenAbout = onOpenAbout,
+        access = access,
+        onOpenPaywall = onOpenPaywall,
         onStayRadiusSelected = viewModel::setStayGeofenceRadiusM,
         onGraceSelected = viewModel::setWindowEndGraceMaxMin,
+        onPowerModeSelected = viewModel::setPowerMode,
+        onLowBatterySaverChange = viewModel::setLowBatterySaver,
+        lowBatterySaverActive = lowBatterySaverActive,
         onThemeSelected = viewModel::setTheme,
         onRoundingIncrementSelected = viewModel::setRoundingIncrementMin,
         onRoundingModeSelected = viewModel::setRoundingMode,
@@ -173,7 +186,7 @@ fun SettingsScreen(
     )
 }
 
-private enum class Picker { RADIUS, GRACE, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE, RETENTION, REMINDER_TIME }
+private enum class Picker { RADIUS, GRACE, POWER, THEME, ROUNDING, ROUND_TO, MIN_BILLABLE, RETENTION, REMINDER_TIME }
 
 /** Android 13 and later ask for the notification permission at runtime; before that there is nothing to ask. */
 private fun needsNotificationPermission(context: Context): Boolean =
@@ -193,8 +206,15 @@ fun SettingsContent(
     onOpenJobs: () -> Unit = {},
     onOpenPlaces: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    /** The access row (null hides it, while the trial has not started) and where it goes. */
+    access: AccessRow? = null,
+    onOpenPaywall: () -> Unit = {},
     onStayRadiusSelected: (Int) -> Unit = {},
     onGraceSelected: (Int) -> Unit = {},
+    onPowerModeSelected: (PowerMode) -> Unit = {},
+    onLowBatterySaverChange: (Boolean) -> Unit = {},
+    /** Shown on the Battery use row; capture is in Saver because the battery is low. */
+    lowBatterySaverActive: Boolean = false,
     onThemeSelected: (ThemeMode) -> Unit = {},
     onRoundingIncrementSelected: (Int) -> Unit = {},
     onRoundingModeSelected: (RoundingMode) -> Unit = {},
@@ -250,6 +270,18 @@ fun SettingsContent(
                 current = settings.windowEndGraceMaxMin,
                 onSelect = {
                     onGraceSelected(it)
+                    picker = null
+                },
+                onDismiss = { picker = null },
+            )
+            Picker.POWER -> PickerSheet(
+                title = stringResource(R.string.battery_mode_title),
+                explanation = stringResource(R.string.battery_mode_explanation),
+                options = PowerMode.entries.map { it to stringResource(it.labelRes()) },
+                details = PowerMode.entries.associateWith { stringResource(it.useRes()) },
+                current = settings.powerMode,
+                onSelect = {
+                    onPowerModeSelected(it)
                     picker = null
                 },
                 onDismiss = { picker = null },
@@ -341,11 +373,30 @@ fun SettingsContent(
             style = MaterialTheme.typography.headlineMedium,
             color = TarryTheme.colors.ink,
         )
+        if (access != null) {
+            SectionHeader(stringResource(R.string.settings_section_access), Modifier.padding(top = space.m))
+            val accessTitle = when (access) {
+                is AccessRow.Trial -> pluralStringResource(R.plurals.access_trial_days_left, access.daysLeft, access.daysLeft)
+                AccessRow.TrialEnded -> stringResource(R.string.settings_access_trial_ended)
+                AccessRow.Pending -> stringResource(R.string.settings_access_pending)
+                AccessRow.Owned -> stringResource(R.string.settings_access_owned)
+                AccessRow.Revoked -> stringResource(R.string.settings_access_revoked)
+            }
+            SettingsGroup {
+                row(accessTitle, onClick = onOpenPaywall, icon = if (access == AccessRow.Owned) R.drawable.ic_check else R.drawable.ic_lock)
+            }
+        }
         SectionHeader(stringResource(R.string.settings_section_tracking), Modifier.padding(top = space.m))
         val stayRadiusTitle = stringResource(R.string.settings_stay_radius)
         val graceTitle = stringResource(R.string.settings_grace)
         val graceValue = settings?.let { graceLabel(it.windowEndGraceMaxMin) }
         val stayRadiusValue = settings?.let { stringResource(R.string.settings_stay_radius_value, it.stayGeofenceRadiusM) }
+        val powerTitle = stringResource(R.string.battery_mode_title)
+        val powerValue = settings?.let {
+            if (lowBatterySaverActive && it.lowBatterySaver) stringResource(R.string.battery_mode_saver_low) else stringResource(it.powerMode.labelRes())
+        }
+        val powerSwitchTitle = stringResource(R.string.battery_low_switch_title)
+        val powerSwitchSubtitle = stringResource(R.string.battery_low_switch_subtitle)
         val scheduleTitle = stringResource(R.string.settings_schedule)
         val scheduleSubtitle = schedule?.let { scheduleRowSubtitle(it) }
         val healthTitle = stringResource(R.string.settings_tracking_health)
@@ -355,6 +406,13 @@ fun SettingsContent(
             row(scheduleTitle, onClick = onOpenSchedule, icon = R.drawable.ic_calendar, subtitle = scheduleSubtitle)
             if (stayRadiusValue != null) {
                 row(stayRadiusTitle, onClick = { picker = Picker.RADIUS }, icon = R.drawable.ic_radius, subtitle = stayRadiusValue)
+            }
+            if (powerValue != null && settings != null) {
+                row(powerTitle, onClick = { picker = Picker.POWER }, icon = R.drawable.ic_bolt, subtitle = powerValue)
+                switchRow(
+                    powerSwitchTitle, settings.lowBatterySaver, onLowBatterySaverChange,
+                    subtitle = powerSwitchSubtitle, icon = R.drawable.ic_bolt,
+                )
             }
             if (graceValue != null) {
                 row(graceTitle, onClick = { picker = Picker.GRACE }, icon = R.drawable.ic_more_time, subtitle = graceValue)
@@ -691,6 +749,18 @@ private fun retentionLabel(days: Int?): String = when (days) {
 @Composable
 private fun minutesOrOff(minutes: Int): String =
     if (minutes == 0) stringResource(R.string.settings_off) else stringResource(R.string.settings_minutes_value, minutes)
+
+internal fun PowerMode.labelRes(): Int = when (this) {
+    PowerMode.PRECISE -> R.string.battery_mode_precise
+    PowerMode.BALANCED -> R.string.battery_mode_balanced
+    PowerMode.SAVER -> R.string.battery_mode_saver
+}
+
+private fun PowerMode.useRes(): Int = when (this) {
+    PowerMode.PRECISE -> R.string.battery_mode_precise_use
+    PowerMode.BALANCED -> R.string.battery_mode_balanced_use
+    PowerMode.SAVER -> R.string.battery_mode_saver_use
+}
 
 private fun RoundingMode.labelRes(): Int = when (this) {
     RoundingMode.NEAREST -> R.string.settings_rounding_mode_nearest

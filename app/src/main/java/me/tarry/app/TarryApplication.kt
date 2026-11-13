@@ -7,6 +7,7 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.tarry.app.reminder.ReviewReminderNotifier
+import me.tarry.app.access.PurchaseClient
 import me.tarry.app.segmentation.RetentionWorker
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.segmentation.SegmentationUpgrade
@@ -28,6 +29,8 @@ class TarryApplication : Application(), Configuration.Provider {
     @Inject lateinit var segmentationScheduler: SegmentationScheduler
 
     @Inject lateinit var segmentationUpgrade: SegmentationUpgrade
+
+    @Inject lateinit var purchaseClient: PurchaseClient
 
     @Inject @CaptureScope lateinit var captureScope: CoroutineScope
 
@@ -53,6 +56,8 @@ class TarryApplication : Application(), Configuration.Provider {
                 // Retried on the next start.
             }
         }
+        // Best effort: what this account owns may have changed while the app was closed. Never throws.
+        captureScope.launch { purchaseClient.refresh(ReconcileSource.SYSTEM) }
         // Seeds the schedule on first launch, recovers a crashed session and re-arms the alarm.
         // SYSTEM: process start may be a boot or background wake, which must not start a location FGS directly.
         captureScope.launch { controller.reconcile(ReconcileSource.SYSTEM) }

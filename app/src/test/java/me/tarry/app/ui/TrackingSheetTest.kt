@@ -111,4 +111,17 @@ class TrackingSheetTest {
         composeRule.onNodeWithText("Unlock Tarry").assertHeightIsAtLeast(48.dp).performClick()
         assertThat(calls).containsExactly("paywall", "done").inOrder()
     }
+
+    @Test
+    fun trackingWithTheLowBatterySwitchActiveSaysSoInOneMutedLine() {
+        show(TrackingState.TRACKING, TrackingDetails(lowBatterySaverActive = true))
+        composeRule.onNodeWithText("Battery low: using Saver").assertIsDisplayed()
+        composeRule.onNodeWithText("Stop").assertIsDisplayed()
+    }
+
+    @Test
+    fun trackingWithoutTheSwitchActiveHasNoBatteryLine() {
+        show(TrackingState.TRACKING)
+        composeRule.onNodeWithText("Battery low: using Saver").assertDoesNotExist()
+    }
 }

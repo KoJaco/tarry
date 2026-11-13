@@ -81,6 +81,14 @@ class SettingsRepository @Inject constructor(
         dataStore.edit { it[Keys.WINDOW_END_GRACE_MAX_MIN] = minutes }
     }
 
+    suspend fun setPowerMode(mode: PowerMode) {
+        dataStore.edit { it[Keys.POWER_MODE] = mode.name }
+    }
+
+    suspend fun setLowBatterySaver(enabled: Boolean) {
+        dataStore.edit { it[Keys.LOW_BATTERY_SAVER] = enabled }
+    }
+
     suspend fun setTimelineZoomMinutes(minutes: Int) {
         require(minutes in Settings.ALLOWED_TIMELINE_ZOOM_MINUTES) { "Invalid timeline zoom: $minutes" }
         dataStore.edit { it[Keys.TIMELINE_ZOOM_LEVEL] = minutes }
@@ -153,6 +161,11 @@ class SettingsRepository @Inject constructor(
         }
     }
 
+    /** Marks the trial card as shown or dismissed, for good. */
+    suspend fun setAccessTrialCardShown() {
+        dataStore.edit { it[Keys.ACCESS_TRIAL_CARD_SHOWN] = true }
+    }
+
     /** Raises the high-water mark to [epochMs]; it never decreases. */
     suspend fun raiseAccessLastSeenMs(epochMs: Long) {
         dataStore.edit { p -> p[Keys.ACCESS_LAST_SEEN_MS] = maxOf(p[Keys.ACCESS_LAST_SEEN_MS] ?: epochMs, epochMs) }
@@ -213,6 +226,7 @@ class SettingsRepository @Inject constructor(
         lockIntervals = this[Keys.ACCESS_LOCK_INTERVALS],
         debugState = this[Keys.ACCESS_DEBUG_STATE],
         debugTrialEndMs = this[Keys.ACCESS_DEBUG_TRIAL_END_MS],
+        trialCardShown = this[Keys.ACCESS_TRIAL_CARD_SHOWN] ?: false,
     )
 
     private object Keys {
@@ -224,6 +238,7 @@ class SettingsRepository @Inject constructor(
         val ACCESS_LOCK_INTERVALS = stringPreferencesKey(Settings.ACCESS_LOCK_INTERVALS_KEY)
         val ACCESS_DEBUG_STATE = stringPreferencesKey(Settings.ACCESS_DEBUG_STATE_KEY)
         val ACCESS_DEBUG_TRIAL_END_MS = longPreferencesKey(Settings.ACCESS_DEBUG_TRIAL_END_KEY)
+        val ACCESS_TRIAL_CARD_SHOWN = booleanPreferencesKey(Settings.ACCESS_TRIAL_CARD_KEY)
         val ONBOARDING_STARTED_AT_MS = longPreferencesKey(Settings.ONBOARDING_STARTED_AT_KEY)
         val ONBOARDING_COMPLETED_AT_MS = longPreferencesKey(Settings.ONBOARDING_COMPLETED_AT_KEY)
         val PRUNED_BEFORE_MS = longPreferencesKey(Settings.PRUNED_BEFORE_KEY)
@@ -238,6 +253,8 @@ class SettingsRepository @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val STAY_GEOFENCE_RADIUS_M = intPreferencesKey("stay_geofence_radius_m")
         val WINDOW_END_GRACE_MAX_MIN = intPreferencesKey("window_end_grace_max_min")
+        val POWER_MODE = stringPreferencesKey("tracking_power_mode")
+        val LOW_BATTERY_SAVER = booleanPreferencesKey("low_battery_saver")
         val SEGMENTATION_VERSION = intPreferencesKey("segmentation_version")
         val TIMELINE_ZOOM_LEVEL = intPreferencesKey("timeline_zoom_level")
         val MAP_OVERLAY_MINIMISED = booleanPreferencesKey("map_overlay_minimised")
@@ -267,6 +284,8 @@ class SettingsRepository @Inject constructor(
                 ?.takeIf { it in Settings.ALLOWED_STAY_RADII_M } ?: d.stayGeofenceRadiusM,
             windowEndGraceMaxMin = this[Keys.WINDOW_END_GRACE_MAX_MIN]
                 ?.takeIf { it in Settings.ALLOWED_WINDOW_END_GRACE_MIN } ?: d.windowEndGraceMaxMin,
+            powerMode = enumOrDefault(this[Keys.POWER_MODE], d.powerMode),
+            lowBatterySaver = this[Keys.LOW_BATTERY_SAVER] ?: d.lowBatterySaver,
             timelineZoomMinutes = this[Keys.TIMELINE_ZOOM_LEVEL]
                 ?.takeIf { it in Settings.ALLOWED_TIMELINE_ZOOM_MINUTES } ?: d.timelineZoomMinutes,
             mapOverlayMinimised = this[Keys.MAP_OVERLAY_MINIMISED] ?: d.mapOverlayMinimised,
