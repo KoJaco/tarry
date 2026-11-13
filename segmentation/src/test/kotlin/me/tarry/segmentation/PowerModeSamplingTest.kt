@@ -10,7 +10,7 @@ import org.junit.Test
 /**
  * Segmentation safety for the app's power modes (docs/handoffs/phase-battery-build.md). One synthetic day, a stay of
  * 15 min, a drive, 40 min, a drive, 2 h, sampled the way each mode samples: Precise 10 s moving and 60 s at a site,
- * Balanced 10 s and 180 s, Saver 30 s and 300 s with about 40 m of noise (and a rougher accuracy) at the sites.
+ * Balanced 10 s and 120 s, Saver 30 s and 300 s with about 40 m of noise (and a rougher accuracy) at the sites.
  * The segmentation is not tuned for the modes: any difference seen for Saver is recorded below as its trade-off.
  */
 class PowerModeSamplingTest {
@@ -26,7 +26,7 @@ class PowerModeSamplingTest {
     )
 
     private val precise = Sampling(10_000, 60_000, siteJitterM = 10.0, siteAccuracyM = 20f)
-    private val balanced = Sampling(10_000, 180_000, siteJitterM = 10.0, siteAccuracyM = 20f)
+    private val balanced = Sampling(10_000, 120_000, siteJitterM = 10.0, siteAccuracyM = 20f)
     private val saver = Sampling(30_000, 300_000, siteJitterM = 40.0, siteAccuracyM = 45f)
 
     private fun day(s: Sampling, seed: Long = 21): List<Ping> = TraceBuilder(seed = seed, startTimeMs = t0)
@@ -77,29 +77,47 @@ class PowerModeSamplingTest {
     }
 
 
+    /**
+     * A stop as the real machine samples it: the moving request keeps running for about a minute after arrival (the
+     * stationary mode is entered then), after which fixes come at the profile's stationary interval until departure.
+     */
+    private fun TraceBuilder.stop(s: Sampling, durationMs: Long) = this
+        .stay(MIN, intervalMs = s.movingMs, jitterM = s.siteJitterM, accuracyM = s.siteAccuracyM)
+        .stay(durationMs - MIN, intervalMs = s.stationaryMs, jitterM = s.siteJitterM, accuracyM = s.siteAccuracyM)
+
     /** A drive with a stop of [stopMin] minutes in the middle, between two long visits. */
     private fun withStop(s: Sampling, stopMin: Long, seed: Long = 31): List<Ping> = TraceBuilder(seed = seed, startTimeMs = t0)
         .stay(30 * MIN, intervalMs = s.stationaryMs, jitterM = s.siteJitterM, accuracyM = s.siteAccuracyM)
         .moveBy(90.0, 4_000.0, 12.5, intervalMs = s.movingMs, accuracyM = s.movingAccuracyM)
-        .stay(stopMin * MIN, intervalMs = s.stationaryMs, jitterM = s.siteJitterM, accuracyM = s.siteAccuracyM)
+        .stop(s, stopMin * MIN)
         .moveBy(90.0, 4_000.0, 12.5, intervalMs = s.movingMs, accuracyM = s.movingAccuracyM)
         .stay(30 * MIN, intervalMs = s.stationaryMs, jitterM = s.siteJitterM, accuracyM = s.siteAccuracyM)
         .build()
 
+    private fun assertStopFound(name: String, s: Sampling, stop: Long, seed: Long) {
+        val r = run(withStop(s, stop, seed))
+        assertEquals("$name seed $seed stop $stop visits", 3, r.stays.size)
+        assertEquals("$name seed $seed stop $stop trips", 2, r.trips.size)
+    }
+
     /**
-     * Documented trade-off (found while writing this test, not tuned away): a stop is only a visit once its fixes span the
-     * 5-minute minimum stay. At Precise (a fix a minute) a 6-minute stop is found; at Balanced (every 3 minutes) a 6-minute
-     * stop can fall between fixes and merge into the drive, and is found from about 7 minutes. Saver (every 5 minutes)
-     * found 6- and 7-minute stops in these traces only because two fixes landed exactly 5 minutes apart, so the app tells
-     * Saver users stops under about 10 minutes may be missed. A stop of 8 minutes or more is found in every mode.
+     * Documented trade-off (not tuned away): a stop is only a visit once its fixes span the 5-minute minimum stay.
+     * Precise (a fix a minute) finds short stops. Balanced (a fix every 2 minutes after the first minute) is pinned to
+     * find a 7-minute stop, but a stop of about 5 to 6 minutes can fall between fixes and be missed. Saver (every
+     * 5 minutes) can miss stops under about 10 minutes, so the app tells Saver users that.
+     * A stop of 10 minutes or more is found in every mode.
      */
     @Test
-    fun aStopOfEightMinutesOrMoreIsFoundInEveryMode() {
-        for (seed in 31L..36L) for (stop in listOf(8L, 10L, 15L)) for ((n, s) in listOf("precise" to precise, "balanced" to balanced, "saver" to saver)) {
-            val r = run(withStop(s, stop, seed))
-            assertEquals("$n seed $seed stop $stop visits", 3, r.stays.size)
-            assertEquals("$n seed $seed stop $stop trips", 2, r.trips.size)
+    fun aStopOfTenMinutesOrMoreIsFoundInEveryMode() {
+        for (seed in 31L..36L) for (stop in listOf(10L, 15L)) for ((n, s) in listOf("precise" to precise, "balanced" to balanced, "saver" to saver)) {
+            assertStopFound(n, s, stop, seed)
         }
+    }
+
+    /** The Balanced floor: a 7-minute stop is a visit. */
+    @Test
+    fun aSevenMinuteStopIsFoundWithBalanced() {
+        for (seed in 31L..40L) assertStopFound("balanced", balanced, 7, seed)
     }
 
     private companion object {

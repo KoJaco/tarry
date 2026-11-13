@@ -14,7 +14,7 @@ class CaptureModeMachineTest {
     private val DEFAULT_RADIUS = Settings.DEFAULT_STAY_RADIUS_M.toFloat()
 
     private fun machine(activityAvailable: Boolean = true) =
-        CaptureModeMachine(config, activityAvailable).also { it.start() }
+        CaptureModeMachine(config, precise, activityAvailable).also { it.start() }
 
     /** Two consecutive fixes clearly outside the geofence, a minute apart (the sustained safety net). Returns the second step. */
     private fun leaveGeofence(m: CaptureModeMachine, northM: Double): MachineStep {
@@ -25,7 +25,7 @@ class CaptureModeMachineTest {
 
     @Test
     fun startsMovingWithMovingRequest() {
-        val step = CaptureModeMachine(config).start()
+        val step = CaptureModeMachine(config, precise).start()
         assertThat(step.mode).isEqualTo(CaptureMode.MOVING)
         val request = step.effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
         assertThat(request.priority).isEqualTo(precise.movingPriority)
@@ -283,7 +283,7 @@ class CaptureModeMachineTest {
 
     @Test
     fun noProgressInVehicleUsesTheStationaryRequestWhenConfiguredOff() {
-        val m = CaptureModeMachine(config.copy(noProgressKeepsMovingRequest = false)).also { it.start() }
+        val m = CaptureModeMachine(config.copy(noProgressKeepsMovingRequest = false), precise).also { it.start() }
         m.onActivity(ActivityType.IN_VEHICLE)
         var t = 0L
         var step = MachineStep(m.mode, emptyList())
@@ -431,7 +431,7 @@ class CaptureModeMachineTest {
 
     @Test
     fun locationRequestsAreHighAccuracyWithoutBatchingAndMatchedIntervals() {
-        val moving = CaptureModeMachine(config).start().effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
+        val moving = CaptureModeMachine(config, precise).start().effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
         assertThat(moving.priority).isEqualTo(LocationPriority.HIGH_ACCURACY)
         assertThat(moving.intervalMs).isEqualTo(10_000L)
         assertThat(moving.minUpdateIntervalMs).isEqualTo(10_000L)
@@ -464,7 +464,7 @@ class CaptureModeMachineTest {
 
     private fun profileOf(mode: PowerMode) = config.profiles.getValue(mode)
 
-    private fun machineIn(mode: PowerMode) = CaptureModeMachine(config, profile = profileOf(mode)).also { it.start() }
+    private fun machineIn(mode: PowerMode) = CaptureModeMachine(config, profileOf(mode)).also { it.start() }
 
     private fun requestOf(step: MachineStep) = step.effects.filterIsInstance<CaptureEffect.RequestLocation>().single().params
 
@@ -474,7 +474,7 @@ class CaptureModeMachineTest {
         assertThat(p).isEqualTo(
             CaptureProfile(LocationPriority.HIGH_ACCURACY, 60_000L, LocationPriority.HIGH_ACCURACY, 10_000L, 0L, 20 * min),
         )
-        assertThat(requestOf(CaptureModeMachine(config).start())).isEqualTo(
+        assertThat(requestOf(CaptureModeMachine(config, precise).start())).isEqualTo(
             LocationRequestParams(LocationPriority.HIGH_ACCURACY, 10_000L, 0L, 10_000L, waitForAccurateLocation = true, maxUpdateAgeMs = 0L),
         )
     }
@@ -483,7 +483,7 @@ class CaptureModeMachineTest {
     fun eachProfileProducesItsStationaryAndMovingRequests() {
         for (mode in PowerMode.entries) {
             val p = profileOf(mode)
-            val m = CaptureModeMachine(config, profile = p)
+            val m = CaptureModeMachine(config, p)
             val moving = requestOf(m.start())
             assertThat(moving.priority).isEqualTo(p.movingPriority)
             assertThat(moving.intervalMs).isEqualTo(p.movingIntervalMs)
@@ -502,7 +502,7 @@ class CaptureModeMachineTest {
     fun theProfilesHaveTheDocumentedNumbers() {
         val b = profileOf(PowerMode.BALANCED)
         assertThat(listOf(b.stationaryIntervalMs, b.movingIntervalMs, b.movingMaxUpdateDelayMs, b.noProgressKeptRequestMaxMs))
-            .containsExactly(180_000L, 10_000L, 30_000L, 5 * min).inOrder()
+            .containsExactly(120_000L, 10_000L, 30_000L, 5 * min).inOrder()
         assertThat(b.stationaryPriority).isEqualTo(LocationPriority.HIGH_ACCURACY)
         val s = profileOf(PowerMode.SAVER)
         assertThat(listOf(s.stationaryIntervalMs, s.movingIntervalMs, s.movingMaxUpdateDelayMs, s.noProgressKeptRequestMaxMs))

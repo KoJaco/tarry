@@ -10,7 +10,7 @@
     <string name="battery_mode_saver_use">Fewer, rougher fixes. Trips look approximate and stops under about 10 minutes may be missed.</string>
     <string name="battery_mode_saver_low">Saver · battery low</string>
     <string name="battery_low_switch_title" formatted="false">Switch to Saver at 20% battery</string>
-    <string name="battery_low_switch_subtitle" formatted="false">Uses Saver until you charge or the battery is back above 25%.</string>
+    <string name="battery_low_switch_subtitle" formatted="false">Uses Saver until you charge or the battery is back to 25%.</string>
     <string name="battery_health_row">Battery use: %1$s</string>
     <string name="battery_health_row_low">Battery use: Saver, battery low</string>
     <string name="battery_sheet_low">Battery low: using Saver</string>

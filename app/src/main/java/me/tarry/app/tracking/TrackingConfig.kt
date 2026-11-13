@@ -151,7 +151,7 @@ private val DEFAULT_PROFILES: Map<PowerMode, CaptureProfile> = mapOf(
         noProgressKeptRequestMaxMs = 20 * MINUTE_MS,
     ),
     PowerMode.BALANCED to CaptureProfile(
-        stationaryPriority = LocationPriority.HIGH_ACCURACY, stationaryIntervalMs = 180_000L,
+        stationaryPriority = LocationPriority.HIGH_ACCURACY, stationaryIntervalMs = 120_000L,
         movingPriority = LocationPriority.HIGH_ACCURACY, movingIntervalMs = 10_000L, movingMaxUpdateDelayMs = 30_000L,
         noProgressKeptRequestMaxMs = 5 * MINUTE_MS,
     ),

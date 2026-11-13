@@ -27,7 +27,7 @@ data class CaptureProfile(
 | | stationary | moving | batch (max delay) | kept moving request max |
 |---|---|---|---|---|
 | PRECISE | HIGH_ACCURACY 60 s | HIGH_ACCURACY 10 s | 0 | 20 min |
-| BALANCED (default) | HIGH_ACCURACY **180 s** | HIGH_ACCURACY 10 s | **30 s** | **5 min** |
+| BALANCED (default) | HIGH_ACCURACY **120 s** | HIGH_ACCURACY 10 s | **30 s** | **5 min** |
 | SAVER | **BALANCED 300 s** | HIGH_ACCURACY **30 s** | **120 s** | **3 min** |
 
 `minUpdateIntervalMs` = the interval (as today). `waitForAccurateLocation`, `maxUpdateAgeMs`, entry/exit rules unchanged.
@@ -73,7 +73,7 @@ run with PRECISE).
   - Precise — "Every 10 seconds while you move and every minute at a site. Most detail, most battery."
   - Balanced (recommended) — "Every 10 seconds while you move, every few minutes at a site. Recommended."
   - Saver — "Fewer, rougher fixes. Trips look approximate and stops under about 10 minutes may be missed."
-  - Switch subtitle: "Uses Saver until you charge or the battery is back above 25%."
+  - Switch subtitle: "Uses Saver until you charge or the battery is back to 25%."
   - Labels: "Precise", "Balanced", "Saver".
 - **Tracking health** screen: a row/line "Battery use: Balanced" (or "Saver, battery low" while the switch is active).
 - **Tracking sheet** (`ui/shell/TrackingSheet.kt`), while tracking and the switch is active: one muted line "Battery low:
@@ -90,7 +90,7 @@ run with PRECISE).
   `lowBatterySaverActive` follows.
 - Settings repository: defaults (BALANCED, true), unknown stored mode ⇒ BALANCED, round-trip.
 - **Segmentation safety (golden):** in `:segmentation` tests, a synthetic day (stays of 15 min, 40 min, 2 h joined by
-  trips) sampled like Precise (10 s moving / 60 s stationary) vs like Balanced (10 s / 180 s) vs Saver (30 s / 300 s with
+  trips) sampled like Precise (10 s moving / 60 s stationary) vs like Balanced (10 s / 120 s) vs Saver (30 s / 300 s with
   ±40 m noise at stays): the same visits (count, places within the match radius, start/end within 3 min for Balanced,
   5 min for Saver) and trips. If Saver misses something, record it as the documented trade-off rather than tuning
   segmentation.
@@ -101,5 +101,5 @@ run with PRECISE).
 `connectedDebugAndroidTest`.
 
 ## Known risk (note in the PR, don't fix here)
-A killed session closes at its last heartbeat; with a 180 s stationary interval the last heartbeat can be up to 3 min old,
+A killed session closes at its last heartbeat; with a 120 s stationary interval the last heartbeat can be up to 2 min old,
 so a kill + quick restart is a little likelier to exceed the 5-min short-interruption limit at a site.

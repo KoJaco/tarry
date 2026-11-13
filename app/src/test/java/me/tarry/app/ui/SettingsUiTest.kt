@@ -288,7 +288,7 @@ class SettingsUiTest {
         val changes = mutableListOf<Boolean>()
         showPower(onSwitch = { changes += it })
         composeRule.onNodeWithText("Switch to Saver at 20% battery").performScrollTo().assertHeightIsAtLeast(48.dp).performClick()
-        composeRule.onNodeWithText("Uses Saver until you charge or the battery is back above 25%.").assertExists()
+        composeRule.onNodeWithText("Uses Saver until you charge or the battery is back to 25%.").assertExists()
         assertThat(changes).containsExactly(false)
     }
 
