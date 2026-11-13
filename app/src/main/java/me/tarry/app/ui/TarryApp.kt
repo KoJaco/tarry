@@ -35,6 +35,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
+import me.tarry.app.tracking.AttentionCause
 import me.tarry.app.tracking.TrackingState
 import me.tarry.core.data.model.ManualOverrideEndMode
 import me.tarry.app.ui.catalog.JobsScreen
@@ -50,6 +51,8 @@ import me.tarry.app.ui.schedule.ScheduleScreen
 import me.tarry.app.ui.places.PlaceDetailScreen
 import me.tarry.app.ui.places.PlacesScreen
 import me.tarry.app.ui.navigation.OnboardingRoute
+import me.tarry.app.ui.navigation.PaywallRoute
+import me.tarry.app.ui.access.PaywallScreen
 import me.tarry.app.ui.navigation.PermissionsRoute
 import me.tarry.app.ui.onboarding.OnboardingScreen
 import me.tarry.app.ui.theme.TarryTheme
@@ -87,6 +90,9 @@ fun TarryApp(
     /** The review-reminder notification was tapped: go to today's Timeline with Needs review on, then call [onOpenReviewHandled]. */
     openReview: Boolean = false,
     onOpenReviewHandled: () -> Unit = {},
+    /** The trial-ended alert was tapped: open the paywall, then call [onOpenPaywallHandled]. */
+    openPaywall: Boolean = false,
+    onOpenPaywallHandled: () -> Unit = {},
     shellViewModel: ShellViewModel = hiltViewModel(),
     statusViewModel: ShellStatusViewModel = hiltViewModel(),
     // Owned here, not by the Timeline entry, so the shell can swap its bottom bar while visits are selected.
@@ -113,6 +119,14 @@ fun TarryApp(
     LaunchedEffect(trackingState) { if (trackingState == TrackingState.ATTENTION) customSheetVisible = false }
     val context = LocalContext.current
     val openPermissions = { if (backStack.lastOrNull() != PermissionsRoute) backStack.add(PermissionsRoute) }
+    val openPaywallScreen = { if (backStack.lastOrNull() != PaywallRoute) backStack.add(PaywallRoute) }
+    LaunchedEffect(openPaywall) {
+        if (openPaywall) {
+            openPaywallScreen()
+            onOpenPaywallHandled()
+        }
+    }
+    LaunchedEffect(Unit) { shellViewModel.openPaywall.collect { openPaywallScreen() } }
     LaunchedEffect(openReview) {
         if (openReview) {
             backStack.navigateTopLevel(TimelineRoute)
@@ -137,6 +151,7 @@ fun TarryApp(
     }
     TarryAppContent(
         trackingState = trackingState,
+        attentionCause = trackingDetails.attentionCause,
         backStack = backStack,
         onNavigate = { backStack.navigateTopLevel(it) },
         onBack = { if (backStack.size > 1) backStack.removeAt(backStack.lastIndex) },
@@ -177,6 +192,9 @@ fun TarryApp(
                 onOpenAbout = { if (backStack.lastOrNull() != AboutRoute) backStack.add(AboutRoute) },
                 snackbarHostState = snackbarHostState,
             )
+        },
+        paywallContent = {
+            PaywallScreen(onClose = { if (backStack.lastOrNull() == PaywallRoute) backStack.removeAt(backStack.lastIndex) })
         },
         onboardingContent = {
             OnboardingScreen(onFinished = { backStack.navigateTopLevel(TimelineRoute) })
@@ -268,6 +286,7 @@ fun TarryApp(
                 },
                 onOpenPermissionsScreen = { openPermissions() },
                 onOpenAppSettings = openAppSettings,
+                onOpenPaywall = { openPaywallScreen() },
             ),
             onDismiss = { sheetVisible = false },
         )
@@ -289,6 +308,7 @@ fun TarryAppContent(
     summaryContent: @Composable () -> Unit = {},
     timelineContent: @Composable () -> Unit = { TimelineScreen() },
     onboardingContent: @Composable () -> Unit = {},
+    paywallContent: @Composable () -> Unit = {},
     trackingHealthContent: @Composable () -> Unit = {},
     permissionsContent: @Composable () -> Unit = {},
     sessionsContent: @Composable () -> Unit = {},
@@ -303,10 +323,12 @@ fun TarryAppContent(
     /** Replaces the bottom navigation while visits are selected for a bulk edit (null = the normal bar). */
     selectionBar: (@Composable () -> Unit)? = null,
     onToggleLongClick: () -> Unit = {},
+    /** Why the toggle is in ATTENTION; TRIAL_ENDED turns the pill into "Unlock". */
+    attentionCause: AttentionCause? = null,
 ) {
     val topLevel = backStack.lastOrNull { it == TimelineRoute || it == SettingsRoute || it == SummaryRoute }
-    // Onboarding is full screen: no bottom bar and no tracking toggle.
-    val fullScreen = backStack.lastOrNull() == OnboardingRoute
+    // Onboarding and the paywall are full screen: no bottom bar and no tracking toggle.
+    val fullScreen = backStack.lastOrNull().let { it == OnboardingRoute || it == PaywallRoute }
     Scaffold(
         modifier = modifier,
         snackbarHost = snackbarHost,
@@ -315,6 +337,7 @@ fun TarryAppContent(
         } else selectionBar ?: {
             TarryBottomBar(
                 trackingState = trackingState,
+                attentionCause = attentionCause,
                 timelineSelected = topLevel != SettingsRoute && topLevel != SummaryRoute,
                 summarySelected = topLevel == SummaryRoute,
                 onSummaryClick = { onNavigate(SummaryRoute) },
@@ -339,6 +362,7 @@ fun TarryAppContent(
                 entry<SettingsRoute> { settingsContent() }
                 entry<SummaryRoute> { summaryContent() }
                 entry<OnboardingRoute> { onboardingContent() }
+                entry<PaywallRoute> { paywallContent() }
                 entry<TrackingHealthRoute> { trackingHealthContent() }
                 entry<PermissionsRoute> { permissionsContent() }
                 entry<SessionsRoute> { sessionsContent() }

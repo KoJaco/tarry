@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
+import me.tarry.core.data.settings.Settings
 
 /** DataStore preferences as typed key/value entries and back. Keys in [skip] are left out. */
 internal fun Preferences.toEntries(skip: Set<String> = emptySet()): List<PrefEntry> =
@@ -49,4 +50,18 @@ internal fun List<PrefEntry>.toPreferences(): Preferences {
         throw BackupException(BackupError.DAMAGED, e)
     }
     return prefs
+}
+
+/**
+ * These preferences with every device-local key ([Settings.DEVICE_LOCAL_KEYS]) taken from [own] instead: any such key in the
+ * file is dropped, then the phone's own value is put back, and a key the phone does not have stays absent.
+ */
+@Suppress("UNCHECKED_CAST")
+internal fun Preferences.withDeviceLocalFrom(own: Preferences): Preferences {
+    val result = toMutablePreferences()
+    result.asMap().keys.filter { it.name in Settings.DEVICE_LOCAL_KEYS }.forEach { result.remove(it) }
+    own.asMap().forEach { (key, value) ->
+        if (key.name in Settings.DEVICE_LOCAL_KEYS) result[key as Preferences.Key<Any>] = value
+    }
+    return result
 }

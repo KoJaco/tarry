@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
+import me.tarry.core.data.settings.LockSpan
 import me.tarry.segmentation.TimeRange
 import org.junit.Test
 
@@ -67,5 +68,35 @@ class SegmentationInputsTest {
         assertThat(boundedWindows(windows, 200)).containsExactly(TimeRange(200, 300), TimeRange(400, 500)).inOrder()
         // No session ever: nothing could have been captured, so no window yields a NO_SESSION gap.
         assertThat(boundedWindows(windows, null)).isEmpty()
+    }
+
+    @Test
+    fun lockedSpansAreCutOutOfTheWindows() {
+        val windows = listOf(TimeRange(100, 200), TimeRange(300, 400), TimeRange(500, 600))
+        // An open span (still locked) drops what follows it and cuts a window it begins inside.
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(350, Long.MAX_VALUE))))
+            .containsExactly(TimeRange(100, 200), TimeRange(300, 350)).inOrder()
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(300, Long.MAX_VALUE)))).containsExactly(TimeRange(100, 200))
+        // A closed span in the middle leaves the windows either side of it, and cuts a straddling one in two.
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(150, 350))))
+            .containsExactly(TimeRange(100, 150), TimeRange(350, 400), TimeRange(500, 600)).inOrder()
+        // Several spans, closed and open, all apply.
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(0, 120), LockSpan(310, 390), LockSpan(550, Long.MAX_VALUE))))
+            .containsExactly(TimeRange(120, 200), TimeRange(300, 310), TimeRange(390, 400), TimeRange(500, 550)).inOrder()
+        // No span: nothing changes.
+        assertThat(windowsOutsideLocks(windows, emptyList())).isEqualTo(windows)
+        assertThat(windowsOutsideLocks(windows, listOf(LockSpan(1_000, 2_000)))).isEqualTo(windows)
+    }
+
+    @Test
+    fun aHealthGapWrittenAfterTheLockStartIsCutAtTheLock() {
+        val hour = 3_600_000L
+        // Trial ends 17:00 inside a 09:00-18:00 window; the phone dies at 16:30 and recovery at 20:00 writes 16:30-18:00.
+        val gap = TimeRange(16 * hour + 30 * 60_000L, 18 * hour)
+        val lock = listOf(LockSpan(17 * hour, Long.MAX_VALUE))
+        assertThat(healthGapsOutsideLocks(listOf(gap), lock)).containsExactly(TimeRange(gap.startMs, 17 * hour))
+        // A Gap wholly inside the lock disappears; one wholly before it is untouched.
+        assertThat(healthGapsOutsideLocks(listOf(TimeRange(17 * hour + 1, 18 * hour)), lock)).isEmpty()
+        assertThat(healthGapsOutsideLocks(listOf(TimeRange(0, hour)), lock)).containsExactly(TimeRange(0, hour))
     }
 }

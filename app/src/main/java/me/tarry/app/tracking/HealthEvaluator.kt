@@ -21,6 +21,8 @@ data class HealthSnapshot(
     val preconditions: Preconditions,
     /** The window-end grace is running: [shouldRun] is true for it and the session is watched like any other. */
     val finishingUp: Boolean = false,
+    /** The trial has ended: [shouldRun] is false for it (nothing is lost, tracking is simply locked) and the issue is TRIAL_ENDED. */
+    val locked: Boolean = false,
 )
 
 /**
@@ -75,6 +77,16 @@ class HealthEvaluator @Inject constructor(private val config: TrackingConfig) {
         return HealthIssue(cause, GapCause.NO_FIX)
     }
 
+    /**
+     * The one decision the worker and the toggle both use: locked is TRIAL_ENDED (attention only, ahead of the standing
+     * problems), otherwise [evaluate] inside a window and [standingIssue] outside it.
+     */
+    fun issue(s: HealthSnapshot): HealthIssue? = when {
+        s.locked -> TRIAL_ENDED_ISSUE
+        s.shouldRun -> evaluate(s)
+        else -> standingIssue(s.preconditions)
+    }
+
     /** Configuration problems that matter even outside a window, so they surface before the window starts (ADR 0003). */
     fun standingIssue(p: Preconditions): HealthIssue? =
         (permissionIssue(p) ?: if (!p.exactAlarms) EXACT_ALARM_ISSUE else null)?.copy(recordGap = false)
@@ -87,6 +99,8 @@ class HealthEvaluator @Inject constructor(private val config: TrackingConfig) {
 
     private companion object {
         val EXACT_ALARM_ISSUE = HealthIssue(AttentionCause.EXACT_ALARM_DENIED, GapCause.SERVICE_KILLED)
+        // No capture time is lost while locked, so no Gap (recordGap = false); the gap cause is never written.
+        val TRIAL_ENDED_ISSUE = HealthIssue(AttentionCause.TRIAL_ENDED, GapCause.SERVICE_KILLED, recordGap = false)
         val SERVICE_ISSUE = HealthIssue(AttentionCause.SERVICE_NOT_RUNNING, GapCause.SERVICE_KILLED)
     }
 }

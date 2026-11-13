@@ -59,6 +59,7 @@ class SegmentationRunner @Inject constructor(
     private val windowChecker: ScheduleWindowChecker,
     private val params: SegmentationParams,
     private val config: TrackingConfig = TrackingConfig(),
+    private val accessLock: AccessLockSource = AccessLockSource { emptyList() },
 ) {
     suspend fun run(nowMs: Long) {
         mutex.withLock { store.transaction { runLocked(nowMs) } }
@@ -100,6 +101,7 @@ class SegmentationRunner @Inject constructor(
         val knownPlaces = placeDao.getAllActive()
         val weights = visitDao.durationByPlaceOutside(from, to).associate { it.placeId to it.durationMs }
 
+        val lockedSpans = accessLock.lockedSpans()
         val input = SegmentationInput(
             range = TimeRange(from, to),
             pings = pings.map { it.toSegmentation() },
@@ -112,13 +114,21 @@ class SegmentationRunner @Inject constructor(
                     weightMs = weights[it.id] ?: 0L, merged = it.mergedIntoId != null, ignored = it.ignored,
                 )
             },
-            windows = boundedWindows(
-                windowChecker.activeIntervals(Instant.ofEpochMilli(from), Instant.ofEpochMilli(to))
-                    .map { TimeRange(it.start.toEpochMilli(), it.end.toEpochMilli()) },
-                firstSessionStart,
+            // Windows inside a locked span (open or closed) are not expected to have a session, so they are not passed on.
+            windows = windowsOutsideLocks(
+                boundedWindows(
+                    windowChecker.activeIntervals(Instant.ofEpochMilli(from), Instant.ofEpochMilli(to))
+                        .map { TimeRange(it.start.toEpochMilli(), it.end.toEpochMilli()) },
+                    firstSessionStart,
+                ),
+                lockedSpans,
             ),
             sessions = segmentationSessions(sessions, now, config.shortInterruptionMs),
-            healthGaps = allGaps.filter { it.cause.toSegmentationOrNull() == null }.map { TimeRange(it.start, it.end) },
+            // Cut at the lock like the windows: a late-written Gap must not run into a locked span.
+            healthGaps = healthGapsOutsideLocks(
+                allGaps.filter { it.cause.toSegmentationOrNull() == null }.map { TimeRange(it.start, it.end) },
+                lockedSpans,
+            ),
         )
         val result = Segmenter.segment(input, params)
 

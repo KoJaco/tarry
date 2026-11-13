@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import me.tarry.app.access.Entitlement
 import me.tarry.core.data.repository.TrackingRepository
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -25,7 +26,7 @@ interface TrackingStateRepository {
 }
 
 /**
- * The real tracking state. Re-evaluated when the status store or the active overrides change, and on [refresh]
+ * The real tracking state. Re-evaluated when the status store, the active overrides or the access state change, and on [refresh]
  * (app foreground), only while observed. There is no timer (rule 5): window edges and pause ends reach us through the alarm, which
  * reconciles and so changes the stores.
  */
@@ -35,13 +36,15 @@ class DefaultTrackingStateRepository @Inject constructor(
     private val reducer: TrackingStateReducer,
     private val statusStore: TrackingStatusStore,
     private val trackingRepo: TrackingRepository,
+    private val entitlement: Entitlement,
     @param:CaptureScope private val scope: CoroutineScope,
 ) : TrackingStateRepository {
     private val refreshTick = MutableStateFlow(0)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val reduced: StateFlow<ReducedTrackingState> =
-        combine(statusStore.status, trackingRepo.observeActiveOverrides(), refreshTick) { _, _, _ -> }
+        // The access state is only a re-reduce trigger (trial ending, purchase); the lock itself is read by capture() via canTrack().
+        combine(statusStore.status, trackingRepo.observeActiveOverrides(), refreshTick, entitlement.state) { _, _, _, _ -> }
             .mapLatest { reducer.reduce(snapshots.capture()) }
             .distinctUntilChanged()
             .stateIn(scope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), ReducedTrackingState(TrackingState.IDLE))

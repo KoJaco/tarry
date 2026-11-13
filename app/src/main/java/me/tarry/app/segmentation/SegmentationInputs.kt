@@ -2,6 +2,7 @@ package me.tarry.app.segmentation
 
 import me.tarry.core.data.db.entity.TrackingSession
 import me.tarry.core.data.model.SessionEndReason
+import me.tarry.core.data.settings.LockSpan
 import me.tarry.segmentation.TimeRange
 
 /**
@@ -38,3 +39,37 @@ internal fun boundedWindows(windows: List<TimeRange>, firstSessionStartMs: Long?
         if (it.endMs <= firstSessionStartMs) null else TimeRange(maxOf(it.startMs, firstSessionStartMs), it.endMs)
     }
 }
+
+/** The spans tracking was locked (closed ones and the open one), or none while it never was. */
+fun interface AccessLockSource {
+    suspend fun lockedSpans(): List<LockSpan>
+}
+
+/**
+ * Removes every locked span from [windows]: nothing was expected to be captured while tracking was locked, so no
+ * NO_SESSION gap belongs there, whether the lock is still on or ended long ago. A window straddling a span is cut around it.
+ */
+internal fun windowsOutsideLocks(windows: List<TimeRange>, spans: List<LockSpan>): List<TimeRange> {
+    if (spans.isEmpty()) return windows
+    var result = windows
+    for (span in spans.sortedBy { it.startMs }) {
+        result = result.flatMap {
+            if (it.endMs <= span.startMs || it.startMs >= span.endMs) {
+                listOf(it)
+            } else {
+                listOfNotNull(
+                    if (it.startMs < span.startMs) TimeRange(it.startMs, span.startMs) else null,
+                    if (it.endMs > span.endMs) TimeRange(span.endMs, it.endMs) else null,
+                )
+            }
+        }
+    }
+    return result
+}
+
+/**
+ * Cuts every locked span out of the health Gap [ranges], the same way as for windows: a Gap written late (recovery after the
+ * phone was dead, a late close) can run past the lock start, and the locked part must not read as a Gap to segmentation.
+ */
+internal fun healthGapsOutsideLocks(ranges: List<TimeRange>, spans: List<LockSpan>): List<TimeRange> =
+    windowsOutsideLocks(ranges, spans)

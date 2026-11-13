@@ -3,10 +3,14 @@ package me.tarry.app.ui.shell
 import androidx.lifecycle.ViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.PauseKind
+import me.tarry.app.tracking.StartResult
 import me.tarry.app.tracking.TrackingConfig
 import me.tarry.app.tracking.TrackingController
 import me.tarry.app.tracking.TrackingDetails
@@ -30,6 +34,11 @@ class ShellViewModel @Inject constructor(
 
     val trackingDetails: StateFlow<TrackingDetails> = repository.details
 
+    private val paywallRequests = Channel<Unit>(Channel.CONFLATED)
+
+    /** Emits when a manual start was refused because the trial has ended: the shell opens the paywall. */
+    val openPaywall: Flow<Unit> = paywallRequests.receiveAsFlow()
+
     val startDurationsMin: List<Int> = config.manualStartDurationsMin
 
     val customDurationStepMin: Int = config.customDurationStepMin
@@ -40,7 +49,11 @@ class ShellViewModel @Inject constructor(
     suspend fun needsOnboarding(): Boolean = onboarding.needsOnboarding()
 
     fun start(endMode: ManualOverrideEndMode, durationMin: Int?) {
-        captureScope.launch { controller.start(endMode, durationMin) }
+        captureScope.launch { notifyIfLocked(controller.start(endMode, durationMin)) }
+    }
+
+    private fun notifyIfLocked(result: StartResult) {
+        if (result == StartResult.LOCKED) paywallRequests.trySend(Unit)
     }
 
     fun pause(kind: PauseKind) {
@@ -53,7 +66,7 @@ class ShellViewModel @Inject constructor(
 
     /** Start tracking until the exact instant [until]. */
     fun startUntil(until: Instant) {
-        captureScope.launch { controller.startUntil(until.toEpochMilli()) }
+        captureScope.launch { notifyIfLocked(controller.startUntil(until.toEpochMilli())) }
     }
 
     /** Pause until the exact instant [until]. */
