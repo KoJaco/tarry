@@ -24,6 +24,7 @@ import me.tarry.app.tracking.FakeActivityClient
 import me.tarry.app.tracking.FakeAlarmScheduler
 import me.tarry.app.tracking.FakeAlertNotifier
 import me.tarry.app.tracking.FakeClock
+import me.tarry.app.tracking.FakeEntitlement
 import me.tarry.app.tracking.FakeGeofenceClient
 import me.tarry.app.tracking.FakeLauncher
 import me.tarry.app.tracking.FakeLocationClient
@@ -115,7 +116,7 @@ class ScheduleViewModelTest {
         )
         controller = TrackingController(
             coordinator, FakeLauncher(), store, trackingRepo, scheduleRepo, inputs, calculator, FakeAlarmScheduler(),
-            FakeSegmentationTrigger(), health, clock, config, FakeWindowEndGrace(),
+            FakeSegmentationTrigger(), health, clock, config, FakeWindowEndGrace(), FakeEntitlement(clock),
         )
         stateRepo = CountingStateRepository()
         runBlocking { scheduleRepo.saveTemplate(Schedule.MON_FRI_7_TO_17, 0) }

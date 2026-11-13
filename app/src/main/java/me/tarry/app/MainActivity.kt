@@ -21,6 +21,7 @@ import me.tarry.core.data.settings.SettingsRepository
 import me.tarry.core.data.settings.ThemeMode
 import me.tarry.app.ui.theme.DarkTarryColors
 import me.tarry.app.ui.theme.LightTarryColors
+import me.tarry.app.access.AccessIntents
 import me.tarry.app.reminder.ReviewReminderIntents
 import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.segmentation.SegmentationScheduler
@@ -52,6 +53,9 @@ class MainActivity : ComponentActivity() {
     /** The reminder notification was tapped: show today's Timeline with the Needs review filter on, once. */
     private var openReview by mutableStateOf(false)
 
+    /** The trial-ended alert was tapped: push the paywall, once. */
+    private var openPaywall by mutableStateOf(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -61,6 +65,11 @@ class MainActivity : ComponentActivity() {
         } else {
             savedInstanceState.getBoolean(STATE_OPEN_REVIEW, false)
         }
+        openPaywall = if (savedInstanceState == null) {
+            intent.getBooleanExtra(AccessIntents.EXTRA_OPEN_PAYWALL, false)
+        } else {
+            savedInstanceState.getBoolean(STATE_OPEN_PAYWALL, false)
+        }
         setContent {
             val themeFlow = remember { settingsRepository.settings.map { it.theme } }
             // Null until the stored theme loads: TarryRoot composes nothing (the paper window background shows).
@@ -68,6 +77,11 @@ class MainActivity : ComponentActivity() {
             TarryRoot(themeMode = mode, onDarkChanged = ::styleSystemBars) {
                 TarryApp(
                     openReview = openReview,
+                    openPaywall = openPaywall,
+                    onOpenPaywallHandled = {
+                        openPaywall = false
+                        intent.removeExtra(AccessIntents.EXTRA_OPEN_PAYWALL)
+                    },
                     onOpenReviewHandled = {
                         openReview = false
                         intent.removeExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW)
@@ -80,12 +94,14 @@ class MainActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_OPEN_REVIEW, openReview)
+        outState.putBoolean(STATE_OPEN_PAYWALL, openPaywall)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         if (intent.getBooleanExtra(ReviewReminderIntents.EXTRA_OPEN_REVIEW, false)) openReview = true
+        if (intent.getBooleanExtra(AccessIntents.EXTRA_OPEN_PAYWALL, false)) openPaywall = true
     }
 
     private fun styleSystemBars(darkTheme: Boolean) {
@@ -120,5 +136,6 @@ class MainActivity : ComponentActivity() {
 
     private companion object {
         const val STATE_OPEN_REVIEW = "open_review"
+        const val STATE_OPEN_PAYWALL = "open_paywall"
     }
 }

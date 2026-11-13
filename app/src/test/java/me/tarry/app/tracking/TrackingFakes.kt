@@ -1,5 +1,8 @@
 package me.tarry.app.tracking
 
+import me.tarry.app.access.AccessState
+import me.tarry.app.access.Entitlement
+import me.tarry.app.access.canTrack
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.onCompletion
@@ -133,4 +136,13 @@ class FakeStayRadius(var radiusM: Float = Settings.DEFAULT_STAY_RADIUS_M.toFloat
 
 class FakeWindowEndGrace(var maxMin: Int = Settings.DEFAULT_WINDOW_END_GRACE_MIN) : WindowEndGraceSource {
     override suspend fun graceMaxMin() = maxMin
+}
+
+/** An [Entitlement] whose [access] a test sets; the trial end is judged against [clock], as the real one does. */
+class FakeEntitlement(private val clock: TrackingClock, var access: AccessState = AccessState.Owned) : Entitlement {
+    override val state = kotlinx.coroutines.flow.MutableStateFlow(access)
+
+    override suspend fun current(): AccessState = access
+
+    override suspend fun canTrack(): Boolean = access.canTrack(clock.nowMs())
 }

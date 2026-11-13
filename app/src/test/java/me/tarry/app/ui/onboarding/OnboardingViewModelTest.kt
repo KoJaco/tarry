@@ -23,6 +23,7 @@ import me.tarry.app.tracking.FakeActivityClient
 import me.tarry.app.tracking.FakeAlarmScheduler
 import me.tarry.app.tracking.FakeAlertNotifier
 import me.tarry.app.tracking.FakeClock
+import me.tarry.app.tracking.FakeEntitlement
 import me.tarry.app.tracking.FakeGeofenceClient
 import me.tarry.app.tracking.FakeLauncher
 import me.tarry.app.tracking.FakeLocationClient
@@ -120,7 +121,7 @@ class OnboardingViewModelTest {
         )
         controller = TrackingController(
             coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, FakeAlarmScheduler(),
-            FakeSegmentationTrigger(), health, clock, config, FakeWindowEndGrace(),
+            FakeSegmentationTrigger(), health, clock, config, FakeWindowEndGrace(), FakeEntitlement(clock),
         )
         gate = OnboardingGate(settings, trackingRepo, permissions, clock)
         viewModel = newViewModel()

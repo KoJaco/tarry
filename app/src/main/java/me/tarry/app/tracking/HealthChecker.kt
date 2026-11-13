@@ -1,5 +1,6 @@
 package me.tarry.app.tracking
 
+import me.tarry.app.access.Entitlement
 import me.tarry.core.data.model.ManualOverrideType
 import java.time.Instant
 import javax.inject.Inject
@@ -14,6 +15,7 @@ class TrackingSnapshotProvider @Inject constructor(
     private val preconditions: PreconditionChecker,
     private val coordinator: CaptureCoordinator,
     private val clock: TrackingClock,
+    private val entitlement: Entitlement,
 ) {
     suspend fun capture(): TrackingStateInputs {
         val now = Instant.ofEpochMilli(clock.nowMs())
@@ -21,19 +23,22 @@ class TrackingSnapshotProvider @Inject constructor(
         val effective = calculator.calculate(inputsProvider.inputs(now, now, zone), now, zone)
         val status = statusStore.current()
         val pause = effective.winningOverride?.takeIf { it.type == ManualOverrideType.PAUSE }
-        val grace = !effective.isActive && pause == null && status.finishingUp && coordinator.isActive
+        // Locked (trial ended): nothing should run, so a locked window is not an outage and opens no Gap.
+        val locked = !entitlement.canTrack()
+        val grace = !locked && !effective.isActive && pause == null && status.finishingUp && coordinator.isActive
         return TrackingStateInputs(
             health = HealthSnapshot(
                 nowMs = now.toEpochMilli(),
                 // The window-end grace is a running session the health monitor must watch (rule 6).
-                shouldRun = effective.isActive || grace,
-                shouldRunSinceMs = effective.activeSince?.toEpochMilli(),
+                shouldRun = !locked && (effective.isActive || grace),
+                shouldRunSinceMs = if (locked) null else effective.activeSince?.toEpochMilli(),
                 serviceRunning = coordinator.isActive,
                 lastHeartbeatMs = status.lastHeartbeatMs,
                 captureMode = status.captureMode,
                 alarmDegraded = status.alarmDegraded,
                 preconditions = preconditions.check(),
                 finishingUp = grace,
+                locked = locked,
             ),
             pauseEndMode = pause?.endMode,
             pausedUntil = effective.pausedUntil,
@@ -57,8 +62,7 @@ class HealthChecker @Inject constructor(
     private val controller: TrackingController,
     private val coordinator: CaptureCoordinator,
 ) {
-    private fun issueFor(health: HealthSnapshot): HealthIssue? =
-        if (health.shouldRun) evaluator.evaluate(health) else evaluator.standingIssue(health.preconditions)
+    private fun issueFor(health: HealthSnapshot): HealthIssue? = evaluator.issue(health)
 
     /**
      * Clears an attention-only cause (no Gap behind it) that no longer applies, so the toggle and alert update when the
@@ -98,6 +102,8 @@ class HealthChecker @Inject constructor(
         recorder.reportOutage(issue, health.shouldRunSinceMs)
         // A warning-only issue loses no capture time, so there is nothing to restart.
         if (issue.recordGap) controller.reconcile(ReconcileSource.SYSTEM)
+        // Locked with capture still running: the trial-end alarm was late or missed, so stop it now.
+        else if (health.locked && health.serviceRunning) controller.reconcile(ReconcileSource.SYSTEM)
         return issue
     }
 }

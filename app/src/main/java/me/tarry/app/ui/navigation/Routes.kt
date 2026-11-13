@@ -69,3 +69,10 @@ data object OnboardingRoute : NavKey
  */
 @Serializable
 data object TrackingHealthRoute : NavKey
+
+/**
+ * Unlock Tarry (phase 8b.1: a placeholder, 8b.2 adds the purchase). Full screen with no bottom bar, like onboarding; pushed by
+ * the locked toggle sheet, a refused manual start and the trial-ended alert.
+ */
+@Serializable
+data object PaywallRoute : NavKey

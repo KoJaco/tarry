@@ -13,17 +13,26 @@ import kotlinx.coroutines.flow.combine
 import androidx.work.WorkInfo
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import me.tarry.app.access.DebugAccess
+import me.tarry.app.access.next
+import me.tarry.app.access.trialEndFor
 import me.tarry.app.export.ExportRequest
 import me.tarry.app.export.RawExporter
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.ArSessionLog
 import me.tarry.app.tracking.CaptureScope
+import me.tarry.app.tracking.HealthChecker
+import me.tarry.app.tracking.ReconcileSource
+import me.tarry.app.tracking.TrackingClock
+import me.tarry.app.tracking.TrackingStateRepository
 import me.tarry.app.tracking.TrackingController
 import me.tarry.app.tracking.SegmentationError
 import me.tarry.app.tracking.TrackingStatusStore
 import me.tarry.core.data.model.SessionEndReason
 import me.tarry.core.data.model.SessionTrigger
 import me.tarry.core.data.repository.TrackingRepository
+import me.tarry.core.data.settings.SettingsRepository
+import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 /** One row of the debug sessions list. */
@@ -59,6 +68,10 @@ class SessionsViewModel @Inject constructor(
     private val controller: TrackingController,
     private val segmentationScheduler: SegmentationScheduler,
     statusStore: TrackingStatusStore,
+    private val settings: SettingsRepository,
+    private val healthChecker: HealthChecker,
+    private val trackingState: TrackingStateRepository,
+    private val clock: TrackingClock,
     // The test window must be scheduled even if the user leaves the screen right after tapping.
     @param:CaptureScope private val captureScope: CoroutineScope,
 ) : ViewModel() {
@@ -108,6 +121,22 @@ class SessionsViewModel @Inject constructor(
     /** Debug builds only; the controller ignores it in release builds. */
     fun startTestWindow() {
         captureScope.launch { controller.startDebugTestWindow() }
+    }
+
+    /** Debug builds only: the access state the switch forces (Owned until chosen otherwise). */
+    val debugAccess: StateFlow<DebugAccess> = settings.accessPrefs
+        .map { p -> DebugAccess.entries.firstOrNull { it.name == p.debugState } ?: DebugAccess.OWNED }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), DebugAccess.OWNED)
+
+    /** Debug builds only: moves the switch to its next value, then lets tracking and the toggle react to it. */
+    fun cycleDebugAccess() {
+        captureScope.launch {
+            val next = debugAccess.value.next()
+            settings.setAccessDebug(next.name, next.trialEndFor(clock.nowMs()))
+            controller.reconcile(ReconcileSource.UI)
+            healthChecker.check()
+            trackingState.refresh()
+        }
     }
 
     private companion object {

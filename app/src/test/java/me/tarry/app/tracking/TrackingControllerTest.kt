@@ -11,6 +11,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import me.tarry.app.access.AccessState
 import me.tarry.core.data.db.TarryDatabase
 import me.tarry.core.data.db.dao.ScheduleDao
 import me.tarry.core.data.db.entity.ScheduleOverride
@@ -65,6 +66,7 @@ class TrackingControllerTest {
     private val segmentation = FakeSegmentationTrigger()
     private val alerts = FakeAlertNotifier()
     private val clock = FakeClock(now = mondayAt(10).toEpochMilli(), zone = sydney)
+    private val entitlement = FakeEntitlement(clock)
     private lateinit var coordinator: CaptureCoordinator
     private lateinit var controller: TrackingController
 
@@ -108,7 +110,7 @@ class TrackingControllerTest {
             EffectiveScheduleWindowChecker(inputs, calculator, clock), health, clock, captureScope,
         )
         controller = TrackingController(
-            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, segmentation, health, clock, config, windowEndGrace,
+            coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, calculator, alarms, segmentation, health, clock, config, windowEndGrace, entitlement,
         )
     }
 
@@ -446,7 +448,7 @@ class TrackingControllerTest {
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, short, clock)
         val shortController = TrackingController(
             coordinator, launcher, store, trackingRepo, scheduleRepo, inputs, EffectiveScheduleCalculator(short), alarms, segmentation,
-            health, clock, short, FakeWindowEndGrace(),
+            health, clock, short, FakeWindowEndGrace(), FakeEntitlement(clock),
         )
         // Monday-only schedule: the next window is a week away, beyond the 3-day look-ahead.
         var mondayOnly = Schedule.EMPTY
@@ -499,7 +501,7 @@ class TrackingControllerTest {
         val inputs = ScheduleInputsProvider(scheduleRepo, trackingRepo, store, config, clock)
         val c = TrackingController(
             failingCoordinator, launcher, store, trackingRepo, scheduleRepo, inputs, EffectiveScheduleCalculator(config), alarms,
-            segmentation, health, clock, config, FakeWindowEndGrace(),
+            segmentation, health, clock, config, FakeWindowEndGrace(), FakeEntitlement(clock),
         )
 
         c.onServiceStarted(SessionTrigger.SCHEDULE)
@@ -1069,5 +1071,114 @@ class TrackingControllerTest {
         assertThat(active.end).isEqualTo(mondayAt(10, 45).toEpochMilli())
         assertThat(alarms.armed.last()).isEqualTo(mondayAt(10, 45))
         assertThrows(IllegalArgumentException::class.java) { runBlocking { controller.pause(0) } }
+    }
+
+    // --- trial lock (phase 8b.1) ---
+
+    @Test
+    fun aWindowWhileLockedStartsNothingAndKeepsRearming() = runBlocking<Unit> {
+        entitlement.access = AccessState.TrialEnded
+
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(launcher.started).isEmpty()
+        assertThat(sessions()).isEmpty()
+        assertThat(alarms.armed.last()).isEqualTo(mondayAt(17))
+    }
+
+    @Test
+    fun aManualStartWhileLockedReturnsLockedAndSavesNoOverride() = runBlocking<Unit> {
+        clock.now = mondayAt(20).toEpochMilli()
+        entitlement.access = AccessState.TrialEnded
+
+        assertThat(controller.start(ManualOverrideEndMode.UNTIL_STOPPED)).isEqualTo(StartResult.LOCKED)
+        assertThat(controller.startUntil(mondayAt(21).toEpochMilli())).isEqualTo(StartResult.LOCKED)
+
+        assertThat(overrides()).isEmpty()
+        assertThat(launcher.started).isEmpty()
+    }
+
+    @Test
+    fun aManualStartWhileOwnedStillStarts() = runBlocking<Unit> {
+        clock.now = mondayAt(20).toEpochMilli()
+
+        assertThat(controller.start(ManualOverrideEndMode.UNTIL_STOPPED)).isEqualTo(StartResult.STARTED)
+
+        assertThat(launcher.started).containsExactly(SessionTrigger.MANUAL)
+    }
+
+    @Test
+    fun aRunningSessionStopsAtTheTrialEnd() = runBlocking<Unit> {
+        val trialEnd = mondayAt(12)
+        entitlement.access = AccessState.Trial(trialEnd.toEpochMilli())
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        // The trial end is in the single alarm, ahead of the window end at 17:00.
+        assertThat(alarms.armed.last()).isEqualTo(trialEnd)
+
+        clock.now = trialEnd.toEpochMilli()
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(launcher.stopCalls).isGreaterThan(0)
+        // The window-end work (segmentation) still runs when the lock is what ended the session.
+        assertThat(segmentation.windowEnds).isEqualTo(1)
+    }
+
+    @Test
+    fun ownedAgainStartsAtTheNextReconcile() = runBlocking<Unit> {
+        entitlement.access = AccessState.TrialEnded
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(launcher.started).isEmpty()
+
+        entitlement.access = AccessState.Owned
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(launcher.started).containsExactly(SessionTrigger.SCHEDULE)
+    }
+
+    @Test
+    fun aServiceStartedAfterTheLockBeginsNoSession() = runBlocking<Unit> {
+        entitlement.access = AccessState.TrialEnded
+
+        controller.onServiceStarted(SessionTrigger.SCHEDULE)
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(launcher.stopCalls).isGreaterThan(0)
+    }
+
+    @Test
+    fun theLockEndsAManualStartSoUnlockingLaterDoesNotResumeIt() = runBlocking<Unit> {
+        clock.now = mondayAt(20).toEpochMilli()
+        assertThat(controller.start(ManualOverrideEndMode.UNTIL_STOPPED)).isEqualTo(StartResult.STARTED)
+        assertThat(overrides().single().active).isTrue()
+        launcher.started.clear()
+
+        entitlement.access = AccessState.TrialEnded
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(overrides().single().active).isFalse()
+
+        clock.now += 3 * 24 * 60 * 60 * 1000L
+        entitlement.access = AccessState.Owned
+        controller.reconcile(ReconcileSource.ALARM)
+        assertThat(launcher.started).isEmpty()
+    }
+
+    @Test
+    fun theLockEndsASessionThatIsInTheWindowEndGrace() = runBlocking<Unit> {
+        controller.reconcile()
+        coordinator.begin(SessionTrigger.SCHEDULE)
+        clock.now = mondayAt(17).toEpochMilli()
+        controller.reconcile()
+        assertThat(store.current().finishingUp).isTrue()
+
+        entitlement.access = AccessState.TrialEnded
+        controller.reconcile(ReconcileSource.ALARM)
+
+        assertThat(trackingRepo.openSession()).isNull()
+        assertThat(sessions().single().endReason).isEqualTo(SessionEndReason.SCHEDULE_END)
+        assertThat(store.current().finishingUp).isFalse()
+        assertThat(segmentation.windowEnds).isEqualTo(1)
     }
 }
