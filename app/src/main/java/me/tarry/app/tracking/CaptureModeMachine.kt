@@ -2,7 +2,6 @@ package me.tarry.app.tracking
 
 import me.tarry.core.data.model.ActivityType
 import me.tarry.core.data.model.PingSource
-import me.tarry.core.data.settings.PowerMode
 import me.tarry.core.data.settings.Settings
 
 /** Parameters for a fused location request, derived from [TrackingConfig]. */
@@ -41,8 +40,8 @@ data class MachineStep(val mode: CaptureMode, val effects: List<CaptureEffect>)
  */
 class CaptureModeMachine(
     private val config: TrackingConfig,
+    private var profile: CaptureProfile,
     activityRecognitionAvailable: Boolean = true,
-    private var profile: CaptureProfile = config.profiles.getValue(PowerMode.PRECISE),
 ) {
     private var activityRecognitionAvailable = activityRecognitionAvailable
 
