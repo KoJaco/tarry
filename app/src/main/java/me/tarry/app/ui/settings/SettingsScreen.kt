@@ -361,7 +361,7 @@ fun SettingsContent(
                 AccessRow.Revoked -> stringResource(R.string.settings_access_revoked)
             }
             SettingsGroup {
-                row(accessTitle, onClick = onOpenPaywall, icon = R.drawable.ic_lock)
+                row(accessTitle, onClick = onOpenPaywall, icon = if (access == AccessRow.Owned) R.drawable.ic_check else R.drawable.ic_lock)
             }
         }
         SectionHeader(stringResource(R.string.settings_section_tracking), Modifier.padding(top = space.m))

@@ -176,6 +176,19 @@ class PaywallUiTest {
     }
 
     @Test
+    fun theUnavailableRestoreResultSaysGooglePlayCannotBeReached() {
+        show(trial.copy(restore = RestoreResult.Unavailable))
+        composeRule.onNodeWithText("Can't reach Google Play right now").assertIsDisplayed()
+        composeRule.onNodeWithText("No purchase found on this Google account").assertDoesNotExist()
+    }
+
+    @Test
+    fun theUnlockButtonIsOffWhileAPurchaseIsStarting() {
+        show(trial.copy(launching = true))
+        composeRule.onNodeWithText("Unlock for A$29.00").assertIsNotEnabled()
+    }
+
+    @Test
     fun thePrimaryButtonIsNotClippedAtFontScaleTwoInLight() {
         show(PaywallUi(AccessState.TrialEnded, price), fontScale = 2f)
         composeRule.onNodeWithText("Unlock for A$29.00").assertIsDisplayed().assertNotTruncated()

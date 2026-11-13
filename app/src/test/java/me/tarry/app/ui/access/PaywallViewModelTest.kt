@@ -2,6 +2,7 @@ package me.tarry.app.ui.access
 
 import android.app.Activity
 import com.google.common.truth.Truth.assertThat
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.launchIn
@@ -12,6 +13,7 @@ import me.tarry.app.access.AccessState
 import me.tarry.app.access.FakePurchaseClient
 import me.tarry.app.access.LaunchResult
 import me.tarry.app.access.OfferState
+import me.tarry.app.access.RefreshResult
 import me.tarry.app.access.TrialClock
 import me.tarry.app.tracking.FakeClock
 import me.tarry.app.tracking.FakeEntitlement
@@ -111,6 +113,74 @@ class PaywallViewModelTest {
         assertThat(v.ui.value.launchFailed).isTrue()
         v.retry()
         assertThat(v.ui.value.launchFailed).isFalse()
+    }
+
+    @Test
+    fun restoreOfflineSaysUnavailableNotNoPurchase() {
+        setAccess(AccessState.TrialEnded)
+        val v = vm()
+        client.refreshResult = RefreshResult.Unavailable
+        v.restore()
+        assertThat(v.ui.value.restore).isEqualTo(RestoreResult.Unavailable)
+    }
+
+    @Test
+    fun restoreWithAPendingPurchaseShowsNeitherFoundNorNotFound() {
+        setAccess(AccessState.TrialEnded)
+        val v = vm()
+        client.refreshResult = RefreshResult.Ok(found = true)
+        client.onRefresh = { setAccess(AccessState.Pending(null)) }
+        v.restore()
+        assertThat(v.ui.value.restore).isNull()
+    }
+
+    @Test
+    fun aSecondTapWhileLaunchingIsIgnored() {
+        val gate = CompletableDeferred<Unit>()
+        client.onLaunch = { gate.await() }
+        val v = vm()
+        val activity = Robolectric.buildActivity(Activity::class.java).get()
+        v.unlock(activity)
+        assertThat(v.ui.value.launching).isTrue()
+        v.unlock(activity)
+        assertThat(client.launches).isEqualTo(1)
+        gate.complete(Unit)
+        assertThat(v.ui.value.launching).isFalse()
+        v.unlock(activity)
+        assertThat(client.launches).isEqualTo(2)
+    }
+
+    @Test
+    fun aListenerFailureAfterAStartedLaunchShowsTheError() {
+        val v = vm()
+        v.unlock(Robolectric.buildActivity(Activity::class.java).get())
+        assertThat(v.ui.value.launchFailed).isFalse()
+        client.failures.tryEmit(Unit)
+        assertThat(v.ui.value.launchFailed).isTrue()
+    }
+
+    @Test
+    fun aStaleErrorGoesWhenAccessBecomesOwnedOrPending() {
+        client.launchResult = LaunchResult.Error
+        val v = vm()
+        v.unlock(Robolectric.buildActivity(Activity::class.java).get())
+        assertThat(v.ui.value.launchFailed).isTrue()
+        setAccess(AccessState.Pending(null))
+        assertThat(v.ui.value.launchFailed).isFalse()
+        setAccess(AccessState.Owned)
+        assertThat(v.ui.value.launchFailed).isFalse()
+    }
+
+    @Test
+    fun tryAgainShowsLoadingUntilTheRefreshReturns() {
+        client.offer.value = OfferState.Unavailable
+        val v = vm()
+        val gate = CompletableDeferred<Unit>()
+        client.onRefresh = { gate.await() }
+        v.retry()
+        assertThat(v.ui.value.offer).isEqualTo(OfferState.Loading)
+        gate.complete(Unit)
+        assertThat(v.ui.value.offer).isEqualTo(OfferState.Unavailable)
     }
 
     @Test

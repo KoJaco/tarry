@@ -82,6 +82,68 @@ class PurchaseMappingTest {
     }
 
     @Test
+    fun aBackgroundEmptyQueryNeverRevokes() {
+        for (s in listOf(PurchaseState.OWNED, PurchaseState.PENDING)) {
+            assertThat(mapPurchases(true, emptyList(), s, foreground = false).newState).isEqualTo(s)
+        }
+    }
+
+    @Test
+    fun aBackgroundQueryStillGrantsOwnedAndPending() {
+        val bought = mapPurchases(true, listOf(p(PlayPurchaseState.PURCHASED)), PurchaseState.REVOKED, foreground = false)
+        assertThat(bought.newState).isEqualTo(PurchaseState.OWNED)
+        assertThat(bought.acknowledge).containsExactly("t")
+        assertThat(mapPurchases(true, listOf(p(PlayPurchaseState.PENDING)), PurchaseState.NONE, foreground = false).newState)
+            .isEqualTo(PurchaseState.PENDING)
+    }
+
+    private fun plan(
+        ok: Boolean,
+        before: PurchaseState,
+        vararg ps: PurchaseSnapshot,
+        foreground: Boolean = true,
+        listener: Boolean = false,
+    ) = planPurchases(ok, ps.toList(), before, foreground, listener)
+
+    @Test
+    fun theCacheIsWrittenOnlyAfterAnOkQuery() {
+        assertThat(plan(true, PurchaseState.NONE).write).isTrue()
+        assertThat(plan(false, PurchaseState.NONE, p(PlayPurchaseState.PURCHASED)).write).isFalse()
+    }
+
+    @Test
+    fun reconcileOnlyOnAChangeToOrFromOwned() {
+        assertThat(plan(true, PurchaseState.NONE, p(PlayPurchaseState.PURCHASED)).reconcile).isTrue()
+        assertThat(plan(true, PurchaseState.OWNED).reconcile).isTrue() // foreground refund
+        assertThat(plan(true, PurchaseState.OWNED, p(PlayPurchaseState.PURCHASED, acked = true)).reconcile).isFalse()
+        assertThat(plan(true, PurchaseState.NONE, p(PlayPurchaseState.PENDING)).reconcile).isFalse()
+        assertThat(plan(true, PurchaseState.PENDING).reconcile).isFalse() // PENDING to REVOKED
+        assertThat(plan(false, PurchaseState.OWNED).reconcile).isFalse()
+        assertThat(plan(true, PurchaseState.OWNED, foreground = false).reconcile).isFalse()
+    }
+
+    @Test
+    fun theAcknowledgeTokensAreListedInThePlan() {
+        val d = plan(true, PurchaseState.NONE, p(PlayPurchaseState.PURCHASED, acked = false, token = "x"))
+        assertThat(d.acknowledge).containsExactly("x")
+        assertThat(d.found).isTrue()
+    }
+
+    @Test
+    fun anEmptyListenerBatchIsIgnored() {
+        val d = plan(true, PurchaseState.OWNED, listener = true)
+        assertThat(d.write).isFalse()
+        assertThat(d.reconcile).isFalse()
+        assertThat(d.newState).isEqualTo(PurchaseState.OWNED)
+    }
+
+    @Test
+    fun foundIsFalseForAnEmptyOrFailedQuery() {
+        assertThat(plan(true, PurchaseState.OWNED, foreground = false).found).isFalse()
+        assertThat(plan(false, PurchaseState.NONE, p(PlayPurchaseState.PURCHASED)).found).isFalse()
+    }
+
+    @Test
     fun anUnspecifiedStateIsNeitherOwnedNorPending() {
         assertThat(map(true, PurchaseState.NONE, p(PlayPurchaseState.UNSPECIFIED)).newState).isEqualTo(PurchaseState.NONE)
     }

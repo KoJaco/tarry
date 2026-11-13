@@ -19,13 +19,16 @@ import com.android.billingclient.api.queryPurchasesAsync
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.ReconcileSource
 import me.tarry.app.tracking.TrackingClock
@@ -50,8 +53,13 @@ class PlayPurchaseClient @Inject constructor(
     private val _offer = MutableStateFlow<OfferState>(OfferState.Loading)
     override val offer: StateFlow<OfferState> = _offer.asStateFlow()
 
+    private val _failures = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    override val failures: SharedFlow<Unit> = _failures
+
     private val connectLock = Mutex()
     private val applyLock = Mutex()
+
+    @Volatile
     private var details: ProductDetails? = null
 
     private val billing: BillingClient by lazy {
@@ -66,13 +74,15 @@ class PlayPurchaseClient @Inject constructor(
         when (result.responseCode) {
             BillingClient.BillingResponseCode.OK ->
                 // A listener batch is only the new purchases, so an empty one proves nothing.
-                if (!purchases.isNullOrEmpty()) scope.launch { safely { apply(ok = true, purchases, ReconcileSource.UI) } }
+                scope.launch { safely { apply(ok = true, purchases.orEmpty(), ReconcileSource.UI, listenerBatch = true) } }
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> scope.launch { refresh() }
-            else -> Unit // Cancelled or failed: nothing changes.
+            BillingClient.BillingResponseCode.USER_CANCELED -> Unit // The buyer chose to stop: nothing changes, nothing to say.
+            else -> _failures.tryEmit(Unit) // The cache is untouched; the paywall shows the error.
         }
     }
 
-    override suspend fun refresh(source: ReconcileSource) {
+    override suspend fun refresh(source: ReconcileSource): RefreshResult {
+        var result: RefreshResult = RefreshResult.Unavailable
         safely {
             if (!connect()) {
                 _offer.value = OfferState.Unavailable
@@ -81,9 +91,12 @@ class PlayPurchaseClient @Inject constructor(
             val owned = billing.queryPurchasesAsync(
                 QueryPurchasesParams.newBuilder().setProductType(BillingClient.ProductType.INAPP).build(),
             )
-            apply(owned.billingResult.responseCode == BillingClient.BillingResponseCode.OK, owned.purchasesList, source)
+            val ok = owned.billingResult.responseCode == BillingClient.BillingResponseCode.OK
+            val found = apply(ok, owned.purchasesList, source)
+            if (ok) result = RefreshResult.Ok(found)
             loadOffer()
         }
+        return result
     }
 
     override suspend fun launch(activity: Activity): LaunchResult = try {
@@ -140,8 +153,8 @@ class PlayPurchaseClient @Inject constructor(
         _offer.value = if (price != null) OfferState.Available(price) else OfferState.Unavailable
     }
 
-    /** Applies a query or update to the cache, acknowledges what needs it, and reconciles after a change to or from owned. */
-    private suspend fun apply(ok: Boolean, purchases: List<Purchase>, source: ReconcileSource) {
+    /** Applies a query or update as [planPurchases] says, then acknowledges. Returns whether a lifetime purchase was found. */
+    private suspend fun apply(ok: Boolean, purchases: List<Purchase>, source: ReconcileSource, listenerBatch: Boolean = false): Boolean {
         val snapshots = purchases.map { p ->
             PurchaseSnapshot(
                 products = p.products,
@@ -154,35 +167,41 @@ class PlayPurchaseClient @Inject constructor(
                 token = p.purchaseToken,
             )
         }
-        val decision = applyLock.withLock {
-            val before = store.state()
-            val d = mapPurchases(ok, snapshots, before)
+        val plan = applyLock.withLock {
+            val p = planPurchases(ok, snapshots, store.state(), foreground = source == ReconcileSource.UI, listenerBatch = listenerBatch)
             // Recorded before acknowledging, so a failed acknowledge keeps OWNED and retries on the next refresh.
-            if (ok) store.record(d.newState, clock.nowMs())
-            if ((before == PurchaseState.OWNED) != (d.newState == PurchaseState.OWNED)) {
-                safely { controller.get().reconcile(source) }
-            }
-            d
+            if (p.write) store.record(p.newState, clock.nowMs())
+            if (p.reconcile) safely { controller.get().reconcile(source) }
+            p
         }
-        for (token in decision.acknowledge) {
+        for (token in plan.acknowledge) {
             safely { billing.acknowledgePurchase(AcknowledgePurchaseParams.newBuilder().setPurchaseToken(token).build()) }
         }
+        return plan.found
     }
 
     private suspend fun connect(): Boolean = connectLock.withLock {
         if (billing.isReady) return true
-        suspendCancellableCoroutine { cont ->
-            billing.startConnection(object : BillingClientStateListener {
-                override fun onBillingSetupFinished(result: BillingResult) {
-                    if (cont.isActive) cont.resume(result.responseCode == BillingClient.BillingResponseCode.OK)
-                }
+        // A connect that never answers must not hold the lock for ever: a timeout reads as unavailable.
+        withTimeoutOrNull(CONNECT_TIMEOUT_MS) {
+            suspendCancellableCoroutine { cont ->
+                billing.startConnection(object : BillingClientStateListener {
+                    override fun onBillingSetupFinished(result: BillingResult) {
+                        if (cont.isActive) cont.resume(result.responseCode == BillingClient.BillingResponseCode.OK)
+                    }
 
-                override fun onBillingServiceDisconnected() {
-                    // Auto reconnection handles the next call; a connect still waiting reads as unavailable.
-                    if (cont.isActive) cont.resume(false)
-                }
-            })
-        }
+                    override fun onBillingServiceDisconnected() {
+                        // Auto reconnection handles the next call; a connect still waiting reads as unavailable.
+                        if (cont.isActive) cont.resume(false)
+                    }
+                })
+            }
+        } ?: false
+    }
+
+    private companion object {
+        /** How long a connection to Google Play may take before it counts as unavailable. */
+        const val CONNECT_TIMEOUT_MS = 10_000L
     }
 
     private suspend fun safely(block: suspend () -> Unit) {

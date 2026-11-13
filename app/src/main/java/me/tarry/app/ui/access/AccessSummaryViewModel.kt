@@ -56,7 +56,7 @@ class AccessSummaryViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), null)
 
     val trialCard: StateFlow<Boolean> = entitlement.state
-        .combine(settings.accessPrefs) { state, prefs -> trialCardVisible(state, prefs.trialCardShown, clock.nowMs()) }
+        .combine(settings.accessPrefs) { state, prefs -> trialCardVisible(state, prefs.trialCardShown, TrialClock.effectiveNowMs(clock.nowMs(), prefs.lastSeenMs)) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(SUBSCRIPTION_TIMEOUT_MS), false)
 
     /** Dismiss and Unlock both end the card for good. */

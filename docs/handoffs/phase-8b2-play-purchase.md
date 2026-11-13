@@ -32,6 +32,7 @@ interface PurchaseClient {
 - `queryProductDetails` for `lifetime` / `INAPP` → `oneTimePurchaseOfferDetails.formattedPrice` (9.x: use the first
   offer of `oneTimePurchaseOfferDetailsList` if the singular getter is deprecated).
 - `launch`: `launchBillingFlow` with that `ProductDetails`. `ITEM_ALREADY_OWNED` ⇒ run `refresh()` and return `AlreadyOwned`.
+- **Owner decision (review):** a successful empty query revokes only on a foreground refresh (`ReconcileSource.UI`: paywall, `onStart`, restore). The process-start (`SYSTEM`) refresh may set OWNED/PENDING but never writes REVOKED (`mapPurchases(foreground = ...)`). `refresh()` returns `RefreshResult` (Ok(found) / Unavailable); a listener failure after a started launch is emitted on `PurchaseClient.failures`; the connect wait times out after 10 s.
 - **Purchase handling** (listener and `queryPurchasesAsync(INAPP)` share one function), only for purchases whose
   `products` contains `lifetime`:
   - `PURCHASED` ⇒ `PurchaseStore.record(OWNED)`; if `!isAcknowledged` ⇒ `acknowledgePurchase` (Play refunds after 3 days
@@ -80,7 +81,7 @@ a close affordance (`SecondaryButton` "Not now" at the bottom or an icon button 
 ### 5. Trial card (Timeline)
 - One dismissible card at the top of the Timeline when the state is `Trial` with **≤ 24 h left**, not yet dismissed:
   "Trial ends tomorrow" title, body "Unlock Tarry to keep tracking after your free trial.", action "Unlock" → paywall,
-  close icon (content description "Dismiss"). Dismiss or Unlock sets the device-local flag `access_end_card_shown`
+  close icon (content description "Dismiss"). Dismiss or Unlock sets the device-local flag `access_trial_card_shown`
   (new key; add it to the device-local key set in `core-data/.../settings/Settings.kt` with the other `access_*` keys so
   backup skips it and restore strips it, and extend the existing device-local backup test). Never shown again after that, never shown when owned. Use an existing card style from
   the Timeline (e.g. the empty-day / attention card), don't invent a new one.

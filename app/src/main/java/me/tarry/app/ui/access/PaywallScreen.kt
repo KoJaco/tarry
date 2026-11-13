@@ -141,6 +141,7 @@ fun PaywallContent(
                 ui.launchFailed -> stringResource(R.string.paywall_error)
                 ui.restore == RestoreResult.Found -> stringResource(R.string.paywall_restore_found)
                 ui.restore == RestoreResult.NotFound && !owned -> stringResource(R.string.paywall_restore_not_found)
+                ui.restore == RestoreResult.Unavailable && !owned -> stringResource(R.string.paywall_unavailable)
                 else -> null
             }
             message?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = TarryTheme.colors.ink) }
@@ -151,6 +152,7 @@ fun PaywallContent(
                     stringResource(R.string.paywall_unlock_for, offer.formattedPrice),
                     onUnlock,
                     Modifier.fillMaxWidth(),
+                    enabled = !ui.launching,
                 )
                 else -> PrimaryButton(stringResource(R.string.paywall_unlock_plain), onUnlock, Modifier.fillMaxWidth(), enabled = false)
             }

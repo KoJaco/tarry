@@ -20,10 +20,16 @@ data class PurchaseDecision(val newState: PurchaseState, val acknowledge: List<S
 
 /**
  * Pure mapping from a store query to the cached state. Only purchases of [LIFETIME_PRODUCT_ID] count.
- * A failed query ([queryOk] false) never changes anything; a successful one with no lifetime purchase revokes an
- * owned or pending cache (refund, cancel) and leaves NONE (and an already REVOKED) as it is.
+ * A failed query ([queryOk] false) never changes anything. A successful one with no lifetime purchase revokes an
+ * owned or pending cache (refund, cancel) only when it is a [foreground] refresh; a background (process start) one may
+ * grant OWNED or PENDING but never writes REVOKED. NONE and an already REVOKED stay as they are.
  */
-fun mapPurchases(queryOk: Boolean, purchases: List<PurchaseSnapshot>, current: PurchaseState): PurchaseDecision {
+fun mapPurchases(
+    queryOk: Boolean,
+    purchases: List<PurchaseSnapshot>,
+    current: PurchaseState,
+    foreground: Boolean = true,
+): PurchaseDecision {
     if (!queryOk) return PurchaseDecision(current, emptyList())
     val ours = purchases.filter { LIFETIME_PRODUCT_ID in it.products }
     val bought = ours.filter { it.state == PlayPurchaseState.PURCHASED }
@@ -31,6 +37,44 @@ fun mapPurchases(queryOk: Boolean, purchases: List<PurchaseSnapshot>, current: P
         return PurchaseDecision(PurchaseState.OWNED, bought.filter { !it.acknowledged }.map { it.token })
     }
     if (ours.any { it.state == PlayPurchaseState.PENDING }) return PurchaseDecision(PurchaseState.PENDING, emptyList())
-    val revoked = current == PurchaseState.OWNED || current == PurchaseState.PENDING
+    val revoked = foreground && (current == PurchaseState.OWNED || current == PurchaseState.PENDING)
     return PurchaseDecision(if (revoked) PurchaseState.REVOKED else current, emptyList())
+}
+
+/**
+ * What to do with one query or listener update: whether to [write] the cache (only after an OK query), whether to
+ * [reconcile] tracking (only on a change to or from OWNED), which tokens to [acknowledge] (after the write), and whether
+ * a lifetime purchase was [found] (bought or pending).
+ */
+data class PurchasePlan(
+    val newState: PurchaseState,
+    val write: Boolean,
+    val reconcile: Boolean,
+    val acknowledge: List<String>,
+    val found: Boolean,
+)
+
+/**
+ * The whole decision for [PlayPurchaseClient]. A [listenerBatch] holds only the new purchases, so an empty one proves
+ * nothing and is ignored.
+ */
+fun planPurchases(
+    queryOk: Boolean,
+    purchases: List<PurchaseSnapshot>,
+    before: PurchaseState,
+    foreground: Boolean,
+    listenerBatch: Boolean = false,
+): PurchasePlan {
+    if (listenerBatch && purchases.isEmpty()) return PurchasePlan(before, false, false, emptyList(), false)
+    val d = mapPurchases(queryOk, purchases, before, foreground)
+    val found = queryOk && purchases.any {
+        LIFETIME_PRODUCT_ID in it.products && (it.state == PlayPurchaseState.PURCHASED || it.state == PlayPurchaseState.PENDING)
+    }
+    return PurchasePlan(
+        newState = d.newState,
+        write = queryOk,
+        reconcile = queryOk && (before == PurchaseState.OWNED) != (d.newState == PurchaseState.OWNED),
+        acknowledge = d.acknowledge,
+        found = found,
+    )
 }
