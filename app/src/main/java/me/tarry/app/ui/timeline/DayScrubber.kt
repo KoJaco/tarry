@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -139,6 +140,10 @@ private val TickGap = 2.dp
 private val PillBand = MinTouch
 /** Minimised, the card surface starts this far down the pill band: the empty top of the band stays a touch target but shows map. */
 private val MinimisedSurfaceInset = 16.dp
+/** Expanded, the card gives up this much of the empty space under its job chip, pulling the time pill closer to it. */
+private val ChipToTimeLift = 8.dp
+/** Gap between the card's title and its round buttons, so a long place name stops well short of them. */
+private val TitleToButtons = 12.dp
 /** Fill strength of strip items other than the one under the thumb; outlines and lines stay full strength (>= 3:1). */
 private const val FadedAlpha = 0.4f
 /** The line under the thumb is this much thicker, so it stands out without fading the others. */
@@ -286,6 +291,8 @@ internal fun DayScrubber(
     }
     val solidStroke = remember(density) { Stroke(with(density) { BlockStroke.toPx() }) }
     val containerShape = TarryTheme.shapes.container
+    // The row already has xs on each side; the maximise button adds the rest of the 16 dp inset on the right.
+    val maximiseEndInset = TarryTheme.space.l - TarryTheme.space.xs
 
     Column(modifier) {
         Column(
@@ -323,15 +330,21 @@ internal fun DayScrubber(
                     onAddJob = onAddJob,
                     onMinimise = { setMinimised(true) },
                     minimiseFocus = minimiseFocus,
-                    // Expanded: the standard 12 dp above the card row (the minimised overlay keeps its slimmer top).
-                    modifier = Modifier.padding(start = TarryTheme.space.l, end = TarryTheme.space.xs, top = TarryTheme.space.m),
+                    // Expanded: the standard 12 dp above the card row (the minimised overlay keeps its slimmer top), and
+                    // the same inset on both sides. The bottom of the chip row is empty, so the time band may sit over it.
+                    modifier = Modifier
+                        .layout { measurable, constraints ->
+                            val p = measurable.measure(constraints)
+                            layout(p.width, (p.height - ChipToTimeLift.roundToPx()).coerceAtLeast(0)) { p.place(0, 0) }
+                        }
+                        .padding(start = TarryTheme.space.l, end = TarryTheme.space.l, top = TarryTheme.space.m),
                 )
             }
             // The time label floats above the thumb in a 48 dp band of its own: the whole band is the touch target, so
             // it never overlaps the card above or the strip below. Its right edge follows the strip's.
             BoxWithConstraints(
                 Modifier.fillMaxWidth().height(PillBand)
-                    .padding(start = StepTouch + TarryTheme.space.xs, end = StepTouch + TarryTheme.space.xs + MinTouch * minimisedProgress),
+                    .padding(start = StepTouch + TarryTheme.space.xs, end = StepTouch + TarryTheme.space.xs + (MinTouch + maximiseEndInset) * minimisedProgress),
             ) {
                 var labelWidth by remember { mutableStateOf(0) }
                 val trackPx = constraints.maxWidth - 2 * inset
@@ -460,8 +473,10 @@ internal fun DayScrubber(
                 if (minimised || minimisedProgress > 0f) {
                     val showLabel = stringResource(R.string.map_overlay_show)
                     val hiddenState = stringResource(R.string.map_overlay_state_hidden)
+                    // Its right edge keeps the card's 16 dp inset, matching the left side.
                     Box(
                         Modifier
+                            .padding(end = maximiseEndInset * minimisedProgress)
                             .width(MinTouch * minimisedProgress)
                             .height(MinTouch)
                             .clipToBounds()
@@ -641,6 +656,7 @@ private fun SelectedItemCard(
                     }
                 }
             }
+            Spacer(Modifier.width(TitleToButtons))
             // Minimise sits left of Open (and takes Open's place on a gap, which has nothing to open).
             val shownState = stringResource(R.string.map_overlay_state_shown)
             Box(Modifier.size(MinTouch), contentAlignment = Alignment.Center) {

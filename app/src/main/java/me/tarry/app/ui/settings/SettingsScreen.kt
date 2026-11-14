@@ -519,18 +519,18 @@ private fun ColumnScope.DataSection(lastBackupMs: Long?, retentionValue: String?
     val backUpTitle = stringResource(R.string.settings_backup_now)
     val restoreTitle = stringResource(R.string.settings_restore)
     val retentionTitle = stringResource(R.string.settings_ping_retention)
+    val restorePrivacy = stringResource(R.string.settings_data_privacy)
     val lastBackup = lastBackupMs?.let { stringResource(R.string.settings_backup_last, formatBackupDate(it, zone)) }
     val working = data.busy?.let { stringResource(it.labelRes()) }
     SettingsGroup {
         row(backUpTitle, onClick = onBackUp, icon = R.drawable.ic_backup, subtitle = lastBackup, enabled = !busy)
-        row(restoreTitle, onClick = onRestore, icon = R.drawable.ic_settings_backup_restore, enabled = !busy)
-    }
-    Text(
-        text = stringResource(R.string.settings_data_privacy),
-        style = MaterialTheme.typography.bodyMedium,
-        color = TarryTheme.colors.muted,
-    )
-    if (retentionValue != null || working != null) SettingsGroup {
+        row(
+            restoreTitle,
+            onClick = onRestore,
+            icon = R.drawable.ic_settings_backup_restore,
+            subtitle = restorePrivacy,
+            enabled = !busy,
+        )
         if (retentionValue != null) row(retentionTitle, onClick = onRetention, icon = R.drawable.ic_history, subtitle = retentionValue, enabled = !busy)
         if (working != null) item { WorkingRow(working) }
     }

@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onFirst
@@ -333,15 +334,19 @@ class SettingsDataUiTest {
     }
 
     @Test
-    fun privacyLineSitsUnderTheBackupRowsAndAboveRetention() {
+    fun privacyLineIsTheRestoreRowsSubtitleAndRetentionFollowsInTheSameGroup() {
         composeRule.setContent { SettingsContent(Settings()) }
 
         composeRule.onNodeWithText("Raw location retention").performScrollTo()
-        val restoreBottom = composeRule.onNodeWithText("Restore from backup").fetchSemanticsNode().boundsInRoot.bottom
-        val hint = composeRule.onNodeWithText("The file contains your full location history. Keep it somewhere private.").fetchSemanticsNode().boundsInRoot
-        val retentionTop = composeRule.onNodeWithText("Raw location retention").fetchSemanticsNode().boundsInRoot.top
-        assertThat(hint.top).isAtLeast(restoreBottom)
-        assertThat(hint.bottom).isAtMost(retentionTop)
+        val hint = "The file contains your full location history. Keep it somewhere private."
+        // One merged row: the privacy line is read with "Restore from backup", not as a loose paragraph.
+        val restore = composeRule.onNode(hasText("Restore from backup") and hasText(hint)).assertHasClickAction()
+            .fetchSemanticsNode().boundsInRoot
+        val backUp = composeRule.onNodeWithText("Back up now").fetchSemanticsNode().boundsInRoot
+        val retention = composeRule.onNodeWithText("Raw location retention").fetchSemanticsNode().boundsInRoot
+        assertThat(restore.top).isAtLeast(backUp.bottom)
+        // Retention sits directly under restore (row dividers only), not after a separate paragraph.
+        assertThat(retention.top - restore.bottom).isLessThan(4f * composeRule.density.density)
     }
 
     @Test

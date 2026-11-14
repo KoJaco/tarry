@@ -578,7 +578,11 @@ class EditDrawerViewModelTest {
         viewModel.setBlockEnd(base + 90 * minute)
         viewModel.setNotes("invoice weekly")
 
-        val state = awaitState { it.notes == "invoice weekly" && it.end == base + 90 * minute }
+        // Each edit is its own coroutine, so wait until all five have landed (they may finish in any order).
+        val state = awaitState {
+            it.notes == "invoice weekly" && it.end == base + 90 * minute && it.jobId == "k" && !it.billable &&
+                it.start == base + 5 * minute
+        }
         assertThat(state.jobId).isEqualTo("k")
         assertThat(state.billable).isFalse()
         assertThat(state.start).isEqualTo(base + 5 * minute)
