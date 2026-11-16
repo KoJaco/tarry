@@ -3,7 +3,7 @@
     <string name="onboarding_step_indicator">Step %1$d of %2$d</string>
     <string name="onboarding_welcome_headline">Your work day, already written down.</string>
     <string name="onboarding_welcome_body">Tarry quietly notes where you are during work hours, splits your day into on-site time and travel, and lets you drop jobs onto it later.</string>
-    <string name="onboarding_welcome_privacy">No account. No cloud. Your location stays on your phone unless you export it.</string>
+    <string name="onboarding_welcome_privacy">No account. No cloud. Your location history stays on your phone unless you export it.</string>
     <string name="onboarding_get_started">Get started</string>
 
     <string name="onboarding_permission_allow">Allow</string>

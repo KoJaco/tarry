@@ -56,10 +56,12 @@ to CI as secrets.
 - **News app:** No. **Government app:** No. **Financial features:** none. **Health:** none.
 - **Data safety** (our recommendation; read Play's definitions before submitting):
   - Data collected? **Yes**, only because two features send something off the phone:
+    - **Precise location** — collected, **not shared**, **processed ephemerally**, *required*, purpose **App
+      functionality**. Why: each place's centre point (precise coordinates) is sent automatically to the phone's
+      built-in geocoder (Google) to look up its street address. Nothing is stored by us; we have no server. The raw
+      location history never leaves the phone except in a file the user exports.
     - **Approximate location** — collected, **not shared**, **processed ephemerally**, *required*, purpose **App
-      functionality**. Why: map tiles are downloaded for the area you view (OpenFreeMap), and street addresses come from
-      the phone's built-in geocoder. Neither is stored by us; we have no server.
-    - **Precise location: not collected** — raw positions never leave the phone except in a file the user exports.
+      functionality**. Why: map tiles are downloaded for the area you view (OpenFreeMap), which reveals that area.
     - **Purchase history:** handled by Google Play; Play's own billing data does not need declaring by the developer
       (check the current Play help article "Data safety: purchase history" before submitting; if unsure, declare
       Purchase history — collected, not shared, App functionality).

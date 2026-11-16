@@ -4,7 +4,7 @@
 **Source of truth for the app's look:** `docs/design/tokens.md`. This doc derives the brand from it. If phase 7.5 (the UI pass) changes colours, type or voice, update both together so the site and the app match.
 
 ## 1. What Tarry is (one breath)
-Tarry quietly records where you are during your work hours, splits the day into time on site and time on the road, and lets you drop jobs onto it afterwards, so invoicing becomes a lookup instead of a reconstruction. Everything stays on your phone.
+Tarry quietly records where you are during your work hours, splits the day into time on site and time on the road, and lets you drop jobs onto it afterwards, so invoicing becomes a lookup instead of a reconstruction. Your location history stays on your phone.
 
 **Who it's for:** tradespeople and other mobile workers who bill by time across several sites a day: marine and boat work, building, cleaning, gardening, mobile mechanics, carers. They are glanced at on site and reviewed at night.
 
@@ -77,7 +77,7 @@ Use the light theme for the site by default; dark is optional (the hex values be
   - *Your work day, already written down.*
   - *Invoice from where you actually were.*
   - *Stop reconstructing your week.*
-- **Subhead:** Tarry quietly notes where you are during work hours, splits your day into on-site time and travel, and lets you drop jobs onto it later. No account. No cloud. It all stays on your phone.
+- **Subhead:** Tarry quietly notes where you are during work hours, splits your day into on-site time and travel, and lets you drop jobs onto it later. No account. No cloud. Your location history stays on your phone.
 - **Primary button:** Get it on Google Play
 - **Secondary link:** See how it works
 - **Small line under the buttons:** 7-day free trial · then one payment, yours for life
@@ -98,10 +98,10 @@ Use the light theme for the site by default; dark is optional (the hex values be
 
 ### Privacy promise (its own section, prominent)
 - **Heading:** *Private by default. Not by setting.*
-- **Body:** Tarry has no account, no server and no analytics. Your location is processed on your phone and never leaves it, unless you export a file yourself. The only things it fetches from the internet are map tiles and street addresses (the phone's built-in geocoder), and Google Play handles your purchase.
+- **Body:** Tarry has no account, no server and no analytics. Your location history is processed and stored on your phone, and only leaves it in a file you export yourself. Two features use the internet: maps download images for the area you view (OpenFreeMap), and each place's position is sent to the phone's built-in geocoder (Google) to find its street address. Google Play handles your purchase.
 - **Bullets:**
   - No sign-up, no email, no tracking pixels.
-  - Location stays on your device.
+  - Location history stays on your device.
   - You choose where backups and exports go.
   - Delete everything in one tap.
 

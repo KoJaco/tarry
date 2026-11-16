@@ -26,7 +26,7 @@
     <string name="paywall_restore">Restore purchase</string>
     <string name="paywall_restore_found">Purchase restored</string>
     <string name="paywall_restore_not_found">No purchase found on this Google account</string>
-    <string name="paywall_privacy">Google Play handles your purchase. Your data stays on this phone.</string>
+    <string name="paywall_privacy">Google Play handles your purchase. Your location history stays on this phone.</string>
     <string name="paywall_unavailable">Can\'t reach Google Play right now</string>
     <string name="paywall_try_again">Try again</string>
     <string name="paywall_pending">Payment pending. Tracking unlocks when Google Play confirms it.</string>

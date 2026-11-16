@@ -11,7 +11,7 @@ Source: `docs/brand/brand-and-copy.md` §7–8. No claims beyond what ships. Bat
 
 ## Full description (≤ 4000)
 
-Tarry quietly notes where you are during work hours, splits your day into on-site time and travel, and lets you drop jobs onto it later. No account. No cloud. It all stays on your phone.
+Tarry quietly notes where you are during work hours, splits your day into on-site time and travel, and lets you drop jobs onto it later. No account. No cloud. Your location history stays on your phone.
 
 HOW IT WORKS
 • Paint your hours once. Tell Tarry when you work. It starts and stops on its own from then on.
@@ -29,9 +29,9 @@ FEATURES
 • Battery modes: Balanced by default, Precise when you want every detail, Saver for long days, and an automatic switch to Saver at low battery.
 
 PRIVATE BY DEFAULT. NOT BY SETTING.
-Tarry has no account, no server and no analytics. Your location is processed on your phone and never leaves it, unless you export a file yourself. The only things it fetches from the internet are map tiles and street addresses (the phone's built-in geocoder), and Google Play handles your purchase (Google's billing library may send Google diagnostics about the purchase, never your Tarry data).
+Tarry has no account, no server and no analytics. Your location history is processed and stored on your phone, and only leaves it in a file you export yourself. Two features use the internet: maps download images for the area you view (OpenFreeMap), and each place's position is sent to the phone's built-in geocoder (Google) to find its street address. Google Play handles your purchase (Google's billing library may send Google diagnostics about the purchase, never your Tarry data).
 • No sign-up, no email, no tracking pixels.
-• Location stays on your device.
+• Location history stays on your device.
 • You choose where backups and exports go.
 • Delete everything in one tap.
 

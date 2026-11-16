@@ -11,7 +11,7 @@
     <string name="about_source">Source code</string>
     <string name="about_source_subtitle">Source available under FSL-1.1-ALv2</string>
     <string name="about_section_privacy">Privacy</string>
-    <string name="about_privacy_promise">Tarry has no account, no server and no analytics. Your location stays on this phone unless you export it. It fetches only map tiles, street addresses from the phone\'s geocoder, and your purchase through Google Play.</string>
+    <string name="about_privacy_promise">Tarry has no account, no server and no analytics. Your location history stays on this phone unless you export it. To show street addresses, Tarry sends each place\'s position to the phone\'s built-in geocoder (Google). Maps download images for the area you view from OpenFreeMap. Google Play handles your purchase.</string>
     <string name="about_privacy_policy">Privacy policy</string>
     <string name="about_section_help">Help</string>
     <string name="about_support">Support</string>

@@ -71,7 +71,7 @@ class PaywallUiTest {
         composeRule.onNodeWithText("Backups and restore").assertIsDisplayed()
         composeRule.onNodeWithText("All future updates to the core app").assertIsDisplayed()
         composeRule.onNodeWithText("A$29.00 once. Yours for life, on your Google account.").assertIsDisplayed()
-        composeRule.onNodeWithText("Google Play handles your purchase. Your data stays on this phone.").assertIsDisplayed()
+        composeRule.onNodeWithText("Google Play handles your purchase. Your location history stays on this phone.").assertIsDisplayed()
         composeRule.onNodeWithText("You can still view, edit, export, back up and delete everything.").assertDoesNotExist()
     }
 

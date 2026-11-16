@@ -103,7 +103,7 @@ class OnboardingContentTest {
         setFlow()
         assertTitle("Your work day, already written down.")
         composeRule.onNodeWithTag("onboarding_privacy").assertIsDisplayed()
-        composeRule.onNodeWithText("No account. No cloud. Your location stays on your phone unless you export it.").assertIsDisplayed()
+        composeRule.onNodeWithText("No account. No cloud. Your location history stays on your phone unless you export it.").assertIsDisplayed()
         composeRule.onNodeWithTag("onboarding_step").assertTextContains("Step 1 of 5")
         primary().assertTextContains("Get started").assertHeightIsAtLeast(48.dp)
     }
