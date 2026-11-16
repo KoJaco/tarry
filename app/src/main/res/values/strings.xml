@@ -107,7 +107,7 @@
     <string name="tracking_attention_unknown">Tracking needs attention.</string>
 
     <string name="permissions_title">Permissions</string>
-    <string name="permissions_intro">Tarry records your location during your work hours so you can label visits and trips later. Everything stays on this phone.</string>
+    <string name="permissions_intro">Tarry records your location during your work hours so you can label visits and trips later. Your location history stays on this phone.</string>
     <string name="permissions_required_note">Required for scheduled tracking</string>
     <string name="permissions_required_note_granted">Needed for scheduled tracking</string>
     <string name="permissions_status_granted">Granted</string>
@@ -140,7 +140,7 @@
     <string name="permissions_step_battery_degraded">Without it, the system may pause tracking to save battery.</string>
 
     <string name="permissions_disclosure_title">Location all the time</string>
-    <string name="permissions_disclosure_body">Tarry collects your phone\'s location (latitude, longitude, accuracy and speed) in the background during the work hours you schedule, even when the app is closed. It uses this to work out where you stopped and how you travelled, so you can label visits and trips for invoicing.\n\nThis data is stored only on this phone. It is never uploaded or shared. You can export it yourself at any time.\n\nNext, choose “Allow all the time” in the system settings.</string>
+    <string name="permissions_disclosure_body">Tarry collects your phone\'s location (latitude, longitude, accuracy and speed) in the background during the work hours you schedule, even when the app is closed. It uses this to work out where you stopped and how you travelled, so you can label visits and trips for invoicing.\n\nYour location history is stored only on this phone. Tarry has no server and we never receive it. To show street addresses, Tarry sends the position of each place you stop at to your phone\'s built-in geocoder (Google). Maps download images for the area you view from OpenFreeMap. You can export your data yourself at any time.\n\nNext, choose “Allow all the time” in the system settings.</string>
     <string name="permissions_disclosure_continue">Continue</string>
     <string name="permissions_disclosure_cancel">Not now</string>
 
