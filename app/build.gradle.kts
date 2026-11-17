@@ -19,8 +19,8 @@ android {
         minSdk = 29
         targetSdk = 37
         // Bump both for every Play upload (docs/release.md). The release workflow checks the tag is v<versionName>.
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

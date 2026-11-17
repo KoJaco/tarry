@@ -16,9 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -39,6 +36,8 @@ class TrackingService : Service() {
     @Inject lateinit var notifications: TrackingNotifications
 
     @Inject lateinit var statusStore: TrackingStatusStore
+
+    @Inject lateinit var notificationAccess: NotificationAccess
 
     @Inject lateinit var config: TrackingConfig
 
@@ -70,10 +69,8 @@ class TrackingService : Service() {
         }
         if (notificationJob == null) {
             notificationJob = serviceScope.launch {
-                statusStore.status
-                    .map { s -> s.captureMode?.let { it to s.finishingUp } }
-                    .filterNotNull().distinctUntilChanged()
-                    .collect { (mode, finishing) -> notifications.update(mode, finishing) }
+                ongoingNotificationUpdates(statusStore.status, notificationAccess.allowed)
+                    .collect { c -> notifications.update(c.mode, c.finishingUp) }
             }
         }
         captureScope.launch { controller.onServiceStarted(trigger) }
