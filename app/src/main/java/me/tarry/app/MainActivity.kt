@@ -30,6 +30,7 @@ import me.tarry.app.reminder.ReviewReminderScheduler
 import me.tarry.app.segmentation.SegmentationScheduler
 import me.tarry.app.tracking.CaptureScope
 import me.tarry.app.tracking.HealthChecker
+import me.tarry.app.tracking.NotificationAccess
 import me.tarry.app.tracking.ReconcileSource
 import me.tarry.app.tracking.TrackingController
 import me.tarry.app.tracking.TrackingStateRepository
@@ -56,6 +57,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var purchaseClient: PurchaseClient
 
     @Inject lateinit var entitlement: Entitlement
+
+    @Inject lateinit var notificationAccess: NotificationAccess
 
     /** The reminder notification was tapped: show today's Timeline with the Needs review filter on, once. */
     private var openReview by mutableStateOf(false)
@@ -141,6 +144,13 @@ class MainActivity : ComponentActivity() {
         }
         // Also catches a restore from backup, which changes the schedule and the reminder setting behind the app's back.
         captureScope.launch { reviewReminder.rearm() }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // onResume, not onStart: the runtime permission dialog only pauses this activity. A running tracking service
+        // re-posts its notification when notifications become allowed (NotificationAccess).
+        notificationAccess.refresh()
     }
 
     private companion object {
